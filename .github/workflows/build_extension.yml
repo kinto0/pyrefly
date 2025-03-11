@@ -47,6 +47,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
+      # No way for actions-rs to look elsewhere for rust-toolchain
+      # https://github.com/actions-rs/toolchain/issues/110
+      - name: make toolchain version available in current directory
+        run: cp pyre2/rust-toolchain .
       - uses: actions-rs/toolchain@v1
       - uses: actions-rs/cargo@v1
         with:
