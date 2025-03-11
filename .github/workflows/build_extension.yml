@@ -16,35 +16,44 @@ jobs:
           - os: windows-latest
             platform: win32
             arch: x64
+            github_env: $env:GITHUB_ENV
           - os: windows-latest
             platform: win32
             arch: arm64
+            github_env: $env:GITHUB_ENV
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: linux
             arch: arm64
+            github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: linux
             arch: armhf
+            github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: alpine
             arch: x64
+            github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: alpine
             arch: arm64
+            github_env: $GITHUB_ENV
           - os: macos-latest
             platform: darwin
             arch: x64
+            github_env: $GITHUB_ENV
           - os: macos-latest
             platform: darwin
             arch: arm64
+            github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
-        run: echo "toolchain=$(cat pyre2/rust-toolchain)" && echo "toolchain=$(cat pyre2/rust-toolchain)" >> $env:GITHUB_ENV
+        run: echo "toolchain=$(cat pyre2/rust-toolchain)" && echo "toolchain=$(cat pyre2/rust-toolchain)" >> ${{ matrix.github_env }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
@@ -56,7 +65,7 @@ jobs:
       - run: npm ci
         working-directory: lsp/
       - name: save platform name
-        run: echo "platform=${{ matrix.platform }}-${{ matrix.arch }}" >> $env:GITHUB_ENV
+        run: echo "platform=${{ matrix.platform }}-${{ matrix.arch }}" >> ${{ matrix.github_env }}
       - run: npx vsce package --target ${{ env.platform }}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
