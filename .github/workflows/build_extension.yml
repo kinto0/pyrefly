@@ -1,11 +1,7 @@
 name: build_extension
 on:
-  workflow_call:
+  workflow_dispatch:
   push:
-    branches:
-      - "**"
-    tags:
-      - "v*"
 
 jobs:
   build_extension:
