@@ -63,11 +63,8 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: lsp/
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          npm_config_arch: ${{ matrix.npm_config_arch }}
       - shell: pwsh
-        run: echo "target=${{ matrix.platform }}-${{ matrix.arch }}" >> $env:GITHUB_ENV
+        run: echo "target=${{ matrix.platform }}-${{ matrix.arch }}"
       - run: npx vsce package --target ${{ env.target }}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
