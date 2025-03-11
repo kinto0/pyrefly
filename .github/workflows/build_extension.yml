@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
         id: rust-toolchain
-        run: echo "toolchain=$(cat pyre2/rust-toolchain)" >> $GITHUB_ENV && echo "toolchain=$(cat pyre2/rust-toolchain)" >> $GITHUB_OUTPUT
+        run: echo "toolchain=$(cat pyre2/rust-toolchain)" >> $GITHUB_ENV
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
