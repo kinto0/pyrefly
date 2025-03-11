@@ -53,8 +53,7 @@ jobs:
       - uses: actions-rs/cargo@v1
         with:
             command: build
-            args: --release --target-dir ../lsp/bin
-            working-directory: pyre2
+            args: --release --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
       - uses: actions/setup-node@v2
         with:
           node-version: 14.x
