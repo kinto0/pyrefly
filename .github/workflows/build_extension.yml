@@ -50,8 +50,8 @@ jobs:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
         # matrix.github_env is necessary to differentiate between windows and linux environment variables
-        # https://stackoverflow.com/questions/66733076/github-actions-set-environment-variable-for-windows-build-with-powershell
         # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#environment-files
+        # https://stackoverflow.com/questions/66733076/github-actions-set-environment-variable-for-windows-build-with-powershell
         run: echo "toolchain=$(cat pyre2/rust-toolchain)" && echo "toolchain=$(cat pyre2/rust-toolchain)" >> ${{ matrix.github_env }}
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -69,5 +69,5 @@ jobs:
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.platform }}
+          name: pyrefly-${{ env.platform }}
           path: "lsp/*.vsix"
