@@ -16,35 +16,27 @@ jobs:
           - os: windows-latest
             platform: win32
             arch: x64
-            npm_config_arch: x64
           - os: windows-latest
             platform: win32
             arch: arm64
-            npm_config_arch: arm
           - os: ubuntu-latest
             platform: linux
             arch: x64
-            npm_config_arch: x64
           - os: ubuntu-latest
             platform: linux
             arch: arm64
-            npm_config_arch: arm64
           - os: ubuntu-latest
             platform: linux
             arch: armhf
-            npm_config_arch: arm
           - os: ubuntu-latest
             platform: alpine
             arch: x64
-            npm_config_arch: x64
           - os: macos-latest
             platform: darwin
             arch: x64
-            npm_config_arch: x64
           - os: macos-latest
             platform: darwin
             arch: arm64
-            npm_config_arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
@@ -52,24 +44,22 @@ jobs:
       # https://github.com/actions-rs/toolchain/issues/110
       - name: make toolchain version available in current directory
         run: cp pyre2/rust-toolchain .
-    #   - uses: actions-rs/toolchain@v1
-    #   - name: build pyrefly binary
-    #     uses: actions-rs/cargo@v1
-    #     with:
-    #         command: build
-    #         args: --release --all-features --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
+      - uses: actions-rs/toolchain@v1
+      - name: build pyrefly binary
+        uses: actions-rs/cargo@v1
+        with:
+            command: build
+            args: --release --all-features --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci
         working-directory: lsp/
-        env:
-          npm_config_arch: ${{ matrix.npm_config_arch }}
       - shell: pwsh
         run: echo "target=${{ matrix.platform }}-${{ matrix.arch }}"
-      - run: npx vsce package --target ${{ env.target }}
+      - run: npx vsce package --target ${{ matrix.platform }}-${{ matrix.arch }}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.target }}
+          name: ${{ matrix.platform }}-${{ matrix.arch }}
           path: "lsp/*.vsix"
