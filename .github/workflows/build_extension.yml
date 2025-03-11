@@ -45,10 +45,10 @@ jobs:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
         id: rust-toolchain
-        run: echo "::set-output name=toolchain::$(cat rust-toolchain)"
+        run: echo "TOOLCHAIN=$(cat lsp/rust-toolchain)" >> $GITHUB_STATE
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: ${{ steps.rust-toolchain.outputs.toolchain }}
+          toolchain: $TOOLCHAIN
       - name: build pyrefly binary
         run: cargo build --release --all-features --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
       - uses: actions/setup-node@v4
@@ -57,10 +57,10 @@ jobs:
       - run: npm ci
         working-directory: lsp/
       - shell: pwsh
-        run: echo "target=${{ matrix.platform }}-${{ matrix.arch }}"
-      - run: npx vsce package --target ${{ matrix.platform }}-${{ matrix.arch }}
+        run: echo "PLATFORM=${{ matrix.platform }}-${{ matrix.arch }}" >> $GITHUB_STATE
+      - run: npx vsce package --target $PLATFORM
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.arch }}
+          name: $PLATFORM
           path: "lsp/*.vsix"
