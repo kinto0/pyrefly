@@ -47,8 +47,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-        with:
-            path: 'pyre2'
       - uses: actions-rs/toolchain@v1
         with:
             toolchain: stable
@@ -56,19 +54,19 @@ jobs:
         with:
             command: build
             args: --release --target-dir ../lsp/bin
-      - uses: actions/checkout@v2
-        with:
-            path: 'lsp'
+            working-directory: pyre2
       - uses: actions/setup-node@v2
         with:
           node-version: 14.x
       - run: npm install
+        working-directory: lsp/
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           npm_config_arch: ${{ matrix.npm_config_arch }}
       - shell: pwsh
         run: echo "target=${{ matrix.platform }}-${{ matrix.arch }}" >> $env:GITHUB_ENV
       - run: npx vsce package --target ${{ env.target }}
+        working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.target }}
