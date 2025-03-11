@@ -43,16 +43,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      # No way for actions-rs to look elsewhere for rust-toolchain
-      # https://github.com/actions-rs/toolchain/issues/110
-      - name: make toolchain version available in current directory
-        run: cp pyre2/rust-toolchain .
-      - uses: actions-rs/toolchain@v1
-      - name: build pyrefly binary
-        uses: actions-rs/cargo@v1
+      - name: Read rust-toolchain file
+        id: rust-toolchain
+        run: echo "::set-output name=toolchain::$(cat rust-toolchain)"
+      - uses: dtolnay/rust-toolchain@stable
         with:
-            command: build
-            args: --release --all-features --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
+          toolchain: ${{ steps.rust-toolchain.outputs.toolchain }}
+      - name: build pyrefly binary
+        run: cargo build --release --all-features --target-dir lsp/bin --manifest-path pyre2/Cargo.toml
       - uses: actions/setup-node@v4
         with:
           node-version: 22
