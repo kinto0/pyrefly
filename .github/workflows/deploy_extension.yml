@@ -18,8 +18,9 @@ jobs:
             - name: Get version
               run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' pyre2/version.bzl)" >> $GITHUB_ENV
             - name: upload
-            - uses: actions/download-artifact@v4
-            - run: npx vsce publish ${{ env.PYREFLY_VERSION }} --packagePath $(find . -iname *.vsix)
+              uses: actions/download-artifact@v4
+            - name: publish
+              run: npx vsce publish ${{ env.PYREFLY_VERSION }} --packagePath $(find . -iname *.vsix)
               env:
                 VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
