@@ -15,15 +15,9 @@ jobs:
         needs: build
         if: success()
         steps:
-            - name: Checkout repo (to see version.bzl in nex step)
-              uses: actions/checkout@v4
-              with:
-                fetch-depth: 0  # Get all history for all branches and tags
-            - name: Get version
-              run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' pyre2/version.bzl)" >> $GITHUB_ENV
             - name: upload
               uses: actions/download-artifact@v4
             - name: publish
-              run: npx vsce publish ${{ env.PYREFLY_VERSION }} --packagePath $(find . -iname *.vsix)
+              run: npx vsce publish --packagePath $(find . -iname *.vsix)
               env:
                 VSCE_PAT: ${{ secrets.VSCE_PAT }}

@@ -64,9 +64,15 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: lsp/
+      - name: Checkout repo (to see version.bzl in nex step)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get all history for all branches and tags
+      - name: Get version
+        run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' pyre2/version.bzl)" >> $GITHUB_ENV
       - name: save platform name
         run: echo "platform=${{ matrix.platform }}-${{ matrix.arch }}" >> ${{ matrix.github_env }}
-      - run: npx vsce package --target ${{ env.platform }}
+      - run: npx vsce package --target ${{ env.platform }} ${{ env.PYREFLY_VERSION }}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
