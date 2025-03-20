@@ -15,17 +15,17 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 
-use crate::ast::Ast;
 use crate::binding::binding::Binding;
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyExport;
 use crate::module::module_info::TextRangeWithModuleInfo;
 use crate::module::short_identifier::ShortIdentifier;
+use crate::ruff::ast::Ast;
 use crate::state::handle::Handle;
 use crate::state::state::State;
 use crate::types::types::Type;
 use crate::util::prelude::VecExt;
-use crate::visitors::Visitors;
+use crate::util::visit::Visit;
 
 impl State {
     fn get_type(&self, handle: &Handle, key: &Key) -> Option<Type> {
@@ -47,11 +47,11 @@ impl State {
             {
                 *res = Some(Ast::expr_name_identifier(x.clone()));
             } else {
-                Visitors::visit_expr(x, |x| f(x, find, res));
+                x.visit(&mut |x| f(x, find, res));
             }
         }
         let mut res = None;
-        Visitors::visit_mod_expr(&mod_module, |x| f(x, position, &mut res));
+        mod_module.visit(&mut |x| f(x, position, &mut res));
         res
     }
 
@@ -69,11 +69,11 @@ impl State {
             {
                 *res = Some(x.clone());
             } else {
-                Visitors::visit_expr(x, |x| f(x, find, res));
+                x.visit(&mut |x| f(x, find, res));
             }
         }
         let mut res = None;
-        Visitors::visit_mod_expr(&mod_module, |x| f(x, position, &mut res));
+        mod_module.visit(&mut |x| f(x, position, &mut res));
         res
     }
 

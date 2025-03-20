@@ -8,19 +8,34 @@
 use std::fmt;
 use std::fmt::Display;
 
-use crate::types::types::Type;
+use pyrefly_derive::TypeEq;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+use crate::types::types::Type;
+use crate::util::visit::VisitMut;
+
+#[derive(Clone, Debug, TypeEq, Eq, PartialEq)]
 pub struct YieldResult {
     pub yield_ty: Type,
     pub send_ty: Type,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+impl VisitMut<Type> for YieldResult {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.visit_mut(f);
+    }
+}
+
+#[derive(Clone, Debug, TypeEq, Eq, PartialEq)]
 pub struct YieldFromResult {
     pub yield_ty: Type,
     pub send_ty: Type,
     pub return_ty: Type,
+}
+
+impl VisitMut<Type> for YieldFromResult {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.visit_mut(f);
+    }
 }
 
 impl YieldResult {
@@ -38,9 +53,10 @@ impl YieldResult {
         }
     }
 
-    pub fn visit_mut(&mut self, mut f: impl FnMut(&mut Type)) {
-        self.yield_ty.visit_mut(&mut f);
-        self.send_ty.visit_mut(&mut f);
+    pub fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        let Self { yield_ty, send_ty } = self;
+        yield_ty.visit_mut(f);
+        send_ty.visit_mut(f);
     }
 }
 
@@ -78,10 +94,15 @@ impl YieldFromResult {
         }
     }
 
-    pub fn visit_mut(&mut self, mut f: impl FnMut(&mut Type)) {
-        self.yield_ty.visit_mut(&mut f);
-        self.send_ty.visit_mut(&mut f);
-        self.return_ty.visit_mut(&mut f);
+    pub fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        let Self {
+            yield_ty,
+            send_ty,
+            return_ty,
+        } = self;
+        yield_ty.visit_mut(f);
+        send_ty.visit_mut(f);
+        return_ty.visit_mut(f);
     }
 }
 

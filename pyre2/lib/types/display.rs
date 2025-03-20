@@ -18,12 +18,12 @@ use starlark_map::small_map::SmallMap;
 use starlark_map::smallmap;
 
 use crate::module::module_name::ModuleName;
+use crate::types::callable::Function;
 use crate::types::class::TArgs;
 use crate::types::qname::QName;
 use crate::types::quantified::Quantified;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethod;
-use crate::types::types::Decoration;
 use crate::types::types::NeverStyle;
 use crate::types::types::Type;
 use crate::util::display::append;
@@ -81,12 +81,16 @@ pub struct TypeDisplayContext<'a> {
 }
 
 impl<'a> TypeDisplayContext<'a> {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(xs: &[&'a Type]) -> Self {
+        let mut res = Self::default();
+        for x in xs {
+            res.add(x);
+        }
+        res
     }
 
     pub fn add(&mut self, t: &'a Type) {
-        t.universe(|t| {
+        t.universe(&mut |t| {
             let qname = match t {
                 Type::ClassDef(cls) => Some(cls.qname()),
                 Type::ClassType(c) => Some(c.qname()),
@@ -147,37 +151,6 @@ impl<'a> TypeDisplayContext<'a> {
         }
     }
 
-    fn fmt_decoration(&self, decoration: &Decoration, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match decoration {
-            Decoration::StaticMethod(box ty) => {
-                write!(f, "staticmethod[{}]", self.display(ty))
-            }
-            Decoration::Override(box ty) => {
-                write!(f, "override[{}]", self.display(ty))
-            }
-            Decoration::ClassMethod(box ty) => {
-                write!(f, "classmethod[{}]", self.display(ty))
-            }
-            Decoration::Property(box (getter, None)) => {
-                write!(f, "property[{}]", self.display(getter))
-            }
-            Decoration::Property(box (getter, Some(setter))) => {
-                write!(
-                    f,
-                    "property_with_setter[{}, {}]",
-                    self.display(getter),
-                    self.display(setter)
-                )
-            }
-            Decoration::PropertySetterDecorator(box getter) => {
-                write!(f, "property_setter_decorator[{}]", self.display(getter),)
-            }
-            Decoration::EnumMember(box ty) => {
-                write!(f, "enum_member[{}]", self.display(ty))
-            }
-        }
-    }
-
     fn fmt<'b>(&self, t: &'b Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match t {
             // Things that have QName's and need qualifying
@@ -215,13 +188,21 @@ impl<'a> TypeDisplayContext<'a> {
             // Other things
             Type::Literal(lit) => write!(f, "Literal[{}]", lit),
             Type::LiteralString => write!(f, "LiteralString"),
-            Type::Callable(c, _) => c.fmt_with_type(f, &|t| self.display(t)),
-            Type::Overload(ts) => {
+            Type::Callable(box c)
+            | Type::Function(box Function {
+                signature: c,
+                metadata: _,
+            }) => c.fmt_with_type(f, &|t| self.display(t)),
+            Type::Overload(overload) => {
                 write!(
                     f,
-                    "Overload[{}]",
-                    commas_iter(|| ts.0.iter().map(|t| self.display(t)))
-                )
+                    "Overload[{}",
+                    self.display(&overload.signatures.first().as_type())
+                )?;
+                for sig in overload.signatures.iter().skip(1) {
+                    write!(f, ", {}", self.display(&sig.as_type()))?;
+                }
+                write!(f, "]")
             }
             Type::ParamSpecValue(x) => {
                 write!(f, "(")?;
@@ -241,23 +222,25 @@ impl<'a> TypeDisplayContext<'a> {
             Type::Union(types) if types.is_empty() => write!(f, "Never"),
             Type::Union(types) => {
                 // All Literals will be collected into a single Literal at the index of the first Literal.
-                let mut lit_idx = None;
-                let mut lits = Vec::new();
+                let mut literal_idx = None;
+                let mut literals = Vec::new();
                 let mut display_types = Vec::new();
                 for (i, t) in types.iter().enumerate() {
                     match t {
                         Type::Literal(lit) => {
-                            if lit_idx.is_none() {
-                                lit_idx = Some(i);
+                            if literal_idx.is_none() {
+                                literal_idx = Some(i);
                             }
-                            lits.push(lit)
+                            literals.push(lit)
+                        }
+                        Type::Callable(_) | Type::Function(_) => {
+                            display_types.push(format!("({})", self.display(t)))
                         }
                         _ => display_types.push(format!("{}", self.display(t))),
                     }
                 }
-                if let Some(i) = lit_idx {
-                    let internal_lits = commas_iter(|| lits.iter().map(|t| format!("{t}")));
-                    display_types.insert(i, format!("Literal[{internal_lits}]"));
+                if let Some(i) = literal_idx {
+                    display_types.insert(i, format!("Literal[{}]", commas_iter(|| &literals)));
                 }
                 write!(f, "{}", display_types.join(" | "))
             }
@@ -274,7 +257,7 @@ impl<'a> TypeDisplayContext<'a> {
                     f,
                     "Forall[{}, {}]",
                     commas_iter(|| forall.tparams.iter()),
-                    self.display(&forall.as_inner_type()),
+                    self.display(&forall.body.clone().as_type()),
                 )
             }
             Type::Type(ty) => write!(f, "type[{}]", self.display(ty)),
@@ -316,7 +299,6 @@ impl<'a> TypeDisplayContext<'a> {
                     self.display(&ta.as_type())
                 )
             }
-            Type::Decoration(d) => self.fmt_decoration(d, f),
             Type::SuperInstance(cls, obj) => {
                 write!(f, "super[")?;
                 self.fmt_qname(cls.qname(), f)?;
@@ -332,9 +314,7 @@ impl<'a> TypeDisplayContext<'a> {
 
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut ctx = TypeDisplayContext::new();
-        ctx.add(self);
-        ctx.fmt(self, f)
+        TypeDisplayContext::new(&[self]).fmt(self, f)
     }
 }
 
@@ -343,6 +323,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use dupe::Dupe;
     use ruff_python_ast::Identifier;
     use ruff_text_size::TextSize;
     use starlark_map::ordered_map::OrderedMap;
@@ -351,7 +332,6 @@ mod tests {
     use crate::module::module_info::ModuleInfo;
     use crate::module::module_path::ModulePath;
     use crate::types::callable::Callable;
-    use crate::types::callable::CallableKind;
     use crate::types::callable::Param;
     use crate::types::callable::ParamList;
     use crate::types::callable::Required;
@@ -376,7 +356,7 @@ mod tests {
             ModulePath::filesystem(PathBuf::from(module)),
             Arc::new("1234567890".to_owned()),
         );
-        Class::new_identity(
+        Class::new(
             ClassIndex(0),
             Identifier::new(Name::new(name), TextRange::empty(TextSize::new(range))),
             mi,
@@ -401,7 +381,7 @@ mod tests {
             ModulePath::filesystem(PathBuf::from(module)),
             Arc::new("1234567890".to_owned()),
         );
-        TypeVar::new_identity(
+        TypeVar::new(
             Identifier::new(Name::new(name), TextRange::empty(TextSize::new(range))),
             mi,
             Restriction::Unrestricted,
@@ -424,7 +404,7 @@ mod tests {
         );
 
         fn class_type(class: &Class, targs: TArgs) -> Type {
-            Type::ClassType(ClassType::new(class.clone(), targs))
+            Type::ClassType(ClassType::new(class.dupe(), targs))
         }
 
         assert_eq!(
@@ -462,9 +442,7 @@ mod tests {
 
         let t1 = class_type(&foo1, TArgs::default());
         let t2 = class_type(&foo2, TArgs::default());
-        let mut ctx = TypeDisplayContext::new();
-        ctx.add(&t1);
-        ctx.add(&t2);
+        let ctx = TypeDisplayContext::new(&[&t1, &t2]);
         assert_eq!(
             format!("{} <: {}", ctx.display(&t1), ctx.display(&t2)),
             "mod.ule.foo@1:6 <: mod.ule.foo@1:9"
@@ -519,7 +497,7 @@ mod tests {
         let param2 = Param::KwOnly(Name::new("world"), Type::None, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param1, param2]), Type::None);
         assert_eq!(
-            Type::Callable(Box::new(callable), CallableKind::Anon).to_string(),
+            Type::Callable(Box::new(callable)).to_string(),
             "(hello: None, *, world: None) -> None"
         );
     }

@@ -21,6 +21,7 @@ use crate::error::error::Error;
 use crate::error::kind::ErrorKind;
 use crate::error::style::ErrorStyle;
 use crate::module::module_info::ModuleInfo;
+use crate::module::module_path::ModulePath;
 use crate::util::lock::Mutex;
 
 #[derive(Debug, Default, Clone)]
@@ -108,12 +109,12 @@ impl ErrorCollector {
         range: TextRange,
         msg: String,
         kind: ErrorKind,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) {
         let source_range = self.module_info.source_range(range);
         let is_ignored = self.module_info.is_ignored(&source_range, &msg);
         let full_msg = match context {
-            Some(ctx) => vec1![ctx.format(), msg],
+            Some(ctx) => vec1![ctx().format(), msg],
             None => vec1![msg],
         };
         if self.style != ErrorStyle::Never {
@@ -148,7 +149,9 @@ impl ErrorCollector {
         self.errors.lock().iter().cloned().collect()
     }
 
-    pub fn summarise<'a>(xs: impl Iterator<Item = &'a ErrorCollector>) -> Vec<(ErrorKind, usize)> {
+    pub fn count_error_kinds<'a>(
+        xs: impl Iterator<Item = &'a ErrorCollector>,
+    ) -> Vec<(ErrorKind, usize)> {
         let mut map = SmallMap::new();
         for x in xs {
             for err in x.errors.lock().iter() {
@@ -159,6 +162,21 @@ impl ErrorCollector {
         let mut res = map.into_iter().collect::<Vec<_>>();
         res.sort_by_key(|x| x.1);
         res
+    }
+
+    pub fn get_errors_per_file<'a>(
+        xs: impl Iterator<Item = &'a ErrorCollector>,
+    ) -> SmallMap<ModulePath, SmallMap<ErrorKind, usize>> {
+        let mut map: SmallMap<ModulePath, SmallMap<ErrorKind, usize>> = SmallMap::new();
+        for x in xs {
+            for err in x.errors.lock().iter() {
+                *map.entry(err.path().dupe())
+                    .or_default()
+                    .entry(err.error_kind())
+                    .or_default() += 1;
+            }
+        }
+        map
     }
 
     pub fn todo(&self, msg: &str, v: impl Ranged + Debug) {

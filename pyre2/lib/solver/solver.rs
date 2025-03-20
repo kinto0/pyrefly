@@ -22,6 +22,7 @@ use crate::error::context::TypeCheckContext;
 use crate::error::kind::ErrorKind;
 use crate::solver::type_order::TypeOrder;
 use crate::types::callable::Callable;
+use crate::types::callable::Function;
 use crate::types::callable::Params;
 use crate::types::module::Module;
 use crate::types::quantified::QuantifiedKind;
@@ -34,11 +35,15 @@ use crate::util::lock::RwLock;
 use crate::util::recurser::Recurser;
 use crate::util::uniques::UniqueFactory;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Error message when a variable has leaked from one module to another.
+///
+/// We have a rule that `Var`'s should not leak from one module to another, but it has happened.
+/// The easiest debugging technique is to look at the `Solutions` and see if there is a `Var(Unique`
+/// in the output. The usual cause is that we failed to visit all the necessary `Type` fields.
+const VAR_LEAK: &str = "Internal error: a variable has leaked from one module to another.";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Variable {
-    /// We don't expect to get here, but better than crashing
-    #[default]
-    Unknown,
     /// A variable in a container with an unspecified element type, e.g. `[]: list[V]`
     Contained,
     /// A variable due to generic instantitation, `def f[T](x: T): T` with `f(1)`
@@ -55,7 +60,6 @@ enum Variable {
 impl Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Variable::Unknown => write!(f, "Unknown"),
             Variable::Contained => write!(f, "Contained"),
             Variable::Quantified(k, Some(t)) => write!(f, "Quantified({k}, default={t})"),
             Variable::Quantified(k, None) => write!(f, "Quantified({k})"),
@@ -137,7 +141,7 @@ impl Solver {
                 *t = Type::any_implicit();
             }
         } else {
-            t.visit_mut(|t| self.expand_with_limit(t, limit - 1, recurser));
+            t.visit_mut(&mut |t| self.expand_with_limit(t, limit - 1, recurser));
         }
     }
 
@@ -146,20 +150,19 @@ impl Solver {
     /// `Var` (including itself), then we will return the answer.
     pub fn force_var(&self, v: Var) -> Type {
         let mut lock = self.variables.write();
-        match lock.entry(v) {
-            Entry::Occupied(ref e) if let Variable::Answer(t) = e.get() => t.clone(),
-            e => {
+        let e = lock.get_mut(&v).expect(VAR_LEAK);
+        match e {
+            Variable::Answer(t) => t.clone(),
+            _ => {
                 let mut default = None;
-                let quantified_kind = if let Entry::Occupied(e) = &e
-                    && let Variable::Quantified(q, default_value) = e.get()
-                {
+                let quantified_kind = if let Variable::Quantified(q, default_value) = e {
                     default = default_value.clone();
                     *q
                 } else {
                     QuantifiedKind::TypeVar
                 };
-                let res = default.unwrap_or(quantified_kind.empty_value());
-                *e.or_default() = Variable::Answer(res.clone());
+                let res = default.unwrap_or_else(|| quantified_kind.empty_value());
+                *e = Variable::Answer(res.clone());
                 res
             }
         }
@@ -178,7 +181,7 @@ impl Solver {
                 *t = Type::any_implicit();
             }
         } else {
-            t.visit_mut(|t| self.deep_force_mut_with_limit(t, limit - 1, recurser));
+            t.visit_mut(&mut |t| self.deep_force_mut_with_limit(t, limit - 1, recurser));
         }
     }
 
@@ -191,7 +194,7 @@ impl Solver {
 
     /// Simplify a type as much as we can.
     fn simplify_mut(&self, t: &mut Type) {
-        t.transform_mut(|x| {
+        t.transform_mut(&mut |x| {
             if let Type::Union(xs) = x {
                 *x = unions(mem::take(xs));
             }
@@ -208,38 +211,46 @@ impl Solver {
                 params.extend(ts2.to_vec());
                 *x = Type::Concatenate(params.into_boxed_slice(), pspec.clone());
             }
-            if let Type::Callable(
-                box Callable {
-                    params: Params::ParamSpec(box ts, pspec),
-                    ret,
-                },
-                kind,
-            ) = x
+            let (callable, kind) = match x {
+                Type::Callable(box c) => (Some(c), None),
+                Type::Function(box Function {
+                    signature: c,
+                    metadata: k,
+                }) => (Some(c), Some(k)),
+                _ => (None, None),
+            };
+            if let Some(Callable {
+                params: Params::ParamSpec(box ts, pspec),
+                ret,
+            }) = callable
             {
+                let new_callable = |c| {
+                    if let Some(k) = kind {
+                        Type::Function(Box::new(Function {
+                            signature: c,
+                            metadata: k.clone(),
+                        }))
+                    } else {
+                        Type::Callable(Box::new(c))
+                    }
+                };
                 match pspec {
                     Type::ParamSpecValue(paramlist) => {
                         let params = mem::take(paramlist).prepend_types(ts).into_owned();
-                        let new_callable = Type::Callable(
-                            Box::new(Callable::list(params, ret.clone())),
-                            kind.clone(),
-                        );
+                        let new_callable = new_callable(Callable::list(params, ret.clone()));
                         *x = new_callable;
                     }
                     Type::Ellipsis if ts.is_empty() => {
-                        *x =
-                            Type::Callable(Box::new(Callable::ellipsis(ret.clone())), kind.clone());
+                        *x = new_callable(Callable::ellipsis(ret.clone()));
                     }
                     Type::Concatenate(box ts2, box pspec) => {
                         let mut params = ts.to_vec();
                         params.extend(ts2.to_vec());
-                        *x = Type::Callable(
-                            Box::new(Callable::concatenate(
-                                params.into_boxed_slice(),
-                                pspec.clone(),
-                                ret.clone(),
-                            )),
-                            kind.clone(),
-                        );
+                        *x = new_callable(Callable::concatenate(
+                            params.into_boxed_slice(),
+                            pspec.clone(),
+                            ret.clone(),
+                        ));
                     }
                     _ => {}
                 }
@@ -303,7 +314,7 @@ impl Solver {
     pub fn finish_quantified(&self, vs: &[Var]) {
         let mut lock = self.variables.write();
         for v in vs {
-            let e = lock.entry(*v).or_default();
+            let e = lock.get_mut(v).expect(VAR_LEAK);
             if matches!(*e, Variable::Quantified(_, _)) {
                 *e = Variable::Contained;
             }
@@ -331,18 +342,22 @@ impl Solver {
         errors: &ErrorCollector,
         error_kind: ErrorKind,
         loc: TextRange,
-        tcc: &TypeCheckContext,
+        tcc: &dyn Fn() -> TypeCheckContext,
     ) {
-        errors.add(
-            loc,
-            tcc.kind.format_error(
-                &self.for_display(got.clone()),
-                &self.for_display(want.clone()),
-                errors.module_info().name(),
-            ),
-            error_kind,
-            tcc.context.as_ref(),
+        let tcc = tcc();
+        let msg = tcc.kind.format_error(
+            &self.for_display(got.clone()),
+            &self.for_display(want.clone()),
+            errors.module_info().name(),
         );
+        match tcc.context {
+            Some(ctx) => {
+                errors.add(loc, msg, error_kind, Some(&|| ctx.clone()));
+            }
+            None => {
+                errors.add(loc, msg, error_kind, None);
+            }
+        }
     }
 
     /// Union a list of types together. In the process may cause some variables to be forced.
@@ -434,14 +449,9 @@ impl Solver {
                 drop(lock);
                 // We got forced into choosing a type to satisfy a subset constraint, so check we are OK with that.
                 if !self.is_subset_eq(&got, &t, type_order) {
-                    self.error(
-                        &t,
-                        &got,
-                        errors,
-                        ErrorKind::TypeMismatch,
-                        loc,
-                        &TypeCheckContext::unknown(),
-                    );
+                    self.error(&t, &got, errors, ErrorKind::TypeMismatch, loc, &|| {
+                        TypeCheckContext::unknown()
+                    });
                 }
             }
             _ => {
@@ -516,8 +526,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Var(v1), Type::Var(v2)) => {
                 let mut variables = self.solver.variables.write();
                 match (
-                    variables.get(v1).cloned().unwrap_or_default(),
-                    variables.get(v2).cloned().unwrap_or_default(),
+                    variables.get(v1).expect(VAR_LEAK).clone(),
+                    variables.get(v2).expect(VAR_LEAK).clone(),
                 ) {
                     (Variable::Answer(t1), Variable::Answer(t2)) => {
                         drop(variables);
@@ -552,7 +562,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (Type::Var(v1), t2) => {
                 let mut variables = self.solver.variables.write();
-                match variables.get(v1).cloned().unwrap_or_default() {
+                match variables.get(v1).expect(VAR_LEAK).clone() {
                     Variable::Answer(t1) => {
                         drop(variables);
                         self.is_subset_eq(&t1, t2)
@@ -566,7 +576,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (t1, Type::Var(v2)) => {
                 let mut variables = self.solver.variables.write();
-                match variables.get(v2).cloned().unwrap_or_default() {
+                match variables.get(v2).expect(VAR_LEAK).clone() {
                     Variable::Answer(t2) => {
                         drop(variables);
                         self.is_subset_eq(t1, &t2)

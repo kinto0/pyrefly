@@ -22,7 +22,6 @@ use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 
 use crate::alt::class::class_metadata::BaseClass;
-use crate::alt::solve::TypeFormContext;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
@@ -71,8 +70,7 @@ impl<'a> BindingsBuilder<'a> {
         self.scopes.push(Scope::annotation(x.range));
 
         let class_index = self.class_index();
-        let class_name = ShortIdentifier::new(&x.name);
-        let class_key = KeyClass(class_name.clone());
+        let class_key = KeyClass(ShortIdentifier::new(&x.name));
         let definition_key = self.table.classes.0.insert(class_key);
 
         x.type_params.iter_mut().for_each(|x| {
@@ -148,7 +146,8 @@ impl<'a> BindingsBuilder<'a> {
         self.scopes.pop(); // annotation scope
         let mut fields = SmallMap::new();
         for (name, info) in last_scope.flow.info.iter() {
-            // A name with flow info but not static info is a reference to something that's not a class field.
+            // A name with flow in the last_scope, but whose static is in a parent scope, is a reference to something that isn't a class field.
+            // Can occur when we narrow a parent scopes variable, thus producing a fresh flow for it, but no static.
             if let Some(stat_info) = last_scope.stat.0.get(name) {
                 let binding = BindingClassField {
                     class: definition_key,
@@ -168,7 +167,7 @@ impl<'a> BindingsBuilder<'a> {
         }
         if let ScopeKind::ClassBody(body) = last_scope.kind {
             for (method_name, instance_attributes) in body.instance_attributes_by_method {
-                if method_name == dunder::INIT {
+                if is_attribute_defining_method(&method_name, &x.name.id) {
                     for (name, InstanceAttribute(value, annotation, range)) in instance_attributes {
                         if !fields.contains_key(&name) {
                             fields.insert(
@@ -288,8 +287,7 @@ impl<'a> BindingsBuilder<'a> {
         special_base: Option<Box<BaseClass>>,
     ) {
         let class_index = self.class_index();
-        let short_class_name = ShortIdentifier::new(&class_name);
-        let class_key = KeyClass(short_class_name.clone());
+        let class_key = KeyClass(ShortIdentifier::new(&class_name));
         let definition_key = self.table.classes.0.insert(class_key.clone());
         self.table.insert(
             KeyClassMetadata(class_index),
@@ -362,7 +360,6 @@ impl<'a> BindingsBuilder<'a> {
                         AnnotationTarget::ClassMember(member_name.clone()),
                         annotation,
                         None,
-                        TypeFormContext::ClassVarAnnotation,
                     )
                 };
                 Some(self.table.insert(ann_key, ann_val))
@@ -772,8 +769,25 @@ fn is_keyword(name: &str) -> bool {
     )
 }
 
-pub fn is_valid_identifier(name: &str) -> bool {
+fn is_valid_identifier(name: &str) -> bool {
     static IDENTIFIER_REGEX: LazyLock<Regex> =
         LazyLock::new(|| Regex::new("^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap());
     !is_keyword(name) && IDENTIFIER_REGEX.is_match(name)
+}
+
+fn is_attribute_defining_method(method_name: &Name, class_name: &Name) -> bool {
+    if method_name == &dunder::INIT {
+        true
+    } else {
+        (class_name.contains("Test") || class_name.contains("test"))
+            && is_test_setup_method(method_name)
+    }
+}
+
+fn is_test_setup_method(method_name: &Name) -> bool {
+    match method_name.as_str() {
+        "asyncSetUp" | "async_setUp" | "setUp" | "_setup" | "_async_setup"
+        | "async_with_context" | "with_context" | "setUpClass" => true,
+        _ => false,
+    }
 }

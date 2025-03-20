@@ -29,10 +29,14 @@ pub enum ErrorContext {
     BinaryOp(String, Type, Type),
     /// for x in y: ...
     Iteration(Type),
+    /// await x
+    Await(Type),
     /// x[y]
     Index(Type),
     /// x[y] = ...
     SetItem(Type),
+    /// del x[y]
+    DelItem(Type),
     /// match x: case Foo(y): ...
     MatchPositional(Type),
 }
@@ -96,6 +100,10 @@ pub enum TypeCheckKind {
     Attribute(Name),
     /// A check against a user-declared type annotation on a variable name.
     AnnotatedName(Name),
+    /// Check the type of an iteration variable (the `x` in `for x in seq`) against the iterable.
+    // When checking iteration variables (the `x` in `for x in seq`), we transform the type annotation of the variable if it exists.
+    // We need to carry around the actual un-transformed type of `x` to avoid a confusing error message.
+    IterationVariableMismatch(Name, Type),
     /// var: SomeType = some_value check. This is separate from AnnotatedName because we can
     /// emit a more compact error message for this case.
     AnnAssign,
@@ -110,7 +118,9 @@ pub enum TypeCheckKind {
 impl TypeCheckKind {
     pub fn from_annotation_target(target: &AnnotationTarget) -> Self {
         match target {
-            AnnotationTarget::Param(_) => Self::Unknown,
+            AnnotationTarget::Param(_)
+            | AnnotationTarget::ArgsParam(_)
+            | AnnotationTarget::KwargsParam(_) => Self::Unknown,
             AnnotationTarget::Return(_func) => Self::ExplicitFunctionReturn,
             AnnotationTarget::Assign(name) => Self::AnnotatedName(name.clone()),
             AnnotationTarget::ClassMember(member) => Self::Attribute(member.clone()),

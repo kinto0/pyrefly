@@ -21,7 +21,7 @@ f4: Callable[[int], None] = lambda x: reveal_type(x)  # E: revealed type: int
 f5: Callable[[int], int] = lambda x: x
 f6: Callable[[int], int] = lambda x: "foo"  # E: `(x: int) -> Literal['foo']` is not assignable to `(int) -> int`
 f7: Callable[[int, int], int] = lambda x: 1  # E: `(x: int) -> Literal[1]` is not assignable to `(int, int) -> int`
-f8: Callable[[int], int] = lambda x: x + "foo" # E: Argument `Literal['foo']` is not assignable to parameter with type `int`
+f8: Callable[[int], int] = lambda x: x + "foo" # E: Argument `Literal['foo']` is not assignable to parameter with type `int` 
 "#,
 );
 
@@ -47,8 +47,8 @@ testcase!(
     test_callable_invalid_annotation,
     r#"
 from typing import Callable, assert_type, Any
-x: Callable[int]  # E: Callable requires exactly two arguments but 1 was found
-assert_type(x, Callable[..., Any])
+def test(x: Callable[int]):  # E: Callable requires exactly two arguments but 1 was found
+    assert_type(x, Callable[..., Any])
 "#,
 );
 
@@ -233,6 +233,16 @@ testcase!(
     r#"
 def test(**kwargs: int): ...
 test(x=1, y="foo", z=2) # E: Keyword argument `y` with type `Literal['foo']` is not assignable to kwargs type `int` in function `test`
+"#,
+);
+
+testcase!(
+    test_args_kwargs_type,
+    r#"
+from typing import assert_type
+def test(*args: int, **kwargs: int) -> None:
+    assert_type(args, tuple[int, ...])
+    assert_type(kwargs, dict[str, int])
 "#,
 );
 

@@ -11,8 +11,6 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
-use std::hash::Hash;
-use std::hash::Hasher;
 
 use dupe::Dupe;
 use ruff_python_ast::name::Name;
@@ -20,20 +18,15 @@ use ruff_python_ast::Identifier;
 use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 
-use crate::ast::AtomicTextRange;
 use crate::module::module_info::ModuleInfo;
 use crate::module::module_name::ModuleName;
-use crate::util::lock::RwLock;
-use crate::util::mutable::Mutable;
+use crate::types::equality::TypeEq;
+use crate::types::equality::TypeEqCtx;
 
 /// A name, plus where it is defined.
 pub struct QName {
-    /// The `name` and `range` must be consistent.
-    /// They always come from a single `Identifier`.
-    name: Name,
-    range: AtomicTextRange,
-    module_name: ModuleName,
-    module_info: RwLock<ModuleInfo>,
+    name: Identifier,
+    module: ModuleInfo,
 }
 
 impl Debug for QName {
@@ -43,7 +36,7 @@ impl Debug for QName {
             // The full details of ModuleInfo are pretty boring in most cases,
             // and we only cache it so we can defer expanding the range.
             // Therefore, shorten the Debug output, as ModuleInfo is pretty big.
-            .field("module", &self.module_name)
+            .field("module", &self.module.name())
             .finish()
     }
 }
@@ -55,6 +48,12 @@ impl PartialEq for QName {
 }
 
 impl Eq for QName {}
+
+impl TypeEq for QName {
+    fn type_eq(&self, other: &Self, _: &mut TypeEqCtx) -> bool {
+        self.name.id == other.name.id && self.module.name() == other.module.name()
+    }
+}
 
 impl PartialOrd for QName {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -76,33 +75,32 @@ impl Display for QName {
 
 impl QName {
     fn key(&self) -> (&Name, TextSize, TextSize, ModuleName) {
-        let range = self.range.get();
-        (&self.name, range.start(), range.end(), self.module_name)
+        (
+            &self.name.id,
+            self.name.range.start(),
+            self.name.range.end(),
+            self.module.name(),
+        )
     }
 
     pub fn new(name: Identifier, module: ModuleInfo) -> Self {
-        Self {
-            name: name.id,
-            range: AtomicTextRange::new(name.range),
-            module_name: module.name(),
-            module_info: RwLock::new(module),
-        }
+        Self { name, module }
     }
 
     pub fn id(&self) -> &Name {
-        &self.name
+        &self.name.id
     }
 
     pub fn range(&self) -> TextRange {
-        self.range.get()
+        self.name.range
     }
 
     pub fn module_info(&self) -> ModuleInfo {
-        self.module_info.read().dupe()
+        self.module.dupe()
     }
 
     pub fn module_name(&self) -> ModuleName {
-        self.module_name
+        self.module.name()
     }
 
     pub fn fmt_name(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -117,34 +115,9 @@ impl QName {
         write!(
             f,
             "{}.{}@{}",
-            self.module_name,
+            self.module_name(),
             self.name,
-            self.module_info.read().source_range(self.range.get())
+            self.module.source_range(self.name.range)
         )
-    }
-}
-
-impl Mutable for QName {
-    fn immutable_eq(&self, other: &QName) -> bool {
-        self.name == other.name && self.module_name == other.module_name
-    }
-
-    fn immutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-        self.module_name.hash(state);
-    }
-
-    fn mutable_eq(&self, other: &Self) -> bool {
-        // We don't check the `module_info` here, because it's always derived from the `module_name`.
-        self.range.get() == other.range.get()
-    }
-
-    fn mutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.range.get().hash(state);
-    }
-
-    fn mutate(&self, x: &QName) {
-        *self.module_info.write() = x.module_info().dupe();
-        self.range.set(x.range.get());
     }
 }

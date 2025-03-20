@@ -5,58 +5,105 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::cmp::Ord;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::sync::Arc;
 
 use dupe::Dupe;
 use parse_display::Display;
+use pyrefly_derive::TypeEq;
 use ruff_python_ast::name::Name;
 use ruff_python_ast::Identifier;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 
-use crate::ast::AtomicTextRange;
 use crate::module::module_info::ModuleInfo;
 use crate::module::module_name::ModuleName;
 use crate::types::callable::Param;
 use crate::types::callable::Required;
+use crate::types::equality::TypeEq;
 use crate::types::qname::QName;
 use crate::types::quantified::Quantified;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::types::TParams;
 use crate::types::types::Type;
-use crate::util::arc_id::ArcId;
 use crate::util::display::commas_iter;
-use crate::util::mutable::Mutable;
+use crate::util::visit::VisitMut;
 
 /// The name of a nominal type, e.g. `str`
-#[derive(Debug, Clone, Display, Dupe, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct Class(ArcId<ClassInner>);
+#[derive(Debug, Clone, TypeEq, Display, Dupe)]
+pub struct Class(Arc<ClassInner>);
 
-/// Simple properties of class fields that can be attached to the class definition. Note that this
-/// does not include the type of a field, which needs to be computed lazily to avoid a recursive loop.
-#[derive(Debug)]
-pub struct ClassFieldProperties {
-    is_annotated: bool,
-    range: AtomicTextRange,
-}
+impl Class {
+    /// Key to use for equality purposes. If we have the same module and index,
+    /// we must point at the same class underneath.
+    fn key_eq(&self) -> (ClassIndex, ModuleName) {
+        (self.0.index, self.0.qname.module_name())
+    }
 
-impl Clone for ClassFieldProperties {
-    fn clone(&self) -> Self {
-        Self {
-            is_annotated: self.is_annotated,
-            range: AtomicTextRange::new(self.range.get()),
-        }
+    /// Key to use for comparison purposes. Main used to sort identifiers in union,
+    /// and then alphabetically sorting by the name gives a predictable answer.
+    fn key_ord(&self) -> (&QName, ClassIndex) {
+        (&self.0.qname, self.0.index)
     }
 }
 
+impl Hash for Class {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key_eq().hash(state)
+    }
+}
+
+impl PartialEq for Class {
+    fn eq(&self, other: &Self) -> bool {
+        self.key_eq().eq(&other.key_eq())
+    }
+}
+
+impl Eq for Class {}
+
+impl Ord for Class {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.key_ord().cmp(&other.key_ord())
+    }
+}
+
+impl PartialOrd for Class {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl VisitMut<Type> for Class {
+    // There are no types stored inside Class
+    fn visit_mut(&mut self, _: &mut dyn FnMut(&mut Type)) {}
+}
+
+/// Simple properties of class fields that can be attached to the class definition. Note that this
+/// does not include the type of a field, which needs to be computed lazily to avoid a recursive loop.
+#[derive(Debug, Clone)]
+pub struct ClassFieldProperties {
+    is_annotated: bool,
+    range: TextRange,
+}
+
+impl PartialEq for ClassFieldProperties {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_annotated == other.is_annotated
+    }
+}
+
+impl Eq for ClassFieldProperties {}
+impl TypeEq for ClassFieldProperties {}
+
 /// The index of a class within the file, used as a reference to data associated with the class.
 #[derive(
-    Debug, Clone, Dupe, Copy, Eq, PartialEq, Hash, PartialOrd, Ord, Display
+    Debug, Clone, Dupe, Copy, TypeEq, Eq, PartialEq, Hash, PartialOrd, Ord, Display
 )]
 pub struct ClassIndex(pub u32);
 
@@ -64,33 +111,12 @@ impl ClassFieldProperties {
     pub fn new(is_annotated: bool, range: TextRange) -> Self {
         Self {
             is_annotated,
-            range: AtomicTextRange::new(range),
+            range,
         }
     }
 }
 
-impl Mutable for ClassFieldProperties {
-    fn immutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.is_annotated.hash(state);
-    }
-
-    fn immutable_eq(&self, other: &Self) -> bool {
-        self.is_annotated == other.is_annotated
-    }
-
-    fn mutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.range.get().hash(state);
-    }
-
-    fn mutable_eq(&self, other: &Self) -> bool {
-        self.range.get() == other.range.get()
-    }
-
-    fn mutate(&self, x: &ClassFieldProperties) {
-        self.range.set(x.range.get());
-    }
-}
-
+#[derive(TypeEq, Eq, PartialEq)]
 struct ClassInner {
     index: ClassIndex,
     qname: QName,
@@ -130,26 +156,6 @@ impl ClassKind {
     }
 }
 
-impl PartialEq for ClassInner {
-    fn eq(&self, other: &Self) -> bool {
-        self.qname == other.qname
-    }
-}
-
-impl Eq for ClassInner {}
-
-impl PartialOrd for ClassInner {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for ClassInner {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.qname.cmp(&other.qname)
-    }
-}
-
 impl Display for ClassInner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "class {}", self.qname.id())?;
@@ -165,17 +171,17 @@ impl Display for ClassInner {
 // - "member" refers to a name defined on a class, including inherited members whose
 //   types should be expressed in terms of the current classe's type parameters.
 // - "attribute" refers to a value actually accessed from an instance or class object,
-//   which involves subtituting type arguments for the class type parameters as
+//   which involves substituting type arguments for the class type parameters as
 //   well as descriptor handling (including method binding).
 impl Class {
-    pub fn new_identity(
+    pub fn new(
         index: ClassIndex,
         name: Identifier,
         module_info: ModuleInfo,
         tparams: TParams,
         fields: SmallMap<Name, ClassFieldProperties>,
     ) -> Self {
-        Self(ArcId::new(ClassInner {
+        Self(Arc::new(ClassInner {
             index,
             qname: QName::new(name, module_info),
             tparams,
@@ -241,7 +247,7 @@ impl Class {
     }
 
     pub fn field_decl_range(&self, name: &Name) -> Option<TextRange> {
-        Some(self.0.fields.get(name)?.range.get())
+        Some(self.0.fields.get(name)?.range)
     }
 
     pub fn has_qname(&self, module: &str, name: &str) -> bool {
@@ -249,62 +255,7 @@ impl Class {
     }
 }
 
-impl Mutable for Class {
-    fn immutable_eq(&self, other: &Class) -> bool {
-        if !(self.0.index == other.0.index
-            && self.0.qname.immutable_eq(&other.0.qname)
-            && self.0.tparams == other.0.tparams)
-        {
-            return false;
-        }
-
-        if self.0.fields.len() != other.0.fields.len() {
-            return false;
-        }
-        for (x, y) in self.0.fields.iter().zip(other.0.fields.iter()) {
-            if !(x.0 == y.0 && x.1.immutable_eq(y.1)) {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn immutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.0.index.hash(state);
-        self.0.qname.immutable_hash(state);
-        self.0.tparams.hash(state);
-        for x in self.0.fields.iter() {
-            x.0.hash(state);
-            x.1.immutable_hash(state);
-        }
-    }
-
-    fn mutable_eq(&self, other: &Class) -> bool {
-        self.0.qname.mutable_eq(&other.0.qname);
-        for (x, y) in self.0.fields.iter().zip(other.0.fields.iter()) {
-            if !x.1.immutable_eq(y.1) {
-                return false;
-            }
-        }
-        true
-    }
-
-    fn mutable_hash<H: Hasher>(&self, state: &mut H) {
-        self.0.qname.mutable_hash(state);
-        for x in self.0.fields.iter() {
-            x.1.mutable_hash(state);
-        }
-    }
-
-    fn mutate(&self, x: &Class) {
-        self.0.qname.mutate(&x.0.qname);
-        for (a, b) in self.0.fields.values().zip(x.0.fields.values()) {
-            a.mutate(b);
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct TArgs(Box<[Type]>);
 
 impl TArgs {
@@ -324,12 +275,12 @@ impl TArgs {
         self.0.is_empty()
     }
 
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
-        self.0.iter().for_each(&mut f)
+    pub fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        self.0.iter().for_each(f)
     }
 
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
-        self.0.iter_mut().for_each(&mut f)
+    pub fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.0.iter_mut().for_each(f)
     }
 
     /// Apply a substitution to type arguments.
@@ -362,7 +313,7 @@ impl Substitution {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ClassType(Class, TArgs);
 
 impl Display for ClassType {
@@ -454,12 +405,12 @@ impl ClassType {
         Type::ClassType(self)
     }
 
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
-        self.1.visit(&mut f)
+    pub fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        self.1.visit(f)
     }
 
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
-        self.1.visit_mut(&mut f)
+    pub fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.1.visit_mut(f)
     }
 
     pub fn self_type(&self) -> Type {

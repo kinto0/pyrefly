@@ -8,6 +8,7 @@
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use dupe::Dupe;
@@ -16,8 +17,6 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 
-use crate::alt::id_cache::IdCache;
-use crate::alt::id_cache::IdCacheHistory;
 use crate::alt::traits::Solve;
 use crate::alt::traits::SolveRecursive;
 use crate::binding::binding::Keyed;
@@ -36,6 +35,7 @@ use crate::graph::index::Idx;
 use crate::graph::index_map::IndexMap;
 use crate::module::module_info::ModuleInfo;
 use crate::module::module_name::ModuleName;
+use crate::module::module_path::ModulePath;
 use crate::solver::solver::Solver;
 use crate::solver::type_order::TypeOrder;
 use crate::table;
@@ -43,6 +43,8 @@ use crate::table_for_each;
 use crate::table_mut_for_each;
 use crate::table_try_for_each;
 use crate::types::class::Class;
+use crate::types::equality::TypeEq;
+use crate::types::equality::TypeEqCtx;
 use crate::types::stdlib::Stdlib;
 use crate::types::types::AnyStyle;
 use crate::types::types::Type;
@@ -53,6 +55,7 @@ use crate::util::lock::Mutex;
 use crate::util::prelude::SliceExt;
 use crate::util::recurser::Recurser;
 use crate::util::uniques::UniqueFactory;
+use crate::util::visit::VisitMut;
 
 #[derive(Debug, Default)]
 pub struct Traces {
@@ -68,7 +71,6 @@ pub struct Traces {
 /// We never issue contains queries on these maps.
 #[derive(Debug)]
 pub struct Answers {
-    id_cache: IdCache,
     solver: Solver,
     table: AnswerTable,
     trace: Option<Mutex<Traces>>,
@@ -147,20 +149,40 @@ impl DisplayWith<ModuleInfo> for Solutions {
 }
 
 pub struct SolutionsDifference<'a> {
-    key: &'a dyn DisplayWith<ModuleInfo>,
-    lhs: Option<&'a dyn Display>,
-    rhs: Option<&'a dyn Display>,
+    key: (&'a dyn DisplayWith<ModuleInfo>, &'a dyn Debug),
+    lhs: Option<(&'a dyn Display, &'a dyn Debug)>,
+    rhs: Option<(&'a dyn Display, &'a dyn Debug)>,
 }
 
-impl DisplayWith<ModuleInfo> for SolutionsDifference<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, ctx: &ModuleInfo) -> fmt::Result {
-        let missing = |f: &mut fmt::Formatter, x| match x {
+impl Debug for SolutionsDifference<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SolutionsDifference")
+            .field("key", self.key.1)
+            .field("lhs", &self.lhs.map(|x| x.1))
+            .field("rhs", &self.rhs.map(|x| x.1))
+            .finish()
+    }
+}
+
+impl Display for SolutionsDifference<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let missing = |f: &mut fmt::Formatter, x: Option<(&dyn Display, &dyn Debug)>| match x {
             None => write!(f, "missing"),
-            Some(x) => write!(f, "`{x}`"),
+            Some(x) => write!(f, "`{}`", x.0),
         };
 
+        // The key has type DisplayWith<ModuleInfo>.
+        // We don't know if the key originates on the LHS or RHS, so we don't know which is the appropriate ModuleInfo.
+        // However, we do know it is exported, and exported things can't rely on locations, so regardless
+        // of the ModuleInfo, it should display the same. Therefore, we fake one up.
+        let fake_module_info = ModuleInfo::new(
+            ModuleName::builtins(),
+            ModulePath::memory(PathBuf::new()),
+            Default::default(),
+        );
+
         write!(f, "`")?;
-        self.key.fmt(f, ctx)?;
+        self.key.0.fmt(f, &fake_module_info)?;
         write!(f, "` was ")?;
         missing(f, self.lhs)?;
         write!(f, " now ")?;
@@ -189,6 +211,7 @@ impl Solutions {
         fn f<'a, K: Keyed>(
             x: &'a SolutionsEntry<K>,
             y: &'a Solutions,
+            ctx: &mut TypeEqCtx,
         ) -> Option<SolutionsDifference<'a>>
         where
             SolutionsTable: TableKeyed<K, Value = SolutionsEntry<K>>,
@@ -198,9 +221,9 @@ impl Solutions {
                 for (k, v) in y.iter() {
                     if !x.contains_key(k) {
                         return Some(SolutionsDifference {
-                            key: k,
+                            key: (k, k),
                             lhs: None,
-                            rhs: Some(v),
+                            rhs: Some((v, v)),
                         });
                     }
                 }
@@ -208,17 +231,17 @@ impl Solutions {
             }
             for (k, v) in x.iter() {
                 match y.get(k) {
-                    Some(v2) if v != v2 => {
+                    Some(v2) if !v.type_eq(v2, ctx) => {
                         return Some(SolutionsDifference {
-                            key: k,
-                            lhs: Some(v),
-                            rhs: Some(v2),
+                            key: (k, k),
+                            lhs: Some((v, v)),
+                            rhs: Some((v2, v2)),
                         });
                     }
                     None => {
                         return Some(SolutionsDifference {
-                            key: k,
-                            lhs: Some(v),
+                            key: (k, k),
+                            lhs: Some((v, v)),
                             rhs: None,
                         });
                     }
@@ -229,9 +252,12 @@ impl Solutions {
         }
 
         let mut difference = None;
+        // Important we have a single TypeEqCtx, so that we don't have
+        // types used in different ways.
+        let mut ctx = TypeEqCtx::default();
         table_for_each!(self.0, |x| {
             if difference.is_none() {
-                difference = f(x, other);
+                difference = f(x, other, &mut ctx);
             }
         });
         difference
@@ -266,12 +292,7 @@ pub trait LookupAnswer: Sized {
 }
 
 impl Answers {
-    pub fn new(
-        bindings: &Bindings,
-        solver: Solver,
-        history: IdCacheHistory,
-        enable_trace: bool,
-    ) -> Self {
+    pub fn new(bindings: &Bindings, solver: Solver, enable_trace: bool) -> Self {
         fn presize<K: SolveRecursive>(items: &mut AnswerEntry<K>, bindings: &Bindings)
         where
             BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
@@ -291,7 +312,6 @@ impl Answers {
         };
 
         Self {
-            id_cache: IdCache::new(history),
             solver,
             table,
             trace,
@@ -313,14 +333,14 @@ impl Answers {
         errors: &ErrorCollector,
         stdlib: &Stdlib,
         uniques: &UniqueFactory,
-        retain_memory: bool,
+        compute_everything: bool,
     ) -> Solutions {
         let mut res = SolutionsTable::default();
 
         fn pre_solve<Ans: LookupAnswer, K: Solve<Ans>>(
             items: &mut SolutionsEntry<K>,
             answers: &AnswersSolver<Ans>,
-            retain_memory: bool,
+            compute_everything: bool,
         ) where
             AnswerTable: TableKeyed<K, Value = AnswerEntry<K>>,
             BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
@@ -328,7 +348,10 @@ impl Answers {
             if K::EXPORTED {
                 items.reserve(answers.bindings.keys::<K>().len());
             }
-            if !K::EXPORTED && !retain_memory && answers.base_errors.style() == ErrorStyle::Never {
+            if !K::EXPORTED
+                && !compute_everything
+                && answers.base_errors.style() == ErrorStyle::Never
+            {
                 // No point doing anything here.
                 return;
             }
@@ -353,14 +376,14 @@ impl Answers {
         table_mut_for_each!(&mut res, |items| pre_solve(
             items,
             &answers_solver,
-            retain_memory
+            compute_everything
         ));
 
         // Now force all types to be fully resolved.
-        fn post_solve<K: SolveRecursive>(items: &mut SolutionsEntry<K>, solver: &Solver) {
+        fn post_solve<K: Keyed>(items: &mut SolutionsEntry<K>, solver: &Solver) {
             for v in items.values_mut() {
                 let mut vv = (**v).clone();
-                K::visit_type_mut(&mut vv, &mut |x| solver.deep_force_mut(x));
+                vv.visit0_mut(&mut |x| solver.deep_force_mut(x));
                 *v = Arc::new(vv);
             }
         }
@@ -368,7 +391,7 @@ impl Answers {
         Solutions(res)
     }
 
-    pub fn solve_key<Ans: LookupAnswer, K: Solve<Ans>>(
+    pub fn solve_exported_key<Ans: LookupAnswer, K: Solve<Ans> + Keyed<EXPORTED = true>>(
         &self,
         exports: &dyn LookupExport,
         answers: &Ans,
@@ -392,18 +415,17 @@ impl Answers {
             recurser: &Recurser::new(),
             current: self,
         };
-        solver.get(key)
+        let v = solver.get(key);
+        let mut vv = (*v).clone();
+        vv.visit0_mut(&mut |x| self.solver.deep_force_mut(x));
+        Arc::new(vv)
     }
 
-    pub fn get_idx<K: Keyed + SolveRecursive>(&self, k: Idx<K>) -> Option<Arc<K::Answer>>
+    pub fn get_idx<K: SolveRecursive>(&self, k: Idx<K>) -> Option<Arc<K::Answer>>
     where
         AnswerTable: TableKeyed<K, Value = AnswerEntry<K>>,
     {
         self.table.get::<K>().get(k)?.get()
-    }
-
-    pub fn id_cache_history(&self) -> IdCacheHistory {
-        self.id_cache.history()
     }
 
     pub fn for_display(&self, t: Type) -> Type {
@@ -439,10 +461,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    pub fn id_cache(&self) -> &IdCache {
-        &self.current.id_cache
-    }
-
     pub fn bindings(&self) -> &Bindings {
         self.bindings
     }
@@ -453,6 +471,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     pub fn solver(&self) -> &Solver {
         &self.current.solver
+    }
+
+    pub fn for_display(&self, t: Type) -> Type {
+        self.solver().for_display(t)
     }
 
     pub fn get_from_module<K: Solve<Ans> + Keyed<EXPORTED = true>>(
@@ -556,7 +578,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         got: &Type,
         loc: TextRange,
         errors: &ErrorCollector,
-        tcc: &TypeCheckContext,
+        tcc: &dyn Fn() -> TypeCheckContext,
     ) -> Type {
         if matches!(got, Type::Any(AnyStyle::Error)) {
             // Don't propagate errors
@@ -573,6 +595,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub fn distribute_over_union(&self, ty: &Type, mut f: impl FnMut(&Type) -> Type) -> Type {
         match ty {
             Type::Union(tys) => self.unions(tys.map(f)),
+            Type::Type(box Type::Union(tys)) => {
+                self.unions(tys.map(|ty| f(&Type::type_form(ty.clone()))))
+            }
             _ => f(ty),
         }
     }
@@ -595,7 +620,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
         range: TextRange,
         kind: ErrorKind,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
         msg: String,
     ) -> Type {
         errors.add(range, msg, kind, context);

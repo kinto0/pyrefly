@@ -59,6 +59,7 @@ pub struct Stdlib {
     enum_meta: StdlibResult<Class>,
     enum_flag: StdlibResult<Class>,
     named_tuple: StdlibResult<Class>,
+    property: StdlibResult<Class>,
     // We want an owned ClassType for object because it allows the MRO code to clone less frequently.
     object_class_type: StdlibResult<ClassType>,
 }
@@ -120,6 +121,7 @@ impl Stdlib {
             enum_meta: lookup_str(enum_, "EnumMeta"),
             enum_flag: lookup_str(enum_, "Flag"),
             named_tuple: lookup_str(typing, "NamedTuple"),
+            property: lookup_str(builtins, "property"),
             object_class_type: lookup_str(builtins, "object")
                 .map(|obj| ClassType::new_for_stdlib(obj, TArgs::default())),
         }
@@ -155,7 +157,7 @@ impl Stdlib {
 
     fn primitive(cls: &StdlibResult<Class>) -> ClassType {
         // Note: this construction will panic if we incorrectly mark a generic type as primitive.
-        ClassType::new_for_stdlib(Self::unwrap(cls).clone(), TArgs::default())
+        ClassType::new_for_stdlib(Self::unwrap(cls).dupe(), TArgs::default())
     }
 
     pub fn object_class_type(&self) -> &ClassType {
@@ -220,7 +222,7 @@ impl Stdlib {
 
     fn apply(cls: &StdlibResult<Class>, targs: Vec<Type>) -> ClassType {
         // Note: this construction will panic if we use `apply` with the wrong arity.
-        ClassType::new_for_stdlib(Self::unwrap(cls).clone(), TArgs::new(targs))
+        ClassType::new_for_stdlib(Self::unwrap(cls).dupe(), TArgs::new(targs))
     }
 
     pub fn base_exception_group(&self, x: Type) -> ClassType {
@@ -309,5 +311,9 @@ impl Stdlib {
 
     pub fn method_type(&self) -> ClassType {
         Self::primitive(&self.method_type)
+    }
+
+    pub fn property(&self) -> ClassType {
+        Self::primitive(&self.property)
     }
 }

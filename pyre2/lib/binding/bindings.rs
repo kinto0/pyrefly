@@ -33,7 +33,6 @@ use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 use vec1::Vec1;
 
-use crate::alt::solve::TypeFormContext;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
@@ -252,7 +251,7 @@ impl Bindings {
         if let Binding::FunctionParameter(p) = b {
             match p {
                 Either::Left(idx) => Either::Left(*idx),
-                Either::Right((var, _)) => Either::Right(*var),
+                Either::Right((var, _, _)) => Either::Right(*var),
             }
         } else {
             panic!(
@@ -408,6 +407,35 @@ impl BindingTable {
     }
 }
 
+/// Errors that can occur when we try to look up a name
+pub enum LookupError {
+    /// We can't find the name at all
+    NotFound,
+    /// We expected the name to be mutable from the current scope, but it's not
+    NotMutable,
+}
+
+impl LookupError {
+    pub fn message(&self, name: &Identifier) -> String {
+        match self {
+            Self::NotFound => format!("Could not find name `{name}`"),
+            Self::NotMutable => format!("`{name}` is not mutable from the current scope"),
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(PartialEq, Eq)]
+pub enum LookupKind {
+    Regular,
+    /// Look up a name that must be mutable from the current scope, like a `del` or augmented assignment statement
+    Mutable,
+    /// Look up a name in a `global` statement
+    Global,
+    /// Look up a name in a `nonlocal` statement
+    Nonlocal,
+}
+
 impl<'a> BindingsBuilder<'a> {
     pub fn init_static_scope(&mut self, x: &[Stmt], top_level: bool) {
         self.scopes.current_mut().stat.stmts(
@@ -469,32 +497,36 @@ impl<'a> BindingsBuilder<'a> {
         self.errors.add(range, msg, error_kind, None);
     }
 
-    fn lookup_name(&mut self, name: &Name) -> Option<Idx<Key>> {
+    pub fn lookup_name(&mut self, name: &Name, kind: LookupKind) -> Result<Idx<Key>, LookupError> {
         let mut barrier = false;
         for scope in self.scopes.iter_rev() {
             if !barrier && let Some(flow) = scope.flow.info.get(name) {
-                return Some(flow.key);
+                return Ok(flow.key);
             } else if !matches!(scope.kind, ScopeKind::ClassBody(_))
                 && let Some(info) = scope.stat.0.get(name)
             {
+                if kind == LookupKind::Mutable && barrier {
+                    return Err(LookupError::NotMutable);
+                }
                 let key = info.as_key(name);
-                return Some(self.table.types.0.insert(key));
+                return Ok(self.table.types.0.insert(key));
             }
             barrier = barrier || scope.barrier;
         }
-        None
+        Err(LookupError::NotFound)
     }
 
-    pub fn forward_lookup(&mut self, name: &Identifier) -> Option<Binding> {
-        self.lookup_name(&name.id).map(Binding::Forward)
+    pub fn forward_lookup(&mut self, name: &Identifier) -> Result<Binding, LookupError> {
+        self.lookup_name(&name.id, LookupKind::Regular)
+            .map(Binding::Forward)
     }
 
     pub fn lookup_legacy_tparam(
         &mut self,
         name: &Identifier,
-    ) -> Either<Idx<KeyLegacyTypeParam>, Option<Idx<Key>>> {
-        let found = self.lookup_name(&name.id);
-        if let Some(mut idx) = found {
+    ) -> Either<Idx<KeyLegacyTypeParam>, Result<Idx<Key>, LookupError>> {
+        let found = self.lookup_name(&name.id, LookupKind::Regular);
+        if let Ok(mut idx) = found {
             loop {
                 if let Some(b) = self.table.types.1.get(idx) {
                     match b {
@@ -648,7 +680,7 @@ impl<'a> BindingsBuilder<'a> {
 
     pub fn bind_narrow_ops(&mut self, narrow_ops: &NarrowOps, use_range: TextRange) {
         for (name, (op, op_range)) in narrow_ops.0.iter() {
-            if let Some(name_key) = self.lookup_name(name) {
+            if let Ok(name_key) = self.lookup_name(name, LookupKind::Regular) {
                 let binding_key = self.table.insert(
                     Key::Narrow(name.clone(), *op_range, use_range),
                     Binding::Narrow(name_key, Box::new(op.clone()), use_range),
@@ -673,21 +705,16 @@ impl<'a> BindingsBuilder<'a> {
 
     pub fn bind_function_param(
         &mut self,
+        target: AnnotationTarget,
         x: AnyParameterRef,
         function_idx: Idx<KeyFunction>,
         self_type: Option<Idx<KeyClass>>,
-        ctx: TypeFormContext,
     ) {
         let name = x.name();
         let annot = x.annotation().map(|x| {
             self.table.insert(
                 KeyAnnotation::Annotation(ShortIdentifier::new(name)),
-                BindingAnnotation::AnnotateExpr(
-                    AnnotationTarget::Param(name.id.clone()),
-                    x.clone(),
-                    self_type,
-                    ctx,
-                ),
+                BindingAnnotation::AnnotateExpr(target.clone(), x.clone(), self_type),
             )
         });
         let (annot, def) = match annot {
@@ -696,12 +723,9 @@ impl<'a> BindingsBuilder<'a> {
                 let var = self.solver.fresh_contained(self.uniques);
                 let annot = self.table.insert(
                     KeyAnnotation::Annotation(ShortIdentifier::new(name)),
-                    BindingAnnotation::Type(
-                        AnnotationTarget::Param(name.id.clone()),
-                        var.to_type(),
-                    ),
+                    BindingAnnotation::Type(target.clone(), var.to_type()),
                 );
-                (annot, Either::Right((var, function_idx)))
+                (annot, Either::Right((var, function_idx, target)))
             }
         };
         let key = self.table.insert(
@@ -712,13 +736,7 @@ impl<'a> BindingsBuilder<'a> {
             .current_mut()
             .stat
             .add(name.id.clone(), name.range, Some(annot));
-        self.bind_key(
-            &name.id,
-            key,
-            Some(FlowStyle::Annotated {
-                is_initialized: x.default().is_some(),
-            }),
-        );
+        self.bind_key(&name.id, key, None);
     }
 
     /// Helper for loops, inserts a phi key for every name in the given flow.
@@ -785,17 +803,38 @@ impl<'a> BindingsBuilder<'a> {
     }
 
     fn merge_flow_style(&mut self, styles: Vec<Option<&FlowStyle>>) -> Option<FlowStyle> {
-        // If these are all identical, return the identical ones.
-        // Otherwise give up and return None, since not clear how to merge otherwise.
         let mut it = styles.into_iter();
-        let first = it.next()??;
+        let mut merged = it.next()?;
         for x in it {
-            if x? != first {
-                // TODO: Merging of flow style is hacky. What properties should be merged?
-                return None;
+            match (merged, x) {
+                // If they're identical, keep it
+                (l, r) if l == r => {}
+                // Uninitialized takes precedence over Unbound
+                (Some(FlowStyle::Uninitialized), Some(FlowStyle::Unbound)) => {}
+                (Some(FlowStyle::Unbound), Some(FlowStyle::Uninitialized)) => {
+                    merged = Some(&FlowStyle::Uninitialized);
+                }
+                // Unbound and bound branches merge into PossiblyUnbound
+                // Uninitialized and bound branches merge into PossiblyUninitialized
+                (Some(FlowStyle::Unbound), _) => {
+                    return Some(FlowStyle::PossiblyUnbound);
+                }
+                (Some(FlowStyle::Uninitialized), _) => {
+                    return Some(FlowStyle::PossiblyUninitialized);
+                }
+                (_, Some(FlowStyle::PossiblyUnbound | FlowStyle::Unbound)) => {
+                    return Some(FlowStyle::PossiblyUnbound);
+                }
+                (_, Some(FlowStyle::PossiblyUninitialized | FlowStyle::Uninitialized)) => {
+                    return Some(FlowStyle::PossiblyUninitialized);
+                }
+                // Unclear how to merge, default to None
+                _ => {
+                    merged = None;
+                }
             }
         }
-        Some(first.clone())
+        merged.cloned()
     }
 
     pub fn merge_flow(&mut self, mut xs: Vec<Flow>, range: TextRange) -> Flow {
@@ -886,6 +925,7 @@ impl LegacyTParamBuilder {
                 builder
                     .lookup_legacy_tparam(name)
                     .map_left(|idx| (name.clone(), idx))
+                    .map_right(|right| right.ok())
             });
         match result {
             Either::Left((_, idx)) => {

@@ -12,10 +12,10 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+use crate::globs::Globs;
 use crate::metadata::PythonVersion;
 use crate::metadata::RuntimeMetadata;
 use crate::metadata::DEFAULT_PYTHON_PLATFORM;
-use crate::Globs;
 
 static PYPROJECT_FILE_NAME: &str = "pyproject.toml";
 
@@ -28,20 +28,28 @@ pub fn set_if_some<T: Clone>(config_field: &mut T, value: Option<&T>) {
 #[derive(Debug, PartialEq, Eq, Hash, Deserialize, Clone)]
 pub struct ConfigFile {
     /// Files that should be counted as sources (e.g. user-space code).
-    #[serde(default = "ConfigFile::default_project_include")]
-    pub project_include: Globs,
+    /// NOTE: this is never replaced with CLI args in this config, but may be overridden by CLI args where used.
+    #[serde(default = "ConfigFile::default_project_includes")]
+    pub project_includes: Globs,
 
-    /// corresponds to --include (soon to be renamed to --search-path) in Args
+    /// Files that should be excluded as sources (e.g. user-space code). These take
+    /// precedence over `project_includes`.
+    /// NOTE: this is never replaced with CLI args in this config, but may be overridden by CLI args where used.
+    #[serde(default = "ConfigFile::default_project_excludes")]
+    pub project_excludes: Globs,
+
+    /// corresponds to --search-path in Args, the list of directories where imports are
+    /// found (including type checked files).
     // TODO(connernilsen): set this to config directory when config is found
-    #[serde(default = "ConfigFile::default_search_roots")]
-    pub search_roots: Vec<PathBuf>,
+    #[serde(default = "ConfigFile::default_search_path")]
+    pub search_path: Vec<PathBuf>,
 
     /// The default Python platform to use, likely `linux`
     // TODO(connernilsen): use python_executable if not set
     #[serde(default = "ConfigFile::default_python_platform")]
     pub python_platform: String,
 
-    /// The default Python version to use, likely `3.12.0`
+    /// The default Python version to use, likely `3.13.0`
     // TODO(connernilsen): use python_executable if not set
     #[serde(default)]
     pub python_version: PythonVersion,
@@ -54,40 +62,70 @@ pub struct ConfigFile {
 impl Default for ConfigFile {
     fn default() -> ConfigFile {
         ConfigFile {
-            search_roots: Self::default_search_roots(),
+            search_path: Self::default_search_path(),
             python_platform: Self::default_python_platform(),
             python_version: PythonVersion::default(),
             site_package_path: Vec::new(),
-            project_include: Self::default_project_include(),
+            project_includes: Self::default_project_includes(),
+            project_excludes: Self::default_project_excludes(),
         }
     }
 }
 
 impl ConfigFile {
-    pub fn default_project_include() -> Globs {
-        Globs::new(vec![".".to_owned()])
+    pub fn default_project_includes() -> Globs {
+        Globs::new(vec!["".to_owned()])
+    }
+
+    pub fn default_project_excludes() -> Globs {
+        Globs::new(vec!["**/__pycache__/**".to_owned(), "**/.*".to_owned()])
     }
 
     pub fn default_python_platform() -> String {
         DEFAULT_PYTHON_PLATFORM.to_owned()
     }
 
-    pub fn default_search_roots() -> Vec<PathBuf> {
-        vec![PathBuf::from(".")]
+    pub fn default_search_path() -> Vec<PathBuf> {
+        vec![PathBuf::from("")]
     }
 
     pub fn get_runtime_metadata(&self) -> RuntimeMetadata {
         RuntimeMetadata::new(self.python_version, self.python_platform.clone())
     }
 
-    pub fn from_file(p: &Path) -> anyhow::Result<ConfigFile> {
+    fn rewrite_with_path_to_config(&mut self, config_root: &Path) {
+        // TODO(connernilsen): store root as part of config to make it easier to rewrite later on
+        self.project_includes = self.project_includes.clone().from_root(config_root);
+        self.search_path.iter_mut().for_each(|search_root| {
+            let mut base = config_root.to_path_buf();
+            base.push(search_root.as_path());
+            *search_root = base;
+        });
+        self.search_path.push(config_root.to_path_buf());
+        self.site_package_path
+            .iter_mut()
+            .for_each(|site_package_path| {
+                let mut base = config_root.to_path_buf();
+                base.push(site_package_path.as_path());
+                *site_package_path = base;
+            });
+        self.project_excludes = self.project_excludes.clone().from_root(config_root);
+    }
+
+    pub fn from_file(config_path: &Path) -> anyhow::Result<ConfigFile> {
         // TODO(connernilsen): fix return type and handle config searching
-        let config_str = fs::read_to_string(p)?;
-        if p.file_name() == Some(OsStr::new(&PYPROJECT_FILE_NAME)) {
+        let config_str = fs::read_to_string(config_path)?;
+        let mut config = if config_path.file_name() == Some(OsStr::new(&PYPROJECT_FILE_NAME)) {
             Self::parse_pyproject_toml(&config_str)
         } else {
             Self::parse_config(&config_str)
+        }?;
+
+        if let Some(config_root) = config_path.parent() {
+            config.rewrite_with_path_to_config(config_root);
         }
+
+        Ok(config)
     }
 
     fn parse_config(config_str: &str) -> anyhow::Result<ConfigFile> {
@@ -123,7 +161,7 @@ mod tests {
     #[test]
     fn deserialize_pyre_config() {
         let config_str = "
-            project_include = [\"./tests\", \"./implementation\"]
+            project_includes = [\"./tests\", \"./implementation\"]
             python_platform = \"darwin\"
             python_version = \"1.2.3\"
         ";
@@ -131,7 +169,7 @@ mod tests {
         assert_eq!(
             config,
             ConfigFile {
-                project_include: Globs::new(vec![
+                project_includes: Globs::new(vec![
                     "./tests".to_owned(),
                     "./implementation".to_owned()
                 ]),
@@ -169,7 +207,7 @@ mod tests {
     fn deserialize_pyproject_toml() {
         let config_str = "
             [tool.pyre]
-            project_include = [\"./tests\", \"./implementation\"]
+            project_includes = [\"./tests\", \"./implementation\"]
             python_platform = \"darwin\"
             python_version = \"1.2.3\"
         ";
@@ -177,7 +215,7 @@ mod tests {
         assert_eq!(
             config,
             ConfigFile {
-                project_include: Globs::new(vec![
+                project_includes: Globs::new(vec![
                     "./tests".to_owned(),
                     "./implementation".to_owned()
                 ]),
@@ -227,5 +265,24 @@ mod tests {
         ";
         let config = ConfigFile::parse_pyproject_toml(config_str).unwrap();
         assert_eq!(config, ConfigFile::default(),);
+    }
+
+    #[test]
+    fn test_rewrite_with_path_to_config() {
+        let mut config = ConfigFile::default();
+        let path_str = "path/to/my/config".to_owned();
+        let test_path = PathBuf::from(path_str.clone());
+        config.rewrite_with_path_to_config(&test_path);
+
+        let expected_config = ConfigFile {
+            project_includes: Globs::new(vec![path_str.clone()]),
+            project_excludes: Globs::new(vec![
+                path_str.clone() + "/**/__pycache__/**",
+                path_str.clone() + "/**/.*",
+            ]),
+            search_path: vec![test_path.clone(), test_path.clone()],
+            ..ConfigFile::default()
+        };
+        assert_eq!(config, expected_config);
     }
 }

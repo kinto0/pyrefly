@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Display;
 
+use pyrefly_derive::TypeEq;
 use ruff_python_ast::name::Name;
 use ruff_python_ast::Identifier;
 use ruff_python_ast::Keyword;
@@ -19,8 +20,10 @@ use crate::types::literal::Lit;
 use crate::types::types::Type;
 use crate::util::display::commas_iter;
 use crate::util::prelude::SliceExt;
+use crate::util::visit::Visit;
+use crate::util::visit::VisitMut;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Callable {
     pub params: Params,
     pub ret: Type,
@@ -32,8 +35,20 @@ impl Display for Callable {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Default, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ParamList(Vec<Param>);
+
+impl Visit<Type> for ParamList {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        self.0.visit(f);
+    }
+}
+
+impl VisitMut<Type> for ParamList {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.0.visit_mut(f);
+    }
+}
 
 impl ParamList {
     pub fn new(xs: Vec<Param>) -> Self {
@@ -78,14 +93,6 @@ impl ParamList {
         Ok(())
     }
 
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
-        self.0.iter().for_each(|x| x.visit(&mut f));
-    }
-
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
-        self.0.iter_mut().for_each(|x| x.visit_mut(&mut f));
-    }
-
     pub fn items(&self) -> &[Param] {
         &self.0
     }
@@ -111,7 +118,7 @@ impl ParamList {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Params {
     List(ParamList),
     Ellipsis,
@@ -121,7 +128,7 @@ pub enum Params {
     ParamSpec(Box<[Type]>, Type),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Param {
     PosOnly(Type, Required),
     Pos(Name, Type, Required),
@@ -130,13 +137,99 @@ pub enum Param {
     Kwargs(Type),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Required {
     Required,
     Optional,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Function {
+    pub signature: Callable,
+    pub metadata: FuncMetadata,
+}
+
+impl Visit<Type> for Function {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        let Self {
+            signature,
+            metadata,
+        } = self;
+        signature.visit(f);
+        metadata.visit(f);
+    }
+}
+
+impl VisitMut<Type> for Function {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        let Self {
+            signature,
+            metadata,
+        } = self;
+        signature.visit_mut(f);
+        metadata.visit_mut(f);
+    }
+}
+
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FuncMetadata {
+    pub kind: FunctionKind,
+    pub flags: FuncFlags,
+}
+
+impl FuncMetadata {
+    pub fn def(module: ModuleName, cls: Name, func: Name) -> Self {
+        Self {
+            kind: FunctionKind::Def(Box::new(FuncId {
+                module,
+                cls: Some(cls),
+                func,
+            })),
+            flags: FuncFlags::default(),
+        }
+    }
+}
+
+impl Visit<Type> for FuncMetadata {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        self.flags.visit(f);
+    }
+}
+
+impl VisitMut<Type> for FuncMetadata {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.flags.visit_mut(f);
+    }
+}
+
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct FuncFlags {
+    pub is_overload: bool,
+    pub is_staticmethod: bool,
+    pub is_classmethod: bool,
+    /// A function decorated with `@property`
+    pub is_property_getter: bool,
+    /// A function decorated with `@foo.setter`, where `foo` is some `@property`-decorated function.
+    /// The stored type is `foo` (the getter).
+    pub is_property_setter_with_getter: Option<Type>,
+    pub has_enum_member_decoration: bool,
+    pub is_override: bool,
+    pub has_final_decoration: bool,
+}
+
+impl Visit<Type> for FuncFlags {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        self.is_property_setter_with_getter.visit(f);
+    }
+}
+
+impl VisitMut<Type> for FuncFlags {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.is_property_setter_with_getter.visit_mut(f);
+    }
+}
+
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FuncId {
     pub module: ModuleName,
     pub cls: Option<Name>,
@@ -161,8 +254,8 @@ impl FuncId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CallableKind {
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FunctionKind {
     IsInstance,
     IsSubclass,
     Dataclass(Box<BoolKeywords>),
@@ -170,16 +263,17 @@ pub enum CallableKind {
     ClassMethod,
     Overload,
     Override,
-    Def(Box<FuncId>),
-    Anon,
     Cast,
     AssertType,
     RevealType,
+    Final,
+    PropertySetter(Box<FuncId>),
+    Def(Box<FuncId>),
 }
 
 /// A map from keywords to boolean values. Useful for storing sets of keyword arguments for various
 /// dataclass functions.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BoolKeywords(OrderedMap<Name, bool>);
 
 impl BoolKeywords {
@@ -322,36 +416,44 @@ impl Callable {
             }
         )
     }
+}
 
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
-        self.params.visit(&mut f);
-        f(&self.ret)
-    }
-
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
-        self.params.visit_mut(&mut f);
-        f(&mut self.ret);
+impl Visit<Type> for Callable {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        let Self { params, ret } = self;
+        params.visit(f);
+        f(ret)
     }
 }
 
-impl Params {
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
+impl VisitMut<Type> for Callable {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        let Self { params, ret } = self;
+        params.visit_mut(f);
+        f(ret)
+    }
+}
+
+impl Visit<Type> for Params {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
         match &self {
             Params::List(params) => params.visit(f),
             Params::Ellipsis => {}
             Params::ParamSpec(args, pspec) => {
-                args.iter().for_each(&mut f);
+                args.visit(f);
                 f(pspec);
             }
         }
     }
+}
 
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
+impl VisitMut<Type> for Params {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
         match self {
             Params::List(params) => params.visit_mut(f),
             Params::Ellipsis => {}
             Params::ParamSpec(args, pspec) => {
-                args.iter_mut().for_each(&mut f);
+                args.visit_mut(f);
                 f(pspec);
             }
         }
@@ -373,26 +475,6 @@ impl Param {
         }
     }
 
-    pub fn visit<'a>(&'a self, mut f: impl FnMut(&'a Type)) {
-        match &self {
-            Param::PosOnly(ty, _required) => f(ty),
-            Param::Pos(_, ty, _required) => f(ty),
-            Param::VarArg(ty) => f(ty),
-            Param::KwOnly(_, ty, _required) => f(ty),
-            Param::Kwargs(ty) => f(ty),
-        }
-    }
-
-    pub fn visit_mut<'a>(&'a mut self, mut f: impl FnMut(&'a mut Type)) {
-        match self {
-            Param::PosOnly(ty, _required) => f(ty),
-            Param::Pos(_, ty, _required) => f(ty),
-            Param::VarArg(ty) => f(ty),
-            Param::KwOnly(_, ty, _required) => f(ty),
-            Param::Kwargs(ty) => f(ty),
-        }
-    }
-
     #[expect(dead_code)]
     pub fn is_required(&self) -> bool {
         match self {
@@ -404,7 +486,31 @@ impl Param {
     }
 }
 
-impl CallableKind {
+impl Visit<Type> for Param {
+    fn visit<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
+        match &self {
+            Param::PosOnly(ty, _required) => f(ty),
+            Param::Pos(_, ty, _required) => f(ty),
+            Param::VarArg(ty) => f(ty),
+            Param::KwOnly(_, ty, _required) => f(ty),
+            Param::Kwargs(ty) => f(ty),
+        }
+    }
+}
+
+impl VisitMut<Type> for Param {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        match self {
+            Param::PosOnly(ty, _required) => f(ty),
+            Param::Pos(_, ty, _required) => f(ty),
+            Param::VarArg(ty) => f(ty),
+            Param::KwOnly(_, ty, _required) => f(ty),
+            Param::Kwargs(ty) => f(ty),
+        }
+    }
+}
+
+impl FunctionKind {
     pub fn from_name(module: ModuleName, cls: Option<&Name>, func: &Name) -> Self {
         match (module.as_str(), cls, func.as_str()) {
             ("builtins", None, "isinstance") => Self::IsInstance,
@@ -417,6 +523,7 @@ impl CallableKind {
             ("typing", None, "cast") => Self::Cast,
             ("typing", None, "assert_type") => Self::AssertType,
             ("typing", None, "reveal_type") => Self::RevealType,
+            ("typing", None, "final") => Self::Final,
             _ => Self::Def(Box::new(FuncId {
                 module,
                 cls: cls.cloned(),
@@ -425,60 +532,64 @@ impl CallableKind {
         }
     }
 
-    pub fn as_func_id(&self) -> Option<FuncId> {
+    pub fn as_func_id(&self) -> FuncId {
         match self {
-            Self::IsInstance => Some(FuncId {
+            Self::IsInstance => FuncId {
                 module: ModuleName::builtins(),
                 cls: None,
                 func: Name::new_static("isinstance"),
-            }),
-            Self::IsSubclass => Some(FuncId {
+            },
+            Self::IsSubclass => FuncId {
                 module: ModuleName::builtins(),
                 cls: None,
                 func: Name::new_static("issubclass"),
-            }),
-            Self::ClassMethod => Some(FuncId {
+            },
+            Self::ClassMethod => FuncId {
                 module: ModuleName::builtins(),
                 cls: None,
                 func: Name::new_static("classmethod"),
-            }),
-            Self::Dataclass(_) => Some(FuncId {
+            },
+            Self::Dataclass(_) => FuncId {
                 module: ModuleName::dataclasses(),
                 cls: None,
                 func: Name::new_static("dataclass"),
-            }),
-            Self::DataclassField => Some(FuncId {
+            },
+            Self::DataclassField => FuncId {
                 module: ModuleName::dataclasses(),
                 cls: None,
                 func: Name::new_static("field"),
-            }),
-            Self::Overload => Some(FuncId {
+            },
+            Self::Final => FuncId {
+                module: ModuleName::typing(),
+                cls: None,
+                func: Name::new_static("final"),
+            },
+            Self::Overload => FuncId {
                 module: ModuleName::typing(),
                 cls: None,
                 func: Name::new_static("overload"),
-            }),
-            Self::Override => Some(FuncId {
+            },
+            Self::Override => FuncId {
                 module: ModuleName::typing(),
                 cls: None,
                 func: Name::new_static("override"),
-            }),
-            Self::Cast => Some(FuncId {
+            },
+            Self::Cast => FuncId {
                 module: ModuleName::typing(),
                 cls: None,
                 func: Name::new_static("cast"),
-            }),
-            Self::AssertType => Some(FuncId {
+            },
+            Self::AssertType => FuncId {
                 module: ModuleName::typing(),
                 cls: None,
                 func: Name::new_static("assert_type"),
-            }),
-            Self::RevealType => Some(FuncId {
+            },
+            Self::RevealType => FuncId {
                 module: ModuleName::typing(),
                 cls: None,
                 func: Name::new_static("reveal_type"),
-            }),
-            Self::Def(func_id) => Some((**func_id).clone()),
-            Self::Anon => None,
+            },
+            Self::PropertySetter(func_id) | Self::Def(func_id) => (**func_id).clone(),
         }
     }
 }

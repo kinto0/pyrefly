@@ -17,20 +17,19 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::wrong_self_convention)]
 #![deny(clippy::cloned_instead_of_copied)]
+#![deny(clippy::derive_partial_eq_without_eq)]
 #![deny(clippy::inefficient_to_string)]
 #![deny(clippy::str_to_string)]
 #![deny(clippy::string_to_string)]
 #![deny(clippy::trivially_copy_pass_by_ref)]
-#![deny(clippy::derive_partial_eq_without_eq)]
-#![feature(box_patterns)]
-#![feature(let_chains)]
-#![feature(if_let_guard)]
-#![feature(associated_type_defaults)]
 #![feature(associated_const_equality)]
+#![feature(associated_type_defaults)]
+#![feature(box_patterns)]
+#![feature(if_let_guard)]
+#![feature(let_chains)]
 #![feature(once_wait)]
 
 mod alt;
-mod ast;
 mod binding;
 #[cfg(not(target_arch = "wasm32"))]
 mod commands;
@@ -43,12 +42,12 @@ mod metadata;
 mod module;
 pub mod playground;
 mod report;
+mod ruff;
 mod solver;
 mod state;
 mod test;
 mod types;
 mod util;
-mod visitors;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::commands::run;
@@ -56,7 +55,7 @@ pub use crate::config::ConfigFile;
 pub use crate::metadata::PythonVersion;
 pub use crate::util::args::clap_env;
 pub use crate::util::args::get_args_expanded;
-pub use crate::util::globs::Globs;
+pub use crate::util::globs;
 pub use crate::util::listing::FileList;
 pub use crate::util::notify_watcher::NotifyWatcher;
 pub use crate::util::thread_pool::init_thread_pool;

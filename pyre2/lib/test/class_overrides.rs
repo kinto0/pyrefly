@@ -33,7 +33,7 @@ class A:
         return x + y
 
 class B(A):
-    def f(self, x:int, y:int) -> int: # E: Class member `f` overrides parent class `A` in an inconsistent manner
+    def f(self, x:int, y:int) -> int: # E: Class member `B.f` overrides parent class `A` in an inconsistent manner
         return x + y        
  "#,
 );
@@ -51,7 +51,37 @@ class B(A):
 
 class C(B):
     x: int
-    y: str # E: Class member `y` overrides parent class `B` in an inconsistent manner
+    y: str # E: Class member `C.y` overrides parent class `B` in an inconsistent manner
+ "#,
+);
+
+testcase!(
+    test_override_class_var,
+    r#"
+from typing import ClassVar
+class A:
+    x: int = 1
+class B:
+    x: ClassVar[int] = 1
+class C(A):
+    x: ClassVar[int] = 1  # E: ClassVar `C.x` overrides instance variable of the same name in parent class `A`
+class D(B):
+    x: ClassVar[int] = 1  # OK
+class E(B):
+    x: int = 1  # E: Instance variable `E.x` overrides ClassVar of the same name in parent class `B`
+ "#,
+);
+
+testcase!(
+    test_override_final_var,
+    r#"
+from typing import Final
+class A:
+    x: Final = 1
+    y: Final[int] = 1
+class B(A):
+    x = 1  # E: `x` is declared as final in parent class `A`
+    y = 1  # E: `y` is declared as final in parent class `A`
  "#,
 );
 
@@ -101,7 +131,7 @@ class A:
 
 class B(A):
     @override
-    def method2(self) -> int: # E: Class member `method2` is marked as an override, but no parent class has a matching attribute
+    def method2(self) -> int: # E: Class member `B.method2` is marked as an override, but no parent class has a matching attribute
         return 1
  "#,
 );
@@ -126,7 +156,7 @@ class A:
 
 class B(A):
     def __init__(self) -> None:
-        self.x = 0 # E: Class member `x` overrides parent class `A` in an inconsistent manner
+        self.x = 0 # E: Class member `B.x` overrides parent class `A` in an inconsistent manner
  "#,
 );
 
@@ -141,17 +171,17 @@ class ParentA:
 class ChildA(ParentA):
     @staticmethod
     @override
-    def static_method1() -> int: # E: Class member `static_method1` is marked as an override, but no parent class has a matching attribute
+    def static_method1() -> int: # E: Class member `ChildA.static_method1` is marked as an override, but no parent class has a matching attribute
         return 1
 
     @classmethod
     @override
-    def class_method1(cls) -> int: # E: Class member `class_method1` is marked as an override, but no parent class has a matching attribute
+    def class_method1(cls) -> int: # E: Class member `ChildA.class_method1` is marked as an override, but no parent class has a matching attribute
         return 1
 
     @property
     @override
-    def property1(self) -> int: # E: Class member `property1` is marked as an override, but no parent class has a matching attribute
+    def property1(self) -> int: # E: Class member `ChildA.property1` is marked as an override, but no parent class has a matching attribute
         return 1
     
  "#,
@@ -168,17 +198,15 @@ class ParentA:
 class ChildA(ParentA):
     @override
     @staticmethod
-    def static_method1() -> int: # E: Class member `static_method1` is marked as an override, but no parent class has a matching attribute
+    def static_method1() -> int: # E: Class member `ChildA.static_method1` is marked as an override, but no parent class has a matching attribute
         return 1
     
  "#,
 );
 
-testcase_with_bug!(
-    "TODO: Handle custom wrappers",
+testcase!(
     test_override_custom_wrapper,
     r#"
-
 from typing import Any, Callable, override
 
 def wrapper(func: Callable[..., Any], /) -> Any:
@@ -196,22 +224,17 @@ class ParentA:
 
 class ChildA(ParentA):
 
-    @wrapper # E: Argument `override[staticmethod[() -> bool]]` is not assignable to parameter with type `(...) -> Any`
+    @wrapper
     @override
     @staticmethod
     def static_method1() -> bool: 
-        return 1 # E: Returned type `Literal[1]` is not assignable to declared return type `bool`
-    
+        return True
  "#,
 );
 
-testcase_with_bug!(
-    "TODO: is attr subset should be edited to potentially strip/ignore override decorators from the type.
-    after this is accomplished, we can remove the duplicate code that strips the decorator when calculating 
-    fields",
+testcase!(
     test_override_duplicate_decorator,
     r#"
-
 from typing import  override
 
 class ParentA:
@@ -225,9 +248,8 @@ class ChildA(ParentA):
     @staticmethod
     @override
     @staticmethod
-    def static_method1() -> int: # E: Class member `static_method1` overrides parent class `ParentA` in an inconsistent manner
-        return 1
-    
+    def static_method1() -> int:
+        return 1    
  "#,
 );
 
@@ -253,5 +275,19 @@ class ChildA(ParentA):
     @override
     def method4(self, x: int | str) -> int | str: 
         return 0
+ "#,
+);
+
+testcase!(
+    test_override_final_method,
+    r#"
+from typing import final
+
+class Parent:
+    @final
+    def a(self): ...
+
+class Child(Parent):
+    def a(self): ...  # E: `a` is declared as final in parent class `Parent`
  "#,
 );

@@ -1,10 +1,7 @@
 @generated
 {
   "aliases_explicit.py": [
-    "Line 84: Expected 1 errors",
     "Line 85: Expected 1 errors",
-    "Line 86: Expected 1 errors",
-    "Line 90: Expected 1 errors",
     "Line 44: Unexpected errors ['Expected 1 type argument for `GoodTypeAlias12`, got 0']",
     "Line 98: Unexpected errors ['assert_type(list[Any], list[str]) failed']"
   ],
@@ -34,19 +31,16 @@
     "Line 24: Unexpected errors [\"Expected a type form, got instance of `Literal['Json2']`\", \"Expected a type form, got instance of `Literal['Json2']`\"]",
     "Line 30: Unexpected errors [\"Expected a type form, got instance of `Literal['RecursiveTuple']`\"]",
     "Line 42: Unexpected errors [\"Expected a type form, got instance of `Literal['RecursiveMapping']`\"]",
-    "Line 58: Unexpected errors [\"`|` is not supported between `Literal['GenericTypeAlias1[T1]']` and `type[TypeVar[T1]]`\\n  Object of class `str` has no attribute `__or__`\"]",
+    "Line 58: Unexpected errors [\"`|` is not supported between `Literal['GenericTypeAlias1[T1]']` and `type[TypeVar[T1]]`\\n  TODO: Expr::binop_infer attribute base undefined for type: type[TypeVar[T1]] (trying to access __ror__)\"]",
     "Line 59: Unexpected errors [\"Can't apply arguments to non-class, got LegacyImplicitTypeAlias[GenericTypeAlias1, type[list[Error]]]\"]",
     "Line 62: Unexpected errors [\"Can't apply arguments to non-class, got LegacyImplicitTypeAlias[GenericTypeAlias1, type[list[Error]]]\"]",
-    "Line 65: Unexpected errors [\"`|` is not supported between `Literal['GenericTypeAlias2[T1, T2]']` and `type[TypeVar[T1]]`\\n  Object of class `str` has no attribute `__or__`\"]",
+    "Line 65: Unexpected errors [\"`|` is not supported between `Literal['GenericTypeAlias2[T1, T2]']` and `type[TypeVar[T1]]`\\n  TODO: Expr::binop_infer attribute base undefined for type: type[TypeVar[T1]] (trying to access __ror__)\"]",
     "Line 67: Unexpected errors [\"Can't apply arguments to non-class, got LegacyImplicitTypeAlias[GenericTypeAlias2, type[list[Error]]]\"]",
     "Line 68: Unexpected errors [\"Can't apply arguments to non-class, got LegacyImplicitTypeAlias[GenericTypeAlias2, type[list[Error]]]\"]"
   ],
   "aliases_type_statement.py": [
     "Line 26: Expected 1 errors",
-    "Line 42: Expected 1 errors",
     "Line 43: Expected 1 errors",
-    "Line 44: Expected 1 errors",
-    "Line 48: Expected 1 errors",
     "Line 52: Expected 1 errors",
     "Line 58: Expected 1 errors",
     "Line 79: Expected 1 errors",
@@ -113,9 +107,6 @@
   ],
   "callables_annotation.py": [
     "Line 56: Expected 1 errors",
-    "Line 57: Expected 1 errors",
-    "Line 51: Unexpected errors ['assert_type(int, tuple[int, ...]) failed']",
-    "Line 52: Unexpected errors ['assert_type(int, dict[str, int]) failed']",
     "Line 155: Unexpected errors ['`Proto3` is not assignable to `Proto4[Ellipsis]`']",
     "Line 156: Unexpected errors ['`Proto4[Ellipsis]` is not assignable to `Proto3`']",
     "Line 157: Unexpected errors ['`Proto7` is not assignable to `Proto6`']"
@@ -130,16 +121,7 @@
     "Line 214: Unexpected errors ['`(ParamSpec(?_ParamSpec)) -> None` is not assignable to `ProtocolWithP[?_ParamSpec]`']"
   ],
   "classes_classvar.py": [
-    "Line 45: Expected 1 errors",
-    "Line 46: Expected 1 errors",
-    "Line 47: Expected 1 errors",
-    "Line 54: Expected 1 errors",
-    "Line 63: Expected 1 errors",
-    "Line 64: Expected 1 errors",
-    "Line 67: Expected 1 errors",
-    "Line 71: Expected 1 errors",
-    "Line 105: Expected 1 errors",
-    "Line 61: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `ClassVar[list[int]]`']"
+    "Line 54: Expected 1 errors"
   ],
   "classes_override.py": [
     "Lines 56, 65: Expected error (tag 'method4')"
@@ -175,39 +157,29 @@
   ],
   "constructors_callable.py": [
     "Line 35: Unexpected errors ['Argument `type[Class1]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 36: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 37: Unexpected errors ['assert_type(Any, Class1) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 48: Unexpected errors ['Argument `type[Class2]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 49: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 50: Unexpected errors ['assert_type(Any, Class2) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 62: Unexpected errors ['Argument `type[Class3]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 63: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 64: Unexpected errors ['assert_type(Any, Class3) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 76: Unexpected errors ['Argument `type[Class4]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 77: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 78: Unexpected errors ['assert_type(Any, int) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 93: Unexpected errors ['Returned type `object` is not assignable to declared return type `Class5`', 'Expected 0 positional arguments, got 1 in function `object.__new__`']",
     "Line 96: Unexpected errors ['Argument `type[Class5]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 97: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 100: Unexpected errors ['assert_type(Any, NoReturn) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 105: Unexpected errors ['assert_type(Any, NoReturn) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 124: Unexpected errors ['Argument `type[Class6]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 125: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 126: Unexpected errors ['assert_type(Any, Class6Proxy) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 134: Unexpected errors ['Expected 0 positional arguments, got 1 in function `object.__new__`']",
     "Line 141: Unexpected errors ['Argument `type[Class6Any]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 142: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 143: Unexpected errors ['Unexpected ParamSpec type: `Unknown`']",
     "Line 160: Unexpected errors ['Argument `type[Class7]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 161: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 164: Unexpected errors ['assert_type(Any, Class7[int]) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 165: Unexpected errors ['assert_type(Any, Class7[str]) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 178: Unexpected errors ['Returned type `object` is not assignable to declared return type `Class8[?_TypeVar]`', 'Expected 0 positional arguments, got 1 in function `object.__new__`']",
     "Line 181: Unexpected errors ['Argument `type[Class8]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 182: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 183: Unexpected errors ['assert_type(Any, Class8[str]) failed', 'Unexpected ParamSpec type: `Unknown`']",
     "Line 192: Unexpected errors ['Argument `type[Class9]` is not assignable to parameter `cb` with type `(ParamSpec(@_)) -> @_` in function `accepts_callable`']",
-    "Line 193: Unexpected errors ['revealed type: (ParamSpec(Unknown)) -> Unknown']",
     "Line 194: Unexpected errors ['assert_type(Any, Class9) failed', 'Unexpected ParamSpec type: `Unknown`']"
   ],
   "constructors_consistency.py": [
@@ -227,10 +199,7 @@
     "Lines 32, 33: Expected error (tag 'DC4')"
   ],
   "dataclasses_hash.py": [],
-  "dataclasses_inheritance.py": [
-    "Line 60: Expected 1 errors",
-    "Line 64: Expected 1 errors"
-  ],
+  "dataclasses_inheritance.py": [],
   "dataclasses_kwonly.py": [
     "Line 32: Unexpected errors ['Missing argument `a` in function `DC2.__init__`', 'Expected 0 positional arguments, got 1 in function `DC2.__init__`']",
     "Line 35: Unexpected errors ['Missing argument `a` in function `DC2.__init__`', 'Expected 0 positional arguments, got 1 in function `DC2.__init__`']",
@@ -267,7 +236,7 @@
   ],
   "dataclasses_transform_converter.py": [
     "Line 118: Expected 1 errors",
-    "Line 29: Unexpected errors ['Argument `tuple[Forall[S, T, (*, converter: (S) -> T, default: S | None, default_factory: () -> S | None) -> T]]` is not assignable to parameter `field_specifiers` with type `tuple[(...) -> Any | type[Any], ...]` in function `typing.dataclass_transform`']",
+    "Line 29: Unexpected errors ['Argument `tuple[Forall[S, T, (*, converter: (S) -> T, default: S | None, default_factory: (() -> S) | None) -> T]]` is not assignable to parameter `field_specifiers` with type `tuple[((...) -> Any) | type[Any], ...]` in function `typing.dataclass_transform`']",
     "Line 102: Unexpected errors ['Argument `type[ConverterClass]` is not assignable to parameter `converter` with type `(@_) -> @_` in function `model_field`']",
     "Line 104: Unexpected errors ['Argument `type[dict]` is not assignable to parameter `converter` with type `(@_) -> @_` in function `model_field`']",
     "Line 112: Unexpected errors ['Expected 0 positional arguments, got 5 in function `object.__init__`']",
@@ -275,7 +244,7 @@
     "Line 115: Unexpected errors [\"`Literal['f6']` is not assignable to attribute `field3` with type `ConverterClass`\"]",
     "Line 116: Unexpected errors [\"`Literal[b'f6']` is not assignable to attribute `field3` with type `ConverterClass`\"]",
     "Line 121: Unexpected errors ['Expected 0 positional arguments, got 6 in function `object.__init__`']",
-    "Line 132: Unexpected errors ['Argument `type[str]` is not assignable to parameter `default_factory` with type `() -> str | None` in function `model_field`']"
+    "Line 132: Unexpected errors ['Argument `type[str]` is not assignable to parameter `default_factory` with type `(() -> str) | None` in function `model_field`']"
   ],
   "dataclasses_transform_field.py": [
     "Line 60: Unexpected errors ['Unexpected keyword argument `name` in function `object.__init__`']",
@@ -306,7 +275,6 @@
     "Lines 64, 67: Expected error (tag 'DC2')",
     "Lines 70, 73: Expected error (tag 'DC3')",
     "Line 72: Unexpected errors ['`Literal[0]` is not assignable to `InitVar[int]`']",
-    "Line 106: Unexpected errors ['assert_type(BoundMethod[DC6, (str) -> int], (str) -> int) failed']",
     "Line 205: Unexpected errors ['`DC15` is not assignable to `DataclassProto`']"
   ],
   "directives_assert_type.py": [],
@@ -325,17 +293,8 @@
     "Line 98: Expected 1 errors"
   ],
   "directives_no_type_check.py": [],
-  "directives_reveal_type.py": [
-    "Line 14: Unexpected errors ['revealed type: int | str']",
-    "Line 15: Unexpected errors ['revealed type: list[int]']",
-    "Line 16: Unexpected errors ['revealed type: Any']",
-    "Line 17: Unexpected errors ['revealed type: ForwardReference']"
-  ],
-  "directives_type_checking.py": [
-    "Line 11: Unexpected errors [\"`Literal['']` is not assignable to `int`\"]",
-    "Line 16: Unexpected errors ['Inconsistent type annotations for b: list[str], list[int]']",
-    "Line 18: Unexpected errors ['assert_type(list[int] | list[str], list[int]) failed']"
-  ],
+  "directives_reveal_type.py": [],
+  "directives_type_checking.py": [],
   "directives_type_ignore.py": [],
   "directives_type_ignore_file1.py": [
     "Line 16: Unexpected errors [\"`Literal['']` is not assignable to `int`\"]"
@@ -359,7 +318,7 @@
     "Line 35: Unexpected errors ['assert_type(Any, str) failed', 'Instance-only attribute `genus` of class `Pet2` is not visible on the class']",
     "Line 36: Unexpected errors ['assert_type(Any, str) failed', 'Instance-only attribute `species` of class `Pet2` is not visible on the class']",
     "Line 100: Unexpected errors ['assert_type(Literal[TrafficLight.AMBER], Literal[TrafficLight.YELLOW]) failed']",
-    "Line 128: Unexpected errors ['Could not find name `reveal_type`', 'revealed type: int']"
+    "Line 128: Unexpected errors ['Could not find name `reveal_type`']"
   ],
   "exceptions_context_managers.py": [
     "Line 50: Unexpected errors ['assert_type(str, int | str) failed']",
@@ -374,7 +333,7 @@
     "Line 55: Expected 1 errors",
     "Line 121: Expected 1 errors",
     "Line 191: Expected 1 errors",
-    "Line 34: Unexpected errors ['`+` is not supported between `?_TypeVar` and `?_TypeVar`\\n  TODO: Expr::attr_infer attribute base undefined for type: ?_TypeVar (trying to access __add__)']",
+    "Line 34: Unexpected errors ['`+` is not supported between `?_TypeVar` and `?_TypeVar`\\n  TODO: Expr::binop_infer attribute base undefined for type: ?_TypeVar (trying to access __add__)', '`+` is not supported between `?_TypeVar` and `?_TypeVar`\\n  TODO: Expr::binop_infer attribute base undefined for type: ?_TypeVar (trying to access __radd__)']",
     "Line 67: Unexpected errors ['assert_type(MyStr, str) failed']",
     "Line 68: Unexpected errors ['assert_type(MyStr, str) failed', 'Argument `str` is not assignable to parameter `y` with type `MyStr` in function `concat`']"
   ],
@@ -410,11 +369,7 @@
   ],
   "generics_defaults_specialization.py": [],
   "generics_paramspec_basic.py": [
-    "Line 15: Expected 1 errors",
-    "Line 23: Expected 1 errors",
-    "Line 27: Expected 1 errors",
-    "Line 35: Expected 1 errors",
-    "Line 39: Expected 1 errors"
+    "Line 15: Expected 1 errors"
   ],
   "generics_paramspec_components.py": [
     "Line 30: Expected 1 errors",
@@ -422,16 +377,12 @@
     "Line 97: Unexpected errors ['Argument `(a: int, b: str) -> int` is not assignable to parameter with type `(*Unknown, **Unknown) -> int` in function `twice`']"
   ],
   "generics_paramspec_semantics.py": [],
-  "generics_paramspec_specialization.py": [
-    "Line 53: Unexpected errors ['Argument `ClassC[(int, str, bool)]` is not assignable to parameter with type `int`', 'Argument `Literal[0]` is not assignable to parameter with type `str`', \"Argument `Literal['']` is not assignable to parameter with type `bool`\", 'Expected 2 positional arguments, got 3']",
-    "Line 59: Unexpected errors ['Argument `ClassC[(int, str, bool)]` is not assignable to parameter with type `int`', 'Argument `Literal[0]` is not assignable to parameter with type `str`', \"Argument `Literal['']` is not assignable to parameter with type `bool`\", 'Expected 2 positional arguments, got 3']"
-  ],
+  "generics_paramspec_specialization.py": [],
   "generics_scoping.py": [
     "Line 50: Expected 1 errors",
     "Line 54: Expected 1 errors",
     "Line 75: Expected 1 errors",
     "Line 78: Expected 1 errors",
-    "Line 87: Expected 1 errors",
     "Line 94: Expected 1 errors",
     "Line 95: Expected 1 errors",
     "Line 96: Expected 1 errors"
@@ -511,10 +462,6 @@
   "generics_type_erasure.py": [],
   "generics_typevartuple_args.py": [],
   "generics_typevartuple_basic.py": [
-    "Line 52: Expected 1 errors",
-    "Line 59: Expected 1 errors",
-    "Line 66: Expected 1 errors",
-    "Line 106: Expected 1 errors",
     "Line 85: Unexpected errors ['Argument `tuple[float]` is not assignable to parameter `arg2` with type `tuple[int]` in function `func2`']"
   ],
   "generics_typevartuple_callable.py": [],
@@ -570,8 +517,6 @@
     "Line 43: Expected 1 errors"
   ],
   "literals_interactions.py": [
-    "Line 50: Unexpected errors ['assert_type(IO[str], IO[bytes]) failed']",
-    "Line 51: Unexpected errors ['assert_type(IO[str], IO[Any]) failed']",
     "Line 71: Unexpected errors ['`@` is not supported between `Matrix[Literal[2], Literal[3]]` and `Matrix[Literal[3], Literal[7]]`\\n  Argument `Matrix[Literal[3], Literal[7]]` is not assignable to parameter `other` with type `Matrix[Literal[3], int]` in function `Matrix.__matmul__`']",
     "Line 72: Unexpected errors ['assert_type(Matrix[Literal[2], int], Matrix[Literal[2], Literal[7]]) failed']",
     "Line 106: Unexpected errors [\"Argument `str` is not assignable to parameter `status` with type `Literal['ABORTED', 'MALFORMED']` in function `expects_bad_status`\"]"
@@ -579,9 +524,7 @@
   "literals_literalstring.py": [
     "Line 120: Expected 1 errors",
     "Line 52: Unexpected errors ['assert_type(str, LiteralString) failed']",
-    "Line 111: Unexpected errors [\"assert_type(str, Literal['hello']) failed\"]",
-    "Line 166: Unexpected errors ['assert_type(C, B) failed']",
-    "Line 167: Unexpected errors ['assert_type(C, A) failed']"
+    "Line 111: Unexpected errors [\"assert_type(str, Literal['hello']) failed\"]"
   ],
   "literals_parameterizations.py": [
     "Line 46: Expected 1 errors",
@@ -596,9 +539,7 @@
   ],
   "namedtuples_define_functional.py": [],
   "namedtuples_type_compat.py": [],
-  "namedtuples_usage.py": [
-    "Line 40: Expected 1 errors"
-  ],
+  "namedtuples_usage.py": [],
   "narrowing_typeguard.py": [
     "Line 102: Expected 1 errors",
     "Line 107: Expected 1 errors",
@@ -610,7 +551,6 @@
     "Line 110: Expected 1 errors",
     "Line 195: Expected 1 errors",
     "Line 199: Expected 1 errors",
-    "Line 19: Unexpected errors ['assert_type(Never, tuple[str, str]) failed']",
     "Line 92: Unexpected errors ['assert_type(A, B) failed']",
     "Line 96: Unexpected errors ['assert_type(A, B) failed']"
   ],
@@ -624,10 +564,8 @@
     "Line 108: Expected 1 errors"
   ],
   "protocols_definition.py": [
+    "Line 116: Expected 1 errors",
     "Line 117: Expected 1 errors",
-    "Line 157: Expected 1 errors",
-    "Line 340: Expected 1 errors",
-    "Line 341: Expected 1 errors",
     "Line 281: Unexpected errors ['`Concrete5_Good2` is not assignable to `Template5`']"
   ],
   "protocols_explicit.py": [
@@ -637,7 +575,7 @@
     "Line 110: Expected 1 errors",
     "Line 135: Expected 1 errors",
     "Line 165: Expected 1 errors",
-    "Line 157: Unexpected errors ['Class member `method1` overrides parent class `Proto7` in an inconsistent manner']"
+    "Line 157: Unexpected errors ['Class member `Mixin7.method1` overrides parent class `Proto7` in an inconsistent manner']"
   ],
   "protocols_generic.py": [
     "Line 87: Unexpected errors ['TODO: Expr::attr_infer attribute base undefined for type: ?_TypeVar (trying to access get_parent)']",
@@ -681,22 +619,14 @@
     "Line 104: Expected 1 errors"
   ],
   "qualifiers_annotated.py": [
-    "Line 47: Expected 1 errors",
     "Line 48: Expected 1 errors",
-    "Line 49: Expected 1 errors",
-    "Line 53: Expected 1 errors",
-    "Line 64: Expected 1 errors",
     "Line 76: Expected 1 errors",
     "Line 77: Expected 1 errors",
     "Line 84: Expected 1 errors",
     "Line 85: Expected 1 errors",
     "Line 92: Expected 1 errors",
     "Line 93: Expected 1 errors",
-    "Line 81: Unexpected errors ['Expected a callable, got type[?_TypeVar]']",
-    "Line 98: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `ClassVar[int]`']",
-    "Line 100: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `Final[int]`']",
-    "Line 110: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `Required[int]`']",
-    "Line 112: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `NotRequired[int]`']"
+    "Line 81: Unexpected errors ['Expected a callable, got type[?_TypeVar]']"
   ],
   "qualifiers_final_annotation.py": [
     "Line 16: Expected 1 errors",
@@ -706,10 +636,8 @@
     "Line 65: Expected 1 errors",
     "Line 71: Expected 1 errors",
     "Line 81: Expected 1 errors",
-    "Line 94: Expected 1 errors",
     "Line 107: Expected 1 errors",
     "Line 108: Expected 1 errors",
-    "Line 121: Expected 1 errors",
     "Line 141: Expected 1 errors",
     "Line 147: Expected 1 errors",
     "Line 149: Expected 1 errors",
@@ -720,22 +648,15 @@
     "Line 139: Unexpected errors ['TODO: StmtGlobal - Bindings::stmt']"
   ],
   "qualifiers_final_decorator.py": [
-    "Line 21: Expected 1 errors",
     "Lines 67, 75: Expected error (tag 'method4')",
     "Lines 80, 89: Expected error (tag 'Derived3')",
+    "Lines 84, 85, 86: Expected error (tag 'Derived3-2')",
     "Lines 94, 102: Expected error (tag 'Derived4')",
-    "Line 26: Unexpected errors ['Argument `(self: Base2) -> None` is not assignable to parameter `f` with type `TypeVar[_T]` in function `typing.final`']",
-    "Line 30: Unexpected errors ['Argument `classmethod[(cls: type[Base2]) -> None]` is not assignable to parameter `f` with type `TypeVar[_T]` in function `typing.final`']",
-    "Line 35: Unexpected errors ['Argument `staticmethod[() -> None]` is not assignable to parameter `f` with type `TypeVar[_T]` in function `typing.final`']",
-    "Line 50: Unexpected errors ['Argument `(self: Base2, x: int | str) -> int | str` is not assignable to parameter `f` with type `TypeVar[_T]` in function `typing.final`']",
-    "Line 81: Unexpected errors ['Class member `method` overrides parent class `Base3` in an inconsistent manner']",
-    "Line 95: Unexpected errors ['Class member `method` overrides parent class `Base4` in an inconsistent manner']",
-    "Line 111: Unexpected errors ['Argument `(self: Base5_2, v: int) -> None` is not assignable to parameter `f` with type `TypeVar[_T]` in function `typing.final`']"
+    "Lines 125, 126: Expected error (tag 'func')",
+    "Line 81: Unexpected errors ['`method` is declared as final in parent class `Base3`']",
+    "Line 95: Unexpected errors ['`method` is declared as final in parent class `Base4`']"
   ],
-  "specialtypes_any.py": [
-    "Line 87: Unexpected errors ['Object of class `ClassA` has no attribute `method2`']",
-    "Line 88: Unexpected errors ['Class `ClassA` has no class attribute `method3`']"
-  ],
+  "specialtypes_any.py": [],
   "specialtypes_never.py": [
     "Line 32: Unexpected errors [\"Returned type `Literal['whatever works']` is not assignable to declared return type `int`\"]"
   ],
@@ -747,7 +668,6 @@
   "specialtypes_type.py": [
     "Line 70: Expected 1 errors",
     "Line 39: Unexpected errors ['Expected a callable, got type[?_TypeVar]']",
-    "Line 51: Unexpected errors ['Expected a callable, got type[BasicUser | ProUser]']",
     "Line 84: Unexpected errors ['assert_type(type, type[Any]) failed']",
     "Line 99: Unexpected errors ['Object of class `type` has no attribute `unknown`']",
     "Line 100: Unexpected errors ['Object of class `type` has no attribute `unknown`']",
@@ -798,13 +718,9 @@
     "Line 65: Expected 1 errors"
   ],
   "typeddicts_operations.py": [
-    "Line 60: Unexpected errors ['assert_type(object | None, str | None) failed']",
-    "Line 64: Unexpected errors ['TODO: StmtDelete - Bindings::stmt']"
+    "Line 60: Unexpected errors ['assert_type(object | None, str | None) failed']"
   ],
-  "typeddicts_readonly.py": [
-    "Line 61: Expected 1 errors",
-    "Line 56: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `NotRequired[ReadOnly[int]]`']"
-  ],
+  "typeddicts_readonly.py": [],
   "typeddicts_readonly_consistency.py": [
     "Line 38: Expected 1 errors",
     "Line 81: Expected 1 errors",
@@ -816,20 +732,16 @@
     "Line 106: Expected 1 errors",
     "Line 119: Expected 1 errors",
     "Line 132: Expected 1 errors",
-    "Line 49: Unexpected errors ['Class member `albums` overrides parent class `AlbumCollection` in an inconsistent manner']",
-    "Line 76: Unexpected errors ['Class member `ident` overrides parent class `OptionalIdent` in an inconsistent manner']"
+    "Line 49: Unexpected errors ['Class member `RecordShop.albums` overrides parent class `AlbumCollection` in an inconsistent manner']",
+    "Line 76: Unexpected errors ['Class member `User.ident` overrides parent class `OptionalIdent` in an inconsistent manner']"
   ],
   "typeddicts_readonly_kwargs.py": [],
   "typeddicts_readonly_update.py": [
     "Line 34: Unexpected errors ['Object of class `Mapping` has no attribute `update`']"
   ],
   "typeddicts_required.py": [
-    "Line 12: Expected 1 errors",
-    "Line 19: Expected 1 errors",
     "Line 62: Expected 1 errors",
     "Line 63: Expected 1 errors",
-    "Line 68: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `Required[int]`']",
-    "Line 70: Unexpected errors ['TODO: Answers::apply_special_form cannot handle `Required[Annotated[int, \"\"]]`']",
     "Line 74: Unexpected errors [\"Expected a type form, got instance of `Literal['RecursiveMovie']`\"]"
   ],
   "typeddicts_type_consistency.py": [

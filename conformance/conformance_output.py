@@ -143,7 +143,7 @@ def diff_expected_errors(directory: str, test_case: str) -> List[str]:
         with open(output_path, "r") as f:
             f.readline()
             for error in json.load(f)[test_case.split("/")[-1]]:
-                if error["code"] != -1:
+                if not error["description"].startswith("revealed type: "):
                     errors[error["line"]].append(error["description"])
     differences: list[str] = []
     for expected_lineno, required_errors in expected_errors.required_errors.items():
@@ -217,7 +217,7 @@ def get_conformance_output(directory: str) -> Dict[str, List[Dict[str, Any]]]:
                 "--output",
                 tmp_file.name,
                 "--output-format=json",
-                "--include",
+                "--search-path",
                 directory,
             ]
             + files_to_check

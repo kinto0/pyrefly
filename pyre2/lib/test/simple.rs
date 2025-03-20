@@ -80,6 +80,20 @@ assert_type(x, C)
 );
 
 testcase!(
+    test_extend_final,
+    r#"
+from typing import final
+@final
+class A: ...
+class B(A): ...  # E: Cannot extend final class `A`
+
+class C: ...
+@final
+class D(C): ...  # OK
+"#,
+);
+
+testcase!(
     test_type_argument_error_default,
     r#"
 from typing import Any, assert_type
@@ -111,13 +125,25 @@ assert_type(y, int)
 );
 
 testcase!(
+    test_return_notimplemented,
+    r#"
+class C:
+    def __eq__(self, other: object) -> bool:
+        return NotImplemented
+
+    def __lt__(self, other: object) -> bool:
+        return NotImplemented
+"#,
+);
+
+testcase!(
     test_generics,
     r#"
 from typing import Literal
 class C[T]: ...
 def append[T](x: C[T], y: T):
     pass
-v: C[int]
+v: C[int] = C()
 append(v, "test")  # E: Argument `Literal['test']` is not assignable to parameter `y` with type `int`
 "#,
 );
@@ -130,7 +156,7 @@ T = TypeVar("T")
 class C(Generic[T]): ...
 def append(x: C[T], y: T):
     pass
-v: C[int]
+v: C[int] = C()
 append(v, "test")  # E: Argument `Literal['test']` is not assignable to parameter `y` with type `int`
 "#,
 );
@@ -143,7 +169,7 @@ T = typing.TypeVar("T")
 class C(typing.Generic[T]): ...
 def append(x: C[T], y: T):
     pass
-v: C[int]
+v: C[int] = C()
 append(v, "test")  # E: Argument `Literal['test']` is not assignable to parameter `y` with type `int`
 "#,
 );
@@ -322,17 +348,6 @@ assert_type(f(), str)
 );
 
 testcase!(
-    test_method_cannot_see_class_scope,
-    r#"
-class C:
-    x: int
-
-    def m(self) -> None:
-        x  # E: Could not find name `x`
-"#,
-);
-
-testcase!(
     test_class_rebind_attribute,
     r#"
 from typing import assert_type
@@ -345,19 +360,6 @@ class C:
     attribute = f(attribute)
 
 assert_type(C().attribute, int)
-"#,
-);
-
-testcase!(
-    test_more_class_scope,
-    r#"
-x: int = 0
-class C:
-    x: str = x # E: `Literal[0]` is not assignable to `str`
-    y: int = x # E: `str` is not assignable to `int`
-    def m(self) -> str:
-        # x refers to global x: int
-        return x # E: Returned type `Literal[0]` is not assignable to declared return type `str`
 "#,
 );
 
@@ -402,10 +404,10 @@ assert_type(f(1), int)
 testcase!(
     test_final_annotated,
     r#"
-from typing import Final, assert_type, Literal
+from typing import Final, assert_type, Literal, cast
 x: Final[int] = 1
 y: Final = "test"
-z: Final[str]
+z: Final[str] = cast(str, "")
 w: Final[int] = "bad"  # E: `Literal['bad']` is not assignable to `int`
 
 assert_type(x, Literal[1])
@@ -733,11 +735,10 @@ y: C | int  # TODO: The generic class `C` is missing type arguments.
     "#,
 );
 
-testcase_with_bug!(
-    "TODO: implement reflective operators",
+testcase!(
     test_complex,
     r#"
-z: complex =  3 + 4j # E: Argument `complex` is not assignable to parameter with type `int`
+z: complex =  3 + 4j
     "#,
 );
 
@@ -877,11 +878,13 @@ testcase!(
     r#"
 val = 42
 def foo(arg): ...
-a: foo(arg=val)  # E: Invalid annotation
-b: lambda: None  # E: Invalid annotation
-c: [foo(arg=val)] # E: Invalid annotation
-d: (1, 2) # E: Invalid annotation
-e: a + b  # E: Invalid annotation
+def test(
+    a: foo(arg=val),  # E: function call cannot be used in annotations
+    b: lambda: None,  # E: lambda definition cannot be used in annotations
+    c: [foo(arg=val)], # E: list literal cannot be used in annotations
+    d: (1, 2), # E: tuple literal cannot be used in annotations
+    e: 1 + 2,  # E: expression cannot be used in annotations
+): ...
 "#,
 );
 
@@ -1192,8 +1195,8 @@ testcase!(
     test_assert_type_forward_ref,
     r#"
 from typing import assert_type
-x: "ForwardRef"
-assert_type(x, "ForwardRef")
+def test(x: "ForwardRef") -> None:
+    assert_type(x, "ForwardRef")
 class ForwardRef:
     pass
     "#,
@@ -1310,5 +1313,70 @@ testcase!(
 from typing import Dict, assert_type
 y: Dict[str, int] = {"test": "test"} # E: `dict[str, str]` is not assignable to `dict[str, int]`
 assert_type(y, dict[str, int])
+"#,
+);
+
+testcase!(
+    test_simple_attr,
+    r#"
+class A:
+    pass
+class B:
+    def __radd__(self, other):
+        return 42
+A() + B()
+    "#,
+);
+
+testcase!(
+    test_function_stub,
+    r#"
+def not_a_stub() -> int:  # E: Function declared to return `int` but is missing an explicit `return`
+    pass
+
+def is_a_stub0(self) -> int:  # No error expected here.
+    ...
+
+def is_a_stub1(self) -> int:  # No error expected here.
+    """
+    Some docstring
+    """
+    ...
+    "#,
+);
+
+testcase_with_bug!(
+    "PyTorch TODO: This testcase shouldn't have errors. The issues are:
+    1- implement missing binary operations
+    2- the error about `-` is not supported between `Literal[255]` and `Literal[0] | int` looks wrong ",
+    test_simple_operations,
+    r#"
+from typing import Literal
+def A(x: int | Literal[0], y: int | Literal[255]):
+    x - y # E: `-` is not supported # E: TODO: Expr::binop_infer attribute base undefined
+    "#,
+);
+
+testcase_with_bug!(
+    "PyTorch TODO: This testcase shouldn't have errors. iadd not supported.",
+    test_incremental_add,
+    r#"
+def f(x: int):
+    x += 1 # E: Object of class `int` has no attribute `__iadd__` 
+    "#,
+);
+
+testcase_with_bug!(
+    "Should probably error when setting the field",
+    test_generic_init_field,
+    r#"
+from typing import reveal_type
+
+class C:
+    def __init__[R](self, field: R):
+        self.field = field
+
+c = C("test")
+reveal_type(c.field)  # E: revealed type: ?_TypeVar
 "#,
 );

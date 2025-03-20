@@ -14,8 +14,8 @@ use crate::alt::types::class_metadata::ClassSynthesizedField;
 use crate::alt::types::class_metadata::ClassSynthesizedFields;
 use crate::dunder;
 use crate::types::callable::Callable;
-use crate::types::callable::CallableKind;
-use crate::types::callable::FuncId;
+use crate::types::callable::FuncMetadata;
+use crate::types::callable::Function;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
@@ -47,7 +47,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .iter()
                 .filter_map(|name| {
                     let attr = self.try_lookup_attr(&Type::ClassType(cls.clone()), name)?;
-                    self.resolve_as_instance_method(attr)
+                    self.resolve_named_tuple_element(attr)
                 })
                 .collect(),
         )
@@ -67,32 +67,28 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     fn get_named_tuple_new(&self, cls: &Class, elements: &[Name]) -> ClassSynthesizedField {
         let mut params = vec![Param::Pos(
             Name::new("cls"),
-            Type::Type(Box::new(cls.self_type())),
+            Type::type_form(cls.self_type()),
             Required::Required,
         )];
         params.extend(self.get_named_tuple_field_params(cls, elements));
-        let ty = Type::Callable(
-            Box::new(Callable::list(ParamList::new(params), cls.self_type())),
-            CallableKind::Def(Box::new(FuncId {
-                module: self.module_info().name(),
-                cls: Some(cls.name().clone()),
-                func: dunder::NEW,
-            })),
-        );
+        let ty = Type::Function(Box::new(Function {
+            signature: Callable::list(ParamList::new(params), cls.self_type()),
+            metadata: FuncMetadata::def(self.module_info().name(), cls.name().clone(), dunder::NEW),
+        }));
         ClassSynthesizedField::new(ty)
     }
 
     fn get_named_tuple_init(&self, cls: &Class, elements: &[Name]) -> ClassSynthesizedField {
         let mut params = vec![cls.self_param()];
         params.extend(self.get_named_tuple_field_params(cls, elements));
-        let ty = Type::Callable(
-            Box::new(Callable::list(ParamList::new(params), cls.self_type())),
-            CallableKind::Def(Box::new(FuncId {
-                module: self.module_info().name(),
-                cls: Some(cls.name().clone()),
-                func: dunder::INIT,
-            })),
-        );
+        let ty = Type::Function(Box::new(Function {
+            signature: Callable::list(ParamList::new(params), cls.self_type()),
+            metadata: FuncMetadata::def(
+                self.module_info().name(),
+                cls.name().clone(),
+                dunder::INIT,
+            ),
+        }));
         ClassSynthesizedField::new(ty)
     }
 
@@ -102,17 +98,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .iter()
             .map(|name| (*self.get_class_member(cls, name).unwrap().value).as_named_tuple_type())
             .collect();
-        let ty = Type::Callable(
-            Box::new(Callable::list(
+        let ty = Type::Function(Box::new(Function {
+            signature: Callable::list(
                 ParamList::new(params),
                 Type::ClassType(self.stdlib.iterable(self.unions(element_types))),
-            )),
-            CallableKind::Def(Box::new(FuncId {
-                module: self.module_info().name(),
-                cls: Some(cls.name().clone()),
-                func: dunder::ITER,
-            })),
-        );
+            ),
+            metadata: FuncMetadata::def(
+                self.module_info().name(),
+                cls.name().clone(),
+                dunder::ITER,
+            ),
+        }));
         ClassSynthesizedField::new(ty)
     }
 

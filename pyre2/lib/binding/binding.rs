@@ -12,6 +12,7 @@ use std::hash::Hash;
 
 use dupe::Dupe;
 use itertools::Either;
+use pyrefly_derive::TypeEq;
 use ruff_python_ast::name::Name;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprAttribute;
@@ -51,6 +52,7 @@ use crate::types::annotation::Annotation;
 use crate::types::class::Class;
 use crate::types::class::ClassFieldProperties;
 use crate::types::class::ClassIndex;
+use crate::types::equality::TypeEq;
 use crate::types::quantified::Quantified;
 use crate::types::types::AnyStyle;
 use crate::types::types::Type;
@@ -58,6 +60,7 @@ use crate::types::types::Var;
 use crate::util::display::commas_iter;
 use crate::util::display::DisplayWith;
 use crate::util::display::DisplayWithCtx;
+use crate::util::visit::VisitMut;
 
 assert_words!(Key, 5);
 assert_words!(KeyExpect, 1);
@@ -87,7 +90,7 @@ assert_words!(BindingFunction, 21);
 pub trait Keyed: Hash + Eq + Clone + DisplayWith<ModuleInfo> + Debug + Ranged + 'static {
     const EXPORTED: bool = false;
     type Value: Debug + DisplayWith<Bindings>;
-    type Answer: Clone + Debug + Display + Eq;
+    type Answer: Clone + Debug + Display + TypeEq + VisitMut<Type>;
 }
 
 impl Keyed for Key {
@@ -158,7 +161,6 @@ pub enum Key {
     ReturnImplicit(ShortIdentifier),
     /// The actual type of the return for a function.
     ReturnType(ShortIdentifier),
-    /// The type of the return for a function after taking generators into account.
     /// I am a use in this module at this location.
     Usage(ShortIdentifier),
     /// I am an expression that does not have a simple name but needs its type inferred.
@@ -259,12 +261,17 @@ pub enum BindingExpect {
     /// Verify that an attribute assignment or annotation is legal, given a type for the
     /// assignment (use this when no expr is available).
     CheckAssignTypeToAttribute(Box<(ExprAttribute, Binding)>),
+    /// `del` statement
+    Delete(Box<Expr>),
 }
 
 impl DisplayWith<Bindings> for BindingExpect {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, ctx: &Bindings) -> fmt::Result {
         let m = ctx.module_info();
         match self {
+            Self::Delete(box x) => {
+                write!(f, "del {}", m.display(x))
+            }
             Self::UnpackedLength(x, range, expect) => {
                 let expectation = match expect {
                     SizeExpectation::Eq(n) => n.to_string(),
@@ -313,8 +320,12 @@ impl DisplayWith<Bindings> for BindingExpect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq)]
 pub struct EmptyAnswer;
+
+impl VisitMut<Type> for EmptyAnswer {
+    fn visit_mut(&mut self, _: &mut dyn FnMut(&mut Type)) {}
+}
 
 impl Display for EmptyAnswer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -322,8 +333,14 @@ impl Display for EmptyAnswer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq)]
 pub struct NoneIfRecursive<T>(pub Option<T>);
+
+impl<T: VisitMut<Type>> VisitMut<Type> for NoneIfRecursive<T> {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.0.visit_mut(f);
+    }
+}
 
 impl<T> Display for NoneIfRecursive<T>
 where
@@ -386,7 +403,6 @@ impl DisplayWith<ModuleInfo> for KeyClass {
 }
 
 /// A reference to a field in a class.
-/// The range is the range of the class name, not the field name.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct KeyClassField(pub ClassIndex, pub Name);
 
@@ -558,7 +574,7 @@ impl ContextManagerKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FunctionKind {
+pub enum FunctionSource {
     Stub,
     Impl,
 }
@@ -567,7 +583,7 @@ pub enum FunctionKind {
 pub struct BindingFunction {
     /// A function definition, but with the return/body stripped out.
     pub def: StmtFunctionDef,
-    pub kind: FunctionKind,
+    pub source: FunctionSource,
     pub self_type: Option<Idx<KeyClass>>,
     pub decorators: Box<[Idx<Key>]>,
     pub legacy_tparams: Box<[Idx<KeyLegacyTypeParam>]>,
@@ -611,7 +627,7 @@ pub struct ReturnType {
 }
 
 #[derive(Clone, Debug)]
-pub struct ImplicitReturn {
+pub struct ReturnImplicit {
     /// Terminal statements in the function control flow, used to determine whether the
     /// function has an implicit `None` return.
     /// When `None`, the function always has an implicit `None` return. When `Some(xs)`,
@@ -620,7 +636,7 @@ pub struct ImplicitReturn {
     pub last_exprs: Option<Box<[Idx<Key>]>>,
     /// Ignore the implicit return type for stub functions (returning `...`). This is
     /// unsafe, but is convenient and matches Pyright's behavior.
-    pub function_kind: FunctionKind,
+    pub function_source: FunctionSource,
 }
 
 #[derive(Clone, Debug)]
@@ -653,7 +669,7 @@ pub enum Binding {
     /// An expression returned from a function.
     ReturnExplicit(ReturnExplicit),
     /// The implicit return from a function.
-    ReturnImplicit(ImplicitReturn),
+    ReturnImplicit(ReturnImplicit),
     /// The return type of a function.
     ReturnType(ReturnType),
     /// A value in an iterable expression, e.g. IterableValue(\[1\]) represents 1.
@@ -732,7 +748,7 @@ pub enum Binding {
     /// Binding for a function parameter. We either have an annotation, or we will determine the
     /// parameter type when solving the function type. To ensure the parameter is solved before it
     /// can be observed as a Var, we include the function key and force it to be solved first.
-    FunctionParameter(Either<Idx<KeyAnnotation>, (Var, Idx<KeyFunction>)>),
+    FunctionParameter(Either<Idx<KeyAnnotation>, (Var, Idx<KeyFunction>, AnnotationTarget)>),
     /// The result of a `super()` call.
     SuperInstance(SuperStyle, TextRange),
 }
@@ -920,10 +936,16 @@ impl DisplayWith<Bindings> for Binding {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq)]
 pub struct AnnotationWithTarget {
     pub target: AnnotationTarget,
     pub annotation: Annotation,
+}
+
+impl VisitMut<Type> for AnnotationWithTarget {
+    fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
+        self.annotation.visit_mut(f);
+    }
 }
 
 impl AnnotationWithTarget {
@@ -938,10 +960,12 @@ impl Display for AnnotationWithTarget {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq)]
 pub enum AnnotationTarget {
     /// A function parameter with a type annotation
     Param(Name),
+    ArgsParam(Name),
+    KwargsParam(Name),
     /// A return type annotation on a function. The name is that of the function
     Return(Name),
     /// An annotated assignment. For attribute assignments, the name is the attribute name ("attr" in "x.attr")
@@ -954,9 +978,35 @@ impl Display for AnnotationTarget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Param(name) => write!(f, "param {name}"),
+            Self::ArgsParam(name) => write!(f, "args {name}"),
+            Self::KwargsParam(name) => write!(f, "kwargs {name}"),
             Self::Return(name) => write!(f, "{name} return"),
             Self::Assign(name) => write!(f, "var {name}"),
             Self::ClassMember(name) => write!(f, "attr {name}"),
+        }
+    }
+}
+
+impl AnnotationTarget {
+    pub fn type_form_context(&self) -> TypeFormContext {
+        match self {
+            Self::Param(_) => TypeFormContext::ParameterAnnotation,
+            Self::ArgsParam(_) => TypeFormContext::ParameterArgsAnnotation,
+            Self::KwargsParam(_) => TypeFormContext::ParameterKwargsAnnotation,
+            Self::Return(_) => TypeFormContext::ReturnAnnotation,
+            Self::Assign(_) => TypeFormContext::VarAnnotation,
+            Self::ClassMember(_) => TypeFormContext::ClassVarAnnotation,
+        }
+    }
+
+    pub fn name(&self) -> &Name {
+        match self {
+            Self::Param(name) => name,
+            Self::ArgsParam(name) => name,
+            Self::KwargsParam(name) => name,
+            Self::Return(name) => name,
+            Self::Assign(name) => name,
+            Self::ClassMember(name) => name,
         }
     }
 }
@@ -965,13 +1015,8 @@ impl Display for AnnotationTarget {
 #[derive(Clone, Debug)]
 pub enum BindingAnnotation {
     /// The type is annotated to be this key, will have the outer type removed.
-    /// Optionally occuring within a class, in which case Self refers to this class.
-    AnnotateExpr(
-        AnnotationTarget,
-        Expr,
-        Option<Idx<KeyClass>>,
-        TypeFormContext,
-    ),
+    /// Optionally occurring within a class, in which case Self refers to this class.
+    AnnotateExpr(AnnotationTarget, Expr, Option<Idx<KeyClass>>),
     /// A literal type we know statically.
     Type(AnnotationTarget, Type),
 }
@@ -979,7 +1024,7 @@ pub enum BindingAnnotation {
 impl DisplayWith<Bindings> for BindingAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, ctx: &Bindings) -> fmt::Result {
         match self {
-            Self::AnnotateExpr(_, x, self_type, _) => write!(
+            Self::AnnotateExpr(_, x, self_type) => write!(
                 f,
                 "_: {}{}",
                 ctx.module_info().display(x),

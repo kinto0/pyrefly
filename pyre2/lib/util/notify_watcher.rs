@@ -13,6 +13,7 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 use std::time::Instant;
 
+use async_trait::async_trait;
 use notify::recommended_watcher;
 use notify::Event;
 use notify::RecommendedWatcher;
@@ -32,18 +33,20 @@ impl NotifyWatcher {
         let watcher = recommended_watcher(sender)?;
         Ok(Self { receiver, watcher })
     }
-}
 
-impl Watcher for NotifyWatcher {
-    fn watch_dir(&mut self, path: &Path) -> anyhow::Result<()> {
+    pub fn watch_dir(&mut self, path: &Path) -> anyhow::Result<()> {
         Ok(self.watcher.watch(path, RecursiveMode::Recursive)?)
     }
 
-    fn unwatch_dir(&mut self, path: &Path) -> anyhow::Result<()> {
+    #[allow(unused)] // May be used in the future
+    pub fn unwatch_dir(&mut self, path: &Path) -> anyhow::Result<()> {
         Ok(self.watcher.unwatch(path)?)
     }
+}
 
-    fn wait(&mut self) -> anyhow::Result<Vec<Event>> {
+#[async_trait]
+impl Watcher for NotifyWatcher {
+    async fn wait(&mut self) -> anyhow::Result<Vec<Event>> {
         let mut res = Vec::new();
         res.push(self.receiver.recv()??);
         // Wait up to 0.1s to buffer up events

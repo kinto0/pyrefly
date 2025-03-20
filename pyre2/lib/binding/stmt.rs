@@ -18,8 +18,6 @@ use ruff_python_ast::StmtImportFrom;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 
-use crate::alt::solve::TypeFormContext;
-use crate::ast::Ast;
 use crate::binding::binding::AnnotationStyle;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
@@ -40,6 +38,7 @@ use crate::export::special::SpecialExport;
 use crate::graph::index::Idx;
 use crate::module::module_name::ModuleName;
 use crate::module::short_identifier::ShortIdentifier;
+use crate::ruff::ast::Ast;
 use crate::types::alias::resolve_typeshed_alias;
 use crate::types::special_form::SpecialForm;
 use crate::types::types::AnyStyle;
@@ -219,7 +218,26 @@ impl<'a> BindingsBuilder<'a> {
                 self.functions.last_mut().returns.push(x);
                 self.scopes.current_mut().flow.no_next = true;
             }
-            Stmt::Delete(x) => self.todo("Bindings::stmt", &x),
+            Stmt::Delete(mut x) => {
+                for target in &mut x.targets {
+                    self.table.insert(
+                        KeyExpect(target.range()),
+                        BindingExpect::Delete(Box::new(target.clone())),
+                    );
+                    if let Expr::Name(name) = target {
+                        self.ensure_mutable_name(name);
+                    } else {
+                        self.ensure_expr(target);
+                    }
+                    // If the target is a name, mark it as unbound
+                    if let Expr::Name(name) = target {
+                        let key = Key::Usage(ShortIdentifier::expr_name(name));
+                        let idx = self.table.types.0.insert(key);
+                        self.scopes
+                            .update_flow_info(&name.id, idx, Some(FlowStyle::Unbound));
+                    }
+                }
+            }
             Stmt::Assign(ref x)
                 if let [Expr::Name(name)] = x.targets.as_slice()
                     && let Some((module, forward)) =
@@ -326,7 +344,11 @@ impl<'a> BindingsBuilder<'a> {
                 }
             }
             Stmt::AugAssign(mut x) => {
-                self.ensure_expr(&mut x.target);
+                if let Expr::Name(name) = &*x.target {
+                    self.ensure_mutable_name(name);
+                } else {
+                    self.ensure_expr(&mut x.target);
+                }
                 self.ensure_expr(&mut x.value);
                 let make_binding = |_: Option<Idx<KeyAnnotation>>| Binding::AugAssign(x.clone());
                 self.bind_target(&x.target, &make_binding, None);
@@ -345,24 +367,23 @@ impl<'a> BindingsBuilder<'a> {
                         )
                     } else {
                         BindingAnnotation::AnnotateExpr(
-                            AnnotationTarget::Assign(name.id.clone()),
+                            if in_class_body {
+                                AnnotationTarget::ClassMember(name.id.clone())
+                            } else {
+                                AnnotationTarget::Assign(name.id.clone())
+                            },
                             *x.annotation.clone(),
                             None,
-                            if in_class_body {
-                                TypeFormContext::ClassVarAnnotation
-                            } else {
-                                TypeFormContext::VarAnnotation
-                            },
                         )
                     };
                     let ann_key = self.table.insert(ann_key, ann_val);
                     let flow_style = if in_class_body {
                         let initial_value = x.value.as_deref().cloned();
-                        FlowStyle::AnnotatedClassField { initial_value }
+                        Some(FlowStyle::AnnotatedClassField { initial_value })
+                    } else if x.value.is_some() {
+                        None
                     } else {
-                        FlowStyle::Annotated {
-                            is_initialized: x.value.is_some(),
-                        }
+                        Some(FlowStyle::Uninitialized)
                     };
                     let binding_value = if let Some(value) = x.value {
                         // Treat a name as initialized, but skip actually checking the value, if we are assigning `...` in a stub.
@@ -376,7 +397,6 @@ impl<'a> BindingsBuilder<'a> {
                     } else {
                         None
                     };
-
                     let binding = if let Some(mut value) = binding_value {
                         // Handle forward references in explicit type aliases.
                         if self.as_special_export(&x.annotation) == Some(SpecialExport::TypeAlias) {
@@ -395,7 +415,7 @@ impl<'a> BindingsBuilder<'a> {
                             Box::new(Binding::AnyType(AnyStyle::Implicit)),
                         )
                     };
-                    if let Some(ann) = self.bind_definition(&name, binding, Some(flow_style))
+                    if let Some(ann) = self.bind_definition(&name, binding, flow_style)
                         && ann != ann_key
                     {
                         self.table.insert(
@@ -410,10 +430,9 @@ impl<'a> BindingsBuilder<'a> {
                     let ann_key = self.table.insert(
                         KeyAnnotation::AttrAnnotation(x.annotation.range()),
                         BindingAnnotation::AnnotateExpr(
-                            AnnotationTarget::Assign(attr.attr.id.clone()),
+                            AnnotationTarget::ClassMember(attr.attr.id.clone()),
                             *x.annotation,
                             None,
-                            TypeFormContext::ClassVarAnnotation,
                         ),
                     );
                     let value_binding = match &x.value {
@@ -687,7 +706,17 @@ impl<'a> BindingsBuilder<'a> {
                                     }
                                 } else {
                                     let asname = x.asname.unwrap_or_else(|| x.name.clone());
-                                    let val = if module_exports.contains(&x.name.id, self.lookup) {
+                                    // A `from x import y` statement is ambiguous; if `x` is a package with
+                                    // an `__init__.py` file, then it might import the name `y` from the
+                                    // module `x` defined by the `__init__.py` file, or it might import a
+                                    // submodule `x.y` of the package `x`.
+                                    //
+                                    // If both are present, generally we prefer the name defined in `x`,
+                                    // but there is an exception: if we are already looking at the
+                                    // `__init__` module of `x`, we always prefer the submodule.
+                                    let val = if (self.module_info.name() != m)
+                                        && module_exports.contains(&x.name.id, self.lookup)
+                                    {
                                         Binding::Import(m, x.name.id.clone())
                                     } else {
                                         let x_as_module_name = m.append(&x.name.id);

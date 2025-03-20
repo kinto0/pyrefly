@@ -35,8 +35,6 @@ def test(x: int):
 reveal_type(test(42))
 `.trimStart();
 
-const DEFAULT_SANDBOX_HEIGHT = 600;
-
 const pyre2WasmUninitializedPromise =
   // $FlowIgnore[cannot-resolve-name]
   typeof window !== 'undefined'
@@ -52,10 +50,6 @@ const pyre2WasmInitializedPromise = pyre2WasmUninitializedPromise
   })
   .catch(e => console.log(e));
 
-function isMobile(): boolean {
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-}
-
 export default component TryPyre2(
   sampleFilename: string,
   isCodeSnippet: boolean = false,
@@ -69,9 +63,13 @@ export default component TryPyre2(
   const [internalError, setInternalError] = useState('');
   const [loading, setLoading] = useState(true);
   const [pyreService, setPyreService] = useState<any>(null);
-  const [height, setHeight] = useState(DEFAULT_SANDBOX_HEIGHT);
+  const [editorHeightforCodeSnippet, setEditorHeightforCodeSnippet] = useState<
+    number | null,
+  >(null);
   const [model, setModel] = useState(null);
+  const [isCopied, setIsCopied] = useState(false);
 
+  // Only run for initial render, and not on subsequent updates
   useEffect(() => {
     setLoading(true);
     pyre2WasmInitializedPromise
@@ -89,22 +87,9 @@ export default component TryPyre2(
       });
   }, []);
 
-  function fetchCurMonacoModelAndTriggerUpdate() {
-    const model = monaco.editor
-      .getModels()
-      .filter(model => model?.uri?.path === `/${sampleFilename}`)[0];
-
-    if (model != null) {
-      // Force update to trigger initial inlay hint
-      model.setValue(model.getValue());
-    }
-
-    return model;
-  }
-
   // Need to add createModel handler in case monaco model was not created at mount time
   monaco.editor.onDidCreateModel(model => {
-    const curModel = fetchCurMonacoModelAndTriggerUpdate();
+    const curModel = fetchCurMonacoModelAndTriggerUpdate(sampleFilename);
     setModel(curModel);
     forceRecheck();
   });
@@ -138,38 +123,40 @@ export default component TryPyre2(
     }
   }
 
-  function onMount(editor: any) {
-    const model = fetchCurMonacoModelAndTriggerUpdate();
+  function onEditorMount(editor: any) {
+    const model = fetchCurMonacoModelAndTriggerUpdate(sampleFilename);
     setModel(model);
 
     if (isCodeSnippet) {
-      setHeight(Math.max(50, editor.getContentHeight()));
+      setEditorHeightforCodeSnippet(Math.max(50, editor.getContentHeight()));
     }
     editorRef.current = editor;
   }
 
   return (
     <div className={styles.tryEditor}>
-      <div className={styles.code}>
-        <Editor
-          defaultPath={sampleFilename}
-          defaultValue={codeSample}
-          defaultLanguage="python"
-          theme="vs-light"
-          height={height}
-          onChange={forceRecheck}
-          onMount={onMount}
-          options={{
-            readOnly: isCodeSnippet && isMobile(),
-            minimap: {enabled: false},
-            hover: {enabled: true, above: false},
-            scrollBeyondLastLine: false,
-            overviewRulerBorder: false,
-            scrollbar: {
-              alwaysConsumeMouseWheel: false,
-            },
-          }}
-        />
+      <div className={styles.codeEditorContainer}>
+        {getPyre2Editor(
+          isCodeSnippet,
+          sampleFilename,
+          codeSample,
+          forceRecheck,
+          onEditorMount,
+          editorHeightforCodeSnippet,
+        )}
+        {!isCodeSnippet && (
+          <button
+            className={clsx(
+              styles.shareButton,
+              isCopied && styles.shareButtonCopied,
+            )}
+            onClick={() => copyToClipboard(setIsCopied)}
+            aria-label="share URL button">
+            <span className={styles.shareButtonText}>
+              {isCopied ? '✓ URL Copied!' : '📋 Share URL'}
+            </span>
+          </button>
+        )}
       </div>
       {showErrorPanel && (
         <div className={styles.resultsContainer}>
@@ -182,4 +169,106 @@ export default component TryPyre2(
       )}
     </div>
   );
+}
+
+function updateURL(code: string) {
+  const compressed = LZString.compressToEncodedURIComponent(code);
+  const newURL = `${window.location.pathname}?code=${compressed}`;
+  window.history.replaceState({}, '', newURL);
+}
+
+function copyToClipboard(setIsCopied: boolean => void) {
+  const currentURL = window.location.href;
+  navigator.clipboard.writeText(currentURL).then(() => {
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  });
+}
+
+function getCodeFromURL() {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  return code ? LZString.decompressFromEncodedURIComponent(code) : null;
+}
+
+function fetchCurMonacoModelAndTriggerUpdate(fileName: string) {
+  const model = monaco.editor
+    .getModels()
+    .filter(model => model?.uri?.path === `/${fileName}`)[0];
+
+  if (model == null) {
+    return null;
+  }
+
+  const codeFromUrl = getCodeFromURL();
+  if (codeFromUrl != null && model != null) {
+    model.setValue(codeFromUrl);
+  }
+
+  // Force update to trigger initial inlay hint
+  model.setValue(model.getValue());
+
+  return model;
+}
+
+function isMobile(): boolean {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
+
+function getPyre2Editor(
+  isCodeSnippet: boolean,
+  fileName: string,
+  codeSample: string,
+  forceRecheck: () => void,
+  onEditorMount: (editor: any) => void,
+  editorHeightforCodeSnippet: number | null,
+) {
+  if (isCodeSnippet) {
+    return (
+      <Editor
+        defaultPath={fileName}
+        defaultValue={codeSample}
+        defaultLanguage="python"
+        theme="vs-light"
+        onChange={forceRecheck}
+        onMount={onEditorMount}
+        height={editorHeightforCodeSnippet}
+        options={{
+          readOnly: isMobile(),
+          minimap: {enabled: false},
+          hover: {enabled: true, above: false},
+          scrollBeyondLastLine: false,
+          overviewRulerBorder: false,
+        }}
+      />
+    );
+  } else {
+    // TODO (T217559369): Instead of manually calculating the sandbox height, we should
+    // use flexbox behavior to make the sandbox height to be 75% of the screen
+    // This doesn't seem to work with the monaco editor currently.
+    const screenHeight = window.innerHeight;
+    const sandboxHeight = (screenHeight * 75) / 100;
+
+    return (
+      <Editor
+        defaultPath={fileName}
+        defaultValue={codeSample}
+        defaultLanguage="python"
+        theme="vs-light"
+        onChange={value => {
+          forceRecheck();
+          updateURL(value);
+        }}
+        onMount={onEditorMount}
+        height={sandboxHeight}
+        options={{
+          minimap: {enabled: false},
+          hover: {enabled: true, above: false},
+          scrollBeyondLastLine: false,
+          overviewRulerBorder: false,
+        }}
+      />
+    );
+  }
 }

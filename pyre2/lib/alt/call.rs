@@ -24,36 +24,65 @@ use crate::error::kind::ErrorKind;
 use crate::error::style::ErrorStyle;
 use crate::types::callable::BoolKeywords;
 use crate::types::callable::Callable;
-use crate::types::callable::CallableKind;
+use crate::types::callable::FuncFlags;
+use crate::types::callable::FuncMetadata;
+use crate::types::callable::Function;
+use crate::types::callable::FunctionKind;
 use crate::types::class::ClassType;
+use crate::types::literal::Lit;
 use crate::types::typed_dict::TypedDict;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethod;
+use crate::types::types::OverloadType;
+use crate::types::types::TParams;
 use crate::types::types::Type;
 use crate::types::types::Var;
+use crate::util::visit::VisitMut;
 pub enum CallStyle<'a> {
     Method(&'a Name),
     BinaryOp(Operator),
     FreeForm,
 }
 
+/// A pair of a call target (see Target) and the Quantifieds it uses.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CallTarget {
+    qs: Vec<Var>,
+    target: Target,
+}
+
+impl CallTarget {
+    fn new(target: Target) -> Self {
+        Self {
+            qs: Vec::new(),
+            target,
+        }
+    }
+
+    fn forall(qs: Vec<Var>, target: Target) -> Self {
+        Self { qs, target }
+    }
+}
+
 /// A thing that can be called (see as_call_target and call_infer).
 /// Note that a single "call" may invoke multiple functions under the hood,
 /// e.g., `__new__` followed by `__init__` for Class.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum CallTarget {
-    /// A thing whose type is a Callable, usually a function.
-    Callable(Callable, CallableKind),
-    /// The dataclasses.dataclass function.
-    Dataclass(Callable),
+enum Target {
+    /// A typing.Callable.
+    Callable(Callable),
+    /// A function.
+    Function(Function),
     /// Method of a class. The `Type` is the self/cls argument.
-    BoundMethod(Type, Callable, CallableKind),
+    BoundMethod(Type, Function),
     /// A class object.
     Class(ClassType),
     /// A TypedDict.
     TypedDict(TypedDict),
-    /// An overload.
-    Overload(Vec1<Option<(Vec<Var>, CallTarget)>>),
+    /// An overloaded function.
+    FunctionOverload(Vec1<Callable>, FuncMetadata),
+    /// An overloaded method.
+    BoundMethodOverload(Type, Vec1<Callable>, FuncMetadata),
     Any(AnyStyle),
 }
 
@@ -64,52 +93,70 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         range: TextRange,
         msg: String,
         error_kind: ErrorKind,
-        context: Option<&ErrorContext>,
-    ) -> (Vec<Var>, CallTarget) {
+        context: Option<&dyn Fn() -> ErrorContext>,
+    ) -> CallTarget {
         errors.add(range, msg, error_kind, context);
-        (Vec::new(), CallTarget::Any(AnyStyle::Error))
+        CallTarget::new(Target::Any(AnyStyle::Error))
+    }
+
+    fn fresh_quantified_function(&self, tparams: &TParams, func: Function) -> (Vec<Var>, Function) {
+        let (qs, t) =
+            self.solver()
+                .fresh_quantified(tparams, Type::Function(Box::new(func)), self.uniques);
+        match t {
+            Type::Function(box func) => (qs, func),
+            // We passed a Function to fresh_quantified(), so we know we get a Function back out.
+            _ => unreachable!(),
+        }
     }
 
     /// Return a pair of the quantified variables I had to instantiate, and the resulting call target.
-    pub fn as_call_target(&self, ty: Type) -> Option<(Vec<Var>, CallTarget)> {
+    pub fn as_call_target(&self, ty: Type) -> Option<CallTarget> {
         match ty {
-            Type::Callable(c, CallableKind::Dataclass(_)) => {
-                Some((Vec::new(), CallTarget::Dataclass(*c)))
+            Type::Callable(c) => Some(CallTarget::new(Target::Callable(*c))),
+            Type::Function(func) => Some(CallTarget::new(Target::Function(*func))),
+            Type::Overload(overload) => {
+                let mut qs = Vec::new();
+                let sigs = overload.signatures.mapped(|ty| match ty {
+                    OverloadType::Callable(signature) => signature,
+                    OverloadType::Forall(forall) => {
+                        let (qs2, func) =
+                            self.fresh_quantified_function(&forall.tparams, forall.body);
+                        qs.extend(qs2);
+                        func.signature
+                    }
+                });
+                Some(CallTarget::forall(
+                    qs,
+                    Target::FunctionOverload(sigs, *overload.metadata),
+                ))
             }
-            Type::Callable(c, kind) => Some((Vec::new(), CallTarget::Callable(*c, kind))),
-            Type::Overload(overloads) => Some((
-                Vec::new(),
-                CallTarget::Overload(overloads.0.mapped(|ty| self.as_call_target(ty))),
-            )),
             Type::BoundMethod(box BoundMethod { obj, func }) => {
                 match self.as_call_target(func.as_type()) {
-                    Some((gs, CallTarget::Callable(c, kind))) => {
-                        Some((gs, CallTarget::BoundMethod(obj, c, kind)))
-                    }
-                    Some((gs, CallTarget::Overload(overloads))) => {
-                        let overloads = overloads.mapped(|x| match x {
-                            Some((gs2, CallTarget::Callable(c, kind))) => {
-                                Some((gs2, CallTarget::BoundMethod(obj.clone(), c, kind)))
-                            }
-                            _ => None,
-                        });
-                        Some((gs, CallTarget::Overload(overloads)))
-                    }
+                    Some(CallTarget {
+                        qs,
+                        target: Target::Function(func),
+                    }) => Some(CallTarget::forall(qs, Target::BoundMethod(obj, func))),
+                    Some(CallTarget {
+                        qs,
+                        target: Target::FunctionOverload(overloads, meta),
+                    }) => Some(CallTarget::forall(
+                        qs,
+                        Target::BoundMethodOverload(obj, overloads, meta),
+                    )),
                     _ => None,
                 }
             }
             Type::ClassDef(cls) => self.as_call_target(self.instantiate_fresh(&cls)),
-            Type::Type(box Type::ClassType(cls)) => Some((Vec::new(), CallTarget::Class(cls))),
+            Type::Type(box Type::ClassType(cls)) => Some(CallTarget::new(Target::Class(cls))),
             Type::Forall(forall) => {
-                let (mut qs, t) = self.solver().fresh_quantified(
+                let (qs, t) = self.solver().fresh_quantified(
                     &forall.tparams,
-                    forall.as_inner_type(),
+                    forall.body.as_type(),
                     self.uniques,
                 );
-                self.as_call_target(t).map(|(qs2, x)| {
-                    qs.extend(qs2);
-                    (qs, x)
-                })
+                self.as_call_target(t)
+                    .map(|x| CallTarget::forall(qs.into_iter().chain(x.qs).collect(), x.target))
             }
             Type::Var(v) if let Some(_guard) = self.recurser.recurse(v) => {
                 self.as_call_target(self.solver().force_var(v))
@@ -125,14 +172,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     None
                 }
             }
-            Type::Any(style) => Some((Vec::new(), CallTarget::Any(style))),
+            Type::Any(style) => Some(CallTarget::new(Target::Any(style))),
             Type::TypeAlias(ta) => self.as_call_target(ta.as_value(self.stdlib)),
             Type::ClassType(cls) => self
                 .get_instance_attribute(&cls, &dunder::CALL)
                 .and_then(|attr| self.resolve_as_instance_method(attr))
                 .and_then(|ty| self.as_call_target(ty)),
             Type::Type(box Type::TypedDict(typed_dict)) => {
-                Some((Vec::new(), CallTarget::TypedDict(*typed_dict)))
+                Some(CallTarget::new(Target::TypedDict(*typed_dict)))
             }
             _ => None,
         }
@@ -144,8 +191,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         call_style: CallStyle,
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
-    ) -> (Vec<Var>, CallTarget) {
+        context: Option<&dyn Fn() -> ErrorContext>,
+    ) -> CallTarget {
         match self.as_call_target(ty.clone()) {
             Some(target) => target,
             None => {
@@ -161,7 +208,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.error_call_target(
                     errors,
                     range,
-                    format!("{}, got {}", expect_message, ty.deterministic_printing()),
+                    format!("{}, got {}", expect_message, self.for_display(ty)),
                     ErrorKind::NotCallable,
                     context,
                 )
@@ -177,7 +224,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         args: &[CallArg],
         keywords: &[Keyword],
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         let call_target = self.as_call_target_or_error(
             callee_ty,
@@ -198,7 +245,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         args: &[CallArg],
         keywords: &[Keyword],
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Option<Type> {
         let callee_ty = self.type_of_attr_get_if_found(
             ty,
@@ -229,7 +276,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         args: &[CallArg],
         keywords: &[Keyword],
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         let callee_ty =
             self.type_of_attr_get(ty, method_name, range, errors, context, "Expr::call_method");
@@ -253,7 +300,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         args: &[CallArg],
         keywords: &[Keyword],
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Option<Type> {
         let dunder_call = match self.get_metaclass_dunder_call(cls)? {
             Type::BoundMethod(box BoundMethod { func, .. }) => {
@@ -289,7 +336,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         keywords: &[Keyword],
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         // Based on https://typing.readthedocs.io/en/latest/spec/constructors.html.
         let instance_ty = Type::ClassType(cls.clone());
@@ -367,7 +414,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         keywords: &[Keyword],
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         // We know `__init__` exists because we synthesize it.
         let init_method = self
@@ -392,182 +439,161 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     pub fn call_infer(
         &self,
-        call_target: (Vec<Var>, CallTarget),
+        call_target: CallTarget,
         args: &[CallArg],
         keywords: &[Keyword],
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
-        self.call_infer_inner(call_target, args, keywords, range, errors, errors, context)
-    }
-
-    // TODO: This function depends on an invariant that overloads only contain functions and bound
-    // methods, never a constructor or another overload. See assertions marked with "Hack" below.
-    // This is all quite hacky ("very very very grim," says Neil).
-    fn call_infer_inner(
-        &self,
-        call_target: (Vec<Var>, CallTarget),
-        args: &[CallArg],
-        keywords: &[Keyword],
-        range: TextRange,
-        arg_errors: &ErrorCollector,
-        call_errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
-    ) -> Type {
-        let is_dataclass = matches!(call_target.1, CallTarget::Dataclass(_));
-        let res = match call_target.1 {
-            CallTarget::Class(cls) => {
-                // Hack
-                assert!(
-                    std::ptr::eq(arg_errors, call_errors),
-                    "unexpected constructor inside overload"
-                );
-                self.construct_class(cls, args, keywords, range, arg_errors, context)
+        let is_dataclass = matches!(&call_target.target, Target::FunctionOverload(_, meta) if matches!(meta.kind, FunctionKind::Dataclass(_)));
+        let res = match call_target.target {
+            Target::Class(cls) => self.construct_class(cls, args, keywords, range, errors, context),
+            Target::TypedDict(td) => {
+                self.construct_typed_dict(td, args, keywords, range, errors, context)
             }
-            CallTarget::TypedDict(td) => {
-                // Hack
-                assert!(
-                    std::ptr::eq(arg_errors, call_errors),
-                    "unexpected TypedDict constructor inside overload"
-                );
-                self.construct_typed_dict(td, args, keywords, range, arg_errors, context)
-            }
-            CallTarget::BoundMethod(obj, c, kind) => {
+            Target::BoundMethod(obj, func) => {
                 let first_arg = CallArg::Type(&obj, range);
                 self.callable_infer(
-                    c,
-                    kind.as_func_id(),
+                    func.signature,
+                    Some(func.metadata.kind.as_func_id()),
                     Some(first_arg),
                     args,
                     keywords,
                     range,
-                    arg_errors,
-                    call_errors,
+                    errors,
+                    errors,
                     context,
                 )
             }
-            CallTarget::Callable(callable, kind) => self.callable_infer(
+            Target::Callable(callable) => self.callable_infer(
+                callable, None, None, args, keywords, range, errors, errors, context,
+            ),
+            Target::Function(Function {
+                signature: callable,
+                metadata,
+            }) => self.callable_infer(
                 callable,
-                kind.as_func_id(),
+                Some(metadata.kind.as_func_id()),
                 None,
                 args,
                 keywords,
                 range,
-                arg_errors,
-                call_errors,
+                errors,
+                errors,
                 context,
             ),
-            CallTarget::Dataclass(callable) => self.callable_infer(
-                callable,
-                CallableKind::Dataclass(Box::new(BoolKeywords::new())).as_func_id(),
-                None,
+            Target::FunctionOverload(overloads, meta) => self.call_overloads(
+                overloads, meta, None, args, keywords, range, errors, context,
+            ),
+            Target::BoundMethodOverload(obj, overloads, meta) => self.call_overloads(
+                overloads,
+                meta,
+                Some(CallArg::Type(&obj, range)),
                 args,
                 keywords,
                 range,
-                arg_errors,
-                call_errors,
+                errors,
                 context,
             ),
-            CallTarget::Overload(overloads) => {
-                // Hack
-                assert!(
-                    std::ptr::eq(arg_errors, call_errors),
-                    "unexpected nested overload"
-                );
-                let errors = arg_errors;
-                let mut closest_overload = None;
-                let mut fewest_errors: Option<ErrorCollector> = None;
-                for call_target in overloads.into_iter() {
-                    if let Some(call_target) = call_target {
-                        let arg_errors =
-                            ErrorCollector::new(self.module_info().dupe(), ErrorStyle::Delayed);
-                        let call_errors =
-                            ErrorCollector::new(self.module_info().dupe(), ErrorStyle::Delayed);
-                        let res = self.call_infer_inner(
-                            call_target.clone(),
-                            args,
-                            keywords,
-                            range,
-                            &arg_errors,
-                            &call_errors,
-                            // We intentionally drop the context here, as arg errors don't need it,
-                            // and if we log any call errors, we'll also log a separate
-                            // "No matching overloads" error with the necessary context.
-                            None,
-                        );
-                        if call_errors.is_empty() {
-                            errors.extend(arg_errors);
-                            return res;
-                        }
-                        match &fewest_errors {
-                            Some(errs) if errs.len() <= call_errors.len() => {}
-                            _ => {
-                                closest_overload = Some(call_target.1);
-                                fewest_errors = Some(call_errors);
-                            }
-                        }
-                    }
-                }
-                let (func_id, signature) = match closest_overload {
-                    Some(CallTarget::Callable(callable, kind)) => {
-                        (kind.as_func_id(), Some(callable))
-                    }
-                    Some(CallTarget::BoundMethod(_, callable, kind)) => {
-                        (kind.as_func_id(), callable.drop_first_param())
-                    }
-                    Some(CallTarget::Dataclass(callable)) => (
-                        CallableKind::Dataclass(Box::new(BoolKeywords::new())).as_func_id(),
-                        Some(callable),
-                    ),
-                    _ => (None, None),
-                };
-                let func_desc = match func_id {
-                    Some(id) => format!(" for function `{}`", id.format(self.module_info().name())),
-                    None => "".to_owned(),
-                };
-                let signature_desc = match signature {
-                    Some(sig) => format!(", reporting errors for closest overload: `{sig}`"),
-                    None => "".to_owned(),
-                };
-                self.error(
-                    errors,
-                    range,
-                    ErrorKind::NoMatchingOverload,
-                    context,
-                    format!("No matching overload found{func_desc}{signature_desc}"),
-                );
-                if let Some(errs) = fewest_errors {
-                    errors.extend(errs);
-                }
-                return Type::any_error();
-            }
-            CallTarget::Any(style) => {
+            Target::Any(style) => {
                 // Make sure we still catch errors in the arguments.
                 for arg in args {
                     match arg {
                         CallArg::Expr(e) | CallArg::Star(e, _) => {
-                            self.expr_infer(e, arg_errors);
+                            self.expr_infer(e, errors);
                         }
                         CallArg::Type(..) => {}
                     }
                 }
                 for kw in keywords {
-                    self.expr_infer(&kw.value, arg_errors);
+                    self.expr_infer(&kw.value, errors);
                 }
                 style.propagate()
             }
         };
-        self.solver().finish_quantified(&call_target.0);
-        if is_dataclass && let Type::Callable(c, _) = res {
+        self.solver().finish_quantified(&call_target.qs);
+        if is_dataclass && let Type::Callable(c) = res {
             let mut kws = BoolKeywords::new();
             for kw in keywords {
-                kws.set_keyword(kw.arg.as_ref(), self.expr_infer(&kw.value, arg_errors));
+                kws.set_keyword(kw.arg.as_ref(), self.expr_infer(&kw.value, errors));
             }
-            Type::Callable(c, CallableKind::Dataclass(Box::new(kws)))
+            Type::Function(Box::new(Function {
+                signature: *c,
+                metadata: FuncMetadata {
+                    kind: FunctionKind::Dataclass(Box::new(kws)),
+                    flags: FuncFlags::default(),
+                },
+            }))
         } else {
             res
         }
+    }
+
+    fn call_overloads(
+        &self,
+        overloads: Vec1<Callable>,
+        metadata: FuncMetadata,
+        self_arg: Option<CallArg>,
+        args: &[CallArg],
+        keywords: &[Keyword],
+        range: TextRange,
+        errors: &ErrorCollector,
+        context: Option<&dyn Fn() -> ErrorContext>,
+    ) -> Type {
+        let mut closest_overload = None;
+        let mut fewest_errors: Option<ErrorCollector> = None;
+        for callable in overloads.into_iter() {
+            let arg_errors = ErrorCollector::new(self.module_info().dupe(), ErrorStyle::Delayed);
+            let call_errors = ErrorCollector::new(self.module_info().dupe(), ErrorStyle::Delayed);
+            let res = self.callable_infer(
+                callable.clone(),
+                Some(metadata.kind.as_func_id()),
+                self_arg.clone(),
+                args,
+                keywords,
+                range,
+                &arg_errors,
+                &call_errors,
+                // We intentionally drop the context here, as arg errors don't need it,
+                // and if we log any call errors, we'll also log a separate
+                // "No matching overloads" error with the necessary context.
+                None,
+            );
+            if call_errors.is_empty() {
+                errors.extend(arg_errors);
+                return res;
+            }
+            match &fewest_errors {
+                Some(errs) if errs.len() <= call_errors.len() => {}
+                _ => {
+                    closest_overload = Some(callable);
+                    fewest_errors = Some(call_errors);
+                }
+            }
+        }
+        // We're guaranteed to have at least one overload.
+        let closest_overload = closest_overload.unwrap();
+        let fewest_errors = fewest_errors.unwrap();
+        let mut signature = match self_arg {
+            Some(_) => closest_overload
+                .drop_first_param()
+                .unwrap_or(closest_overload),
+            None => closest_overload,
+        };
+        signature.visit_mut(&mut |x| *x = self.solver().for_display((*x).clone()));
+        self.error(
+            errors,
+            range,
+            ErrorKind::NoMatchingOverload,
+            context,
+            format!(
+                "No matching overload found for function `{}`, reporting errors for closest overload: `{}`",
+                metadata.kind.as_func_id().format(self.module_info().name()), signature,
+            ),
+        );
+        errors.extend(fewest_errors);
+        Type::any_error()
     }
 
     /// Helper function hide details of call synthesis from the attribute resolution code.
@@ -576,7 +602,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         getter_method: Type,
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         let call_target = self.as_call_target_or_error(
             getter_method,
@@ -595,7 +621,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         got: CallArg,
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         let call_target = self.as_call_target_or_error(
             setter_method,
@@ -614,14 +640,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         base: DescriptorBase,
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         // When a descriptor is accessed on an instance, it gets the instance and the class object as
         // the `obj` and `objtype` arguments. When it is accessed on a class, it gets `None` as `obj`
         // and the class object as `objtype`.
         let (objtype, obj) = match base {
             DescriptorBase::Instance(classtype) => (
-                Type::ClassDef(classtype.class_object().clone()),
+                Type::ClassDef(classtype.class_object().dupe()),
                 Type::ClassType(classtype),
             ),
             DescriptorBase::ClassDef(class) => (Type::ClassDef(class), Type::None),
@@ -645,7 +671,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         got: CallArg,
         range: TextRange,
         errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         // When a descriptor is set on an instance, it gets the instance `class_type` and the value `got` as arguments.
         // Descriptor setters cannot be called on a class (an attempt to assign will overwrite the
@@ -660,5 +686,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             context,
         );
         self.call_infer(call_target, &args, &[], range, errors, context)
+    }
+
+    pub fn call_getattr(
+        &self,
+        getattr_ty: Type,
+        attr_name: Name,
+        range: TextRange,
+        errors: &ErrorCollector,
+        context: Option<&dyn Fn() -> ErrorContext>,
+    ) -> Type {
+        let call_target =
+            self.as_call_target_or_error(getattr_ty, CallStyle::FreeForm, range, errors, context);
+        let attr_name_ty = Type::Literal(Lit::String(attr_name.as_str().into()));
+        self.call_infer(
+            call_target,
+            &[CallArg::Type(&attr_name_ty, range)],
+            &[],
+            range,
+            errors,
+            context,
+        )
     }
 }

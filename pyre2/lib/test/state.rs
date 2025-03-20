@@ -14,7 +14,6 @@ use std::sync::Arc;
 use dupe::Dupe;
 use starlark_map::small_map::SmallMap;
 
-use crate::error::style::ErrorStyle;
 use crate::metadata::PythonVersion;
 use crate::metadata::RuntimeMetadata;
 use crate::module::module_name::ModuleName;
@@ -23,8 +22,10 @@ use crate::state::handle::Handle;
 use crate::state::loader::FindError;
 use crate::state::loader::Loader;
 use crate::state::loader::LoaderId;
+use crate::state::require::Require;
 use crate::state::state::State;
 use crate::state::subscriber::TestSubscriber;
+use crate::test::util::init_test;
 use crate::test::util::TestEnv;
 use crate::util::lock::Mutex;
 use crate::util::prelude::SliceExt;
@@ -54,8 +55,11 @@ else:
 
     let f = |name: &str, config: &RuntimeMetadata| {
         let name = ModuleName::from_str(name);
-        let path = loader.find(name).unwrap().0;
-        Handle::new(name, path, config.dupe(), loader.dupe())
+        let path = loader.find_import(name).unwrap();
+        (
+            Handle::new(name, path, config.dupe(), loader.dupe()),
+            Require::Everything,
+        )
     };
 
     state.run(
@@ -64,6 +68,7 @@ else:
             f("windows", &windows),
             f("main", &linux),
         ],
+        Require::Exports,
         None,
     );
     state.check_against_expectations().unwrap();
@@ -89,12 +94,10 @@ fn test_multiple_path() {
     struct Load(TestEnv);
 
     impl Loader for Load {
-        fn find(&self, module: ModuleName) -> Result<(ModulePath, ErrorStyle), FindError> {
+        fn find_import(&self, module: ModuleName) -> Result<ModulePath, FindError> {
             match FILES.iter().find(|x| x.0 == module.as_str()) {
-                Some((_, path, _)) => {
-                    Ok((ModulePath::memory(PathBuf::from(path)), ErrorStyle::Delayed))
-                }
-                None => self.0.find(module),
+                Some((_, path, _)) => Ok(ModulePath::memory(PathBuf::from(path))),
+                None => self.0.find_import(module),
             }
         }
 
@@ -111,13 +114,17 @@ fn test_multiple_path() {
     let mut state = State::new();
     state.run(
         &FILES.map(|(name, path, _)| {
-            Handle::new(
-                ModuleName::from_str(name),
-                ModulePath::memory(PathBuf::from(path)),
-                TestEnv::config(),
-                loader.dupe(),
+            (
+                Handle::new(
+                    ModuleName::from_str(name),
+                    ModulePath::memory(PathBuf::from(path)),
+                    TestEnv::config(),
+                    loader.dupe(),
+                ),
+                Require::Everything,
             )
         }),
+        Require::Exports,
         None,
     );
     state.print_errors();
@@ -129,13 +136,10 @@ fn test_multiple_path() {
 struct IncrementalData(Arc<Mutex<SmallMap<ModuleName, Arc<String>>>>);
 
 impl Loader for IncrementalData {
-    fn find(&self, module: ModuleName) -> Result<(ModulePath, ErrorStyle), FindError> {
+    fn find_import(&self, module: ModuleName) -> Result<ModulePath, FindError> {
         match self.0.lock().get(&module) {
-            Some(_) => Ok((
-                ModulePath::memory(PathBuf::from(module.as_str())),
-                ErrorStyle::Delayed,
-            )),
-            None => TestEnv::new().find(module),
+            Some(_) => Ok(ModulePath::memory(PathBuf::from(module.as_str()))),
+            None => TestEnv::new().find_import(module),
         }
     }
 
@@ -160,6 +164,7 @@ struct Incremental {
 
 impl Incremental {
     fn new() -> Self {
+        init_test();
         let data = IncrementalData::default();
         let loader = LoaderId::new(data.dupe());
         let state = State::new();
@@ -193,9 +198,11 @@ impl Incremental {
     fn check(&mut self, want: &[&str], recompute: &[&str]) {
         let subscriber = TestSubscriber::new();
         self.state.run(
-            &want.map(|x| self.handle(x)),
+            &want.map(|x| (self.handle(x), Require::Everything)),
+            Require::Exports,
             Some(Box::new(subscriber.dupe())),
         );
+        self.state.print_errors();
         self.state.check_against_expectations().unwrap();
 
         let mut recompute = recompute.map(|x| (*x).to_owned());
@@ -259,18 +266,120 @@ fn test_incremental_cyclic() {
     i.check(&["foo"], &["foo", "foo", "bar"]);
 }
 
-#[test]
-fn test_incremental_class() {
-    // Important to have a class with a field, as those also have positions
-    let class = "class X: y: int";
-
-    // Class has equality with ArcId, so need to make sure they have equality
+/// Check that the interface is consistent as we change things.
+fn test_interface_consistent(code: &str, broken: bool) {
     let mut i = Incremental::new();
-    i.set("main", "import foo; x = foo.X()");
-    i.set("foo", class);
-    i.check(&["main"], &["main", "foo"]);
-    i.set("foo", &format!("{class} # after"));
-    i.check(&["main"], &["foo"]);
-    i.set("foo", &format!("# before\n{class}"));
-    i.check(&["main"], &["foo"]);
+    i.set("main", code);
+    i.check(&["main"], &["main"]);
+    let base = i.state.get_solutions(&i.handle("main")).unwrap();
+
+    i.set("main", &format!("{code} # after"));
+    i.check(&["main"], &["main"]);
+    let suffix = i.state.get_solutions(&i.handle("main")).unwrap();
+
+    i.set("main", &format!("# before\n{code}"));
+    i.check(&["main"], &["main"]);
+    let prefix = i.state.get_solutions(&i.handle("main")).unwrap();
+
+    let same = base.first_difference(&base);
+    let suffix = suffix.first_difference(&base);
+    let prefix = prefix.first_difference(&base);
+    if !broken {
+        assert!(same.is_none(), "{code:?} led to {same:?}");
+        assert!(suffix.is_none(), "{code:?} led to {suffix:?}");
+        assert!(prefix.is_none(), "{code:?} led to {prefix:?}");
+    } else {
+        assert!(
+            same.is_some() || suffix.is_some() || prefix.is_some(),
+            "{code:?} now works"
+        );
+    }
+}
+
+#[test]
+fn test_interfaces() {
+    #[allow(dead_code)]
+    const BROKEN: bool = true;
+
+    test_interface_consistent("x: int = 1\ndef f(y: bool) -> list[str]: return []", false);
+
+    // Important to have a class with a field, as those also have positions
+    test_interface_consistent("class X: y: int", false);
+
+    // These should not change, but do because the quality algorithm doesn't deal
+    // well with Forall.
+    test_interface_consistent("def f[X](x: X) -> X: ...", false);
+
+    // These should not change, but do because the quality algorithm doesn't deal
+    // well with Forall.
+    test_interface_consistent(
+        "
+from typing import TypeVar, Generic
+T = TypeVar('T')
+class C(Generic[T]): pass",
+        false,
+    );
+
+    // Another failing example
+    test_interface_consistent("class C[T]: x: T", false);
+
+    // Another failing example
+    test_interface_consistent(
+        "
+from typing import TypeVar, Generic
+T = TypeVar('T')
+class C(Generic[T]): x: T",
+        false,
+    );
+
+    test_interface_consistent(
+        "
+from typing import TypeVar, Generic
+T = TypeVar('T')
+class C(Generic[T]): pass
+class D(C[T]): pass",
+        false,
+    );
+
+    test_interface_consistent(
+        "
+from typing import TypeVar
+class C: pass
+T = TypeVar('T', bound=C)",
+        false,
+    );
+
+    test_interface_consistent(
+        "
+class C:
+    def __init__[R](self, field: R) -> None:
+        self.field = R
+",
+        false,
+    );
+}
+
+#[test]
+fn test_change_require() {
+    let t = TestEnv::one("foo", "x: str = 1");
+    let mut state = State::new();
+    let handle = Handle::new(
+        ModuleName::from_str("foo"),
+        ModulePath::memory(PathBuf::from("foo")),
+        TestEnv::config(),
+        LoaderId::new(t),
+    );
+    state.run(&[(handle.dupe(), Require::Exports)], Require::Exports, None);
+    assert_eq!(state.count_errors(), 0);
+    assert!(state.get_bindings(&handle).is_none());
+    state.run(&[(handle.dupe(), Require::Errors)], Require::Exports, None);
+    assert_eq!(state.count_errors(), 1);
+    assert!(state.get_bindings(&handle).is_none());
+    state.run(
+        &[(handle.dupe(), Require::Everything)],
+        Require::Exports,
+        None,
+    );
+    assert_eq!(state.count_errors(), 1);
+    assert!(state.get_bindings(&handle).is_some());
 }

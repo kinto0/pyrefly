@@ -518,10 +518,10 @@ from typing import assert_type, Literal
 class A: ...
 class B: ...
 
-x: A | B
-y = isinstance(x, A) and (z := True)
-assert_type(x, A | B)
-assert_type(z, Literal[True])
+def test(x: A | B):
+    y = isinstance(x, A) and (z := True)
+    assert_type(x, A | B)
+    assert_type(z, Literal[True])
     "#,
 );
 
@@ -559,6 +559,27 @@ def f(x: Cat | Dog):
         assert_type(x, Cat)
     else:
         assert_type(x, Dog)
+    "#,
+);
+
+testcase!(
+    test_typeis_union,
+    r#"
+from typing import TypeIs, assert_type
+class A: ...
+class B: ...
+class C: ...
+def is_a_or_b(x: object) -> TypeIs[A | B]:
+    return isinstance(x, A) or isinstance(x, B)
+def f(x:  A | B | C, y: A | C):
+    if is_a_or_b(x):
+        assert_type(x, A | B)
+    else:
+        assert_type(x, C)
+    if is_a_or_b(y):
+        assert_type(y, A)
+    else:
+        assert_type(y, C)
     "#,
 );
 

@@ -17,16 +17,13 @@ use ruff_python_ast::StmtExpr;
 use ruff_python_ast::StmtFunctionDef;
 use ruff_text_size::Ranged;
 
-use crate::alt::solve::TypeFormContext;
-use crate::ast::Ast;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
 use crate::binding::binding::BindingFunction;
 use crate::binding::binding::BindingYield;
 use crate::binding::binding::BindingYieldFrom;
-use crate::binding::binding::FunctionKind;
-use crate::binding::binding::ImplicitReturn;
+use crate::binding::binding::FunctionSource;
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyAnnotation;
 use crate::binding::binding::KeyClass;
@@ -34,6 +31,7 @@ use crate::binding::binding::KeyFunction;
 use crate::binding::binding::KeyYield;
 use crate::binding::binding::KeyYieldFrom;
 use crate::binding::binding::ReturnExplicit;
+use crate::binding::binding::ReturnImplicit;
 use crate::binding::binding::ReturnType;
 use crate::binding::bindings::BindingsBuilder;
 use crate::binding::bindings::FuncInfo;
@@ -45,6 +43,7 @@ use crate::dunder;
 use crate::graph::index::Idx;
 use crate::metadata::RuntimeMetadata;
 use crate::module::short_identifier::ShortIdentifier;
+use crate::ruff::ast::Ast;
 use crate::util::prelude::SliceExt;
 use crate::util::prelude::VecExt;
 
@@ -61,26 +60,26 @@ impl<'a> BindingsBuilder<'a> {
                 self_name = Some(x.parameter.name.clone());
             }
             self.bind_function_param(
+                AnnotationTarget::Param(x.parameter.name.id.clone()),
                 AnyParameterRef::NonVariadic(x),
                 function_idx,
                 self_type,
-                TypeFormContext::ParameterAnnotation,
             );
         }
         if let Some(box args) = &x.vararg {
             self.bind_function_param(
+                AnnotationTarget::ArgsParam(args.name.id.clone()),
                 AnyParameterRef::Variadic(args),
                 function_idx,
                 self_type,
-                TypeFormContext::ParameterArgsAnnotation,
             );
         }
         if let Some(box kwargs) = &x.kwarg {
             self.bind_function_param(
+                AnnotationTarget::KwargsParam(kwargs.name.id.clone()),
                 AnyParameterRef::Variadic(kwargs),
                 function_idx,
                 self_type,
-                TypeFormContext::ParameterKwargsAnnotation,
             );
         }
         if let Scope {
@@ -105,10 +104,10 @@ impl<'a> BindingsBuilder<'a> {
 
         let body = mem::take(&mut x.body);
         let decorators = self.ensure_and_bind_decorators(mem::take(&mut x.decorator_list));
-        let kind = if is_ellipse(&body) {
-            FunctionKind::Stub
+        let source = if is_ellipse(&body) {
+            FunctionSource::Stub
         } else {
-            FunctionKind::Impl
+            FunctionSource::Impl
         };
         let mut return_annotation = mem::take(&mut x.returns);
         self.functions.push(FuncInfo::default());
@@ -155,7 +154,6 @@ impl<'a> BindingsBuilder<'a> {
                         AnnotationTarget::Return(func_name.id.clone()),
                         *x,
                         self_type,
-                        TypeFormContext::ReturnAnnotation,
                     ),
                 ),
             )
@@ -215,9 +213,9 @@ impl<'a> BindingsBuilder<'a> {
         // Implicit return
         let implicit_return = self.table.insert(
             Key::ReturnImplicit(ShortIdentifier::new(&func_name)),
-            Binding::ReturnImplicit(ImplicitReturn {
+            Binding::ReturnImplicit(ReturnImplicit {
                 last_exprs: last_expr_keys,
-                function_kind: kind,
+                function_source: source,
             }),
         );
 
@@ -273,7 +271,7 @@ impl<'a> BindingsBuilder<'a> {
             KeyFunction(ShortIdentifier::new(&func_name)),
             BindingFunction {
                 def: x,
-                kind,
+                source,
                 self_type,
                 decorators: decorators.into_boxed_slice(),
                 legacy_tparams: legacy_tparams.into_boxed_slice(),
@@ -343,14 +341,22 @@ fn function_last_expressions<'a>(x: &'a [Stmt], config: &RuntimeMetadata) -> Opt
     Some(res)
 }
 
-fn is_ellipse(x: &[Stmt]) -> bool {
+fn is_docstring(x: &Stmt) -> bool {
     match x {
-        [
-            Stmt::Expr(StmtExpr {
-                value: box Expr::EllipsisLiteral(_),
-                ..
-            }),
-        ] => true,
+        Stmt::Expr(StmtExpr {
+            value: box Expr::StringLiteral(..),
+            ..
+        }) => true,
+        _ => false,
+    }
+}
+
+fn is_ellipse(x: &[Stmt]) -> bool {
+    match x.iter().find(|x| !is_docstring(x)) {
+        Some(Stmt::Expr(StmtExpr {
+            value: box Expr::EllipsisLiteral(_),
+            ..
+        })) => true,
         _ => false,
     }
 }

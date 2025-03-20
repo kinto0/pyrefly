@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use anyhow::anyhow;
 use dupe::Dupe;
 use lsp_types::CompletionItem;
 use lsp_types::CompletionItemKind;
@@ -17,7 +18,6 @@ use ruff_source_file::SourceLocation;
 use serde::Serialize;
 use starlark_map::small_map::SmallMap;
 
-use crate::error::style::ErrorStyle;
 use crate::metadata::RuntimeMetadata;
 use crate::module::module_info::SourceRange;
 use crate::module::module_name::ModuleName;
@@ -26,6 +26,7 @@ use crate::state::handle::Handle;
 use crate::state::loader::FindError;
 use crate::state::loader::Loader;
 use crate::state::loader::LoaderId;
+use crate::state::require::Require;
 use crate::state::state::State;
 use crate::util::prelude::VecExt;
 use crate::util::reduced_stdlib::lookup_stdlib;
@@ -130,20 +131,18 @@ impl DemoEnv {
 }
 
 impl Loader for DemoEnv {
-    fn find(&self, module: ModuleName) -> Result<(ModulePath, ErrorStyle), FindError> {
-        let style = ErrorStyle::Delayed;
+    fn find_import(&self, module: ModuleName) -> Result<ModulePath, FindError> {
         if let Some((path, _)) = self.0.get(&module) {
-            Ok((path.dupe(), style))
+            Ok(path.dupe())
         } else if lookup_stdlib(module).is_some() {
-            Ok((
-                ModulePath::memory(PathBuf::from(format!(
-                    "{}.pyi",
-                    module.as_str().replace('.', "/")
-                ))),
-                style,
-            ))
+            Ok(ModulePath::memory(PathBuf::from(format!(
+                "{}.pyi",
+                module.as_str().replace('.', "/")
+            ))))
         } else {
-            panic!("Module not given")
+            Err(FindError::new(anyhow!(
+                "module is not available in sandbox"
+            )))
         }
     }
 
@@ -168,8 +167,8 @@ impl Loader for DemoEnv {
 struct Load(Arc<Mutex<DemoEnv>>);
 
 impl Loader for Load {
-    fn find(&self, module: ModuleName) -> Result<(ModulePath, ErrorStyle), FindError> {
-        self.0.lock().unwrap().find(module)
+    fn find_import(&self, module: ModuleName) -> Result<ModulePath, FindError> {
+        self.0.lock().unwrap().find_import(module)
     }
 
     fn load_from_memory(&self, path: &Path) -> Option<Arc<String>> {
@@ -200,7 +199,11 @@ impl Default for LanguageServiceState {
             DemoEnv::config(),
             loader.dupe(),
         );
-        state.run(&[handle.dupe()], None);
+        state.run(
+            &[(handle.dupe(), Require::Everything)],
+            Require::Exports,
+            None,
+        );
         Self {
             state,
             demo_env,
@@ -215,7 +218,11 @@ impl LanguageServiceState {
         self.demo_env.lock().unwrap().add("test", source);
         self.state
             .invalidate_memory(self.loader.dupe(), &[PathBuf::from("test.py")]);
-        self.state.run(&[self.handle.dupe()], None);
+        self.state.run(
+            &[(self.handle.dupe(), Require::Everything)],
+            Require::Exports,
+            None,
+        );
     }
 
     pub fn get_errors(&self) -> Vec<Diagnostic> {
@@ -304,5 +311,46 @@ impl LanguageServiceState {
                 })
             })
             .unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_regular_import() {
+        let mut state = LanguageServiceState::default();
+        let expected_errors: Vec<String> = Vec::new();
+
+        state.update_source("from typing import *".to_owned());
+
+        assert_eq!(
+            state
+                .get_errors()
+                .into_iter()
+                .map(|x| x.message)
+                .collect::<Vec<_>>(),
+            expected_errors,
+        );
+    }
+
+    #[test]
+    fn test_invalid_import() {
+        let mut state = LanguageServiceState::default();
+        state.update_source("from t".to_owned());
+        let expected_errors: Vec<&str> = vec![
+            "Could not find import of `t`, module is not available in sandbox",
+            "Parse error: Expected 'import', found newline at byte range 6..6",
+        ];
+
+        assert_eq!(
+            state
+                .get_errors()
+                .into_iter()
+                .map(|x| x.message)
+                .collect::<Vec<_>>(),
+            expected_errors,
+        );
     }
 }

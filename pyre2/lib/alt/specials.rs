@@ -78,7 +78,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     return None;
                 }
             }
-            let ty = self.expr_untype(value, TypeFormContext::TypeArgument, errors);
+            let ty = self.expr_untype(value, TypeFormContext::TupleOrCallableParam, errors);
             match ty {
                 Type::Unpack(box Type::Tuple(Tuple::Concrete(elts))) => {
                     has_unpack = true;
@@ -220,18 +220,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 } else {
                     let args = arguments[0..arguments.len() - 1]
                         .iter()
-                        .map(|x| self.expr_untype(x, TypeFormContext::TypeArgument, errors))
+                        .map(|x| self.expr_untype(x, TypeFormContext::TupleOrCallableParam, errors))
                         .collect();
                     let pspec = self.expr_untype(
                         arguments.last().unwrap(),
                         TypeFormContext::TypeArgument,
                         errors,
                     );
+                    if !pspec.is_kind_param_spec() {
+                        self.error(
+                            errors,
+                            range,
+                            ErrorKind::BadSpecialization,
+                            None,
+                            format!(
+                                "Expected a `ParamSpec` for the second argument of `Concatenate`, got {}",
+                                pspec
+                            ),
+                        );
+                    }
                     Type::type_form(Type::Concatenate(args, Box::new(pspec)))
                 }
             }
             SpecialForm::Callable if arguments.len() == 2 => {
-                let ret = self.expr_untype(&arguments[1], TypeFormContext::TypeArgument, errors);
+                let ret = self.expr_untype(
+                    &arguments[1],
+                    TypeFormContext::TypeArgumentCallableReturn,
+                    errors,
+                );
                 match &arguments[0] {
                     Expr::List(ExprList { elts, .. }) => {
                         match self.check_args_and_construct_tuple(elts, errors) {
@@ -270,7 +286,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 Type::type_form(Type::callable_concatenate(args, *pspec, ret))
                             }
                             _ => {
-                                self.error(errors, x.range(),ErrorKind::BadSpecialization, None, format!("Callable types can only have `Concatenate` in this position, got `{}`", ty.deterministic_printing()),);
+                                self.error(errors, x.range(),ErrorKind::BadSpecialization, None, format!("Callable types can only have `Concatenate` in this position, got `{}`", self.for_display(ty)));
                                 Type::type_form(Type::callable_ellipsis(Type::any_error()))
                             }
                         }

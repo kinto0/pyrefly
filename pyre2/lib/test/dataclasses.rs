@@ -103,7 +103,7 @@ class A:
     y: float
 @dataclasses.dataclass
 class B(A):
-    x: str # E:  Class member `x` overrides parent class `A` in an inconsistent manner
+    x: str # E:  Class member `B.x` overrides parent class `A` in an inconsistent manner
 # Overwriting x doesn't change the param order but does change its type
 B('0', 1.0)  # OK
 B(0, 1.0)  # E: Argument `Literal[0]` is not assignable to parameter `x` with type `str`
@@ -482,5 +482,16 @@ class C(A, B, A):  # E: nonlinearizable inheritance chain
 
 def f(c: C):
     return c.x  # E: `C` has no attribute `x`
+    "#,
+);
+
+testcase!(
+    test_call_default,
+    r#"
+from dataclasses import dataclass
+@dataclass
+class A:
+    x: int = int()
+A()  # OK
     "#,
 );

@@ -18,6 +18,26 @@ def foo(*args: *Ts): ...
 "#,
 );
 
+testcase!(
+    test_type_var_tuple_multiple,
+    r#"
+from typing import TypeVarTuple, Generic
+Ts = TypeVarTuple('Ts')
+class ArrayTwoParams(Generic[*Ts, *Ts]): ...  # E: There cannot be more than one TypeVarTuple type parameter
+class ArrayTwoParams2[*Ts1, *Ts2](): ...  # E: There cannot be more than one TypeVarTuple type parameter
+"#,
+);
+
+testcase!(
+    test_illegal_unpack,
+    r#"
+from typing import Unpack
+x: Unpack[int] = 1  # E: Unpack is not allowed in this context.
+class X(Unpack[int]): ...  # E: Unpack is not allowed in this context.
+y: tuple[Unpack[tuple[int, str]]] = (1, "2")  # OK
+"#,
+);
+
 testcase_with_bug!(
     "We should disallow star-unpacking in invalid contexts",
     test_invalid_star,
@@ -31,7 +51,7 @@ Ts = TypeVarTuple('Ts')
 testcase!(
     test_require_unpack,
     r#"
-from typing import TypeVarTuple, Unpack
+from typing import TypeVarTuple, Unpack, Generic
 class A[*Ts]: ...
 class B[*Ts]:
     def test1(self) -> A[Ts]: ...  # E: TypeVarTuple must be unpacked
@@ -40,6 +60,9 @@ class B[*Ts]:
     def test4(self) -> tuple[Ts]: ...  # E: TypeVarTuple must be unpacked
     def test5(self) -> tuple[*Ts]: ...
     def test6(self) -> tuple[Unpack[Ts]]: ...
+Ts = TypeVarTuple('Ts')
+class C(Ts): ...  # E: TypeVarTuple must be unpacked
+class D(Generic[Ts]): ...  # E: TypeVarTuple must be unpacked
 "#,
 );
 

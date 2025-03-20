@@ -21,7 +21,6 @@ use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 use vec1::Vec1;
 
-use crate::ast::Ast;
 use crate::binding::binding::Binding;
 use crate::binding::binding::ClassFieldInitialValue;
 use crate::binding::binding::Key;
@@ -39,6 +38,7 @@ use crate::metadata::RuntimeMetadata;
 use crate::module::module_info::ModuleInfo;
 use crate::module::module_name::ModuleName;
 use crate::module::short_identifier::ShortIdentifier;
+use crate::ruff::ast::Ast;
 use crate::types::class::ClassIndex;
 
 /// Many names may map to the same TextRange (e.g. from foo import *).
@@ -54,7 +54,7 @@ pub struct StaticInfo {
     /// How many times this will be redefined
     pub count: usize,
     /// True if this is going to appear as a `Key::Import``.
-    /// A little fiddly to keep syncronised with the other field.
+    /// A little fiddly to keep synchronised with the other field.
     pub uses_key_import: bool,
 }
 
@@ -135,7 +135,7 @@ impl Static {
     }
 }
 
-/// The current value of the name, plus optionally the current value of the annotation.
+/// Flow-sensitive information about a name.
 #[derive(Default, Clone, Debug)]
 pub struct Flow {
     pub info: SmallMap<Name, FlowInfo>,
@@ -145,8 +145,6 @@ pub struct Flow {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FlowStyle {
-    /// Am I initialized, or am I the result of `x: int`?
-    Annotated { is_initialized: bool },
     /// Am I a type-annotated assignment in a class body?
     AnnotatedClassField { initial_value: Option<Expr> },
     /// Am I the result of an import (which needs merging).
@@ -162,6 +160,26 @@ pub enum FlowStyle {
     ImportAs(ModuleName),
     /// Am I a function definition? Used to chain overload definitions.
     FunctionDef(Idx<KeyFunction>),
+    /// The name is possibly unbound (perhaps due to merging branches)
+    PossiblyUnbound,
+    /// The name is possibly uninitialized (perhaps due to merging branches)
+    PossiblyUninitialized,
+    /// The name was previously bound, but is now unbound due to `del`
+    Unbound,
+    /// The name was in an annotated declaration like `x: int` but not initialized
+    Uninitialized,
+}
+
+impl FlowStyle {
+    pub fn error_message(&self, name: &Identifier) -> Option<String> {
+        match self {
+            Self::Unbound => Some(format!("`{name}` is unbound")),
+            Self::Uninitialized => Some(format!("`{name}` is uninitialized")),
+            Self::PossiblyUnbound => Some(format!("`{name}` may be unbound")),
+            Self::PossiblyUninitialized => Some(format!("`{name}` may be uninitialized")),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -241,7 +259,14 @@ pub struct Loop(pub Vec<(LoopExit, Flow)>);
 #[derive(Clone, Debug)]
 pub struct Scope {
     pub range: TextRange,
+    /// Things that are defined in this scope, statically, e.g. `x = 1` or `def f():`.
+    /// Populated at the beginning before entering the scope.
     pub stat: Static,
+    /// Things that are defined in this scope as they are reached.
+    /// Initially starts out empty, but is populated as statements are encountered.
+    /// Updated if there are multiple assignments. E.g. `x = 1; x = 2` would update the `x` binding twice.
+    /// All flow bindings will have a static binding, _usually_ in this scope, but occasionally
+    /// in a parent scope (e.g. for narrowing operations).
     pub flow: Flow,
     /// Are Flow types above this unreachable.
     /// Set when we enter something like a function, and can't guarantee what flow values are in scope.
@@ -431,6 +456,11 @@ impl Scopes {
             }
         }
         None
+    }
+
+    pub fn get_flow_style(&self, name: &Name) -> Option<&FlowStyle> {
+        self.get_flow_info(name)
+            .and_then(|info| info.style.as_ref())
     }
 
     pub fn get_special_entry<'a>(&'a self, name: &Name) -> Option<SpecialEntry<'a>> {

@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use crate::test::util::TestEnv;
 use crate::testcase;
 
 testcase!(
@@ -294,7 +295,7 @@ testcase!(
     r#"
 def f(x: list[int]) -> None:
     i: str = ""
-    for i in x: # E: EXPECTED list[int] <: Iterable[str]
+    for i in x: # E: Cannot use variable `i` with type `str` to iterate through `list[int]`
         pass
     "#,
 );
@@ -866,4 +867,27 @@ testcase!(
 def f(x: bool, y: int):
     return 0 if x else (y or 1)
     "#,
+);
+
+fn loop_export_env() -> TestEnv {
+    TestEnv::one(
+        "imported",
+        r#"
+exported = None
+
+for _ in []:
+    ignored = 1
+"#,
+    )
+}
+
+testcase!(
+    test_loop_export,
+    loop_export_env(),
+    r#"
+import imported
+from typing import assert_type
+
+assert_type(imported.exported, None)
+"#,
 );

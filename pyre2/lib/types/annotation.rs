@@ -12,12 +12,13 @@ use std::fmt;
 use std::fmt::Display;
 
 use parse_display::Display;
+use pyrefly_derive::TypeEq;
 
 use crate::types::types::AnyStyle;
 use crate::types::types::Type;
 use crate::util::display::intersperse_iter;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, TypeEq, PartialEq, Eq)]
 pub struct Annotation {
     pub qualifiers: Vec<Qualifier>,
     pub ty: Option<Type>,
@@ -52,14 +53,26 @@ impl Annotation {
         self.ty.as_ref().unwrap_or(&Type::Any(AnyStyle::Implicit))
     }
 
-    pub fn visit_type_mut(&mut self, mut f: impl FnMut(&mut Type)) {
+    pub fn visit_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
         if let Some(ty) = &mut self.ty {
             f(ty);
         }
     }
+
+    pub fn is_class_var(&self) -> bool {
+        self.has_qualifier(&Qualifier::ClassVar)
+    }
+
+    pub fn is_final(&self) -> bool {
+        self.has_qualifier(&Qualifier::Final)
+    }
+
+    pub fn has_qualifier(&self, qualifier: &Qualifier) -> bool {
+        self.qualifiers.iter().any(|q| q == qualifier)
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Display)]
+#[derive(Debug, Clone, TypeEq, PartialEq, Eq, Display)]
 pub enum Qualifier {
     Required,
     NotRequired,

@@ -27,7 +27,7 @@ use serde::de;
 use serde::de::Visitor;
 use serde::Deserialize;
 
-use crate::ast::Ast;
+use crate::ruff::ast::Ast;
 use crate::util::prelude::SliceExt;
 use crate::util::with_hash::WithHash;
 
@@ -69,9 +69,16 @@ impl FromStr for PythonVersion {
             })
         }
 
-        let major = extract_number(captures.get(1), 3)?;
-        let minor = extract_number(captures.get(3), 0)?;
-        let micro = extract_number(captures.get(5), 0)?;
+        let def = Self::default();
+        let major = extract_number(captures.get(1), def.major)?;
+        let minor_default = if major == def.major { def.minor } else { 0 };
+        let minor = extract_number(captures.get(3), minor_default)?;
+        let micro_default = if major == def.major && minor == def.minor {
+            def.micro
+        } else {
+            0
+        };
+        let micro = extract_number(captures.get(5), micro_default)?;
         Ok(Self {
             major,
             minor,
@@ -233,6 +240,14 @@ impl RuntimeMetadata {
                 ])),
                 _ => None,
             },
+            Expr::Name(name) if name.id == "TYPE_CHECKING" => Some(Value::Bool(true)),
+            Expr::Attribute(ExprAttribute {
+                value: box Expr::Name(name),
+                attr,
+                ..
+            }) if &name.id == "typing" && attr.as_str() == "TYPE_CHECKING" => {
+                Some(Value::Bool(true))
+            }
             Expr::Tuple(x) => Some(Value::Tuple(
                 x.elts.try_map(|x| self.evaluate(x).ok_or(())).ok()?,
             )),
@@ -275,7 +290,7 @@ impl RuntimeMetadata {
     }
 
     /// Like `Ast::if_branches`, but skips branch that statically evaluate to `false`,
-    /// and stops if any branch evalutes to `true`.
+    /// and stops if any branch evaluates to `true`.
     pub fn pruned_if_branches<'a, 'b: 'a>(
         &'a self,
         x: &'b StmtIf,
@@ -299,7 +314,7 @@ mod tests {
     fn test_parse_py_version() {
         assert_eq!(
             PythonVersion::from_str("3").unwrap(),
-            PythonVersion::new(3, 0, 0)
+            PythonVersion::new(3, 13, 0)
         );
         assert_eq!(
             PythonVersion::from_str("3.8").unwrap(),
@@ -312,6 +327,14 @@ mod tests {
         assert_eq!(
             PythonVersion::from_str("3.10.2").unwrap(),
             PythonVersion::new(3, 10, 2)
+        );
+        assert_eq!(
+            PythonVersion::from_str("4").unwrap(),
+            PythonVersion::new(4, 0, 0)
+        );
+        assert_eq!(
+            PythonVersion::from_str("4.14").unwrap(),
+            PythonVersion::new(4, 14, 0)
         );
         assert_eq!(
             PythonVersion::from_str("python3.10").unwrap(),
@@ -338,7 +361,7 @@ mod tests {
         assert_eq!(
             toml::from_str::<Output>("version = '3'").expect("Failed to parse"),
             Output {
-                version: PythonVersion::new(3, 0, 0)
+                version: PythonVersion::new(3, 13, 0)
             }
         );
         assert_eq!(

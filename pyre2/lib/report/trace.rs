@@ -5,15 +5,17 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use dupe::Dupe;
 use ruff_python_ast::Expr;
 use ruff_text_size::Ranged;
 use serde::Serialize;
 use starlark_map::small_map::SmallMap;
 
 use crate::module::module_name::ModuleName;
+use crate::module::module_path::ModulePath;
 use crate::state::handle::Handle;
 use crate::state::state::State;
-use crate::visitors::Visitors;
+use crate::util::visit::Visit;
 
 #[derive(Serialize)]
 struct Output {
@@ -23,7 +25,7 @@ struct Output {
 #[derive(Serialize)]
 struct ModuleOutput {
     name: ModuleName,
-    path: String,
+    path: ModulePath,
     types: SmallMap<String, String>,
     definitions: SmallMap<String, (String, String)>,
 }
@@ -34,7 +36,7 @@ fn trace_module(state: &State, handle: &Handle) -> Option<ModuleOutput> {
 
     let mut types = SmallMap::new();
     let mut definitions = SmallMap::new();
-    Visitors::visit_mod_expr(&ast, |x| {
+    ast.visit(&mut |x| {
         let loc = match x {
             Expr::Name(x) => x.range,
             Expr::Attribute(x) => x.attr.range,
@@ -55,7 +57,7 @@ fn trace_module(state: &State, handle: &Handle) -> Option<ModuleOutput> {
     });
     Some(ModuleOutput {
         name: handle.module(),
-        path: handle.path().to_string(),
+        path: handle.path().dupe(),
         types,
         definitions,
     })

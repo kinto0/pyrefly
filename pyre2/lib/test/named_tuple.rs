@@ -24,6 +24,20 @@ assert_type(p[0], int)
 assert_type(p[1], str)
 assert_type(p[:2], tuple[int, str])
 p["oops"]  # E: Cannot index into `Pair`  # E: `Literal['oops']` is not assignable to parameter with type `SupportsIndex`
+p.x = 1  # E: Cannot assign to read-only field `x`
+    "#,
+);
+
+testcase!(
+    test_named_tuple_delete,
+    r#"
+from typing import NamedTuple, assert_type
+class Pair(NamedTuple):
+    x: int
+    y: str
+p: Pair = Pair(1, "")
+del p.x  # E: Cannot delete read-only field `x`
+del p[0]  # E: Item deletion is not supported on `Pair`
     "#,
 );
 
@@ -58,6 +72,19 @@ NT3 = namedtuple("NT3", ["abc", "def"], rename=True)
 NT4 = namedtuple("NT4", ["def", "ghi"], rename=True)
 NT3(abc="", _1="")
 NT4(_0="", ghi="")
+    "#,
+);
+
+testcase!(
+    test_qualifiers,
+    r#"
+from typing import NamedTuple, Required, NotRequired, ReadOnly, ClassVar, Final
+class MyTuple(NamedTuple):
+    v: ClassVar[int]  # E: `ClassVar` may not be used for TypedDict or NamedTuple members
+    w: Final[int]  # E: `Final` may not be used for TypedDict or NamedTuple members
+    x: NotRequired[int]  # E: `NotRequired` may only be used for TypedDict members
+    y: Required[int]  # E: `Required` may only be used for TypedDict members
+    z: ReadOnly[int]  # E: `ReadOnly` may only be used for TypedDict members
     "#,
 );
 

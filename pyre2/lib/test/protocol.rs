@@ -21,7 +21,7 @@ class C2:
     x: str
 class C3(P, C1): ...
 class C4(P):
-    y: int # E: Class member `y` overrides parent class `P` in an inconsistent manner
+    y: int # E: Class member `C4.y` overrides parent class `P` in an inconsistent manner
 class C5:
     x: int
     y: int
@@ -294,5 +294,20 @@ def f(x: Hashable):
     pass
 f(A())
 f(B())  # E: Argument `B` is not assignable to parameter `x` with type `Hashable`
+    "#,
+);
+
+testcase!(
+    test_protocol_getattr,
+    r#"
+from typing import Protocol
+class P(Protocol):
+    x: int
+def f(proto: P) -> None: ...
+
+class C:
+    def __getattr__(self, name: str) -> int: ...
+
+f(C()) # E: Argument `C` is not assignable to parameter `proto` with type `P`
     "#,
 );

@@ -17,7 +17,7 @@ use crate::binding::narrow::NarrowOp;
 use crate::binding::narrow::NarrowVal;
 use crate::error::collector::ErrorCollector;
 use crate::error::kind::ErrorKind;
-use crate::types::callable::CallableKind;
+use crate::types::callable::FunctionKind;
 use crate::types::class::ClassType;
 use crate::types::literal::Lit;
 use crate::types::tuple::Tuple;
@@ -82,10 +82,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if args.args.len() > 1 {
             let second_arg = &args.args[1];
             let op = match func_ty.callee_kind() {
-                Some(CalleeKind::Callable(CallableKind::IsInstance)) => {
+                Some(CalleeKind::Function(FunctionKind::IsInstance)) => {
                     Some(NarrowOp::IsInstance(NarrowVal::Expr(second_arg.clone())))
                 }
-                Some(CalleeKind::Callable(CallableKind::IsSubclass)) => {
+                Some(CalleeKind::Function(FunctionKind::IsSubclass)) => {
                     Some(NarrowOp::IsSubclass(NarrowVal::Expr(second_arg.clone())))
                 }
                 _ => None,
@@ -278,7 +278,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     });
                     let ret = self.call_infer(call_target, &args, &arguments.keywords, range, errors, None);
                     if let Type::TypeIs(box t) = ret {
-                        return self.narrow_isinstance(ty, t, range, errors);
+                        return self.intersect(ty, &t);
                     }
                 }
                 ty.clone()
@@ -291,7 +291,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     });
                     let ret = self.call_infer(call_target, &args, &arguments.keywords, range, errors, None);
                     if let Type::TypeIs(box t) = ret {
-                        return self.narrow_is_not_instance(ty, t, range, errors);
+                        return self.subtract(ty, &t);
                     }
                 }
                 ty.clone()

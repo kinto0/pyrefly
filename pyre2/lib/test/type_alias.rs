@@ -49,7 +49,7 @@ type X[T] = list
 testcase!(
     test_bad_type_alias,
     r#"
-type X = 1  # E: Expected `X` to be a type alias, got Literal[1]
+type X = 1  # E: number literal cannot be used in annotations
     "#,
 );
 
@@ -232,7 +232,7 @@ testcase!(
     test_bad_annotated_alias,
     r#"
 from typing import TypeAlias
-X: TypeAlias = 1  # E: Expected `X` to be a type alias, got Literal[1]
+X: TypeAlias = 1  # E: number literal cannot be used in annotations
     "#,
 );
 
@@ -372,10 +372,10 @@ testcase!(
 from typing import assert_type
 class C[T]:
     type X = list[T]
-    x: X
+    x: X = []
 def f(c: C[int]):
     assert_type(c.x, list[int])
-    x: c.X
+    x: c.X = []
     assert_type(x, list[int])
 bad1: C.X  # E: Generic attribute `X` of class `C` is not visible on the class
 bad2: C[int].X  # E: Generic attribute `X` of class `C` is not visible on the class
@@ -439,11 +439,23 @@ def f(x: X | str):
 );
 
 testcase_with_bug!(
-    "TODO zeina: Consider a huristic of when to interpret the RHS of an assignment as a type.",
+    "TODO zeina: Consider a heuristic of when to interpret the RHS of an assignment as a type.",
     test_type_alias_union,
     r#"
 from typing import Union
 class Y: pass
 X = Union[int, "Y"] # E: Expected a type form, got instance of `Literal['Y']`
+    "#,
+);
+
+testcase_with_bug!(
+    "Causing issues with argparse library",
+    test_type_alias_argparse,
+    r#"
+from typing import Callable, Any
+def foo(x: Callable[[str], Any]) -> None:
+    pass 
+
+foo(str) # E: Argument `type[str]` is not assignable to parameter `x` with type `(str) -> Any` in function `foo`
     "#,
 );

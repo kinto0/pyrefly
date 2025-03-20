@@ -27,8 +27,8 @@ use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::kind::ErrorKind;
 use crate::types::callable::Callable;
-use crate::types::callable::CallableKind;
-use crate::types::callable::FuncId;
+use crate::types::callable::FuncMetadata;
+use crate::types::callable::Function;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
@@ -48,7 +48,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         typed_dict: &TypedDict,
         range: TextRange,
         errors: &ErrorCollector,
-        tcc: &TypeCheckContext,
+        tcc: &dyn Fn() -> TypeCheckContext,
     ) {
         let fields = typed_dict.fields();
         let mut has_expansion = false;
@@ -61,12 +61,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if let Some(field) = fields.get(&key_name) {
                         self.expr(
                             &x.value,
-                            Some((
-                                &field.ty,
-                                &TypeCheckContext::of_kind(TypeCheckKind::TypedDictKey(
+                            Some((&field.ty, &|| {
+                                TypeCheckContext::of_kind(TypeCheckKind::TypedDictKey(
                                     key_name.clone(),
-                                )),
-                            )),
+                                ))
+                            })),
                             errors,
                         );
                     } else {
@@ -193,14 +192,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 ));
             }
         }
-        let ty = Type::Callable(
-            Box::new(Callable::list(ParamList::new(params), Type::None)),
-            CallableKind::Def(Box::new(FuncId {
-                module: self.module_info().name(),
-                cls: Some(cls.name().clone()),
-                func: dunder::INIT,
-            })),
-        );
+        let ty = Type::Function(Box::new(Function {
+            signature: Callable::list(ParamList::new(params), Type::None),
+            metadata: FuncMetadata::def(
+                self.module_info().name(),
+                cls.name().clone(),
+                dunder::INIT,
+            ),
+        }));
         ClassSynthesizedField::new(ty)
     }
 

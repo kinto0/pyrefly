@@ -32,6 +32,7 @@ use crate::types::tuple::Tuple;
 use crate::types::types::Type;
 use crate::util::display::count;
 use crate::util::prelude::VecExt;
+use crate::util::visit::Visit;
 
 #[derive(Clone, Debug)]
 pub enum CallArg<'a> {
@@ -55,7 +56,7 @@ impl Ranged for CallArg<'_> {
 impl CallArg<'_> {
     // Splat arguments might be fixed-length tuples, which are handled precisely, or have unknown
     // length. This function evaluates splat args to determine how many params should be consumed,
-    // but does not evaulate other expressions, which might be contextually typed.
+    // but does not evaluate other expressions, which might be contextually typed.
     fn pre_eval<Ans: LookupAnswer>(
         &self,
         solver: &AnswersSolver<Ans>,
@@ -138,31 +139,31 @@ impl CallArgPreEval<'_> {
         range: TextRange,
         arg_errors: &ErrorCollector,
         call_errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) {
-        let tcc = TypeCheckContext {
+        let tcc = &|| TypeCheckContext {
             kind: TypeCheckKind::CallArgument(param_name.cloned(), callable_name.cloned()),
-            context: context.cloned(),
+            context: context.map(|ctx| ctx()),
         };
         match self {
             Self::Type(ty, done) => {
                 *done = true;
-                solver.check_type(hint, ty, range, call_errors, &tcc);
+                solver.check_type(hint, ty, range, call_errors, tcc);
             }
             Self::Expr(x, done) => {
                 *done = true;
                 solver.expr_with_separate_check_errors(
                     x,
-                    Some((hint, &tcc, call_errors)),
+                    Some((hint, tcc, call_errors)),
                     arg_errors,
                 );
             }
             Self::Star(ty, done) => {
                 *done = vararg;
-                solver.check_type(hint, ty, range, call_errors, &tcc);
+                solver.check_type(hint, ty, range, call_errors, tcc);
             }
             Self::Fixed(tys, i) => {
-                solver.check_type(hint, &tys[*i], range, call_errors, &tcc);
+                solver.check_type(hint, &tys[*i], range, call_errors, tcc);
                 *i += 1;
             }
         }
@@ -218,7 +219,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         range: TextRange,
         arg_errors: &ErrorCollector,
         call_errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) {
         let error = |errors, range, kind, context, msg: String| {
             self.error(
@@ -353,9 +354,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 &unpacked_args_ty,
                 range,
                 arg_errors,
-                &TypeCheckContext {
+                &|| TypeCheckContext {
                     kind: TypeCheckKind::CallVarArgs(callable_name.clone()),
-                    context: context.cloned(),
+                    context: context.map(|ctx| ctx()),
                 },
             );
         }
@@ -439,7 +440,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                     context,
                                     format!("Multiple values for argument `{}`", name),
                                 );
-                                params.items()[p_idx].visit(|ty| hint = Some(ty));
+                                params.items()[p_idx].visit(&mut |ty| hint = Some(ty));
                             } else if let Some(&(p_idx, ty, required)) = kwparams.get(name) {
                                 seen_names.insert(name.clone(), p_idx);
                                 if required && !field.required {
@@ -462,19 +463,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 );
                             }
                             hint.iter().for_each(|want| {
-                                self.check_type(
-                                    want,
-                                    &field.ty,
-                                    kw.range,
-                                    call_errors,
-                                    &TypeCheckContext {
+                                self.check_type(want, &field.ty, kw.range, call_errors, &|| {
+                                    TypeCheckContext {
                                         kind: TypeCheckKind::CallArgument(
                                             Some(name.clone()),
                                             callable_name.clone(),
                                         ),
-                                        context: context.cloned(),
-                                    },
-                                );
+                                        context: context.map(|ctx| ctx()),
+                                    }
+                                });
                             });
                         })
                     } else {
@@ -491,13 +488,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                             &value,
                                             kw.range,
                                             call_errors,
-                                            &TypeCheckContext {
+                                            &|| TypeCheckContext {
                                                 kind: TypeCheckKind::CallKwArgs(
                                                     None,
                                                     None,
                                                     callable_name.clone(),
                                                 ),
-                                                context: context.cloned(),
+                                                context: context.map(|ctx| ctx()),
                                             },
                                         );
                                     });
@@ -510,7 +507,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                         context,
                                         format!(
                                             "Expected argument after ** to have `str` keys, got: {}",
-                                            key.deterministic_printing()
+                                            self.for_display(key)
                                         ),
                                     );
                                 }
@@ -523,7 +520,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                     context,
                                     format!(
                                         "Expected argument after ** to be a mapping, got: {}",
-                                        ty.deterministic_printing()
+                                        self.for_display(ty)
                                     ),
                                 );
                             }
@@ -541,7 +538,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             context,
                             format!("Multiple values for argument `{}`", id.id),
                         );
-                        params.items()[p_idx].visit(|ty| {
+                        params.items()[p_idx].visit(&mut |ty| {
                             hint = Some(ty);
                         });
                         has_matching_param = true;
@@ -558,7 +555,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             format!("Unexpected keyword argument `{}`", id.id),
                         );
                     }
-                    let tcc = TypeCheckContext {
+                    let tcc: &dyn Fn() -> TypeCheckContext = &|| TypeCheckContext {
                         kind: if has_matching_param {
                             TypeCheckKind::CallArgument(Some(id.id.clone()), callable_name.clone())
                         } else {
@@ -568,11 +565,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 callable_name.clone(),
                             )
                         },
-                        context: context.cloned(),
+                        context: context.map(|ctx| ctx()),
                     };
                     self.expr_with_separate_check_errors(
                         &kw.value,
-                        hint.map(|ty| (ty, &tcc, call_errors)),
+                        hint.map(|ty| (ty, tcc, call_errors)),
                         arg_errors,
                     );
                 }
@@ -590,20 +587,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                 }
                 for (ty, range) in &splat_kwargs {
-                    self.check_type(
-                        want,
-                        ty,
-                        *range,
-                        call_errors,
-                        &TypeCheckContext {
-                            kind: TypeCheckKind::CallKwArgs(
-                                None,
-                                Some(name.clone()),
-                                callable_name.clone(),
-                            ),
-                            context: context.cloned(),
-                        },
-                    );
+                    self.check_type(want, ty, *range, call_errors, &|| TypeCheckContext {
+                        kind: TypeCheckKind::CallKwArgs(
+                            None,
+                            Some(name.clone()),
+                            callable_name.clone(),
+                        ),
+                        context: context.map(|ctx| ctx()),
+                    });
                 }
             }
         }
@@ -626,7 +617,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         range: TextRange,
         arg_errors: &ErrorCollector,
         call_errors: &ErrorCollector,
-        context: Option<&ErrorContext>,
+        context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
         match callable.params {
             Params::List(params) => {

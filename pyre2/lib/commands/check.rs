@@ -22,32 +22,36 @@ use starlark_map::small_map::SmallMap;
 use tracing::info;
 
 use crate::clap_env;
+use crate::commands::suppress;
 use crate::commands::util::module_from_path;
 use crate::config::set_if_some;
 use crate::config::ConfigFile;
 use crate::error::error::Error;
 use crate::error::legacy::LegacyErrors;
-use crate::error::style::ErrorStyle;
 use crate::metadata::PythonVersion;
-use crate::metadata::RuntimeMetadata;
 use crate::module::bundled::typeshed;
 use crate::module::finder::find_module;
 use crate::module::module_name::ModuleName;
 use crate::module::module_path::ModulePath;
+use crate::module::module_path::ModulePathDetails;
 use crate::report;
 use crate::run::CommandExitStatus;
 use crate::state::handle::Handle;
 use crate::state::loader::FindError;
 use crate::state::loader::Loader;
 use crate::state::loader::LoaderId;
+use crate::state::require::Require;
 use crate::state::state::State;
 use crate::state::subscriber::ProgressBarSubscriber;
+use crate::util::display;
 use crate::util::display::number_thousands;
 use crate::util::forgetter::Forgetter;
 use crate::util::fs_anyhow;
 use crate::util::listing::FileList;
 use crate::util::memory::MemoryUsageTrace;
+use crate::util::prelude::SliceExt;
 use crate::util::prelude::VecExt;
+use crate::util::watcher::CategorizedEvents;
 use crate::util::watcher::Watcher;
 
 #[derive(Debug, Clone, ValueEnum, Default)]
@@ -62,8 +66,8 @@ pub struct Args {
     /// Write the errors to a file, instead of printing them.
     #[arg(long, short = 'o', env = clap_env("OUTPUT"))]
     output: Option<PathBuf>,
-    #[clap(long, short = 'I', env = clap_env("INCLUDE"))]
-    include: Option<Vec<PathBuf>>,
+    #[clap(long, env = clap_env("SEARCH_PATH"))]
+    search_path: Option<Vec<PathBuf>>,
     #[clap(long, value_enum, default_value_t, env = clap_env("OUTPUT_FORMAT"))]
     output_format: OutputFormat,
     /// Check all reachable modules, not just the ones that are passed in explicitly on CLI positional arguments.
@@ -82,14 +86,32 @@ pub struct Args {
     report_binding_memory: Option<PathBuf>,
     #[clap(long, env = clap_env("REPORT_TRACE"))]
     report_trace: Option<PathBuf>,
+    /// Process each module individually to figure out how long each step takes.
+    #[clap(long, env = clap_env("REPORT_TIMINGS"))]
+    report_timings: Option<PathBuf>,
+    /// Count the number of each error kind. Prints the top N errors, sorted by count, or all errors if N is not specified.
     #[clap(
         long,
         default_missing_value = "5",
         require_equals = true,
         num_args = 0..=1,
+        env = clap_env("COUNT_ERRORS")
+    )]
+    count_errors: Option<usize>,
+    /// Summarize errors by directory. The optional index argument specifies which file path segment will be used to group errors.
+    /// The default index is 0. For errors in `/foo/bar/...`, this will group errors by `/foo`. If index is 1, errors will be grouped by `/foo/bar`.
+    /// An index larger than the number of path segments will group by the final path element, i.e. the file name.
+    #[clap(
+        long,
+        default_missing_value = "0",
+        require_equals = true,
+        num_args = 0..=1,
         env = clap_env("SUMMARIZE_ERRORS")
     )]
     summarize_errors: Option<usize>,
+    /// Suppress errors found in the input files.
+    #[clap(long, env = clap_env("SUPPRESS_ERRORS"))]
+    suppress_errors: bool,
     /// Check against any `E:` lines in the file.
     #[clap(long, env = clap_env("EXPECTATIONS"))]
     expectations: bool,
@@ -97,36 +119,26 @@ pub struct Args {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct LoaderInputs {
-    search_roots: Vec<PathBuf>,
+    search_path: Vec<PathBuf>,
     site_package_path: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
 struct CheckLoader {
-    sources: SmallMap<ModuleName, PathBuf>,
     loader_inputs: LoaderInputs,
-    error_style_for_sources: ErrorStyle,
-    error_style_for_dependencies: ErrorStyle,
 }
 
 impl Loader for CheckLoader {
-    fn find(&self, module: ModuleName) -> Result<(ModulePath, ErrorStyle), FindError> {
-        if let Some(path) = self.sources.get(&module) {
-            // FIXME: Because we pre-created these handles, the only real reason to do this
-            // is for the error-style, which is a pretty weird reason to do it.
-            Ok((
-                ModulePath::filesystem(path.clone()),
-                self.error_style_for_sources,
-            ))
-        } else if let Some(path) = find_module(module, &self.loader_inputs.search_roots) {
-            Ok((path, self.error_style_for_dependencies))
+    fn find_import(&self, module: ModuleName) -> Result<ModulePath, FindError> {
+        if let Some(path) = find_module(module, &self.loader_inputs.search_path) {
+            Ok(path)
         } else if let Some(path) = typeshed().map_err(FindError::new)?.find(module) {
-            Ok((path, self.error_style_for_dependencies))
+            Ok(path)
         } else if let Some(path) = find_module(module, &self.loader_inputs.site_package_path) {
-            Ok((path, self.error_style_for_dependencies))
+            Ok(path)
         } else {
             Err(FindError::search_path(
-                &self.loader_inputs.search_roots,
+                &self.loader_inputs.search_path,
                 &self.loader_inputs.site_package_path,
             ))
         }
@@ -162,97 +174,111 @@ impl OutputFormat {
     }
 }
 
-fn create_loader(
-    loader_inputs: LoaderInputs,
-    files_with_module_name_and_metadata: &[(PathBuf, ModuleName, RuntimeMetadata)],
-    check_all: bool,
-) -> LoaderId {
-    let mut to_check = SmallMap::with_capacity(files_with_module_name_and_metadata.len());
-    for (path, module_name, _) in files_with_module_name_and_metadata {
-        to_check
-            .entry(module_name.dupe())
-            .or_insert_with(|| path.clone());
+fn create_loader(loader_inputs: LoaderInputs) -> LoaderId {
+    LoaderId::new(CheckLoader { loader_inputs })
+}
+
+struct RequireLevels {
+    specified: Require,
+    default: Require,
+}
+
+async fn get_watcher_events(watcher: &mut impl Watcher) -> anyhow::Result<CategorizedEvents> {
+    loop {
+        let events = CategorizedEvents::new(watcher.wait().await?);
+        if !events.is_empty() {
+            return Ok(events);
+        }
+        if !events.unknown.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Cannot handle uncategorized watcher event on paths [{}]",
+                display::commas_iter(|| events.unknown.iter().map(|x| x.display()))
+            ));
+        }
     }
-    let error_style_for_sources = ErrorStyle::Delayed;
-    LoaderId::new(CheckLoader {
-        sources: to_check,
-        loader_inputs,
-        error_style_for_sources,
-        error_style_for_dependencies: if check_all {
-            error_style_for_sources
-        } else {
-            ErrorStyle::Never
-        },
-    })
 }
 
 impl Args {
-    pub fn run(
+    pub fn run_once(
         self,
-        watcher: Option<Box<dyn Watcher>>,
-        files_to_check: impl FileList + Clone,
-        config_finder: &dyn Fn(&Path) -> ConfigFile,
+        files_to_check: impl FileList,
+        config_finder: &impl Fn(&Path) -> ConfigFile,
         allow_forget: bool,
     ) -> anyhow::Result<CommandExitStatus> {
-        if let Some(watcher) = watcher {
-            self.run_watch(watcher, files_to_check, config_finder)?;
-            Ok(CommandExitStatus::Success)
-        } else {
-            self.run_inner(files_to_check, config_finder, allow_forget)
+        let expanded_file_list = files_to_check.files()?;
+        if expanded_file_list.is_empty() {
+            return Ok(CommandExitStatus::Success);
         }
+
+        let mut holder = Forgetter::new(State::new(), allow_forget);
+        let require_levels = self.get_required_levels();
+        let handles = self.get_handles(expanded_file_list, config_finder, require_levels.specified);
+        self.run_inner(holder.as_mut(), &handles, require_levels.default)
     }
 
-    fn run_watch(
+    pub async fn run_watch(
         self,
-        mut watcher: Box<dyn Watcher>,
-        files_to_check: impl FileList + Clone,
-        config_finder: &dyn Fn(&Path) -> ConfigFile,
+        mut watcher: impl Watcher,
+        files_to_check: impl FileList,
+        config_finder: &impl Fn(&Path) -> ConfigFile,
     ) -> anyhow::Result<()> {
-        for path in files_to_check.roots() {
-            watcher.watch_dir(&path)?;
-        }
+        // TODO: We currently make 2 unrealistic assumptions, which should be fixed in the future:
+        // - Glob expansion is stable across incremental runs.
+        // - Config search is stable across incremental runs.
+        let expanded_file_list = files_to_check.files()?;
+        let require_levels = self.get_required_levels();
+        let handles = self.get_handles(expanded_file_list, config_finder, require_levels.specified);
+        let mut state = State::new();
         loop {
-            let res = self
-                .clone()
-                .run_inner(files_to_check.clone(), config_finder, false);
+            let res = self.run_inner(&mut state, &handles, require_levels.default);
             if let Err(e) = res {
                 eprintln!("{e:#}");
             }
-            loop {
-                let events = watcher.wait()?;
-                if events.iter().any(|x| !x.kind.is_access()) {
-                    break;
-                }
-            }
+            let events = get_watcher_events(&mut watcher).await?;
+            // TODO: Handle add/remove events.
+            state.invalidate_disk(&events.modified);
         }
     }
 
     fn override_config(&self, config: &mut ConfigFile) {
         set_if_some(&mut config.python_platform, self.python_platform.as_ref());
         set_if_some(&mut config.python_version, self.python_version.as_ref());
-        set_if_some(&mut config.search_roots, self.include.as_ref());
+        set_if_some(&mut config.search_path, self.search_path.as_ref());
         set_if_some(
             &mut config.site_package_path,
             self.site_package_path.as_ref(),
         );
     }
 
-    fn run_inner(
-        self,
-        files_to_check: impl FileList,
-        config_finder: &dyn Fn(&Path) -> ConfigFile,
-        allow_forget: bool,
-    ) -> anyhow::Result<CommandExitStatus> {
-        let args = self;
-
-        let expanded_file_list = files_to_check.files()?;
-        if expanded_file_list.is_empty() {
-            return Ok(CommandExitStatus::Success);
+    fn get_required_levels(&self) -> RequireLevels {
+        let retain = self.report_binding_memory.is_some()
+            || self.debug_info.is_some()
+            || self.report_trace.is_some();
+        RequireLevels {
+            specified: if retain {
+                Require::Everything
+            } else {
+                Require::Errors
+            },
+            default: if retain {
+                Require::Everything
+            } else if self.check_all {
+                Require::Errors
+            } else {
+                Require::Exports
+            },
         }
+    }
 
+    fn get_handles(
+        &self,
+        expanded_file_list: Vec<PathBuf>,
+        config_finder: &impl Fn(&Path) -> ConfigFile,
+        specified_require: Require,
+    ) -> Vec<(Handle, Require)> {
         let files_and_configs = expanded_file_list.into_map(|path| {
             let mut config = config_finder(&path);
-            args.override_config(&mut config);
+            self.override_config(&mut config);
             (path, config)
         });
         // We want to partition the files to check by their associated search roots, so we can
@@ -261,7 +287,7 @@ impl Args {
             SmallMap::new();
         for (path, config) in files_and_configs {
             let key = LoaderInputs {
-                search_roots: config.search_roots.clone(),
+                search_path: config.search_path.clone(),
                 site_package_path: config.site_package_path.clone(),
             };
             partition_by_loader_inputs
@@ -270,91 +296,103 @@ impl Args {
                 .push((path, config));
         }
 
-        let handles: Vec<Handle> = partition_by_loader_inputs
+        partition_by_loader_inputs
             .into_iter()
             .flat_map(|(loader_inputs, files_and_configs)| {
                 let files_with_module_name_and_metadata =
                     files_and_configs.into_map(|(path, config)| {
-                        let module_name = module_from_path(&path, &loader_inputs.search_roots);
-                        let version = match args.python_version {
-                            Some(version) => version,
-                            None => config.python_version,
-                        };
-                        let platform = config.python_platform.to_owned();
-                        (path, module_name, RuntimeMetadata::new(version, platform))
+                        let module_name = module_from_path(&path, &loader_inputs.search_path);
+                        (path, module_name, config.get_runtime_metadata())
                     });
-                let loader = create_loader(
-                    loader_inputs,
-                    &files_with_module_name_and_metadata,
-                    args.check_all,
-                );
+                let loader = create_loader(loader_inputs);
                 files_with_module_name_and_metadata.into_map(
                     |(path, module_name, runtime_metadata)| {
-                        Handle::new(
-                            module_name,
-                            ModulePath::filesystem(path),
-                            runtime_metadata,
-                            loader.dupe(),
+                        (
+                            Handle::new(
+                                module_name,
+                                ModulePath::filesystem(path),
+                                runtime_metadata,
+                                loader.dupe(),
+                            ),
+                            specified_require,
                         )
                     },
                 )
             })
-            .collect();
+            .collect()
+    }
 
+    fn run_inner(
+        &self,
+        state: &mut State,
+        handles: &[(Handle, Require)],
+        default_require: Require,
+    ) -> anyhow::Result<CommandExitStatus> {
         let progress = Box::new(ProgressBarSubscriber::new());
         let mut memory_trace = MemoryUsageTrace::start(Duration::from_secs_f32(0.1));
         let start = Instant::now();
-        let state = State::new();
-        let mut holder = Forgetter::new(state, allow_forget);
-        let state = holder.as_mut();
 
-        if args.report_binding_memory.is_none()
-            && args.debug_info.is_none()
-            && args.report_trace.is_none()
-        {
-            state.run_one_shot(&handles, Some(progress))
-        } else {
-            state.run(&handles, Some(progress))
-        };
+        state.run(handles, default_require, Some(progress));
         let computing = start.elapsed();
-        if let Some(path) = args.output {
+        if let Some(path) = &self.output {
             let errors = state.collect_errors();
-            args.output_format.write_errors_to_file(&path, &errors)?;
+            self.output_format.write_errors_to_file(path, &errors)?;
         } else {
             state.print_errors();
         }
         let printing = start.elapsed();
         memory_trace.stop();
-        if let Some(limit) = args.summarize_errors {
-            state.print_error_summary(limit);
+        if let Some(limit) = self.count_errors {
+            state.print_error_counts(limit);
         }
-        let count_errors = state.count_errors();
+        if let Some(path_index) = self.summarize_errors {
+            state.print_error_summary(path_index);
+        }
+        let error_count = state.count_errors();
         info!(
-            "{} errors, {} modules, took {printing:.2?} ({computing:.2?} without printing errors), peak memory {}",
-            number_thousands(count_errors),
+            "{} errors, {} modules, {} lines, took {printing:.2?} ({computing:.2?} without printing errors), peak memory {}",
+            number_thousands(error_count),
             number_thousands(state.module_count()),
+            number_thousands(state.line_count()),
             memory_trace.peak()
         );
-        if let Some(debug_info) = args.debug_info {
-            let mut output = serde_json::to_string_pretty(&state.debug_info(&handles))?;
+        if let Some(timings) = &self.report_timings {
+            eprintln!("Computing timing information");
+            state.report_timings(timings, Some(Box::new(ProgressBarSubscriber::new())))?;
+        }
+        if let Some(debug_info) = &self.debug_info {
+            let mut output =
+                serde_json::to_string_pretty(&state.debug_info(&handles.map(|x| x.0.dupe())))?;
             if debug_info.extension() == Some(OsStr::new("js")) {
                 output = format!("var data = {output}");
             }
-            fs_anyhow::write(&debug_info, output.as_bytes())?;
+            fs_anyhow::write(debug_info, output.as_bytes())?;
         }
-        if let Some(path) = args.report_binding_memory {
+        if let Some(path) = &self.report_binding_memory {
             fs_anyhow::write(
-                &path,
+                path,
                 report::binding_memory::binding_memory(state).as_bytes(),
             )?;
         }
-        if let Some(path) = args.report_trace {
-            fs_anyhow::write(&path, report::trace::trace(state).as_bytes())?;
+        if let Some(path) = &self.report_trace {
+            fs_anyhow::write(path, report::trace::trace(state).as_bytes())?;
         }
-        if args.expectations {
+        if self.suppress_errors {
+            let errors: SmallMap<PathBuf, Vec<Error>> = state
+                .collect_errors()
+                .into_iter()
+                .filter(|e| matches!(e.path().details(), ModulePathDetails::FileSystem(_)))
+                .fold(SmallMap::new(), |mut acc, e| {
+                    let path = PathBuf::from(e.path().to_string());
+                    acc.entry(path).or_default().push(e);
+                    acc
+                });
+            suppress::suppress_errors(&errors);
+        }
+        if self.expectations {
             state.check_against_expectations()?;
             Ok(CommandExitStatus::Success)
-        } else if count_errors > 0 {
+        } else if error_count > 0 {
             Ok(CommandExitStatus::UserError)
         } else {
             Ok(CommandExitStatus::Success)

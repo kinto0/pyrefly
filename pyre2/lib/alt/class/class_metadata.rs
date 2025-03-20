@@ -27,13 +27,13 @@ use crate::alt::types::class_metadata::EnumMetadata;
 use crate::alt::types::class_metadata::NamedTupleMetadata;
 use crate::alt::types::class_metadata::ProtocolMetadata;
 use crate::alt::types::class_metadata::TypedDictMetadata;
-use crate::ast::Ast;
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyLegacyTypeParam;
 use crate::error::collector::ErrorCollector;
 use crate::error::kind::ErrorKind;
 use crate::graph::index::Idx;
-use crate::types::callable::CallableKind;
+use crate::ruff::ast::Ast;
+use crate::types::callable::FunctionKind;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
 use crate::types::literal::Lit;
@@ -167,8 +167,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     Some((Type::ClassType(c), range)) => {
                         let base_cls = c.class_object();
                         let base_class_metadata = self.get_metadata_for_class(base_cls);
+                        if base_class_metadata.has_base_any() {
+                            has_base_any = true;
+                        }
                         if base_class_metadata.is_typed_dict() {
                             is_typed_dict = true;
+                        }
+                        if base_class_metadata.is_final() {
+                            self.error(errors,
+                                range,
+                                ErrorKind::InvalidInheritance,
+                                None,
+                                format!("Cannot extend final class `{}`", base_cls.name()),
+                            );
                         }
                         if base_cls.has_qname("typing", "NamedTuple")
                         {
@@ -220,8 +231,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             class_metadata,
                         ))
                     }
-                    // todo zeina: Ideally, we can directly add this class to the list of base classes. Revist this when fixing the "Any" representation.  
-                    Some((Type::Any(_), _)) =>  {has_base_any = true; None}
+                    // todo zeina: Ideally, we can directly add this class to the list of base classes. Revisit this when fixing the "Any" representation.  
+                    Some((Type::Any(_), _)) => {
+                        has_base_any = true;
+                        None
+                    }
                     _ => None,
                 }
             })
@@ -297,16 +311,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 );
             }
         }
+        let mut is_final = false;
         for decorator in decorators {
             let ty_decorator = self.get_idx(*decorator);
-            if let Some(CalleeKind::Callable(CallableKind::Dataclass(kws))) =
-                ty_decorator.callee_kind()
-            {
-                let dataclass_fields = self.get_dataclass_fields(cls, &bases_with_metadata);
-                dataclass_metadata = Some(DataclassMetadata {
-                    fields: dataclass_fields,
-                    kws: *kws,
-                });
+            match ty_decorator.callee_kind() {
+                Some(CalleeKind::Function(FunctionKind::Dataclass(kws))) => {
+                    let dataclass_fields = self.get_dataclass_fields(cls, &bases_with_metadata);
+                    dataclass_metadata = Some(DataclassMetadata {
+                        fields: dataclass_fields,
+                        kws: *kws,
+                    });
+                }
+                Some(CalleeKind::Function(FunctionKind::Final)) => {
+                    is_final = true;
+                }
+                _ => {}
             }
         }
         if is_typed_dict
@@ -331,6 +350,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             dataclass_metadata,
             has_base_any,
             is_new_type,
+            is_final,
             errors,
         )
     }
@@ -365,8 +385,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && special_base_class.can_apply()
         {
             // This branch handles `Generic[...]` and `Protocol[...]`
-            let args = Ast::unpack_slice(&subscript.slice)
-                .map(|x| self.expr_untype(x, TypeFormContext::GenericBase, errors));
+            let mut type_var_tuple_count = 0;
+            let args = Ast::unpack_slice(&subscript.slice).map(|x| {
+                let ty = self.expr_untype(x, TypeFormContext::GenericBase, errors);
+                if let Type::Unpack(box unpacked) = &ty
+                    && unpacked.is_kind_type_var_tuple()
+                {
+                    if type_var_tuple_count == 1 {
+                        self.error(
+                            errors,
+                            x.range(),
+                            ErrorKind::InvalidInheritance,
+                            None,
+                            "There cannot be more than one TypeVarTuple type parameter".to_owned(),
+                        );
+                    }
+                    type_var_tuple_count += 1;
+                }
+                ty
+            });
             special_base_class.apply(args);
             special_base_class
         } else {

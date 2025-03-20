@@ -66,6 +66,17 @@ class A:
     "#,
 );
 
+testcase!(
+    test_self_attribute_in_test_setup,
+    r#"
+class MyTestCase:
+    def setUp(self):
+        self.x = 5
+    def run(self):
+        assert self.x == 5
+    "#,
+);
+
 testcase_with_bug!(
     "Example of how making methods read-write but not invariant is unsound",
     test_method_assign,
@@ -130,7 +141,7 @@ class B:
     def __init__(self, a: A):
         a.x: int = 1  # E: Type cannot be declared in assignment to non-self attribute `a.x`
 
-a: A
+a: A = A()
 a.x: int = 5  # E: Type cannot be declared in assignment to non-self attribute `a.x`
     "#,
 );
@@ -156,6 +167,16 @@ class A:
         self.x: int = x  # E: `str` is not assignable to attribute `x` with type `int`
 def f(a: A):
     assert_type(a.x, int)
+    "#,
+);
+
+testcase!(
+    test_generic_classvar,
+    r#"
+from typing import ClassVar
+class A[T]:
+    x: ClassVar[T]  # E: `ClassVar` arguments may not contain any type variables
+    y: ClassVar[list[T]]  # E: `ClassVar` arguments may not contain any type variables
     "#,
 );
 
@@ -199,8 +220,7 @@ assert_type(C.x1, int)
 "#,
 );
 
-testcase_with_bug!(
-    "TODO(zeina): We are not enforcing `Final` override bans when the type matches",
+testcase!(
     test_final_annotated_override,
     r#"
 from typing import Final
@@ -208,7 +228,7 @@ def f() -> int: ...
 class Base:
     p: Final = f()
 class Derived(Base):
-    p = f()  # Oops, this should be an error
+    p = f()  # E: `p` is declared as final in parent class `Base`
 "#,
 );
 
@@ -361,7 +381,7 @@ class B[T]:
 class C[T](A[int], B[T]):
     z: bool
 
-c: C[str]
+c: C[str] = C()
 assert_type(c.x, int)
 assert_type(c.y, str)
 assert_type(c.z, bool)
@@ -381,7 +401,7 @@ class B[T](A[list[T]]):
 class C[T](B[T]):
     z: bool
 
-c: C[str]
+c: C[str] = C()
 assert_type(c.x, list[str])
 assert_type(c.y, str)
 assert_type(c.z, bool)
@@ -540,5 +560,110 @@ from foo import A
 
 assert_type(A.x, int)
 A.y  # E: Instance-only attribute `y` of class `A` is not visible on the class
+    "#,
+);
+
+testcase!(
+    test_object_getattr,
+    r#"
+from typing import assert_type
+
+class Foo:
+    def __getattr__(self, name: str) -> int: ...
+
+def test(foo: Foo) -> None:
+    assert_type(foo.x, int)
+    assert_type(foo.y, int)
+    foo.x = 1  # E: Object of class `Foo` has no attribute `x`
+    del foo.y  # E: Object of class `Foo` has no attribute `y`
+    "#,
+);
+
+testcase!(
+    test_object_getattr_wrong_signature,
+    r#"
+from typing import assert_type
+
+class Foo:
+    def __getattr__(self, name: int) -> int: ...
+
+def test(foo: Foo) -> None:
+    assert_type(foo.x, int)  # E: Argument `Literal['x']` is not assignable to parameter `name`
+    assert_type(foo.y, int)  # E: Argument `Literal['y']` is not assignable to parameter `name`
+    foo.x = 1  # E: Object of class `Foo` has no attribute `x`
+    del foo.y  # E: Object of class `Foo` has no attribute `y`
+    "#,
+);
+
+testcase!(
+    test_module_getattr,
+    TestEnv::one("foo", "def __getattr__(name: str) -> int: ..."),
+    r#"
+from typing import assert_type
+import foo
+assert_type(foo.x, int)
+assert_type(foo.y, int)
+foo.x = 1  # E: No attribute `x` in module `foo`
+del foo.y  # E: No attribute `y` in module `foo`
+    "#,
+);
+
+testcase!(
+    test_any_subclass,
+    r#"
+from typing import Any, assert_type
+
+class A(Any):
+    x: int
+
+class B(A):
+    y: str
+
+def test0(a: A, b: B, ta: type[A]) -> None:
+    assert_type(a.x, int)
+    assert_type(b.x, int)
+    assert_type(b.y, str)
+    assert_type(ta.mro(), list[type])
+
+    assert_type(a.z, Any)
+    assert_type(b.z, Any)
+    assert_type(ta.z, Any)
+
+class Test(B):
+    def m(self) -> None:
+        assert_type(super().z, Any)
+    "#,
+);
+
+testcase_with_bug!(
+    "PyTorch TODO: support `with` expression and raise the right error at the C() call site",
+    test_with,
+    r#"
+class C:
+    def __init__(self) -> None:
+        self.prev = False
+    def __enter__(self) -> None:
+        self.prev = False
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.prev = False
+    def __new__(cls, orig_func=None):
+        if orig_func is None:
+            return super().__new__(
+                cls  # E: Expected 0 positional arguments, got 1 in function `object.__new__` 
+            ) 
+def f():
+    with C():  # E: TODO: Expr::call_method attribute base undefined # E: Cannot use `object | None` as a context manager
+        pass
+    "#,
+);
+
+testcase_with_bug!(
+    "PyTorch TODO: There should be no error here",
+    test_attr_base,
+    r#"
+def f(x, key, dict):
+    for param in x:
+        if key in dict:  # E: TODO: Expr::call_method attribute base undefined 
+            pass
     "#,
 );

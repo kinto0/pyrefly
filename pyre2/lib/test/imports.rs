@@ -543,3 +543,82 @@ fn test_import_fail_to_load() {
     let msg = errs[0].to_string();
     assert!(msg.contains("foo.py:1:1: Failed to load"));
 }
+
+testcase!(
+    test_import_os,
+    r#"
+import os
+from typing import assert_type, LiteralString
+
+x = os.path.join("source")
+assert_type(x, LiteralString)
+"#,
+);
+
+fn env_from_self_import_mod_in_package() -> TestEnv {
+    let mut env = TestEnv::new();
+    env.add_with_path(
+        "foo",
+        r#"
+from . import bar
+from . import baz as _baz
+baz = _baz
+"#,
+        "foo/__init__.py",
+    );
+    env.add_with_path("foo.bar", "", "foo/bar.py");
+    env.add_with_path("foo.baz", "", "foo/baz.py");
+    env
+}
+
+testcase!(
+    test_import_from_self,
+    env_from_self_import_mod_in_package(),
+    r#"
+from typing import reveal_type
+import foo
+reveal_type(foo.bar)  # E: revealed type: Module[foo.bar]
+reveal_type(foo.baz)  # E: revealed type: Module[foo.baz]
+reveal_type(foo)  # E: revealed type: Module[foo]
+"#,
+);
+
+fn env_var_leak() -> TestEnv {
+    TestEnv::one(
+        "foo",
+        r#"
+from typing import TypeVar
+
+T = TypeVar("T")
+
+def copy(a: T) -> T: ...
+
+class Interpret:
+    @property
+    def x(self):
+        return copy(y) # E: Could not find name
+
+    @x.setter
+    def x(self, x):
+        pass
+"#,
+    )
+}
+
+// This test used to crash with Var's leaking between modules
+testcase!(
+    test_var_leak,
+    env_var_leak(),
+    r#"
+from foo import Interpret
+from typing import reveal_type
+
+def test():
+    i = Interpret()
+    # Deliberately don't specify the type of i.x, as sometimes
+    # it works out to None, sometimes Unknown.
+    # Plenty of errors here.
+    reveal_type(i.x) # E:
+
+"#,
+);

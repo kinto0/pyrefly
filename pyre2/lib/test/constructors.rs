@@ -19,6 +19,17 @@ assert_type(v, Foo)
 );
 
 testcase!(
+    test_constructor_union,
+    r#"
+from typing import assert_type
+class A: ...
+class B: ...
+def test(f: type[A | B]) -> A | B:
+    return f()
+"#,
+);
+
+testcase!(
     test_generic_class,
     r#"
 from typing import assert_type
@@ -62,10 +73,9 @@ testcase!(
 class C:
     def __init__[T](self: T, x: T):
         pass
-
-c: C
-C(c)  # OK
-C(0)  # E: Argument `Literal[0]` is not assignable to parameter `x` with type `C`
+def test(c: C):
+    C(c)  # OK
+    C(0)  # E: Argument `Literal[0]` is not assignable to parameter `x` with type `C`
     "#,
 );
 
@@ -75,9 +85,9 @@ testcase!(
 class C[T1]:
     def __init__[T2](self: T2, x: T2):
         pass
-c: C[int]
-C[int](c)  # OK
-C[str](c)  # E: Argument `C[int]` is not assignable to parameter `x` with type `C[str]`
+def test(c: C[int]):
+    C[int](c)  # OK
+    C[str](c)  # E: Argument `C[int]` is not assignable to parameter `x` with type `C[str]`
     "#,
 );
 

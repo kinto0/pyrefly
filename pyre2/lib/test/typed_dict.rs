@@ -20,6 +20,33 @@ def foo(c: Coord) -> Mapping[str, object]:
 );
 
 testcase!(
+    test_typed_dict_kwargs_type,
+    r#"
+from typing import assert_type, TypedDict, Unpack
+class Coord(TypedDict):
+    x: int
+    y: int
+def test1(**kwargs: Coord):
+    assert_type(kwargs, dict[str, Coord])
+def test2(**kwargs: Unpack[Coord]):
+    assert_type(kwargs, Coord)
+    "#,
+);
+
+testcase!(
+    test_qualifiers,
+    r#"
+from typing import TypedDict, Required, NotRequired, ReadOnly, ClassVar, Final
+class MyDict(TypedDict):
+    v: ClassVar[int]  # E: `ClassVar` may not be used for TypedDict or NamedTuple members
+    w: Final[int]  # E: `Final` may not be used for TypedDict or NamedTuple members
+    x: NotRequired  # E: Expected a type argument for `NotRequired`
+    y: Required  # E: Expected a type argument for `Required`
+    z: ReadOnly  # E: Expected a type argument for `ReadOnly`
+    "#,
+);
+
+testcase!(
     test_typed_dict_invalid_inheritance,
     r#"
 from typing import TypedDict
@@ -147,10 +174,25 @@ def foo(c: Coord, key: str, key2: Literal["x", "y"]):
 );
 
 testcase!(
+    test_typed_dict_delete,
+    r#"
+from typing import TypedDict, ReadOnly, Required
+class Coord(TypedDict, total=False):
+    x: int
+    y: ReadOnly[str]
+    z: Required[bool]
+def foo(c: Coord):
+    del c["x"]  # OK
+    del c["y"]  # E: Key `y` in TypedDict `Coord` may not be deleted
+    del c["z"]  # E: Key `z` in TypedDict `Coord` may not be deleted
+    "#,
+);
+
+testcase!(
     test_typed_dict_functional,
     r#"
-from typing import TypedDict
-Coord = TypedDict("Coord", { "x": int, " illegal ": int })
+from typing import TypedDict, Required, NotRequired
+Coord = TypedDict("Coord", { "x": Required[int], " illegal ": int, "y": NotRequired[int] })
 c: Coord = {"x": 1, " illegal ": 2}
 def test(c: Coord):
     x: int = c[" illegal "]
