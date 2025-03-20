@@ -1,4 +1,4 @@
-name: build_extension
+name: deploy_extension
 on:
   workflow_dispatch:
   push:
