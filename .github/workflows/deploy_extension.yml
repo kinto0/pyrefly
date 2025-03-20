@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - pyre2/version.bzl
-    branches: [ main, kinto/test-vsce-publish ]
+    branches: [ main ]
 
 jobs:
     build:
