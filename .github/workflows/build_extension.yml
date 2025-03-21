@@ -5,7 +5,18 @@ on:
   push:
 
 jobs:
+  get_version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo (to see version.bzl in nex step)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get all history for all branches and tags
+      - name: Get version
+        run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' pyre2/version.bzl)" >> $GITHUB_ENV
   build_extension:
+    needs: get_version
+    if: success()
     strategy:
       fail-fast: false
       matrix:
