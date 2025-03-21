@@ -7,6 +7,8 @@ on:
 jobs:
   get_version:
     runs-on: ubuntu-latest
+    outputs:
+      pyrefly_version: ${{ steps.pyrefly-version.outputs.PYREFLY_VERSION }}
     steps:
       - name: Checkout repo (to see version.bzl in nex step)
         uses: actions/checkout@v4
@@ -78,7 +80,7 @@ jobs:
         run: echo "platform=${{ matrix.platform }}-${{ matrix.arch }}" >> ${{ matrix.github_env }}
       - run: npm ci
         working-directory: lsp/
-      - run: npx vsce package --target ${{ env.platform }} ${{ steps.pyrefly-version.outputs.PYREFLY_VERSION }}
+      - run: npx vsce package --target ${{ env.platform }} ${{needs.get_version.outputs.pyrefly_version}}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
