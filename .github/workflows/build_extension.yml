@@ -72,7 +72,7 @@ jobs:
         run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' pyre2/version.bzl)" >> $GITHUB_ENV
       - name: save platform name
         run: echo "platform=${{ matrix.platform }}-${{ matrix.arch }}" >> ${{ matrix.github_env }}
-      - run: npx vsce package --target ${{ env.platform }} ${{ env.PYREFLY_VERSION }}
+      - run: vsce package --target ${{ env.platform }} ${{ env.PYREFLY_VERSION }}
         working-directory: lsp/
       - uses: actions/upload-artifact@v4
         with:
