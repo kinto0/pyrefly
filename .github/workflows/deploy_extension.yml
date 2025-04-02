@@ -30,6 +30,4 @@ jobs:
             - name: upload
               uses: actions/download-artifact@v4
             - name: publish
-              run: npx ovsx publish --packagePath $(find . -iname *.vsix)
-              env:
-                VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: npx ovsx publish --packagePath $(find . -iname *.vsix) --pat ${{ secrets.OPENVSX_TOKEN }}
