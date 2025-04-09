@@ -17,11 +17,8 @@ jobs:
       - name: Get version
         id: pyrefly-version
         run: |
+          # note: set to variable before echoing so failures will return early
           VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' version.bzl)
-          if [ -z "$VERSION" ]; then
-            echo "Failed to find version in version.bzl"
-            exit 1
-          fi
           echo "PYREFLY_VERSION=$VERSION" >> $GITHUB_OUTPUT
   build_extension:
     needs: get_version
