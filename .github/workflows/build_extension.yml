@@ -16,7 +16,13 @@ jobs:
           fetch-depth: 0  # Get all history for all branches and tags
       - name: Get version
         id: pyrefly-version
-        run: echo "PYREFLY_VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' version.bzl)" >> $GITHUB_OUTPUT
+        run: |
+          VERSION=$(sed -n -e 's/^VERSION = "\(.*\)"/\1/p' version.bzl)
+          if [ -z "$VERSION" ]; then
+            echo "Failed to find version in version.bzl"
+            exit 1
+          fi
+          echo "PYREFLY_VERSION=$VERSION" >> $GITHUB_OUTPUT
   build_extension:
     needs: get_version
     if: success()
