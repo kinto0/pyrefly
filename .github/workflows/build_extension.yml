@@ -27,43 +27,45 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            github_env: $env:GITHUB_ENV
-          - os: windows-latest
-            platform: win32
-            arch: arm64
-            github_env: $env:GITHUB_ENV
+          # - os: windows-latest
+          #   platform: win32
+          #   arch: x64
+          #   github_env: $env:GITHUB_ENV
+          # - os: windows-latest
+          #   platform: win32
+          #   arch: arm64
+          #   github_env: $env:GITHUB_ENV
           - os: ubuntu-latest
+            container: ubuntu:20.04
             platform: linux
             arch: x64
             github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: linux
-            arch: arm64
-            github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: linux
-            arch: armhf
-            github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: alpine
-            arch: x64
-            github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: alpine
-            arch: arm64
-            github_env: $GITHUB_ENV
-          - os: macos-13
-            platform: darwin
-            arch: x64
-            github_env: $GITHUB_ENV
-          - os: macos-14
-            platform: darwin
-            arch: arm64
-            github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: armhf
+          #   github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: alpine
+          #   arch: x64
+          #   github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: alpine
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
+          # - os: macos-13
+          #   platform: darwin
+          #   arch: x64
+          #   github_env: $GITHUB_ENV
+          # - os: macos-14
+          #   platform: darwin
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
