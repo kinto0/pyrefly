@@ -116,6 +116,8 @@ jobs:
 
   linux:
     runs-on: ubuntu-latest
+    # For backwards compatibility with GLIBC, build on older ubuntu
+    container: 'ubuntu:20.04'
     strategy:
       matrix:
         target:
