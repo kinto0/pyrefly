@@ -73,6 +73,11 @@ jobs:
         # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#environment-files
         # https://stackoverflow.com/questions/66733076/github-actions-set-environment-variable-for-windows-build-with-powershell
         run: echo "toolchain=$(cat pyrefly/rust-toolchain)" && echo "toolchain=$(cat pyrefly/rust-toolchain)" >> ${{ matrix.github_env }}
+      - name: install toolchain dependencies
+        if: matrix.container == 'ubuntu:20.04'
+        shell: bash
+        run: |
+          apt-get -y install curl
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
