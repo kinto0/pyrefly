@@ -27,43 +27,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            platform: win32
-            arch: x64
-            github_env: $env:GITHUB_ENV
-          - os: windows-latest
-            platform: win32
-            arch: arm64
-            github_env: $env:GITHUB_ENV
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
-            github_env: $GITHUB_ENV
-            container: rockylinux:8
-          - os: ubuntu-latest
-            platform: linux
-            arch: arm64
-            github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: linux
-            arch: armhf
-            github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: alpine
-            arch: x64
-            github_env: $GITHUB_ENV
+          # - os: windows-latest
+          #   platform: win32
+          #   arch: x64
+          #   github_env: $env:GITHUB_ENV
+          # - os: windows-latest
+          #   platform: win32
+          #   arch: arm64
+          #   github_env: $env:GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: x64
+          #   github_env: $GITHUB_ENV
+          #   container: rockylinux:8
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: armhf
+          #   github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: alpine
-            arch: arm64
-            github_env: $GITHUB_ENV
-          - os: macos-13
-            platform: darwin
             arch: x64
             github_env: $GITHUB_ENV
-          - os: macos-14
-            platform: darwin
-            arch: arm64
-            github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: alpine
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
+          # - os: macos-13
+          #   platform: darwin
+          #   arch: x64
+          #   github_env: $GITHUB_ENV
+          # - os: macos-14
+          #   platform: darwin
+          #   arch: arm64
+          #   github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
     steps:
