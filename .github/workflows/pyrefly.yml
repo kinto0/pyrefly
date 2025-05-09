@@ -7,6 +7,8 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    # For backwards compatibility with GLIBC, build on older ubuntu
+    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:20.04' || '' }}
     defaults:
       run:
         working-directory: pyrefly
@@ -25,6 +27,11 @@ jobs:
       # by Cargo have long paths and will cause builds/tests to fail
       if: ${{ matrix.os == 'windows-latest' }}
       run: echo "CARGO_HOME=C:\\cargo" >> ${{ matrix.github_env }}
+    - name: install toolchain dependencies
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      run: |
+        apt-get update && apt-get -y install curl build-essential
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly-2025-02-16
