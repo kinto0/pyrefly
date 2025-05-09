@@ -66,9 +66,7 @@ jobs:
             github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
     # For backwards compatibility with GLIBC, build on older ubuntu
-    container:
-      if: matrix.os == 'ubuntu-latest'
-      image: ubuntu:20.04
+    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:20.04' || '' }}
     steps:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
