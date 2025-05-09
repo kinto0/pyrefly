@@ -35,11 +35,11 @@ jobs:
           #   platform: win32
           #   arch: arm64
           #   github_env: $env:GITHUB_ENV
-          # - os: ubuntu-latest
-          #   platform: linux
-          #   arch: x64
-          #   github_env: $GITHUB_ENV
-          #   container: rockylinux:8
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            github_env: $GITHUB_ENV
+            container: rockylinux:8
           # - os: ubuntu-latest
           #   platform: linux
           #   arch: arm64
@@ -48,10 +48,10 @@ jobs:
           #   platform: linux
           #   arch: armhf
           #   github_env: $GITHUB_ENV
-          - os: ubuntu-latest
-            platform: alpine
-            arch: x64
-            github_env: $GITHUB_ENV
+          # - os: ubuntu-latest
+          #   platform: alpine
+          #   arch: x64
+          #   github_env: $GITHUB_ENV
           # - os: ubuntu-latest
           #   platform: alpine
           #   arch: arm64
