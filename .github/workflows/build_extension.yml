@@ -64,6 +64,8 @@ jobs:
             arch: arm64
             github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
+    # For backwards compatibility with GLIBC, build on older ubuntu
+    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:20.04' || '' }}
     steps:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
@@ -71,6 +73,11 @@ jobs:
         # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#environment-files
         # https://stackoverflow.com/questions/66733076/github-actions-set-environment-variable-for-windows-build-with-powershell
         run: echo "toolchain=$(cat pyrefly/rust-toolchain)" && echo "toolchain=$(cat pyrefly/rust-toolchain)" >> ${{ matrix.github_env }}
+      - name: install toolchain dependencies
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          apt-get update && apt-get -y install curl build-essential
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
