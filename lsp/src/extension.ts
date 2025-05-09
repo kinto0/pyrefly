@@ -125,9 +125,6 @@ export async function activate(context: ExtensionContext) {
         clientOptions
     );
 
-    // Start the client. This will also launch the server
-    client.start();
-
     context.subscriptions.push(
         pythonExtension.environments.onDidChangeActiveEnvironmentPath(() => {
           client.sendNotification(DidChangeConfigurationNotification.type, {settings: {}});
@@ -166,6 +163,9 @@ export async function activate(context: ExtensionContext) {
         await triggerMsPythonRefreshLanguageServers();
       }
     })
+
+    // Start the client. This will also launch the server
+    await client.start();
 }
 
 /**
