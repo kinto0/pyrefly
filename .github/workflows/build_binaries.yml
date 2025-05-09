@@ -128,6 +128,10 @@ jobs:
         with:
           submodules: recursive
           persist-credentials: false
+      - name: install toolchain dependencies
+        shell: bash
+        run: |
+          apt-get update && apt-get -y install curl build-essential git
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}

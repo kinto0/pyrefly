@@ -31,7 +31,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       shell: bash
       run: |
-        apt-get update && apt-get -y install curl build-essential
+        apt-get update && apt-get -y install curl build-essential git
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly-2025-02-16
