@@ -78,7 +78,7 @@ jobs:
         shell: bash
         run: |
           apt-get update && apt-get -y install curl
-          apt install build-essential
+          apt install -y build-essential
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.toolchain }}
