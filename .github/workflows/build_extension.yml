@@ -27,46 +27,53 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # - os: windows-latest
-          #   platform: win32
-          #   arch: x64
-          #   github_env: $env:GITHUB_ENV
-          # - os: windows-latest
-          #   platform: win32
-          #   arch: arm64
-          #   github_env: $env:GITHUB_ENV
+          - os: windows-latest
+            platform: win32
+            arch: x64
+            github_env: $env:GITHUB_ENV
+          - os: windows-latest
+            platform: win32
+            arch: arm64
+            github_env: $env:GITHUB_ENV
           - os: ubuntu-latest
-            container: ubuntu:20.04
             platform: linux
             arch: x64
             github_env: $GITHUB_ENV
-          # - os: ubuntu-latest
-          #   platform: linux
-          #   arch: arm64
-          #   github_env: $GITHUB_ENV
-          # - os: ubuntu-latest
-          #   platform: linux
-          #   arch: armhf
-          #   github_env: $GITHUB_ENV
-          # - os: ubuntu-latest
-          #   platform: alpine
-          #   arch: x64
-          #   github_env: $GITHUB_ENV
-          # - os: ubuntu-latest
-          #   platform: alpine
-          #   arch: arm64
-          #   github_env: $GITHUB_ENV
-          # - os: macos-13
-          #   platform: darwin
-          #   arch: x64
-          #   github_env: $GITHUB_ENV
-          # - os: macos-14
-          #   platform: darwin
-          #   arch: arm64
-          #   github_env: $GITHUB_ENV
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            github_env: $GITHUB_ENV
+          - os: ubuntu-latest
+            container: ubuntu:20.04
+            platform: linux
+            arch: armhf
+            github_env: $GITHUB_ENV
+          - os: ubuntu-latest
+            platform: alpine
+            arch: x64
+            github_env: $GITHUB_ENV
+          - os: ubuntu-latest
+            platform: alpine
+            arch: arm64
+            github_env: $GITHUB_ENV
+          - os: macos-13
+            platform: darwin
+            arch: x64
+            github_env: $GITHUB_ENV
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
+    container: ${{ steps.set-container.outputs.container }}
     steps:
+      # For backwards compatibility with GLIBC, build on older ubuntu
+      - name: Set container
+        run: |
+          if [ "${matrix.os}" == "ubuntu-latest" ]; then
+            echo "container=ubuntu:20.04" >> $GITHUB_OUTPUT
+          fi
+        id: set-container
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
         # matrix.github_env is necessary to differentiate between windows and linux environment variables
