@@ -24,6 +24,7 @@ use tracing::warn;
 use crate::config::base::ConfigBase;
 use crate::config::base::UntypedDefBehavior;
 use crate::config::environment::environment::PythonEnvironment;
+use crate::config::environment::environment::SitePackagePathSource;
 use crate::config::error::ErrorConfig;
 use crate::config::error::ErrorDisplayConfig;
 use crate::module::bundled::typeshed;
@@ -37,6 +38,7 @@ use crate::sys_info::PythonPlatform;
 use crate::sys_info::PythonVersion;
 use crate::sys_info::SysInfo;
 use crate::util::fs_anyhow;
+use crate::util::globs::FilteredGlobs;
 use crate::util::globs::Glob;
 use crate::util::globs::Globs;
 use crate::util::prelude::VecExt;
@@ -54,17 +56,23 @@ impl SubConfig {
     }
 }
 
+/// Where did this config come from?
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum ConfigSource {
+    /// This config was read from a file
     File(PathBuf),
+    /// This config was synthesized with path-specific defaults, based on the location of a
+    /// "marker" file that contains no pyrefly configuration but marks a project root (e.g., a
+    /// `pyproject.toml` file with no `[tool.pyrefly]` section)
+    Marker(PathBuf),
     #[default]
     Synthetic,
 }
 
 impl ConfigSource {
-    pub fn path<'a>(&'a self) -> Option<&'a Path> {
+    pub fn root<'a>(&'a self) -> Option<&'a Path> {
         match &self {
-            Self::File(path) => Some(path),
+            Self::File(path) | Self::Marker(path) => path.parent(),
             Self::Synthetic => None,
         }
     }
@@ -106,6 +114,50 @@ impl ProjectLayout {
     }
 }
 
+pub enum ImportLookupPathPart<'a> {
+    SearchPathFromArgs(&'a [PathBuf]),
+    SearchPathFromFile(&'a [PathBuf]),
+    ImportRoot(Option<&'a PathBuf>),
+    FallbackSearchPath(&'a [PathBuf]),
+    SitePackagePath(&'a SitePackagePathSource, &'a [PathBuf]),
+}
+
+impl Display for ImportLookupPathPart<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SearchPathFromArgs(paths) => {
+                write!(f, "Search path override (from command line): {paths:?}")
+            }
+            Self::SearchPathFromFile(paths) => {
+                write!(f, "Search path (from config file): {paths:?}")
+            }
+            Self::ImportRoot(Some(root)) => {
+                write!(f, "Import root (inferred from project layout): {root:?}")
+            }
+            Self::ImportRoot(None) => write!(f, "Import root (inferred from project layout): None"),
+            Self::FallbackSearchPath(paths) => write!(
+                f,
+                "Fallback search path (guessed from project_includes): {paths:?}"
+            ),
+            Self::SitePackagePath(source, paths) => {
+                write!(f, "Site package path ({source}): {paths:?}")
+            }
+        }
+    }
+}
+
+impl ImportLookupPathPart<'_> {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::SearchPathFromArgs(paths)
+            | Self::SearchPathFromFile(paths)
+            | Self::FallbackSearchPath(paths)
+            | Self::SitePackagePath(_, paths) => paths.is_empty(),
+            Self::ImportRoot(root) => root.is_none(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone)]
 pub struct ConfigFile {
     #[serde(skip)]
@@ -130,10 +182,19 @@ pub struct ConfigFile {
     )]
     pub project_excludes: Globs,
 
+    #[serde(skip)]
+    pub search_path_from_args: Vec<PathBuf>,
+
     /// The list of directories where imports are
     /// imported from, including type checked files.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub search_path: Vec<PathBuf>,
+    /// Does not include command-line overrides or the import root!
+    /// Use ConfigFile::search_path() to get the full search path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", rename = "search_path")]
+    pub search_path_from_file: Vec<PathBuf>,
+
+    /// The automatically inferred subdirectory that importable Python packages live in.
+    #[serde(skip)]
+    pub import_root: Option<PathBuf>,
 
     /// Not exposed to the user. When we aren't able to determine the root of a
     /// project, we guess some fallback search paths that are checked after
@@ -191,7 +252,9 @@ impl Default for ConfigFile {
             project_includes: Default::default(),
             project_excludes: Default::default(),
             python_interpreter: None,
-            search_path: Vec::new(),
+            search_path_from_args: Vec::new(),
+            search_path_from_file: Vec::new(),
+            import_root: None,
             fallback_search_path: Vec::new(),
             python_environment: Default::default(),
             root: Default::default(),
@@ -204,24 +267,22 @@ impl Default for ConfigFile {
 }
 
 impl ConfigFile {
-    /// Gets a generic ConfigFile whose paths need to be rewritten with respect to a root dir.
-    /// This should only be used for unit testing, since it may have strange runtime behavior.
-    /// Prefer to use `ConfigFile::init_at_root()` instead.
-    fn init_no_path_rewrite(layout: &ProjectLayout) -> Self {
-        Self {
+    /// Gets a ConfigFile for a project directory.
+    pub fn init_at_root(root: &Path, layout: &ProjectLayout) -> Self {
+        let mut result = Self {
             project_includes: Self::default_project_includes(),
             project_excludes: Self::default_project_excludes(),
             // Note that rewrite_with_path_to_config() converts "" to the config file's containing directory.
-            search_path: vec![layout.get_import_root(Path::new(""))],
+            import_root: Some(layout.get_import_root(Path::new(""))),
             ..Default::default()
-        }
-    }
-
-    /// Gets a ConfigFile for a project directory.
-    pub fn init_at_root(root: &Path, layout: &ProjectLayout) -> Self {
-        let mut result = Self::init_no_path_rewrite(layout);
+        };
         result.rewrite_with_path_to_config(root);
         result
+    }
+
+    pub fn get_filtered_globs(&self, custom_excludes: Option<Globs>) -> FilteredGlobs {
+        let project_excludes = custom_excludes.unwrap_or_else(|| self.project_excludes.clone());
+        FilteredGlobs::new(self.project_includes.clone(), project_excludes)
     }
 
     /// Get the given [`ModuleName`] from this config's search and site package paths.
@@ -241,14 +302,16 @@ impl ConfigFile {
             .any(|p| p.matches(module))
         {
             Err(FindError::Ignored)
-        } else if let Some(path) = find_module_in_search_path(module, &self.search_path) {
+        } else if let Some(path) = find_module_in_search_path(module, self.search_path()) {
             Ok(path)
         } else if let Some(path) = typeshed()
             .map_err(|err| FindError::not_found(err, module))?
             .find(module)
         {
             Ok(path)
-        } else if let Some(path) = find_module_in_search_path(module, &self.fallback_search_path) {
+        } else if let Some(path) =
+            find_module_in_search_path(module, self.fallback_search_path.iter())
+        {
             Ok(path)
         } else if let Some(path) = find_module_in_site_package_path(
             module,
@@ -258,15 +321,10 @@ impl ConfigFile {
         )? {
             Ok(path)
         } else {
-            Err(FindError::search_path(
-                &self.search_path,
-                &self.fallback_search_path,
-                self.site_package_path(),
+            Err(FindError::import_lookup_path(
+                self.structured_import_lookup_path(),
                 module,
-                match &self.source {
-                    ConfigSource::File(file) => Some(file),
-                    _ => None,
-                },
+                &self.source,
             ))
         }
     }
@@ -307,6 +365,13 @@ impl ConfigFile {
         self.python_environment.python_platform.as_ref().unwrap()
     }
 
+    pub fn search_path<'a>(&'a self) -> impl Iterator<Item = &'a PathBuf> {
+        self.search_path_from_args
+            .iter()
+            .chain(self.search_path_from_file.iter())
+            .chain(self.import_root.iter())
+    }
+
     pub fn site_package_path(&self) -> &[PathBuf] {
         // we can use unwrap here, because the value in the root config must
         // be set in `ConfigFile::configure()`.
@@ -314,6 +379,20 @@ impl ConfigFile {
             .site_package_path
             .as_deref()
             .unwrap()
+    }
+
+    /// Gets the full, ordered path used for import lookup. Used for pretty-printing.
+    pub fn structured_import_lookup_path(&self) -> Vec<ImportLookupPathPart> {
+        vec![
+            ImportLookupPathPart::SearchPathFromArgs(&self.search_path_from_args),
+            ImportLookupPathPart::SearchPathFromFile(&self.search_path_from_file),
+            ImportLookupPathPart::ImportRoot(self.import_root.as_ref()),
+            ImportLookupPathPart::FallbackSearchPath(&self.fallback_search_path),
+            ImportLookupPathPart::SitePackagePath(
+                &self.python_environment.site_package_path_source,
+                self.site_package_path(),
+            ),
+        ]
     }
 
     pub fn get_sys_info(&self) -> SysInfo {
@@ -381,9 +460,11 @@ impl ConfigFile {
     /// which should probably be everything except for `PathBuf` or `Globs` types.
     pub fn configure(&mut self) {
         if self.python_environment.any_empty() {
-            if let Some(interpreter) = self.python_interpreter.clone().or_else(|| {
-                PythonEnvironment::find_interpreter(self.source.path().and_then(|p| p.parent()))
-            }) {
+            if let Some(interpreter) = self
+                .python_interpreter
+                .clone()
+                .or_else(|| PythonEnvironment::find_interpreter(self.source.root()))
+            {
                 let system_env = PythonEnvironment::get_interpreter_env(&interpreter);
                 self.python_environment.override_empty(system_env);
             } else {
@@ -419,13 +500,19 @@ impl ConfigFile {
     /// values, but CLI args will always be relative to CWD, whereas config values should be relative
     /// to the config root.
     fn rewrite_with_path_to_config(&mut self, config_root: &Path) {
-        // TODO(connernilsen): store root as part of config to make it easier to rewrite later on
         self.project_includes = self.project_includes.clone().from_root(config_root);
-        self.search_path.iter_mut().for_each(|search_root| {
+        self.search_path_from_file
+            .iter_mut()
+            .for_each(|search_root| {
+                let mut base = config_root.to_path_buf();
+                base.push(search_root.as_path());
+                *search_root = base;
+            });
+        if let Some(import_root) = &self.import_root {
             let mut base = config_root.to_path_buf();
-            base.push(search_root.as_path());
-            *search_root = base;
-        });
+            base.push(import_root);
+            self.import_root = Some(base);
+        }
         self.python_environment
             .site_package_path
             .iter_mut()
@@ -458,13 +545,13 @@ impl ConfigFile {
             })
         }
         let mut errors = Vec::new();
-        if !self.python_environment.site_package_path_from_interpreter {
+        if self.python_environment.site_package_path_source == SitePackagePathSource::ConfigFile {
             if let Some(p) = self.python_environment.site_package_path.as_ref() {
                 errors.extend(validate(p, "site_package_path"));
             }
         }
-        errors.extend(validate(&self.search_path, "search_path"));
-        if let Some(path) = self.source.path() {
+        errors.extend(validate(&self.search_path_from_file, "search_path"));
+        if let ConfigSource::File(path) = &self.source {
             errors.into_map(|e| e.context(format!("{}", path.display())))
         } else {
             errors
@@ -488,11 +575,12 @@ impl ConfigFile {
         }
         fn f(config_path: &Path) -> (ConfigFile, Vec<anyhow::Error>) {
             let mut errors = Vec::new();
-            let maybe_config = match read_path(config_path) {
-                Ok(maybe_config) => maybe_config,
+            let (maybe_config, config_source) = match read_path(config_path) {
+                Ok(Some(config)) => (Some(config), ConfigSource::File(config_path.to_path_buf())),
+                Ok(None) => (None, ConfigSource::Marker(config_path.to_path_buf())),
                 Err(e) => {
                     errors.push(e);
-                    None
+                    (None, ConfigSource::File(config_path.to_path_buf()))
                 }
             };
             let mut config = match config_path.parent() {
@@ -500,11 +588,7 @@ impl ConfigFile {
                     let layout = ProjectLayout::new(config_root);
                     if let Some(mut config) = maybe_config {
                         config.rewrite_with_path_to_config(config_root);
-                        // push import root to search path to make sure we can fall back to it
-                        let import_root = layout.get_import_root(config_root);
-                        if !config.search_path.contains(&import_root) {
-                            config.search_path.push(import_root);
-                        }
+                        config.import_root = Some(layout.get_import_root(config_root));
                         config
                     } else {
                         ConfigFile::init_at_root(config_root, &layout)
@@ -518,7 +602,7 @@ impl ConfigFile {
                     maybe_config.unwrap_or_else(ConfigFile::default)
                 }
             };
-            config.source = ConfigSource::File(config_path.to_path_buf());
+            config.source = config_source;
 
             if !config.root.extras.0.is_empty() {
                 let extra_keys = config.root.extras.0.keys().join(", ");
@@ -535,17 +619,14 @@ impl ConfigFile {
             }
             (config, errors)
         }
-        let (config, errors) = match config_path
+        let ((config, errors), config_path) = match config_path
             .absolutize()
             .with_context(|| format!("Path `{}` cannot be absolutized", config_path.display()))
         {
-            Ok(config_path) => f(&config_path),
-            Err(e) => (ConfigFile::default(), vec![e]),
+            Ok(config_path) => (f(&config_path), config_path.into_owned()),
+            Err(e) => ((ConfigFile::default(), vec![e]), config_path.to_path_buf()),
         };
-        let errors = errors.into_map(|err| {
-            let file_str = config.source.path().unwrap_or(config_path).display();
-            err.context(format!("{file_str}"))
-        });
+        let errors = errors.into_map(|err| err.context(format!("{}", config_path.display())));
         (config, errors)
     }
 
@@ -567,7 +648,7 @@ impl Display for ConfigFile {
             "{{project_includes: {}, project_excludes: {}, search_path: [{}], python_interpreter: {:?}, python_environment: {}, replace_imports_with_any: [{}]}}",
             self.project_includes,
             self.project_excludes,
-            self.search_path.iter().map(|p| p.display()).join(", "),
+            self.search_path().map(|p| p.display()).join(", "),
             self.python_interpreter,
             self.python_environment,
             self.root
@@ -606,6 +687,7 @@ mod tests {
     use toml::Value;
 
     use super::*;
+    use crate::config::environment::environment::SitePackagePathSource;
     use crate::error::kind::ErrorKind;
 
     #[test]
@@ -648,13 +730,18 @@ mod tests {
                     "./implementation".to_owned()
                 ]),
                 project_excludes: Globs::new(vec!["tests/untyped/**".to_owned()]),
-                search_path: vec![PathBuf::from("../..")],
+                search_path_from_args: Vec::new(),
+                search_path_from_file: vec![PathBuf::from("../..")],
+                import_root: None,
                 fallback_search_path: Vec::new(),
-                python_environment: PythonEnvironment::new(
-                    PythonPlatform::mac(),
-                    PythonVersion::new(1, 2, 3),
-                    vec![PathBuf::from("venv/lib/python1.2.3/site-packages")],
-                ),
+                python_environment: PythonEnvironment {
+                    python_platform: Some(PythonPlatform::mac()),
+                    python_version: Some(PythonVersion::new(1, 2, 3)),
+                    site_package_path: Some(vec![PathBuf::from(
+                        "venv/lib/python1.2.3/site-packages"
+                    )]),
+                    site_package_path_source: SitePackagePathSource::ConfigFile,
+                },
                 python_interpreter: Some(PathBuf::from("venv/my/python")),
                 root: ConfigBase {
                     extras: Default::default(),
@@ -693,8 +780,9 @@ mod tests {
         assert_eq!(
             config,
             ConfigFile {
-                search_path: Vec::new(),
-                ..ConfigFile::init_no_path_rewrite(&ProjectLayout::default())
+                project_includes: ConfigFile::default_project_includes(),
+                project_excludes: ConfigFile::default_project_excludes(),
+                ..Default::default()
             }
         );
     }
@@ -739,14 +827,14 @@ mod tests {
                     "./tests".to_owned(),
                     "./implementation".to_owned()
                 ]),
-                search_path: Vec::new(),
+                project_excludes: ConfigFile::default_project_excludes(),
                 python_environment: PythonEnvironment {
                     python_platform: Some(PythonPlatform::mac()),
                     python_version: Some(PythonVersion::new(1, 2, 3)),
                     site_package_path: None,
-                    site_package_path_from_interpreter: false,
+                    site_package_path_source: SitePackagePathSource::ConfigFile,
                 },
-                ..ConfigFile::init_no_path_rewrite(&ProjectLayout::default())
+                ..Default::default()
             }
         );
     }
@@ -775,15 +863,16 @@ mod tests {
         assert_eq!(
             config,
             ConfigFile {
-                search_path: Vec::new(),
+                project_includes: ConfigFile::default_project_includes(),
+                project_excludes: ConfigFile::default_project_excludes(),
                 python_environment: PythonEnvironment {
                     python_version: Some(PythonVersion::new(1, 2, 3)),
                     python_platform: None,
                     site_package_path: None,
                     // this won't be set until after `configure()`
-                    site_package_path_from_interpreter: false,
+                    site_package_path_source: SitePackagePathSource::ConfigFile,
                 },
-                ..ConfigFile::init_no_path_rewrite(&ProjectLayout::default())
+                ..Default::default()
             }
         );
     }
@@ -836,7 +925,9 @@ mod tests {
             source: ConfigSource::Synthetic,
             project_includes: Globs::new(vec!["path1/**".to_owned(), "path2/path3".to_owned()]),
             project_excludes: Globs::new(vec!["tests/untyped/**".to_owned()]),
-            search_path: vec![PathBuf::from("../..")],
+            search_path_from_args: Vec::new(),
+            search_path_from_file: vec![PathBuf::from("../..")],
+            import_root: None,
             fallback_search_path: Vec::new(),
             python_environment: python_environment.clone(),
             python_interpreter: Some(PathBuf::from(interpreter.clone())),
@@ -871,7 +962,9 @@ mod tests {
             project_includes: Globs::new(project_includes_vec),
             project_excludes: Globs::new(project_excludes_vec),
             python_interpreter: Some(test_path.join(interpreter)),
-            search_path,
+            search_path_from_args: Vec::new(),
+            search_path_from_file: search_path,
+            import_root: None,
             fallback_search_path: Vec::new(),
             python_environment,
             root: Default::default(),
@@ -910,7 +1003,8 @@ mod tests {
 
     #[test]
     fn test_expect_all_fields_set_in_root_config() {
-        let mut config = ConfigFile::init_no_path_rewrite(&ProjectLayout::default());
+        let root = TempDir::new().unwrap();
+        let mut config = ConfigFile::init_at_root(root.path(), &ProjectLayout::default());
         config.configure();
 
         let table: serde_json::Map<String, serde_json::Value> =
@@ -945,7 +1039,6 @@ mod tests {
     #[test]
     fn test_site_package_path_default_after_configure() {
         let mut config = ConfigFile::parse_config("").unwrap();
-        assert!(!config.python_environment.site_package_path_from_interpreter);
 
         if config.python_interpreter.is_none() {
             // we don't really need to test anything else here if the interpreter isn't
@@ -954,12 +1047,17 @@ mod tests {
         }
 
         config.configure();
-        assert!(config.python_environment.site_package_path_from_interpreter);
+        assert!(matches!(
+            config.python_environment.site_package_path_source,
+            SitePackagePathSource::Interpreter(_)
+        ));
 
         config = ConfigFile::parse_config("site_package_path = []").unwrap();
-        assert!(!config.python_environment.site_package_path_from_interpreter);
         config.configure();
-        assert!(!config.python_environment.site_package_path_from_interpreter);
+        assert_eq!(
+            config.python_environment.site_package_path_source,
+            SitePackagePathSource::ConfigFile
+        );
     }
 
     #[test]
@@ -1029,7 +1127,10 @@ mod tests {
     fn test_default_search_path() {
         let tempdir = TempDir::new().unwrap();
         let config = ConfigFile::init_at_root(tempdir.path(), &ProjectLayout::default());
-        assert_eq!(config.search_path, vec![tempdir.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![tempdir.path().to_path_buf()]
+        );
     }
 
     #[test]
@@ -1038,7 +1139,10 @@ mod tests {
         let path = root.path().join(ConfigFile::PYPROJECT_FILE_NAME);
         fs::write(&path, "[tool.pyrefly]").unwrap();
         let config = ConfigFile::from_file(&path).0;
-        assert_eq!(config.search_path, vec![root.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![root.path().to_path_buf()]
+        );
     }
 
     fn create_empty_file_and_parse_config(root: &TempDir, name: &str) -> ConfigFile {
@@ -1051,28 +1155,40 @@ mod tests {
     fn test_pyproject_toml_no_pyrefly_search_path() {
         let root = TempDir::new().unwrap();
         let config = create_empty_file_and_parse_config(&root, ConfigFile::PYPROJECT_FILE_NAME);
-        assert_eq!(config.search_path, vec![root.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![root.path().to_path_buf()]
+        );
     }
 
     #[test]
     fn test_setup_py_search_path() {
         let root = TempDir::new().unwrap();
         let config = create_empty_file_and_parse_config(&root, "setup.py");
-        assert_eq!(config.search_path, vec![root.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![root.path().to_path_buf()]
+        );
     }
 
     #[test]
     fn test_mypy_config_search_path() {
         let root = TempDir::new().unwrap();
         let config = create_empty_file_and_parse_config(&root, "mypy.ini");
-        assert_eq!(config.search_path, vec![root.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![root.path().to_path_buf()]
+        );
     }
 
     #[test]
     fn test_pyright_config_search_path() {
         let root = TempDir::new().unwrap();
         let config = create_empty_file_and_parse_config(&root, "pyrightconfig.json");
-        assert_eq!(config.search_path, vec![root.path().to_path_buf()]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![root.path().to_path_buf()]
+        );
     }
 
     #[test]
@@ -1092,7 +1208,10 @@ mod tests {
         let config = create_empty_file_and_parse_config(&root, ConfigFile::PYPROJECT_FILE_NAME);
         // We should still find Python files (commonly scripts and tests) outside src/.
         assert_eq!(config.project_includes.files().unwrap(), vec![python_file]);
-        assert_eq!(config.search_path, vec![src_dir]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![src_dir]
+        );
     }
 
     #[test]
@@ -1111,6 +1230,9 @@ mod tests {
             config.project_includes,
             Globs::new(vec![root.path().join("**/*").to_string_lossy().to_string()]),
         );
-        assert_eq!(config.search_path, vec![src_dir]);
+        assert_eq!(
+            config.search_path().cloned().collect::<Vec<_>>(),
+            vec![src_dir]
+        );
     }
 }

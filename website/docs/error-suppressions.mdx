@@ -1,0 +1,77 @@
+---
+title: Error Suppressions
+
+description: How to suppress errors in Pyrefly
+---
+import CodeSnippet from '@site/src/sandbox/CodeSnippet'
+
+The Python type system allows you to suppress errors with a comment. This feature can be helpful in many scenarios. For example, after enabling a type checker, suppressions can allow you to get a clean type check signal without having to stop and fix every pre-existing error in your code.
+
+There are mutliple ways to do this in Pyrefly.
+
+```python
+def foo() -> int:
+  # pyrefly: ignore
+  return "this is a type error"
+```
+
+You can also put the comment on the same line as the error.
+
+```python
+def foo() -> int:
+  return "this is a type error" # pyrefly: ignore
+```
+
+We respect the specification and allow `type: ignore` to be used:
+
+```python
+def foo() -> int:
+  return "this is a type error" # type: ignore
+```
+
+
+We also have a special comment that will ignore all errors in a file.
+
+
+<pre>
+  <CodeSnippet
+  sampleFilename="why_hints.py"
+  isCodeSnippet={true}
+  codeSample={`# pyrefly: ignore-all-errors
+
+from typing import *
+
+
+def test(x: int):
+  return f"{x}"
+
+def bar() -> int:
+    # this error won't be reported
+    return ""
+`}
+  />
+</pre>
+
+
+----
+## Upgrading Pyrefly (And other changes that introduce new type errors)
+
+Upgrading the version of Pyrefly you're using, or a third party library you depend on can surface new type errors in your code. Fixing them all at once is often not realistic. We've written scripts to help you temporarily silence them.
+
+```
+# step 1
+pyrefly check --suppress-errors
+```
+
+```
+# step 2
+<run your formatter of choice>
+```
+
+```
+# step 3
+pyrefly check --remove-unused-ignores
+```
+Repeat the steps above until you get a clean fomatting run and a clean type check.
+
+This will add ` # pyrefly: ignore` comments to your code that will enable you to silence errors, and come back and fix them at a later date. This can make the process of upgrading a large codebase much more manageable.

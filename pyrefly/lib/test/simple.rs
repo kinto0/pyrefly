@@ -349,7 +349,7 @@ y: Final = "test"
 z: Final[str] = cast(str, "")
 w: Final[int] = "bad"  # E: `Literal['bad']` is not assignable to `int`
 
-assert_type(x, Literal[1])
+assert_type(x, int)
 assert_type(y, Literal['test'])
 assert_type(z, str)
 "#,

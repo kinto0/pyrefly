@@ -11,7 +11,6 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
-use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -38,6 +37,7 @@ use crate::commands::suppress;
 use crate::commands::util::module_from_path;
 use crate::config::config::ConfigFile;
 use crate::config::config::validate_path;
+use crate::config::environment::environment::SitePackagePathSource;
 use crate::config::finder::ConfigFinder;
 use crate::error::error::Error;
 use crate::error::error::print_error_counts;
@@ -57,6 +57,7 @@ use crate::state::subscriber::ProgressBarSubscriber;
 use crate::sys_info::PythonPlatform;
 use crate::sys_info::PythonVersion;
 use crate::sys_info::SysInfo;
+use crate::util::arc_id::ArcId;
 use crate::util::args::clap_env;
 use crate::util::display;
 use crate::util::display::number_thousands;
@@ -248,12 +249,8 @@ impl Handles {
         let unknown = ModuleName::unknown();
         let config = config_finder.python_file(unknown, &module_path);
 
-        let search_path = args_search_path
-            .iter()
-            .cloned()
-            .chain(config.search_path.clone())
-            .collect::<Vec<_>>();
-        let module_name = module_from_path(&path, &search_path).unwrap_or(unknown);
+        let search_path = args_search_path.iter().chain(config.search_path());
+        let module_name = module_from_path(&path, search_path).unwrap_or(unknown);
 
         self.path_data
             .entry(path)
@@ -493,7 +490,10 @@ impl Args {
         Ok(())
     }
 
-    pub fn override_config(&self, mut config: ConfigFile) -> (ConfigFile, Vec<anyhow::Error>) {
+    pub fn override_config(
+        &self,
+        mut config: ConfigFile,
+    ) -> (ArcId<ConfigFile>, Vec<anyhow::Error>) {
         if let Some(x) = &self.python_platform {
             config.python_environment.python_platform = Some(x.clone());
         }
@@ -501,18 +501,18 @@ impl Args {
             config.python_environment.python_version = Some(*x);
         }
         if let Some(x) = &self.search_path {
-            let old = mem::take(&mut config.search_path);
-            config.search_path = x.iter().cloned().chain(old).collect();
+            config.search_path_from_args = x.clone();
         }
         if let Some(x) = &self.site_package_path {
             config.python_environment.site_package_path = Some(x.clone());
+            config.python_environment.site_package_path_source = SitePackagePathSource::CommandLine;
         }
         if let Some(x) = &self.python_interpreter {
             config.python_interpreter = Some(x.clone());
         }
         config.configure();
         let errors = config.validate();
-        (config, errors)
+        (ArcId::new(config), errors)
     }
 
     fn get_required_levels(&self) -> RequireLevels {

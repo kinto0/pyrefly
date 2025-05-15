@@ -12,29 +12,23 @@ description:
 
 # Pyrefly Frequently Asked Questions
 
-### What is Pyrefly?
-
-Pyrefly is a type checker for Python powering a fast and flexible IDE
-experience. It's a work in progress, but showing promising results for checking
-large code bases, better type inference and giving instant responses in IDE.
-
 ### How do I pronounce Pyrefly?
 
 It's pronounced PIE-ur-fly, rhyming with "firefly."
 
 ### What is the relationship to Pyre?
 
-Pyrefly is a ground-up rebuild that doesn’t share any core type checking code with Pyre. Not only is Pyrefly written in a new language (Rust instead of OCaml), but our design deviates in a major way from [Pyre](https://pyre-check.org/). Rust enables us to deliver substantial performance improvements and support multiple operating systems (including Windows). Beyond the core type checker itself, there are helper tooling and many lessons learned that we will take from Pyre and the community of Python type checking maintainers who have done tremendous work to get the state of type checking to where it is today.
+Pyrefly is a ground-up rebuild that doesn’t share any core type checking code with Pyre. Not only is Pyrefly written in a new language (Rust instead of OCaml), but its design deviates in a major way from [Pyre](https://pyre-check.org/). Rust enables us to deliver substantial performance improvements and support multiple operating systems (including Windows). Beyond the core type checker itself, there are helper tooling and many lessons learned that we will take from Pyre and the community of Python type checking maintainers who have done tremendous work to get the state of type checking to where it is today.
 
 ### Yet another Type Checker! Why not improve the ones adopted by the community already?
 
-We are standing on the shoulders of giants. The contributions to Python typing by Mypy, Pyright, Pytype, Pyre and others have been invaluable. We borrowed concepts and learned from them as we rolled our own. Open source conformance matters to us a lot. While we might make some opinionated decisions, we will adhere to the PEP process. Pyre was the only type checker that could scale for Meta’s needs and was starting to show its age, so we started with a ground-up rewrite aimed at usability and performance.
+We are standing on the shoulders of giants. The contributions to Python typing by Mypy, Pyright, Pytype, Pyre and others have been invaluable. We borrowed concepts and learned from them as we rolled our own. Open source conformance matters to us a lot. While we might make some opinionated decisions, we'll adhere to the PEP process. Pyre was the only type checker that could scale for Meta’s needs and was starting to show its age, so we started with a ground-up rewrite aimed at usability and performance.
 
-We built our own engine for incremental computation and designed our type checking algorithm based on years of experience in gradual type theory and Rust expertise. By open-sourcing this technology we hope it can serve projects of any size well.
+We built a custom engine for incremental computation and designed our type-checking algorithm based on years of experience in gradual typing theory and Rust expertise. By open-sourcing this technology we hope it can serve projects of any size well.
 
 ### Why Rust?
 
-We would have preferred to write Pyrefly in Python, but didn't think we could hit our ambitious performance goals using Python today (hopefully future work around free-threaded Python and JIT changes that). After ruling out Python, we wanted something that was safe, cross-platform, compiled to WASM (for a Playground experience). Rust and Go are probably the best choices for those goals, and our team at Meta had more experience with Rust.
+We would have preferred to write Pyrefly in Python, but we didn't think we could hit our ambitious performance goals using Python today (hopefully future work around free-threaded Python and JIT changes that). After ruling out Python, we wanted something that was safe, cross-platform, compiled to WASM (for a Playground experience). Rust and Go are probably the best choices for those goals, and our team at Meta had more experience with Rust.
 
 ### Do you plan to build an LSP?
 
@@ -50,7 +44,7 @@ Please see the: [contributing guidelines](https://github.com/facebook/pyrefly/bl
 
 ### How do I know this project won't go unmaintained after a year?
 
-Great question. We have made a substantial investment in Pyrefly, use it internally and aligned open source maintainability as a key principle for starting this project in the first place. We’re in it for the long haul. Using it is the best way to see increased investment from our leadership.
+Great question. We have made a substantial investment in Pyrefly, use it internally and aligned open source maintainability as a key principle for starting this project in the first place. We’re in it for the long haul. Using it is the best way to encourage further investment from our leadership.
 
 ### This is cool, I want to learn more about the technical details.
 
@@ -58,6 +52,6 @@ See our [README.md](https://github.com/facebook/pyrefly/blob/main/README.md) for
 
 ### I don't like Python's Type System. Stop wasting your time.
 
-Tell us more - seriously we want to hear your objections to typing! We hope that better tooling, improvements to the type system and well typed libraries will help provide make development easier. If all else fails our fast code navigation and inference algorithm might spark joy in your IDE, so give us a chance.
+Tell us more - seriously! We want to hear your objections to typing. We hope that better tooling, improvements to the type system and well typed libraries will help provide make development easier. If all else fails our fast code navigation and inference algorithm might spark joy in your IDE, so give us a chance.
 
 _Curious about something else or just want to chat about bolting types onto Python, join us on [Discord](https://discord.gg/Cf7mFQtW7W)._

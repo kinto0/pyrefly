@@ -497,8 +497,12 @@ impl<'a> BindingsBuilder<'a> {
                 range: _,
                 func,
                 arguments: _,
-            }) if self.as_special_export(func) == Some(SpecialExport::Exit) => {
-                // Control flow doesn't proceed after sys.exit()
+            }) if matches!(
+                self.as_special_export(func),
+                Some(SpecialExport::Exit | SpecialExport::Quit | SpecialExport::OsExit)
+            ) =>
+            {
+                // Control flow doesn't proceed after sys.exit(), exit(), quit(), or os._exit().
                 self.scopes.current_mut().flow.no_next = true;
                 false
             }

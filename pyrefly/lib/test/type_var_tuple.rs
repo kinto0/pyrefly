@@ -48,20 +48,6 @@ Ts = TypeVarTuple('Ts')
 );
 
 testcase!(
-    bug = "This program should typecheck clean. Possibly we are not interpreting Unpack correctly.",
-    test_type_var_tuple_unpacking,
-    r#"
-from typing import Protocol
-from typing import Unpack, TypeVarTuple, Callable, Any
-
-_Ts = TypeVarTuple("_Ts")
-
-class A(Protocol):
-    def f(self, func: Callable[[Unpack[_Ts]], Any], *args: Unpack[_Ts]) -> Any: ... # E: TypeVarTuple must be unpacked.
-"#,
-);
-
-testcase!(
     test_type_var_tuple_class_field_and_constructor,
     r#"
 class C1[T]:
@@ -140,13 +126,24 @@ def test[*Ts](x: A[int, str], y: A[str, str, str], z: A[*Ts]):
 );
 
 testcase!(
-    bug = "TODO: should be well-typed",
-    test_type_var_tuple_todo,
+    bug = "TODO: typevartuple should be iterable",
+    test_type_var_tuple_iterate,
     r#"
-from typing import TypeVarTuple, Callable
+from typing import TypeVarTuple
 
 _Ts = TypeVarTuple("_Ts")
-def f(func: Callable[[*_Ts], None], *args: *_Ts) -> None: 
-    func(*args) # E: Type `TypeVarTuple[_Ts]` is not iterable
+def f(*args: *_Ts) -> None: 
+    f(*args) # E: Type `TypeVarTuple[_Ts]` is not iterable
+"#,
+);
+
+testcase!(
+    test_type_var_tuple_legacy_unpack,
+    r#"
+from typing import Unpack, TypeVarTuple
+
+_Ts = TypeVarTuple("_Ts")
+class A:
+    def f(self, *args: Unpack[_Ts]): ...
 "#,
 );

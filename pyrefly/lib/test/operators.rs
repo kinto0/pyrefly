@@ -31,7 +31,7 @@ testcase!(
     test_positive_literals,
     r#"
 from typing import Literal
-y: int = -1
+y = -1
 x: Literal[-1] = +y
 "#,
 );
@@ -39,7 +39,7 @@ testcase!(
     test_positive_literals_error,
     r#"
 from typing import Literal
-y: int = 1
+y = 1
 x: Literal[-1] = +y # E: `Literal[1]` is not assignable to `Literal[-1]`
 "#,
 );
@@ -48,7 +48,7 @@ testcase!(
     test_inversion_literals,
     r#"
 from typing import Literal
-y: int = -1
+y = -1
 x: Literal[0] = ~y
 "#,
 );
@@ -57,7 +57,7 @@ testcase!(
     test_inversion_literals_error,
     r#"
 from typing import Literal
-y: int = -2
+y = -2
 x: Literal[0] = ~y # E: `Literal[1]` is not assignable to `Literal[0]`
 "#,
 );
@@ -66,9 +66,9 @@ testcase!(
     test_union_unary_op,
     r#"
 from typing import Literal, Union, assert_type
-x: Union[Literal[-1], Literal[2]] = 2
+x: Literal[-1, 2] = 2
 y = -x
-assert_type(y, Literal[-2])
+assert_type(y, Literal[-2, 1])
 "#,
 );
 

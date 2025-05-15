@@ -186,7 +186,7 @@ impl MypyConfig {
                 .filter(|x| !x.is_empty())
                 .map(PathBuf::from)
                 .collect();
-            cfg.search_path = value;
+            cfg.search_path_from_file = value;
         }
         cfg.use_untyped_imports = follow_untyped_imports.unwrap_or(cfg.use_untyped_imports);
         cfg.root.replace_imports_with_any = replace_imports
@@ -285,7 +285,7 @@ ignore_missing_imports = True
         assert_eq!(cfg.project_includes, project_includes);
 
         assert_eq!(
-            cfg.search_path,
+            cfg.search_path_from_file,
             vec![
                 PathBuf::from("some_paths"),
                 PathBuf::from("comma"),

@@ -19,15 +19,13 @@ Default configuration
   Covered files:
     */bar/baz.py (glob)
     */bar/qux.py (glob)
-  Search path: * (glob)
-  Fallback search path: * (glob)
-  Site package path: * (glob)
+  Fallback search path (guessed from project_includes): * (glob)
+  Site package path (*): * (glob)
 Default configuration
   Covered files:
     */foo.py (glob)
-  Search path: * (glob)
-  Fallback search path: * (glob)
-  Site package path: * (glob)
+  Fallback search path (guessed from project_includes): * (glob)
+  Site package path (*): * (glob)
 [0]
 ```
 

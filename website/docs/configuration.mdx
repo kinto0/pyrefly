@@ -309,6 +309,36 @@ type stubs could be found. See
 - ENV equivalent: none
 - Equivalent configs: `reportMissingModuleSource` in Pyright
 
+### `untyped_def_behavior`
+
+How should Pyrefly treat function definitions with no parameter or return type annotations?
+
+By default, Pyrefly uses the `"check-and-infer-return-type"` behavior and will
+check all function bodies inferring the return type.
+
+If this option is set to `"check-and-infer-return-any"`, then Pyrefly will still
+check the function body but will treat the return type as `Any`.
+
+If this option is set to `"skip-and-infer-return-any"`, Pyrefly will again treat
+the return type as `Any`, but will also skip checking the function body. In this
+case, Pyrefly will also infer `Any` as the type of any attributes inferred based
+on this function body. This behavior is what PEP 484 specifies, although we do
+not recommend it for most users today; since Pyrefly will not analyze the bodies
+of untyped functions, language server functionality like showing types on hover
+and finding definitions will not be available there.
+
+- Type: one of `"check-and-infer-return-type"`, `"check-and-infer-return-any"`,
+  `"skip-and-infer-return-any"`
+- Default: `"check-and-infer-return-type"
+- Flag equivalent: none
+- ENV equivalent: none
+- Equivalent configs:
+  - The `"check-and-infer-return-type"` behavior emulates Pyright's default
+    behavior.
+  - The `"skip-and-infer-return-any"` behavior emulates mypy's default behavior.
+  - The `"check-and-infer-return-any"` behavior emulates mypy's
+    `check_untyped_defs` flag.
+
 ### `sub_config`
 
 Override specific config values for matched paths in your project. See

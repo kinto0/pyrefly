@@ -77,8 +77,7 @@ assert_type(async_gen, Callable[[], Any])
 );
 
 testcase!(
-    bug = "We do not yet implement Skip behavior for untyped function defs",
-    test_function_check_and_inference_with_mode_skip,
+    test_function_check_and_inference_with_mode_skip_and_infer_return_any,
     TestEnv::new_with_untyped_def_behavior(UntypedDefBehavior::SkipAndInferReturnAny),
     r#"
 from typing import assert_type, Any, Callable, Coroutine, Generator, AsyncGenerator
@@ -86,28 +85,28 @@ from typing import assert_type, Any, Callable, Coroutine, Generator, AsyncGenera
 x: int = ...  # E:
 
 def f():
-    oops: int = "oops"  # E:
+    oops: int = "oops"
     return x
 assert_type(f, Callable[[], Any])
 
 async def async_f():
-    oops: int = "oops"  # E:
+    oops: int = "oops"
     return x
 assert_type(async_f, Callable[[], Any])
 
 def gen():
-    oops: int = "oops"  # E:
+    oops: int = "oops"
     yield x
 assert_type(gen, Callable[[], Any])
 
 def gen_w_return():
-    oops: int = "oops"  # E:
+    oops: int = "oops"
     yield x
     return x
 assert_type(gen_w_return, Callable[[], Any])
 
 async def async_gen():
-    oops: int = "oops"  # E:
+    oops: int = "oops"
     yield x
 assert_type(async_gen, Callable[[], Any])
 "#,
@@ -149,7 +148,7 @@ async def async_generator_with_return():
 );
 
 testcase!(
-    test_self_attrs_with_mode_infer_return_any,
+    test_self_attrs_with_mode_check_and_infer_return_any,
     TestEnv::new_with_untyped_def_behavior(UntypedDefBehavior::CheckAndInferReturnAny),
     r#"
 from typing import assert_type, Any
@@ -162,5 +161,75 @@ c = C()
 assert_type(c.x, int)
 assert_type(c.y, str)
 assert_type(c.f(), Any)
+"#,
+);
+
+testcase!(
+    test_self_attrs_with_mode_skip_and_infer_return_any,
+    TestEnv::new_with_untyped_def_behavior(UntypedDefBehavior::SkipAndInferReturnAny),
+    r#"
+from typing import assert_type, Any
+class C:
+    def __init__(self):
+        self.x: int = 5
+    def f(self):
+        self.y: str = "y"  # E: Attribute `y` is implicitly defined by assignment in method `f`
+c = C()
+assert_type(c.x, Any)
+assert_type(c.y, Any)
+assert_type(c.f(), Any)
+"#,
+);
+
+testcase!(
+    test_annotated_defs_with_mode_skip_and_infer_return_any,
+    TestEnv::new_with_untyped_def_behavior(UntypedDefBehavior::SkipAndInferReturnAny),
+    r#"
+from typing import assert_type
+def unannotated():
+    x: int = "x"
+def annotated_return() -> None:
+    x: int = "x"  # E:
+def annotated_param(_: str):
+    x: int = "x"  # E:
+"#,
+);
+
+testcase!(
+    stress_tests_for_mode_skip_and_infer_return_any,
+    TestEnv::new_with_untyped_def_behavior(UntypedDefBehavior::SkipAndInferReturnAny),
+    r#"
+from typing import assert_type
+def u0():
+    x: int = "x"
+def u1(y, *args, **kwargs):
+    x: int = "x"
+class C:
+    def __init__(self):
+        x: int = "x"
+        pass
+    def __init__(self, y, *args, **kwargs):
+        x: int = "x"
+        pass
+"#,
+);
+
+testcase!(
+    bug = "We do not yet implement @no_type_check",
+    test_no_type_check_decorator,
+    r#"
+from typing import no_type_check, assert_type, Any
+
+@no_type_check
+def f(x: int) -> int:
+    y: int = "y"
+    return "f"
+
+class C:
+    @no_type_check
+    def __init__(self, x: int) -> None:
+        self.x = x
+
+assert_type(C(42).x, Any)
 "#,
 );

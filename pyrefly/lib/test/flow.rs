@@ -188,7 +188,7 @@ def f(cond):
     x: int = 0
     while cond():
         x: int = 1
-    assert_type(x, Literal[0, 1])
+    assert_type(x, int)
     "#,
 );
 
@@ -553,7 +553,7 @@ except Exception1 as e5:
 except x1 as e6:
     reveal_type(e6)  # E: revealed type: Exception
 except x2 as e7:
-    reveal_type(e6)  # E: revealed type: Exception1 | Exception2
+    reveal_type(e7)  # E: revealed type: Exception1 | Exception2
 "#,
 );
 
@@ -1037,5 +1037,22 @@ def f(cond1: bool, cond2: bool, cond3: bool, cond4: bool):
     return i
 
 assert_type(f(True, True, True, True), int)
+"#,
+);
+
+testcase!(
+    test_loop_defaulting,
+    r#"
+# From https://github.com/facebook/pyrefly/issues/104
+from typing import assert_type
+class Foo:
+    pass
+
+def rebase(parent: Foo | int) -> Foo: ...
+
+def test(b: bool, x: Foo) -> None:
+    while b:
+        x = rebase(x)
+    assert_type(x, Foo)
 "#,
 );

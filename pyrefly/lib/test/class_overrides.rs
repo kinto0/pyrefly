@@ -290,3 +290,25 @@ class Child(Parent):
     def a(self): ...  # E: `a` is declared as final in parent class `Parent`
  "#,
 );
+
+testcase!(
+    test_override_literal_attr,
+    r#"
+from typing import Literal
+class A:
+    X: Literal[0] = 0
+class B(A):
+    X = 0
+    "#,
+);
+
+testcase!(
+    test_bad_override_literal_attr,
+    r#"
+from typing import Literal
+class A:
+    x: Literal[0] = 0
+class B(A):
+    x = 1 # E: `Literal[1]` is not assignable to attribute `x` with type `Literal[0]`
+    "#,
+);

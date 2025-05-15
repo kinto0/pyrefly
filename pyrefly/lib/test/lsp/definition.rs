@@ -110,7 +110,7 @@ from .import_provider import f
 #           ^                ^
 
 foo: Literal[1] = 1
-#        ^  
+#        ^
 bar = f([1], "", 42)
 #     ^
 "#;
@@ -150,7 +150,7 @@ Definition Result:
         ^
 
 
-# import_provider.py    
+# import_provider.py
 "#
         .trim(),
         report.trim()
@@ -614,9 +614,7 @@ Definition Result:
 
 31 | c4.x
         ^
-Definition Result:
-25 |   x = 5
-       ^
+Definition Result: None
 
 35 | dict["foo"]
             ^

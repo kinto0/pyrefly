@@ -472,12 +472,15 @@ impl Solver {
 
         let mut lock = self.variables.write();
         match lock.get(&v) {
-            Some(Variable::Answer(got)) => {
-                let got = got.clone();
+            Some(Variable::Answer(forced)) => {
+                let forced = forced.clone();
                 drop(lock);
                 // We got forced into choosing a type to satisfy a subset constraint, so check we are OK with that.
-                if !self.is_subset_eq(&got, &t, type_order) {
-                    self.error(&t, &got, errors, loc, &|| TypeCheckContext::unknown());
+                // Since we have already used `forced`, and will continue to do so, important that what we expect
+                // is more restrictive (so the `forced` is an over-approximation).
+                if !self.is_subset_eq(&t, &forced, type_order) {
+                    // Poor error message, but overall, this is a terrible experience for users.
+                    self.error(&forced, &t, errors, loc, &|| TypeCheckContext::unknown());
                 }
             }
             _ => {

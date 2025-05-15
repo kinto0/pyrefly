@@ -134,7 +134,7 @@ export default function SandboxResults({
                         )}
                         onClick={() => setActiveTab('errors')}
                     >
-                        Typechecking Errors
+                        Type Checking Errors
                     </li>
                     <li
                         {...stylex.props(
@@ -234,6 +234,10 @@ const styles = stylex.create({
         paddingHorizontal: '10px',
         marginBottom: 0,
         background: 'var(--color-background)',
+        width: '100%',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+        display: 'block',
     },
     tabs: {
         display: 'flex',

@@ -295,24 +295,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                     None
                 }
-                Some(Qualifier::Unpack)
-                    if !matches!(
-                        type_form_context,
-                        TypeFormContext::ParameterArgsAnnotation
-                            | TypeFormContext::ParameterKwargsAnnotation,
-                    ) =>
-                {
-                    self.error(
-                        errors,
-                        x.range(),
-                        ErrorKind::InvalidAnnotation,
-                        None,
-                        "Unpack is not allowed in this context.".to_owned(),
-                    );
-                    // We return the qualifier so that it's consumed and we don't emit a
-                    // duplicate error in the fallback logic
-                    qualifier
-                }
                 Some(Qualifier::TypeAlias)
                     if !matches!(
                         type_form_context,
@@ -765,43 +747,39 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if !Self::is_valid_annotation(expr, errors) {
             return Type::any_error();
         }
-        if matches!(
-            style,
-            TypeAliasStyle::Scoped | TypeAliasStyle::LegacyExplicit
-        ) {
-            let untyped = self.untype_opt(ty.clone(), range);
-            if let Some(ty) = untyped {
-                self.validate_type_form(ty, range, TypeFormContext::TypeAlias, errors);
-            } else {
-                self.error(
-                    errors,
-                    range,
-                    ErrorKind::TypeAliasError,
-                    None,
-                    format!("Expected `{name}` to be a type alias, got {ty}"),
-                );
-                return Type::any_error();
+        let untyped = self.untype_opt(ty.clone(), range);
+        let mut ty = if let Type::ClassDef(cls) = ty {
+            // TODO: should we be promoting this or making a Forall type?
+            self.promote(&cls, range)
+        } else if let Some(untyped) = untyped {
+            let validated =
+                self.validate_type_form(untyped, range, TypeFormContext::TypeAlias, errors);
+            if validated.is_error() {
+                return validated;
             }
-        }
-        let mut ty = match &ty {
-            Type::ClassDef(cls) => Type::type_form(self.promote(cls, range)),
-            t => t.clone(),
+            validated
+        } else {
+            self.error(
+                errors,
+                range,
+                ErrorKind::TypeAliasError,
+                None,
+                format!("Expected `{name}` to be a type alias, got {ty}"),
+            );
+            return Type::any_error();
         };
         let mut seen_type_vars = SmallMap::new();
         let mut seen_type_var_tuples = SmallMap::new();
         let mut seen_param_specs = SmallMap::new();
         let mut tparams = Vec::new();
-        match ty {
-            Type::Type(ref mut t) => self.tvars_to_tparams_for_type_alias(
-                t,
-                &mut seen_type_vars,
-                &mut seen_type_var_tuples,
-                &mut seen_param_specs,
-                &mut tparams,
-            ),
-            _ => {}
-        }
-        let ta = TypeAlias::new(name.clone(), ty, style);
+        self.tvars_to_tparams_for_type_alias(
+            &mut ty,
+            &mut seen_type_vars,
+            &mut seen_type_var_tuples,
+            &mut seen_param_specs,
+            &mut tparams,
+        );
+        let ta = TypeAlias::new(name.clone(), Type::type_form(ty), style);
         Forallable::TypeAlias(ta).forall(self.type_params(range, tparams, errors))
     }
 
@@ -1146,26 +1124,30 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 self.check_is_exception(exc, exc.range(), false, errors);
                 self.check_is_exception(cause, cause.range(), true, errors);
             }
-            BindingExpect::Eq(k1, k2, name) => {
-                let ann1 = self.get_idx(*k1);
-                let ann2 = self.get_idx(*k2);
-                if let Some(t1) = ann1.ty(self.stdlib)
-                    && let Some(t2) = ann2.ty(self.stdlib)
-                    && t1 != t2
+            BindingExpect::Redefinition {
+                new,
+                existing,
+                name,
+            } => {
+                let ann_new = self.get_idx(*new);
+                let ann_existing = self.get_idx(*existing);
+                if let Some(t_new) = ann_new.ty(self.stdlib)
+                    && let Some(t_existing) = ann_existing.ty(self.stdlib)
+                    && t_new != t_existing
                 {
-                    let t1 = self.for_display(t1.clone());
-                    let t2 = self.for_display(t2.clone());
-                    let ctx = TypeDisplayContext::new(&[&t1, &t2]);
+                    let t_new = self.for_display(t_new.clone());
+                    let t_existing = self.for_display(t_existing.clone());
+                    let ctx = TypeDisplayContext::new(&[&t_new, &t_existing]);
                     self.error(
                         errors,
-                        self.bindings().idx_to_key(*k1).range(),
+                        self.bindings().idx_to_key(*new).range(),
                         ErrorKind::AnnotationMismatch,
                         None,
                         format!(
-                            "Inconsistent type annotations for {}: {}, {}",
+                            "`{}` cannot be annotated with `{}`, it is already defined with type `{}`",
                             name,
-                            ctx.display(&t1),
-                            ctx.display(&t2),
+                            ctx.display(&t_new),
+                            ctx.display(&t_existing),
                         ),
                     );
                 }
@@ -1688,6 +1670,31 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
+    fn may_be_implicit_type_alias(ty: &Type) -> bool {
+        fn check_type_form(ty: &Type, allow_none: bool) -> bool {
+            // TODO(stroxler, rechen): Do we want to include Type::ClassDef(_)
+            // when there is no annotation, so that `mylist = list` is treated
+            // like a value assignment rather than a type alias?
+            match ty {
+                Type::Type(_) => true,
+                Type::None if allow_none => true,
+                Type::Union(members) => {
+                    for member in members {
+                        // `None` can be part of an implicit type alias if it's
+                        // part of a union. In other words, we treat
+                        // `x = T | None` as a type alias, but not `x = None`
+                        if !check_type_form(member, true) {
+                            return false;
+                        }
+                    }
+                    true
+                }
+                _ => false,
+            }
+        }
+        check_type_form(ty, false)
+    }
+
     fn binding_to_type(&self, binding: &Binding, errors: &ErrorCollector) -> Type {
         match binding {
             Binding::Forward(..)
@@ -1832,9 +1839,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         }
                         let annot_ty = annot.ty(self.stdlib);
                         let hint = annot_ty.as_ref().map(|t| (t, tcc));
+                        let expr_ty = self.expr(expr, hint, errors);
+                        let ty = if *style == AnnotationStyle::Direct {
+                            // For direct assignments, user-provided annotation takes
+                            // precedence over inferred expr type.
+                            annot_ty.unwrap_or(expr_ty)
+                        } else {
+                            // For forwarded assignment, user-provided annotation is treated
+                            // as just an upper-bound hint.
+                            expr_ty
+                        };
                         (
                             Some(annot.annotation.qualifiers.contains(&Qualifier::TypeAlias)),
-                            self.expr(expr, hint, errors),
+                            ty,
                         )
                     }
                     None => (None, self.expr(expr, None, errors)),
@@ -1843,10 +1860,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     (Some(true), _) => {
                         self.as_type_alias(name, TypeAliasStyle::LegacyExplicit, ty, expr, errors)
                     }
-                    // TODO(stroxler, rechen): Do we want to include Type::ClassDef(_)
-                    // when there is no annotation, so that `mylist = list` is treated
-                    // like a value assignment rather than a type alias?
-                    (None, Type::Type(_)) => {
+                    (None, ty_ref) if Self::may_be_implicit_type_alias(ty_ref) => {
                         self.as_type_alias(name, TypeAliasStyle::LegacyImplicit, ty, expr, errors)
                     }
                     _ => ty,

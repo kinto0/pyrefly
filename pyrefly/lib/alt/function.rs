@@ -306,12 +306,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let ty = match self.bindings().get_function_param(&x.name) {
                 Either::Left(idx) => {
                     let annot = self.get_idx(idx);
-                    let ty = annot.annotation.get_type().clone();
-                    if annot.annotation.is_unpacked() {
-                        Type::Unpack(Box::new(ty))
-                    } else {
-                        ty
-                    }
+                    annot.annotation.get_type().clone()
                 }
                 Either::Right(var) => self.solver().force_var(var),
             };

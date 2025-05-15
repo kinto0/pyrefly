@@ -10,6 +10,7 @@
 import * as React from 'react';
 import * as stylex from '@stylexjs/stylex';
 import typography from './typography';
+import { useState, useEffect } from 'react';
 interface LandingPageSectionProps {
     title?: string;
     child: React.ReactNode;
@@ -25,46 +26,44 @@ export default function LandingPageSection({
     id = '',
     isFirstSection = false,
     isLastSection = false,
-    hasBrownBackground = false,
 }: LandingPageSectionProps): React.ReactElement {
-    const backgroundColor = hasBrownBackground
-        ? 'var(--color-background)'
-        : 'var(--color-text)';
+    const [isTitleVisible, setIsTitleVisible] = useState(false);
+
+    useEffect(() => {
+        // Only apply animation for performance comparison section
+        if (id === 'performance-comparison-section') {
+            // Delay the title animation to start after the Why Pyrefly section animations
+            const timer = setTimeout(() => {
+                setIsTitleVisible(true);
+            }, 1100); // Slightly later than why pyrefly animations (1400ms)
+
+            return () => clearTimeout(timer);
+        } else {
+            // For other sections, make title visible immediately
+            setIsTitleVisible(true);
+        }
+    }, [id]);
+
     return (
         <section
             id={id}
             {...stylex.props(
                 styles.section,
-                isLastSection ? styles.lastSection : null,
-                { background: backgroundColor }
+                isFirstSection ? styles.isFirstSection : null,
+                isLastSection ? styles.lastSection : null
             )}
         >
-            {/* Rise decoration (for all except first section) */}
-            {!isFirstSection && (
-                <div
-                    style={{
-                        color: backgroundColor,
-                    }}
-                />
-            )}
-
-            {/* Drop decoration (for all sections) */}
-            {!isLastSection && (
-                <div
-                    style={{
-                        color: backgroundColor,
-                    }}
-                />
-            )}
             <div className="container">
                 {title != null ? (
                     <h2
                         {...stylex.props(
                             styles.sectionTitle,
                             typography.h2,
-                            hasBrownBackground
-                                ? { color: 'var(--color-text)' }
-                                : null
+                            id === 'performance-comparison-section' &&
+                                styles.animatedTitle,
+                            id === 'performance-comparison-section' &&
+                                isTitleVisible &&
+                                styles.titleVisible
                         )}
                     >
                         {title}
@@ -86,12 +85,27 @@ const styles = stylex.create({
         alignItems: 'center',
         flex: 1,
         position: 'relative',
-        paddingVertical: 20,
+        padding: '1rem 0',
+    },
+    isFirstSection: {
+        paddingTop: '7rem',
     },
     lastSection: {
-        paddingBottom: 30,
+        paddingBottom: '7rem',
     },
     sectionTitle: {
         marginTop: '2rem',
+        color: 'var(--color-text)',
+    },
+    animatedTitle: {
+        opacity: 0,
+        filter: 'blur(4px)',
+        transform: 'translateY(15px)',
+        transition: 'all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)',
+    },
+    titleVisible: {
+        opacity: 1,
+        filter: 'blur(0px)',
+        transform: 'translateY(0)',
     },
 });

@@ -27,9 +27,8 @@ const docsSidebar = [
         type: 'category' as const,
         label: 'Learn Python Typing',
         description: "Never used a type system before or just new to Pyrefly? Start here!",
-        items: ['typing-for-python-developers', 'python-typing-for-beginners']
+        items: ['typing-for-python-developers', 'python-typing-for-beginners', 'python-features-and-peps']
     },
-    // TODO (T221099224): Release getting started and installation doc pages to public
     {
         type: 'category' as const,
         label: 'Getting Started',
@@ -37,17 +36,13 @@ const docsSidebar = [
         collapsed: false,
         items: ['installation', 'configuration'],
     },
-    // TODO: Renaable links to configuration migration work when we're confident the tool won't break existing pyrpoject toml files
-    // {
-    //     type: 'category' as const,
-    //     label: 'Migrating to Pyrefly',
-    //     link: {
-    //         type: 'doc' as const,
-    //         id: 'migrating-to-pyrefly',
-    //     },
-    //     description: "Never used a type system before or just new to Pyrefly? Start here!",
-    //     items: ['migrating-from-mypy',  'migrating-from-pyright']
-    // },
+    {
+        type: 'category' as const,
+        label: 'Migrating to Pyrefly',
+        description: "Never used a type system before or just new to Pyrefly? Start here!",
+        collapsed: false,
+        items: ['migrating-from-mypy',  'migrating-from-pyright']
+    },
     {
         type: 'doc' as const,
         id: 'pyrefly-faq',
@@ -60,7 +55,7 @@ const docsSidebar = [
     },
     {
         type: 'doc' as const,
-        id: 'error-suppresions',
+        id: 'error-suppressions',
         label: 'Error Suppressions',
     },
     {

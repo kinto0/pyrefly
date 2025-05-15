@@ -8,11 +8,11 @@ import CodeSnippet from '@site/src/sandbox/CodeSnippet'
 
 # Typing for Python Developers
 
-*5‑Minute Tour with Pyrefly*
+*A 5‑Minute Tour with Pyrefly.*
 
 **Goal:** In five minutes you'll know how Python's static type system _infers_, _defines_, and _composes_ types—and you'll have copy‑paste snippets to start using right away.
 
-If you are new to Python, check out our [Python Typing for Beginners guide](../python-typing-for-beginners/).
+If you are new to Python, check out our [Python Typing for New Developers guide](../python-typing-for-beginners/).
 
 Python's type system allows you to annotate variables so you, your teammates and your type checker can find bugs before you run your code. Think of it as documentation that's automatically validated and will help your IDE help you.
 
@@ -62,7 +62,7 @@ message = greet("World")
 
 ### The Basics
 
-Python's built-in types can be used to write many simple type hints.
+Python's built-in types can be used to write many type hints.
 <CodeSnippet
   sampleFilename="built_in_types.py"
   codeSample={`# Example: Basic Types
@@ -70,12 +70,12 @@ Python's built-in types can be used to write many simple type hints.
 from typing import reveal_type
 
 age: int = 5
-reveal_type(age) # revealed type: Literal[5]
+reveal_type(age) # revealed type: int
 
 age = "oops"
 
 name: str = "John"
-reveal_type(name) # revealed type: Literal['John']
+reveal_type(name) # revealed type: str
 
 numbers: list[int] = [1, 2, 3]
 reveal_type(numbers) # revealed type: list[int]
@@ -86,7 +86,7 @@ reveal_type(names) # revealed type: list[str]
 person: dict[str, str] = {"name": "John", "age": "30"}
 reveal_type(person) # revealed type: dict[str, str]
 
-is_admin: bool = True
+is_admin = True
 reveal_type(is_admin) # revealed type: Literal[True]
 `}
 />
@@ -248,30 +248,8 @@ reveal_type(f("")) # revealed type: str
 `}
 />
 
-## Typing Features, PEPS available in each Python Version
-
-| Feature (click PEP for details) | What it adds / looks like | Introduced in |
-| --- | --- | --- |
-| [PEP 484](https://peps.python.org/pep-0484/) -- Core **type hints** & `typing` module | `def add(a: int, b: int) -> int:` | **3.5** |
-| [PEP 526](https://peps.python.org/pep-0526/) -- **Variable annotations** | `count: int = 0` | **3.6** |
-| [PEP 563](https://peps.python.org/pep-0563/) -- `from __future__ import annotations` (lazy eval) | Annotations stored as **strings** | **3.7** (future‑flag) |
-| [PEP 544](https://peps.python.org/pep-0544/) -- **Protocols** (structural typing) | `class Jsonable(Protocol): ...` | **3.8** |
-| [PEP 589](https://peps.python.org/pep-0589/) -- **TypedDict** | `class User(TypedDict): ...` | **3.8** |
-| [PEP 586](https://peps.python.org/pep-0586/) -- **Literal** types | `def log(level: Literal["info","warn"]): ...` | **3.8** |
-| [PEP 591](https://peps.python.org/pep-0591/) -- **Final** qualifier | `TOKEN: Final[str] = "..."` | **3.8** |
-| [PEP 585](https://peps.python.org/pep-0585/) -- **Built‑in generics** | `list[int]`, `dict[str, Any]` | **3.9** |
-| [PEP 593](https://peps.python.org/pep-0593/) -- **Annotated** | `x: Annotated[int, "units=px"]` | **3.9** |
-| [PEP 604](https://peps.python.org/pep-0604/) -- **Union** syntax | `int \| None` | **3.10** |
-| [PEP 612](https://peps.python.org/pep-0612/) -- **ParamSpec / Concatenate** | decorator‑safe generics | **3.10** |
-| [PEP 613](https://peps.python.org/pep-0613/) -- `TypeAlias` qualifier | `Vector: TypeAlias = list[float]` | **3.10** |
-| [PEP 647](https://peps.python.org/pep-0647/) -- **TypeGuard** for narrowing | `def is_str(x) -> TypeGuard[str]: ...` | **3.10** |
-| [PEP 655](https://peps.python.org/pep-0655/) -- `Required` / `NotRequired` for **TypedDict** | optional vs. mandatory keys | **3.11** |
-| [PEP 646](https://peps.python.org/pep-0646/) -- **Variadic generics** (`TypeVarTuple`, `Unpack`) | tensor shapes, 2‑D arrays, ... | **3.11** |
-| [PEP 673](https://peps.python.org/pep-0673/) -- **Self** type | fluent APIs: `def set(...) -> Self:` | **3.11** |
-| [PEP 681](https://peps.python.org/pep-0681/) -- **dataclass_transform** helper | libraries like Pydantic, attrs | **3.11** |
-| [PEP 695](https://peps.python.org/pep-0695/) -- **Class‑level generics syntax** | `class Box[T]: ...` | **3.12** |
-| [PEP 698](https://peps.python.org/pep-0698/) -- `@override` decorator | flag intentional overrides | **3.13** |
-| [PEP 649](https://peps.python.org/pep-0649/) -- *New* deferred‑eval algorithm (replaces PEP 563) | becomes the default | **3.14** |
+## Typing Features and PEPS available in each Python Version
+See the full list of features available in the Python type system [here](../python-features-and-peps).
 
 ### Key Highlights Summary:
 - **Inference:** Python's static analyzers can infer types from your code, reducing the need for explicit annotations. This feature enhances code readability and helps catch bugs early.

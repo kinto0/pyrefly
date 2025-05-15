@@ -44,12 +44,12 @@ describe('Home page', () => {
         const whyPyreFlySection = document.getElementById(
             'why-pyrefly-section'
         );
-        expect(whyPyreFlySection).not.toBeInTheDocument();
+        expect(whyPyreFlySection).toBeInTheDocument();
 
         const performanceComparisonSection = document.getElementById(
             'performance-comparison-section'
         );
-        expect(performanceComparisonSection).not.toBeInTheDocument();
+        expect(performanceComparisonSection).toBeInTheDocument();
 
         const quotesSection = document.getElementById('quotes-section');
         expect(quotesSection).not.toBeInTheDocument();

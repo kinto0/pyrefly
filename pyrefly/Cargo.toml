@@ -2,7 +2,7 @@
 
 [package]
 name = "pyrefly"
-version = "0.14.1"
+version = "0.15.1"
 authors = ["Meta"]
 edition = "2021"
 repository = "https://github.com/facebook/pyrefly"
@@ -24,7 +24,7 @@ argfile = "0.1.6"
 base64 = { version = "0.21", features = ["alloc"] }
 blake3 = { version = "=1.5.5", features = ["mmap", "rayon", "traits-preview"] }
 bstr = { version = "1.10.0", features = ["serde", "std", "unicode"] }
-clap = { version = "4.5.30", features = ["derive", "env", "string", "unicode", "wrap_help"] }
+clap = { version = "4.5.38", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 configparser = { version = "3.0.3", features = ["indexmap"] }
 const-str = "0.4.3"
 convert_case = "0.6"
@@ -62,7 +62,7 @@ static_assertions = "1.1.0"
 static_interner = "0.1.1"
 tar = "0.4.44"
 thiserror = "2"
-tokio = { version = "1.44.2", features = ["macros", "rt"] }
+tokio = { version = "1.45.0", features = ["macros", "rt"] }
 toml = "0.8.19"
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 tracing-subscriber = { version = "0.3.18", features = ["chrono", "env-filter", "json", "local-time", "parking_lot", "registry"] }

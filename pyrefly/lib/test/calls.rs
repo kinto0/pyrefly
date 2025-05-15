@@ -36,3 +36,17 @@ def f[S, T](x: S, y: list[T] | None) -> tuple[S, T]: ...
 force_error(f(1, None))  # E: Argument `tuple[int, @_]` is not assignable to parameter `x`
 "#,
 );
+
+testcase!(
+    test_self_type_subst,
+    r#"
+from typing import assert_type, Self
+class A:
+    def __new__(cls) -> Self: ...
+class B[T](A): ...
+class C[T]: ...
+assert_type(A.__new__(A), A)
+assert_type(A.__new__(B[int]), B[int])
+assert_type(A.__new__(C[int]), Self)
+    "#,
+);

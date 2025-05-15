@@ -304,10 +304,10 @@ def f(cond: bool):
         x: int = 1  # OK
     y: int = 0
     if cond:
-        y: str = "oops"  # E: Inconsistent type annotations for y
+        y: str = "oops"  # E: `y` cannot be annotated with `str`, it is already defined with type `int`
     z: int = 0
     if cond:
-        z: Literal[1] = 1  # E: Inconsistent type annotations for z
+        z: Literal[1] = 1  # E: `z` cannot be annotated with `Literal[1]`, it is already defined with type `int`
     "#,
 );
 
@@ -315,7 +315,7 @@ testcase!(
     test_multiple_annotations_without_merge,
     r#"
 x: int = 0
-x: str = ""  # E: Inconsistent type annotations for x
+x: str = ""  # E: `x` cannot be annotated with `str`, it is already defined with type `int`
     "#,
 );
 
@@ -328,11 +328,21 @@ x: str = ""
 );
 
 testcase!(
+    test_aug_assign_illegal_targets,
+    r#"
+x = 42
+(x,) += (42,)  # E: Parse error: Invalid augmented assignment target
+[x] += [42]  # E: Parse error: Invalid augmented assignment target
+*x += 42  # E: Parse error: Invalid augmented assignment target
+    "#,
+);
+
+testcase!(
     test_annot_flow_assign,
     r#"
 from typing import Literal
 x: int = 0
-lit0: Literal[0] = x
+lit0: Literal[0] = x  # E: `int` is not assignable to `Literal[0]`
 x = 1
 lit1: Literal[1] = x
 x = "oops"  # E: `Literal['oops']` is not assignable to variable `x` with type `int`
@@ -414,7 +424,7 @@ class A:
     def __iadd__(self, other):
         return self
     def __add__(self, other):
-        return self 
+        return self
 class B:
     def __add__(self, other):
         return self
@@ -422,7 +432,7 @@ class C:
     def __radd__(self, other):
         return self
 class D: pass
-        
+
 a = A()
 b = B()
 c = C()

@@ -741,6 +741,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         .is_none_or(|want_v| got_v.required == want_v.required)
                 })
             }
+            (Type::TypedDict(_), Type::SelfType(cls))
+                if cls == self.type_order.stdlib().typed_dict_fallback() =>
+            {
+                // Allow substituting a TypedDict for Self when we call methods
+                true
+            }
             (Type::TypedDict(_), _) => {
                 let stdlib = self.type_order.stdlib();
                 self.is_subset_eq(
@@ -972,6 +978,13 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     .all(|constraint| self.is_subset_eq(constraint, t2)),
                 Restriction::Unrestricted => self
                     .is_subset_eq_impl(&self.type_order.stdlib().object().clone().to_type(), want),
+            },
+            (t1, Type::Quantified(q)) => match q.restriction() {
+                // This only works for constraints and not bounds, because a TypeVar must resolve to exactly one of its constraints.
+                Restriction::Constraints(constraints) => constraints
+                    .iter()
+                    .all(|constraint| self.is_subset_eq(t1, constraint)),
+                _ => false,
             },
             _ => false,
         }

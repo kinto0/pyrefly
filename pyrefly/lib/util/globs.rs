@@ -340,7 +340,7 @@ impl Globs {
         Ok(result.into_iter().collect())
     }
 
-    fn covers(&self, path: &Path) -> bool {
+    pub fn covers(&self, path: &Path) -> bool {
         self.matches(path).unwrap_or(false)
     }
 }

@@ -154,7 +154,7 @@ fn get_explicit_config(
     let (file_config, parse_errors) = ConfigFile::from_file(path);
     let (config, validation_errors) = args.override_config(file_config);
     (
-        ArcId::new(config),
+        config,
         parse_errors.into_iter().chain(validation_errors).collect(),
     )
 }
@@ -177,7 +177,7 @@ fn get_globs_and_config_for_project(
                 ));
                 // Since this is a config we generated, these are likely internal errors.
                 debug_log(errors);
-                ArcId::new(config)
+                config
             });
             (config, config_finder.errors())
         }
@@ -185,6 +185,12 @@ fn get_globs_and_config_for_project(
     match &config.source {
         ConfigSource::File(path) => {
             info!("Checking project configured at `{}`", path.display());
+        }
+        ConfigSource::Marker(path) => {
+            info!(
+                "Found `{}` marking project root, checking root directory with default configuration",
+                path.display(),
+            );
         }
         ConfigSource::Synthetic => {
             info!("Checking current directory with default configuration");
@@ -196,12 +202,8 @@ fn get_globs_and_config_for_project(
     config_finder.add_errors(errors);
 
     debug!("Config is: {}", config);
-    let project_excludes = project_excludes.unwrap_or_else(|| config.project_excludes.clone());
 
-    Ok((
-        FilteredGlobs::new(config.project_includes.clone(), project_excludes),
-        config_finder,
-    ))
+    Ok((config.get_filtered_globs(project_excludes), config_finder))
 }
 
 /// Get inputs for a per-file check. If an explicit config is passed in, we use it; otherwise, we
@@ -300,8 +302,14 @@ async fn run_command(command: Command, allow_forget: bool) -> anyhow::Result<Com
                     ConfigSource::Synthetic => {
                         println!("Default configuration");
                     }
+                    ConfigSource::Marker(path) => {
+                        println!(
+                            "Default configuration for project root marked by `{}`",
+                            path.display()
+                        );
+                    }
                     ConfigSource::File(path) => {
-                        println!("Configuration at {path:?}");
+                        println!("Configuration at `{}`", path.display());
                     }
                 }
                 println!("  Covered files:");
@@ -313,9 +321,11 @@ async fn run_command(command: Command, allow_forget: bool) -> anyhow::Result<Com
                         break;
                     }
                 }
-                println!("  Search path: {:?}", config.search_path);
-                println!("  Fallback search path: {:?}", config.fallback_search_path);
-                println!("  Site package path: {:?}", config.site_package_path());
+                for path_part in config.structured_import_lookup_path() {
+                    if !path_part.is_empty() {
+                        println!("  {path_part}");
+                    }
+                }
             }
             Ok(CommandExitStatus::Success)
         }

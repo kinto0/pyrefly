@@ -45,6 +45,7 @@ const config: Config.InitialOptions = {
         '@docusaurus/BrowserOnly': '<rootDir>/__mocks__/browserOnlyMock.ts',
         '@docusaurus/useBaseUrl':
             '<rootDir>/__mocks__/@docusaurus/useBaseUrl.ts',
+        '@theme/ThemedImage': '<rootDir>/__mocks__/@theme/ThemedImage.tsx',
         '@monaco-editor/react': '<rootDir>/__mocks__/monacoEditorMock.ts',
         // Mock pyrefly_wasm for all files except pyrefly_wasm.test.ts
         '((?!pyrefly_wasm\\.test\\.ts).)*\\/pyrefly_wasm$':

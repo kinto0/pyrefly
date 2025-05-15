@@ -162,7 +162,6 @@ def f1(x: type[A] | type[B]):
 );
 
 testcase!(
-    bug = "`Literal[False] | bool` should collapse to `bool`",
     test_and,
     r#"
 from typing import assert_type, Literal, Never
@@ -170,7 +169,7 @@ def f(x: bool | None):
     if x is True and x is None:
         assert_type(x, Never)
     else:
-        assert_type(x, Literal[False] | bool | None)
+        assert_type(x, bool | None)
     "#,
 );
 
@@ -235,9 +234,22 @@ testcase!(
     r#"
 from typing import assert_type
 import sys
-def f(x: str | None):
+import os
+def test_sys_exit(x: str | None):
     if not x:
         sys.exit(1)
+    assert_type(x, str)
+def test_exit(x: str | None):
+    if not x:
+        exit(1)
+    assert_type(x, str)
+def test_quit(x: str | None):
+    if not x:
+        quit(1)
+    assert_type(x, str)
+def test_os_exit(x: str | None):
+    if not x:
+        os._exit(1)
     assert_type(x, str)
     "#,
 );
@@ -312,7 +324,7 @@ testcase!(
 from typing import assert_type, Literal
 def f() -> str | None: ...
 x = f()
-while x is None:  # E: EXPECTED str | None <: Literal[42] | str
+while x is None:  # E: EXPECTED Literal[42] | str <: str | None
     if f():
         x = 42
         break

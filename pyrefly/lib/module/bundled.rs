@@ -103,7 +103,7 @@ impl BundledTypeshed {
         static CONFIG: LazyLock<ArcId<ConfigFile>> = LazyLock::new(|| {
             let mut config_file = ConfigFile::default();
             config_file.python_environment.site_package_path = Some(Vec::new());
-            config_file.search_path = match stdlib_search_path() {
+            config_file.search_path_from_file = match stdlib_search_path() {
                 Some(path) => vec![path],
                 None => Vec::new(),
             };

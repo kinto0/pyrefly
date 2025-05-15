@@ -7,17 +7,18 @@
 
 use std::fmt::Debug;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::anyhow;
 use dupe::Dupe;
+use itertools::Itertools;
 
 use crate::config::config::ConfigFile;
+use crate::config::config::ConfigSource;
+use crate::config::config::ImportLookupPathPart;
 use crate::module::module_name::ModuleName;
 use crate::module::module_path::ModulePath;
 use crate::util::arc_id::ArcId;
-use crate::util::display::commas_iter;
 use crate::util::locked_map::LockedMap;
 
 #[derive(Debug, Clone, Dupe)]
@@ -43,35 +44,37 @@ impl FindError {
         Self::NoSource(module)
     }
 
-    pub fn search_path(
-        search_roots: &[PathBuf],
-        fallback_search_roots: &[PathBuf],
-        site_package_path: &[PathBuf],
+    pub fn import_lookup_path(
+        path: Vec<ImportLookupPathPart>,
         module: ModuleName,
-        config_path: Option<&Path>,
+        config_source: &ConfigSource,
     ) -> FindError {
-        let config_path = config_path
-            .map(|p| format!(" (from config at {})", p.display()))
-            .unwrap_or_default();
-        if search_roots.is_empty()
-            && fallback_search_roots.is_empty()
-            && site_package_path.is_empty()
-        {
-            Self::not_found(
-                anyhow!("no search roots or site package path{config_path}"),
-                module,
-            )
+        let config_suffix = match config_source {
+            ConfigSource::File(p) => format!(" (from config in `{}`)", p.display()),
+            ConfigSource::Marker(p) => {
+                format!(
+                    " (from default config for project root marked by `{}`)",
+                    p.display()
+                )
+            }
+            _ => "".to_owned(),
+        };
+        let path_dump = path
+            .iter()
+            .filter_map(|path| {
+                if path.is_empty() {
+                    None
+                } else {
+                    Some(format!("\n  {path}"))
+                }
+            })
+            .join("");
+        let explanation = if path_dump.is_empty() {
+            format!("no search path or site package path{config_suffix}")
         } else {
-            Self::not_found(
-                anyhow!(
-                    "looked at search roots ({}), fallback search roots ({}), and site package path ({}){config_path}",
-                    commas_iter(|| search_roots.iter().map(|x| x.display())),
-                    commas_iter(|| fallback_search_roots.iter().map(|x| x.display())),
-                    commas_iter(|| site_package_path.iter().map(|x| x.display())),
-                ),
-                module,
-            )
-        }
+            format!("looked in these locations{config_suffix}:{path_dump}")
+        };
+        FindError::NotFound(Arc::new(anyhow!(explanation)), module)
     }
 
     pub fn display(&self) -> String {

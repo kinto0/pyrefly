@@ -138,7 +138,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 } else {
                     &obj
                 };
-                func.subst_self_type_mut(self_replacement);
+                func.subst_self_type_mut(self_replacement, &|a, b| self.is_subset_eq(a, b));
                 match self.as_call_target(func.as_type()) {
                     Some(CallTarget {
                         qs,
@@ -533,10 +533,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 };
                 let self_obj = match first_arg_type {
                     Some(Type::Type(box Type::ClassType(c))) => Some(c.to_type()),
+                    Some(Type::ClassDef(class)) => Some(class.as_class_type().to_type()),
                     _ => None,
                 };
                 if let Some(self_obj) = self_obj {
-                    callable.subst_self_type_mut(&self_obj);
+                    callable.subst_self_type_mut(&self_obj, &|a, b| self.is_subset_eq(a, b));
                 }
                 self.callable_infer(
                     callable,

@@ -18,6 +18,7 @@ import {
 } from './PerformanceComparisonTypes';
 
 import PerformanceComparisonChartTimer from './PerformanceComparisonChartTimer';
+import TypecheckerTooltip from './TypecheckerTooltip';
 
 interface TypeCheckerData {
     typechecker: TypeCheckerValue;
@@ -29,8 +30,15 @@ interface ProjectData {
     data: TypeCheckerData[];
 }
 
-export default function PerformanceComparisonChart(): React.ReactElement {
-    const project = Project.INSTAGRAM;
+interface PerformanceComparisonChartProps {
+    project: ProjectValue;
+    isLoaded: boolean;
+}
+
+export default function PerformanceComparisonChart({
+    project,
+    isLoaded,
+}: PerformanceComparisonChartProps): React.ReactElement {
     const data = getData(project);
 
     // Calculate the maximum duration for scaling
@@ -46,9 +54,15 @@ export default function PerformanceComparisonChart(): React.ReactElement {
                     )}
                     key={index}
                 >
-                    <span {...stylex.props(styles.typecheckerName)}>
-                        <strong>{typechecker.typechecker}</strong>
-                    </span>
+                    <div {...stylex.props(styles.typecheckerNameContainer)}>
+                        <span {...stylex.props(styles.typecheckerName)}>
+                            <strong>{typechecker.typechecker}</strong>
+                        </span>
+                        <TypecheckerTooltip
+                            typechecker={typechecker.typechecker}
+                            project={project}
+                        />
+                    </div>
                     <div {...stylex.props(styles.progressBarContainer)}>
                         <ProgressBar
                             durationInSeconds={typechecker.durationInSeconds}
@@ -56,11 +70,13 @@ export default function PerformanceComparisonChart(): React.ReactElement {
                             highlight={
                                 typechecker.typechecker === TypeChecker.PYREFLY
                             }
+                            isLoaded={isLoaded}
                         />
                     </div>
                     <span {...stylex.props(styles.duration)}>
                         <PerformanceComparisonChartTimer
                             targetSeconds={typechecker.durationInSeconds}
+                            isLoaded={isLoaded}
                         />
                     </span>
                 </div>
@@ -75,10 +91,14 @@ const styles = stylex.create({
         display: 'flex',
         flexDirection: 'row',
     },
+    typecheckerNameContainer: {
+        display: 'flex',
+        alignItems: 'left',
+        width: 150,
+    },
     typecheckerName: {
         display: 'inline-block',
         fontSize: 20,
-        width: 150,
     },
     progressBarContainer: {
         flexGrow: 1,
@@ -87,6 +107,8 @@ const styles = stylex.create({
     },
     duration: {
         marginLeft: 'auto',
+        minWidth: '70px', // Ensure enough space for 3 digits + decimal + 's'
+        textAlign: 'right',
     },
 });
 
@@ -107,11 +129,16 @@ const performanceComparisonChartData: ProjectData[] = [
     {
         project: Project.INSTAGRAM,
         data: [
-            { typechecker: TypeChecker.PYREFLY, durationInSeconds: 2 },
-            { typechecker: TypeChecker.MYPY, durationInSeconds: 50 },
-            { typechecker: TypeChecker.PYRIGHT, durationInSeconds: 20 },
-            { typechecker: TypeChecker.PYTYPE, durationInSeconds: 40 },
-            { typechecker: TypeChecker.PYRE1, durationInSeconds: 40 },
+            { typechecker: TypeChecker.PYREFLY, durationInSeconds: 13.36 },
+            { typechecker: TypeChecker.PYRE, durationInSeconds: 475.77 },
+        ],
+    },
+    {
+        project: Project.PYTORCH,
+        data: [
+            { typechecker: TypeChecker.PYREFLY, durationInSeconds: 2.32 },
+            { typechecker: TypeChecker.PYRIGHT, durationInSeconds: 35.16 },
+            { typechecker: TypeChecker.MYPY, durationInSeconds: 48.06 },
         ],
     },
 ];

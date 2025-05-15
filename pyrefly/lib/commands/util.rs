@@ -13,7 +13,10 @@ use crate::dunder;
 use crate::module::module_name::ModuleName;
 
 /// If the module is on the search path, return its name from that path. Otherwise, return None.
-pub fn module_from_path(path: &Path, includes: &[PathBuf]) -> Option<ModuleName> {
+pub fn module_from_path<'a>(
+    path: &Path,
+    includes: impl Iterator<Item = &'a PathBuf>,
+) -> Option<ModuleName> {
     // Return a module name, and a boolean as to whether it is any good.
     fn path_to_module(mut path: &Path) -> Option<ModuleName> {
         if path.file_stem() == Some(dunder::INIT.as_str().as_ref()) {
@@ -51,26 +54,29 @@ mod tests {
 
     #[test]
     fn test_module_from_path() {
-        let includes = vec![PathBuf::from("/foo/bar")];
+        let includes = [PathBuf::from("/foo/bar")];
         assert_eq!(
-            module_from_path(Path::new("/foo/bar/baz.py"), &includes),
+            module_from_path(Path::new("/foo/bar/baz.py"), includes.iter()),
             Some(ModuleName::from_str("baz"))
         );
         assert_eq!(
-            module_from_path(Path::new("/foo/bar/baz/qux.pyi"), &includes),
+            module_from_path(Path::new("/foo/bar/baz/qux.pyi"), includes.iter()),
             Some(ModuleName::from_str("baz.qux"))
         );
         assert_eq!(
-            module_from_path(Path::new("/foo/bar/baz/test/magic.py"), &includes),
+            module_from_path(Path::new("/foo/bar/baz/test/magic.py"), includes.iter()),
             Some(ModuleName::from_str("baz.test.magic"))
         );
         assert_eq!(
-            module_from_path(Path::new("/foo/bar/baz/__init__.pyi"), &includes),
+            module_from_path(Path::new("/foo/bar/baz/__init__.pyi"), includes.iter()),
             Some(ModuleName::from_str("baz"))
         );
-        assert_eq!(module_from_path(Path::new("/test.py"), &includes), None);
         assert_eq!(
-            module_from_path(Path::new("/not_foo/test.py"), &includes),
+            module_from_path(Path::new("/test.py"), includes.iter()),
+            None
+        );
+        assert_eq!(
+            module_from_path(Path::new("/not_foo/test.py"), includes.iter()),
             None
         );
     }

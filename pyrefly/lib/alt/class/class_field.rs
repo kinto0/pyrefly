@@ -10,6 +10,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 use dupe::Dupe;
+use itertools::Itertools;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::Arguments;
@@ -527,7 +528,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         name: &Name,
         value: &ExprOrBinding,
-        annotation: Option<&Annotation>,
+        // Type annotation that appears directly on the field declaration (vs. one inherited from a parent)
+        direct_annotation: Option<&Annotation>,
         initial_value: &ClassFieldInitialValue,
         class: &Class,
         is_function_without_return_annotation: bool,
@@ -538,9 +540,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // then we can avoid a bunch of work with checking for override errors.
         let mut name_might_exist_in_inherited = true;
 
-        let value_ty = match value {
+        let (value_ty, inherited_annotation) = match value {
             ExprOrBinding::Expr(e) => {
-                let inherited_annot = if annotation.is_some() {
+                let inherited_annot = if direct_annotation.is_some() {
                     None
                 } else {
                     let (found_field, annotation) = self.get_inherited_annotation(class, name);
@@ -549,7 +551,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                     annotation
                 };
-                let mut ty = if let Some(annot) = inherited_annot {
+                let mut ty = if let Some(annot) = &inherited_annot {
                     let ctx: &dyn Fn() -> TypeCheckContext =
                         &|| TypeCheckContext::of_kind(TypeCheckKind::Attribute(name.clone()));
                     let hint = Some((annot.get_type(), ctx));
@@ -558,11 +560,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.expr_infer(e, errors)
                 };
                 self.expand_type_mut(&mut ty);
-                ty
+                (ty, inherited_annot)
             }
-            ExprOrBinding::Binding(b) => {
-                Arc::unwrap_or_clone(self.solve_binding(b, errors)).into_ty()
-            }
+            ExprOrBinding::Binding(b) => (
+                Arc::unwrap_or_clone(self.solve_binding(b, errors)).into_ty(),
+                None,
+            ),
         };
         let metadata = self.get_metadata_for_class(class);
         let magically_initialized = {
@@ -570,7 +573,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             // See https://github.com/python/typeshed/pull/13875 for reasoning.
             class.module_info().path().is_interface()
             // We consider fields to be always-initialized if it's annotated explicitly with `ClassVar`.
-            || annotation
+            || direct_annotation
                 .as_ref()
                 .is_some_and(|annot| annot.has_qualifier(&Qualifier::ClassVar))
         };
@@ -596,7 +599,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .is_some_and(|m| m.elements.contains(name))
         {
             for q in &[Qualifier::Final, Qualifier::ClassVar] {
-                if annotation.is_some_and(|ann| ann.has_qualifier(q)) {
+                if direct_annotation.is_some_and(|ann| ann.has_qualifier(q)) {
                     self.error(
                         errors,
                         range,
@@ -616,7 +619,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Qualifier::NotRequired,
                 Qualifier::ReadOnly,
             ] {
-                if annotation.is_some_and(|ann| ann.has_qualifier(q)) {
+                if direct_annotation.is_some_and(|ann| ann.has_qualifier(q)) {
                     self.error(
                         errors,
                         range,
@@ -630,6 +633,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         // Determine whether this is an explicit `@override`.
         let is_override = value_ty.is_override();
+
+        let annotation = direct_annotation.or(inherited_annotation.as_ref());
 
         // Promote literals. The check on `annotation` is an optimization, it does not (currently) affect semantics.
         // TODO(stroxler): if we see a read-only `Qualifier` like `Final`, it is sound to preserve literals.
@@ -669,10 +674,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // TODO(stroxler, yangdanny): We currently operate on promoted types, which means we do not infer `Literal[...]`
         // types for the `.value` / `._value_` attributes of literals. This is permitted in the spec although not optimal
         // for most cases; we are handling it this way in part because generic enum behavior is not yet well-specified.
+        //
+        // We currently skip the check for `_value_` if the class defines `__new__`, since that can
+        // change the value of the enum member. https://docs.python.org/3/howto/enum.html#when-to-use-new-vs-init
         let ty = if let Some(enum_) = metadata.enum_metadata()
             && self.is_valid_enum_member(name, &ty, &initialization)
         {
-            if annotation.is_some() {
+            if direct_annotation.is_some() {
                 self.error(
                     errors, range,ErrorKind::InvalidAnnotation, None,
                     format!("Enum member `{}` may not be annotated directly. Instead, annotate the _value_ attribute.", name),
@@ -680,6 +688,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             if enum_.has_value
                 && let Some(enum_value_ty) = self.type_of_enum_value(enum_)
+                && !class.fields().contains(&dunder::NEW)
                 && !self.matches_enum_value_annotation(&ty, &enum_value_ty)
             {
                 self.error(
@@ -731,7 +740,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Create the resulting field and check for override inconsistencies before returning
         let class_field = ClassField::new(
             ty,
-            annotation.cloned(),
+            direct_annotation.cloned(),
             initialization,
             readonly,
             descriptor_getter,
@@ -1019,7 +1028,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 return None;
             }
         };
-        foralled.subst_self_type_mut(&self.instantiate(cls));
+        foralled.subst_self_type_mut(&self.instantiate(cls), &|a, b| self.is_subset_eq(a, b));
         Some(bind_class_attribute(cls, foralled))
     }
 

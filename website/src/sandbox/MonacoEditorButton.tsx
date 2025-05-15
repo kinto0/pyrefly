@@ -105,7 +105,6 @@ const styles = stylex.create({
         zIndex: 1000,
         backdropFilter: 'blur(4px)',
         height: `${BUTTON_HEIGHT}px`,
-        margin: '0 0 0 8px', // Add margin to separate buttons
         // Mobile styles (max-width: 768px)
         '@media (max-width: 768px)': {
             padding: '8px 16px',

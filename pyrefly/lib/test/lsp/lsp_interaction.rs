@@ -20,6 +20,7 @@ use lsp_types::request::Request as _;
 use lsp_types::request::WorkspaceConfiguration;
 use tempfile::TempDir;
 
+use crate::commands::lsp::IndexingMode;
 use crate::test::lsp::lsp_interaction_util::TestCase;
 use crate::test::lsp::lsp_interaction_util::build_did_open_notification;
 use crate::test::lsp::lsp_interaction_util::get_test_files_root;
@@ -365,12 +366,14 @@ fn test_completion() {
 #[test]
 fn test_references() {
     let root = get_test_files_root();
-    let scope_uri = Url::from_file_path(root.path()).unwrap();
+    let root_path = root.path().join("tests_requiring_config");
+    let scope_uri = Url::from_file_path(root_path.clone()).unwrap();
     let mut test_messages = Vec::new();
     let mut expected_responses = Vec::new();
-    test_messages.push(Message::from(build_did_open_notification(
-        root.path().join("bar.py"),
-    )));
+    let foo = root_path.join("foo.py");
+    let bar = root_path.join("bar.py");
+    let with_synthetic_bindings = root_path.join("with_synthetic_bindings.py");
+    test_messages.push(Message::from(build_did_open_notification(bar.clone())));
 
     // Find reference from a reference location in the same in-memory file
     test_messages.push(Message::from(Request {
@@ -378,7 +381,7 @@ fn test_references() {
         method: "textDocument/references".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             "position": {
                 "line": 10,
@@ -395,23 +398,31 @@ fn test_references() {
         result: Some(serde_json::json!([
             {
                 "range": {"start":{"line":6,"character":16},"end":{"line":6,"character":19}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":8,"character":0},"end":{"line":8,"character":3}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":9,"character":4},"end":{"line":9,"character":7}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":5,"character":16},"end":{"character":19,"line":5}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":10,"character":4},"end":{"character":7,"line":10}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":6,"character":6},"end":{"character":9,"line":6}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":10,"character":0},"end":{"character":3,"line":10}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
         ])),
         error: None,
@@ -423,7 +434,7 @@ fn test_references() {
         method: "textDocument/references".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             "position": {
                 "line": 6,
@@ -440,31 +451,37 @@ fn test_references() {
         result: Some(serde_json::json!([
             {
                 "range": {"start":{"line":6,"character":16},"end":{"line":6, "character":19}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":8,"character":0},"end":{"line":8,"character":3}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":9,"character":4},"end":{"line":9,"character":7}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":5,"character":16},"end":{"character":19,"line":5}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":10,"character":4},"end":{"character":7,"line":10}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":6,"character":6},"end":{"character":9,"line":6}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":10,"character":0},"end":{"character":3,"line":10}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
         ])),
         error: None,
     }));
 
-    test_messages.push(Message::from(build_did_open_notification(
-        root.path().join("foo.py"),
-    )));
+    test_messages.push(Message::from(build_did_open_notification(foo.clone())));
 
     // Find reference from a reference location in a different file
     test_messages.push(Message::from(Request {
@@ -472,7 +489,7 @@ fn test_references() {
         method: "textDocument/references".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             "position": {
                 "line": 6,
@@ -489,23 +506,31 @@ fn test_references() {
         result: Some(serde_json::json!([
             {
                 "range": {"start":{"line":6,"character":6},"end":{"character":9,"line":6}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":10,"character":0},"end":{"character":3,"line":10}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":5,"character":16},"end":{"character":19,"line":5}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":10,"character":4},"end":{"character":7,"line":10}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":6,"character":16},"end":{"line":6, "character":19}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":8,"character":0},"end":{"line":8,"character":3}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":9,"character":4},"end":{"line":9,"character":7}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
         ])),
         error: None,
@@ -517,12 +542,12 @@ fn test_references() {
         method: "textDocument/didChange".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string(),
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string(),
                 "languageId": "python",
                 "version": 2
             },
             "contentChanges": [{
-                "text": format!("\n\n{}", std::fs::read_to_string(root.path().join("bar.py")).unwrap())
+                "text": format!("\n\n{}", std::fs::read_to_string(bar.clone()).unwrap())
             }],
         }),
     }));
@@ -531,7 +556,7 @@ fn test_references() {
         method: "textDocument/references".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             "position": {
                 "line": 6,
@@ -547,23 +572,31 @@ fn test_references() {
         result: Some(serde_json::json!([
             {
                 "range": {"start":{"line":6,"character":6},"end":{"character":9,"line":6}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":10,"character":0},"end":{"character":3,"line":10}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":5,"character":16},"end":{"character":19,"line":5}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":10,"character":4},"end":{"character":7,"line":10}},
+                "uri": Url::from_file_path(with_synthetic_bindings.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":6,"character":16},"end":{"line":6, "character":19}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":8,"character":0},"end":{"line":8,"character":3}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":9,"character":4},"end":{"line":9,"character":7}},
-                "uri": Url::from_file_path(root.path().join("foo.py")).unwrap().to_string()
+                "uri": Url::from_file_path(foo.clone()).unwrap().to_string()
             },
         ])),
         error: None,
@@ -576,7 +609,7 @@ fn test_references() {
         method: "textDocument/references".to_owned(),
         params: serde_json::json!({
             "textDocument": {
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             "position": {
                 "line": 8,
@@ -593,11 +626,11 @@ fn test_references() {
         result: Some(serde_json::json!([
             {
                 "range": {"start":{"line":8,"character":6},"end":{"character":9,"line":8}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
             {
                 "range": {"start":{"line":12,"character":0},"end":{"character":3,"line":12}},
-                "uri": Url::from_file_path(root.path().join("bar.py")).unwrap().to_string()
+                "uri": Url::from_file_path(bar.clone()).unwrap().to_string()
             },
         ])),
         error: None,
@@ -606,7 +639,7 @@ fn test_references() {
     run_test_lsp(TestCase {
         messages_from_language_client: test_messages,
         expected_messages_from_language_server: expected_responses,
-        experimental_project_path: vec![root.path().to_path_buf()],
+        indexing_mode: IndexingMode::LazyBlocking,
         workspace_folders: Some(vec![("test".to_owned(), scope_uri)]),
         ..Default::default()
     });
@@ -935,7 +968,12 @@ fn test_file_watcher() {
             id: RequestId::from(1),
             method: "client/registerCapability".to_owned(),
             params: serde_json::json!({
-                "registrations": [{"id": "FILEWATCHER", "method": "workspace/didChangeWatchedFiles", "registerOptions": {"watchers": [{"globPattern": root.path().join("**/*.py").to_str().unwrap(), "kind": 7}, {"globPattern": root.path().join("**/*.pyi").to_str().unwrap(), "kind": 7}]}}]}),
+            "registrations": [{"id": "FILEWATCHER", "method": "workspace/didChangeWatchedFiles", "registerOptions": {"watchers": [
+                {"globPattern": root.path().join("**/*.py").to_str().unwrap(), "kind": 7},
+                {"globPattern": root.path().join("**/*.pyi").to_str().unwrap(), "kind": 7},
+                {"globPattern": root.path().join("**/pyrefly.toml"), "kind": 7},
+                {"globPattern": root.path().join("**/pyproject.toml"), "kind": 7}
+            ]}}]}),
         })],
         workspace_folders: Some(vec![(
             "test".to_owned(),
@@ -1000,6 +1038,300 @@ fn test_did_change_workspace_folder() {
                 }),
             }),
         ],
+        configuration: true,
+        ..Default::default()
+    });
+}
+
+fn get_diagnostics_result() -> serde_json::Value {
+    serde_json::json!({"items": [
+            {"code":"bad-argument-type","message":"`+` is not supported between `Literal[1]` and `Literal['']`\n  Argument `Literal['']` is not assignable to parameter with type `int` in function `int.__add__`",
+            "range":{"end":{"character":6,"line":5},"start":{"character":0,"line":5}},"severity":1,"source":"Pyrefly"}],"kind":"full"
+    })
+}
+
+#[test]
+fn test_diagnostics_default_workspace() {
+    let root = get_test_files_root();
+    let file_path = root.path().join("type_errors.py");
+    let messages_from_language_client = vec![
+        Message::from(build_did_open_notification(file_path.clone())),
+        Message::from(Request {
+            id: RequestId::from(1),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+    ];
+
+    let expected_messages_from_language_server = vec![Message::Response(Response {
+        id: RequestId::from(1),
+        result: Some(get_diagnostics_result()),
+        error: None,
+    })];
+
+    run_test_lsp(TestCase {
+        messages_from_language_client,
+        expected_messages_from_language_server,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn test_diagnostics_in_workspace() {
+    let root = get_test_files_root();
+    let file_path = root.path().join("type_errors.py");
+    let messages_from_language_client = vec![
+        Message::from(build_did_open_notification(file_path.clone())),
+        Message::from(Request {
+            id: RequestId::from(1),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+    ];
+
+    let expected_messages_from_language_server = vec![Message::Response(Response {
+        id: RequestId::from(1),
+        result: Some(get_diagnostics_result()),
+        error: None,
+    })];
+
+    run_test_lsp(TestCase {
+        messages_from_language_client,
+        expected_messages_from_language_server,
+        workspace_folders: Some(vec![(
+            "test".to_owned(),
+            Url::from_file_path(root).unwrap(),
+        )]),
+        ..Default::default()
+    });
+}
+
+#[test]
+fn test_disable_type_errors_language_services_still_work() {
+    let test_files_root = get_test_files_root();
+    let scope_uri = Url::from_file_path(test_files_root.path()).unwrap();
+    let file_path = test_files_root.path().join("foo.py");
+    let messages_from_language_client = vec![
+        Message::Response(Response {
+            id: RequestId::from(1),
+            result: Some(
+                serde_json::json!([{"pyrefly": {"disableTypeErrors": true}}, {"pyrefly": {"disableTypeErrors": true}}]),
+            ),
+            error: None,
+        }),
+        Message::from(build_did_open_notification(file_path.clone())),
+        Message::from(Request {
+            id: RequestId::from(2),
+            method: "textDocument/hover".to_owned(),
+            params: serde_json::json!({
+                "textDocument": {
+                    "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+                },
+                "position": {
+                    "line": 6,
+                    "character": 17
+                }
+            }),
+        }),
+    ];
+    let expected_messages_from_language_server = vec![
+        Message::Request(Request {
+            id: RequestId::from(1),
+            method: WorkspaceConfiguration::METHOD.to_owned(),
+            params: serde_json::json!(ConfigurationParams {
+                items: Vec::from([
+                    ConfigurationItem {
+                        scope_uri: Some(scope_uri.clone()),
+                        section: Some("python".to_owned()),
+                    },
+                    ConfigurationItem {
+                        scope_uri: None,
+                        section: Some("python".to_owned()),
+                    }
+                ]),
+            }),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(2),
+            result: Some(serde_json::json!({
+                "contents": {"kind":"markdown","value":"```python\ntype[Bar]\n```"}
+            })),
+            error: None,
+        }),
+    ];
+    run_test_lsp(TestCase {
+        messages_from_language_client,
+        expected_messages_from_language_server,
+        workspace_folders: Some(vec![("test".to_owned(), scope_uri)]),
+        configuration: true,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn test_disable_type_errors_workspace_folder() {
+    let test_files_root = get_test_files_root();
+    let scope_uri = Url::from_file_path(test_files_root.path()).unwrap();
+    let file_path = test_files_root.path().join("type_errors.py");
+    let configuration_request_params = serde_json::json!(ConfigurationParams {
+        items: Vec::from([
+            ConfigurationItem {
+                scope_uri: Some(scope_uri.clone()),
+                section: Some("python".to_owned()),
+            },
+            ConfigurationItem {
+                scope_uri: None,
+                section: Some("python".to_owned()),
+            }
+        ]),
+    });
+
+    let messages_from_language_client = vec![
+        Message::from(build_did_open_notification(file_path.clone())),
+        Message::Response(Response {
+            id: RequestId::from(1),
+            result: Some(serde_json::json!([])),
+            error: None,
+        }),
+        Message::from(Request {
+            id: RequestId::from(2),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+        Message::Notification(Notification {
+            method: DidChangeConfiguration::METHOD.to_owned(),
+            params: serde_json::json!({"settings": {}}),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(2),
+            result: Some(
+                serde_json::json!([{"pyrefly": {"disableTypeErrors": true}}, {"pyrefly": {"disableTypeErrors": true}}]),
+            ),
+            error: None,
+        }),
+        Message::from(Request {
+            id: RequestId::from(3),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+    ];
+    let expected_messages_from_language_server = vec![
+        Message::Request(Request {
+            id: RequestId::from(1),
+            method: WorkspaceConfiguration::METHOD.to_owned(),
+            params: configuration_request_params.clone(),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(2),
+            result: Some(get_diagnostics_result()),
+            error: None,
+        }),
+        Message::Request(Request {
+            id: RequestId::from(2),
+            method: WorkspaceConfiguration::METHOD.to_owned(),
+            params: configuration_request_params,
+        }),
+        Message::Response(Response {
+            id: RequestId::from(3),
+            result: Some(serde_json::json!({"items": [], "kind": "full"})),
+            error: None,
+        }),
+    ];
+    run_test_lsp(TestCase {
+        messages_from_language_client,
+        expected_messages_from_language_server,
+        workspace_folders: Some(vec![("test".to_owned(), scope_uri)]),
+        configuration: true,
+        ..Default::default()
+    });
+}
+
+#[test]
+fn test_disable_type_errors_default_workspace() {
+    let test_files_root = get_test_files_root();
+    let file_path = test_files_root.path().join("type_errors.py");
+    let messages_from_language_client = vec![
+        Message::Response(Response {
+            id: RequestId::from(1),
+            result: Some(serde_json::json!([])),
+            error: None,
+        }),
+        Message::from(build_did_open_notification(file_path.clone())),
+        Message::from(Request {
+            id: RequestId::from(2),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+        Message::Notification(Notification {
+            method: DidChangeConfiguration::METHOD.to_owned(),
+            params: serde_json::json!({"settings": {}}),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(2),
+            result: Some(
+                serde_json::json!([{"pyrefly": {"disableTypeErrors": true}}, {"pyrefly": {"disableTypeErrors": true}}]),
+            ),
+            error: None,
+        }),
+        Message::from(Request {
+            id: RequestId::from(3),
+            method: "textDocument/diagnostic".to_owned(),
+            params: serde_json::json!({
+            "textDocument": {
+                "uri": Url::from_file_path(file_path.clone()).unwrap().to_string()
+            }}),
+        }),
+    ];
+    let expected_messages_from_language_server = vec![
+        Message::Request(Request {
+            id: RequestId::from(1),
+            method: WorkspaceConfiguration::METHOD.to_owned(),
+            params: serde_json::json!(ConfigurationParams {
+                items: Vec::from([ConfigurationItem {
+                    scope_uri: None,
+                    section: Some("python".to_owned()),
+                }]),
+            }),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(2),
+            result: Some(get_diagnostics_result()),
+            error: None,
+        }),
+        Message::Request(Request {
+            id: RequestId::from(2),
+            method: WorkspaceConfiguration::METHOD.to_owned(),
+            params: serde_json::json!(ConfigurationParams {
+                items: Vec::from([ConfigurationItem {
+                    scope_uri: None,
+                    section: Some("python".to_owned()),
+                }]),
+            }),
+        }),
+        Message::Response(Response {
+            id: RequestId::from(3),
+            result: Some(serde_json::json!({"items": [], "kind": "full"})),
+            error: None,
+        }),
+    ];
+    run_test_lsp(TestCase {
+        messages_from_language_client,
+        expected_messages_from_language_server,
         configuration: true,
         ..Default::default()
     });

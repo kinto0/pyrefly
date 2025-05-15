@@ -29,7 +29,16 @@ use crate::types::special_form::SpecialForm;
 use crate::types::tuple::Tuple;
 use crate::types::types::AnyStyle;
 use crate::types::types::Type;
+use crate::util::display::DisplayWithCtx;
 use crate::util::prelude::SliceExt;
+
+fn is_chained_attribute_access(x: &Expr) -> bool {
+    match x {
+        Expr::Name(_) => true,
+        Expr::Attribute(ExprAttribute { value, .. }) => is_chained_attribute_access(value),
+        _ => false,
+    }
+}
 
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     fn extra_unpack_error(&self, errors: &ErrorCollector, range: TextRange) -> Type {
@@ -203,10 +212,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Expr::Attribute(ExprAttribute {
                 range,
-                value: box value @ Expr::Name(name),
+                value: box value,
                 attr: member_name,
                 ctx: _,
-            }) => {
+            }) if is_chained_attribute_access(value) => {
                 let ty = self.expr_infer(value, errors);
                 match ty {
                     Type::ClassDef(c)
@@ -220,7 +229,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             *range,
                             format!(
                                 "`{}.{}` is not a valid enum member",
-                                name.id, member_name.id
+                                value.display_with(self.module_info()),
+                                member_name.id
                             ),
                             ErrorKind::InvalidLiteral,
                             None,

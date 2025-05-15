@@ -41,6 +41,7 @@ use crate::binding::bindings::BindingsBuilder;
 use crate::binding::bindings::LegacyTParamBuilder;
 use crate::binding::scope::FlowStyle;
 use crate::binding::scope::InstanceAttribute;
+use crate::binding::scope::MethodThatSetsAttr;
 use crate::binding::scope::Scope;
 use crate::binding::scope::ScopeKind;
 use crate::error::kind::ErrorKind;
@@ -201,12 +202,15 @@ impl<'a> BindingsBuilder<'a> {
         if let ScopeKind::ClassBody(body) = last_scope.kind {
             for (
                 name,
-                (method_name, defined_in_recognized_method),
+                MethodThatSetsAttr {
+                    method_name,
+                    recognized_attribute_defining_method,
+                },
                 InstanceAttribute(value, annotation, range),
             ) in body.method_defined_attributes()
             {
                 if !fields.contains_key_hashed(name.as_ref()) {
-                    if !defined_in_recognized_method {
+                    if !recognized_attribute_defining_method {
                         self.error(
                         range,
                         format!("Attribute `{}` is implicitly defined by assignment in method `{method_name}`, which is not a constructor", &name),

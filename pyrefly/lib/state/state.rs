@@ -55,6 +55,7 @@ use crate::binding::bindings::Bindings;
 use crate::binding::table::TableKeyed;
 use crate::config::config::ConfigFile;
 use crate::config::finder::ConfigFinder;
+use crate::error::collector::ErrorCollector;
 use crate::error::kind::ErrorKind;
 use crate::export::definitions::DocString;
 use crate::export::exports::ExportLocation;
@@ -533,11 +534,17 @@ impl<'a> Transaction<'a> {
                 rebuild(write, true);
                 return;
             }
-            // The contents are the same, so we can just reuse the old load
         }
 
-        if exclusive.dirty.deps {
-            let write = exclusive.write();
+        // The contents are the same, so we can just reuse the old load contents. But errors could have changed from deps.
+        if exclusive.dirty.deps
+            && let Some(old_load) = exclusive.steps.load.dupe()
+        {
+            let mut write = exclusive.write();
+            write.steps.load = Some(Arc::new(Load {
+                errors: ErrorCollector::new(old_load.module_info.dupe(), old_load.errors.style()),
+                module_info: old_load.module_info.clone(),
+            }));
             rebuild(write, false);
             return;
         }

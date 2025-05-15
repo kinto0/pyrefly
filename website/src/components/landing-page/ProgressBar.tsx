@@ -14,12 +14,14 @@ interface ProgressBarProps {
     durationInSeconds: number;
     maxDurationInSeconds: number;
     highlight: boolean;
+    isLoaded: boolean;
 }
 
 export default function ProgressBar({
     durationInSeconds,
     maxDurationInSeconds,
     highlight,
+    isLoaded,
 }: ProgressBarProps): React.ReactElement {
     // Calculate the relative percentage width based on the maximum duration
     const relativeWidth = (durationInSeconds / maxDurationInSeconds) * 100;
@@ -33,8 +35,15 @@ export default function ProgressBar({
             }}
         >
             <div
-                {...stylex.props(styles.fill, highlight && styles.highlight)}
-                style={{ animationDuration: `${durationInSeconds}s` }}
+                {...stylex.props(
+                    styles.fill,
+                    highlight && styles.highlight,
+                    isLoaded && styles.animate
+                )}
+                style={{
+                    animationDuration: `${durationInSeconds}s`,
+                    width: isLoaded ? undefined : '0%',
+                }}
             />
         </div>
     );
@@ -57,12 +66,14 @@ const styles = stylex.create({
         overflow: 'hidden',
     },
     fill: {
-        height: '99%',
+        height: '100%',
         backgroundColor: 'var(--color-secondary)',
         borderRadius: 'inherit',
-        animationName: fillUpKeyframes,
         animationFillMode: 'forwards',
         animationTimingFunction: 'linear',
+    },
+    animate: {
+        animationName: fillUpKeyframes,
     },
     highlight: {
         backgroundColor: 'var(--color-primary)',

@@ -154,7 +154,7 @@ pub fn parse_pyrproject_config(raw_file: &str) -> anyhow::Result<ConfigFile> {
             .iter()
             .map_into()
             .collect::<Vec<PathBuf>>();
-        cfg.search_path = search_path;
+        cfg.search_path_from_file = search_path;
     }
 
     if let Some(platform) = mypy.python_platform {
@@ -262,7 +262,7 @@ mypy_path = "a:b,c"
             Globs::new(vec!["a".to_owned(), "b".to_owned(), "c".to_owned()])
         );
         assert_eq!(
-            cfg.search_path,
+            cfg.search_path_from_file,
             vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")]
         );
         Ok(())

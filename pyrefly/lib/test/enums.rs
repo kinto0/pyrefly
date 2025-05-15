@@ -314,21 +314,20 @@ reveal_type(e.foo)  # E: revealed type: property
 );
 
 testcase!(
-    bug = "This program should typecheck and the reveal type here is Literal[A.B]",
     test_enum_literal,
     r#"
 import enum
-from typing import reveal_type, Literal
+from typing import assert_type, Literal
 
 class A(enum.IntEnum):
-    B = 'positional or keyword' # E: The value for enum member `B` must match the annotation of the _value_ attribute 
+    B = 'positional or keyword'
 
+    # right now, we don't check the type of the enum member if the enum class defines `__new__`
     def __new__(cls, description):
         value = len(cls.__members__)
         member = int.__new__(cls, value)
         return member
 
-x = Literal[A.B] 
-reveal_type(x) # E: revealed type: LegacyImplicitTypeAlias[x, type[Literal[A.B]]] 
+assert_type(A.B, Literal[A.B])
     "#,
 );

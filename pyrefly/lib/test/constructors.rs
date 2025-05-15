@@ -346,6 +346,14 @@ A.__new__(int)  # Should be an error
 );
 
 testcase!(
+    test_subst_self_type_in_static_new,
+    r#"
+class A: pass
+a: A = A.__new__(A)
+    "#,
+);
+
+testcase!(
     test_call_self,
     r#"
 class Foo:

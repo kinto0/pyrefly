@@ -241,6 +241,16 @@ pub struct ClassBodyInner {
     attributes_from_other_methods: SmallMap<Name, SmallMap<Name, InstanceAttribute>>,
 }
 
+/// The method where an attribute was defined implicitly by assignment to `self.<attr_name>`
+///
+/// We track whether this method is recognized as a valid attribute-defining
+/// method (e.g. a constructor); if an attribute is inferred only from assignments
+/// in non-recognized methods, we will infer its type but also produce a type error.
+pub struct MethodThatSetsAttr {
+    pub method_name: Name,
+    pub recognized_attribute_defining_method: bool,
+}
+
 impl ClassBodyInner {
     pub fn new(name: Identifier, index: ClassIndex) -> Self {
         Self {
@@ -272,18 +282,16 @@ impl ClassBodyInner {
         }
     }
 
-    /// Produces triples (hashed_attr_name, (method_name, defined_in_recognized_method), attribute).
+    /// Produces triples (hashed_attr_name, MethodThatSetsAttr, attribute) for all assignments
+    /// to `self.<attr_name>` in methods.
     ///
-    /// The method flag here allows us to model the behavior where we always infer an attribute we
-    /// see defined by a method, but we will produce a type error if an attribute is defined in
-    /// a method that we do not recognize as a valid attribute-defining method (we recognized
-    /// constructors and some specific methods like test setups).
-    ///
-    /// Note that we iterate recognized methods first, which both ensures that these
-    /// get precedence for type inference and ensures we don't produce unnecessary errors.
+    /// We iterate recognized methods first, which - assuming that the first result is the one
+    /// used in our class logic, which is the case - ensures both that we don't produce
+    /// unnecessary errors about attributes implicitly defined in unrecognized methods
+    /// and that the types inferred from recognized methods take precedence.
     pub fn method_defined_attributes(
         self,
-    ) -> impl Iterator<Item = (Hashed<Name>, (Name, bool), InstanceAttribute)> {
+    ) -> impl Iterator<Item = (Hashed<Name>, MethodThatSetsAttr, InstanceAttribute)> {
         Self::iter_attributes(self.attributes_from_recognized_methods, true).chain(
             Self::iter_attributes(self.attributes_from_other_methods, false),
         )
@@ -292,13 +300,16 @@ impl ClassBodyInner {
     fn iter_attributes(
         attrs: SmallMap<Name, SmallMap<Name, InstanceAttribute>>,
         recognized_attribute_defining_method: bool,
-    ) -> impl Iterator<Item = (Hashed<Name>, (Name, bool), InstanceAttribute)> {
+    ) -> impl Iterator<Item = (Hashed<Name>, MethodThatSetsAttr, InstanceAttribute)> {
         {
             attrs.into_iter().flat_map(move |(method_name, attrs)| {
                 attrs.into_iter_hashed().map(move |(name, attr)| {
                     (
                         name,
-                        (method_name.clone(), recognized_attribute_defining_method),
+                        MethodThatSetsAttr {
+                            method_name: method_name.clone(),
+                            recognized_attribute_defining_method,
+                        },
                         attr,
                     )
                 })

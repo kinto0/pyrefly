@@ -66,12 +66,14 @@ interface SandboxProps {
     sampleFilename: string;
     isCodeSnippet?: boolean;
     codeSample?: string;
+    isInViewport?: boolean;
 }
 
 export default function Sandbox({
     sampleFilename,
     isCodeSnippet = false,
     codeSample = DEFAULT_SANDBOX_PROGRAM,
+    isInViewport = true,
 }: SandboxProps): React.ReactElement {
     const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
     const [errors, setErrors] =
@@ -89,8 +91,13 @@ export default function Sandbox({
     const [activeTab, setActiveTab] = useState<string>('errors');
     const [isHovered, setIsHovered] = useState(false);
 
-    // Only run for initial render, and not on subsequent updates
+    // Initialize WebAssembly only when the component is in the viewport
     useEffect(() => {
+        // Skip initialization if not in viewport
+        if (!isInViewport) {
+            return;
+        }
+
         setLoading(true);
         // Initialize the WebAssembly module only when the component is mounted
         if (!pyreflyWasmInitializedPromise) {
@@ -107,7 +114,7 @@ export default function Sandbox({
                 setLoading(false);
                 setInternalError(JSON.stringify(e));
             });
-    }, []);
+    }, [isInViewport]); // Re-run when isInViewport changes
 
     // Need to add createModel handler in case monaco model was not created at mount time
     monaco.editor.onDidCreateModel((_newModel) => {
@@ -233,8 +240,23 @@ export default function Sandbox({
         editor.setSelection(range);
     };
 
+    const buttons = getMonacoButtons(
+        isCodeSnippet,
+        model,
+        runPythonCodeCallback,
+        pyodideStatus,
+        setPyodideStatus,
+        forceRecheck,
+        codeSample
+    );
     return (
-        <div id="sandbox-editor" {...stylex.props(styles.tryEditor)}>
+        <div
+            id="sandbox-editor"
+            {...stylex.props(
+                styles.tryEditor,
+                !isCodeSnippet && !isMobile() && styles.sandboxPadding
+            )}
+        >
             <div
                 id="sandbox-code-editor-container"
                 {...stylex.props(
@@ -257,7 +279,9 @@ export default function Sandbox({
                         {...stylex.props(
                             styles.buttonContainerBase,
                             isMobile()
-                                ? styles.mobileButtonContainer
+                                ? isCodeSnippet
+                                    ? styles.mobileButtonContainerCodeSnippet
+                                    : styles.mobileButtonContainerSandbox
                                 : styles.desktopButtonContainer,
                             // show button if it's in sandbox or if it's hovered or if it's mobile
                             // We only want to hide this if it's a code snippet not hovered on mobile
@@ -266,27 +290,7 @@ export default function Sandbox({
                                 : styles.hiddenButtonContainer
                         )}
                     >
-                        {!isCodeSnippet
-                            ? getRunPythonButton(
-                                  runPythonCodeCallback,
-                                  pyodideStatus,
-                                  setPyodideStatus
-                              )
-                            : null}
-                        {!isCodeSnippet ? getShareUrlButton() : null}
-                        {isCodeSnippet ? (
-                            <OpenSandboxButton model={model} />
-                        ) : null}
-                        {isCodeSnippet ? getCopyButton(model) : null}
-                        {/* Hide reset button if it's readonly, which is when it's a code snippet on mobile */}
-                        {!(isCodeSnippet && isMobile())
-                            ? getResetButton(
-                                  model,
-                                  forceRecheck,
-                                  codeSample,
-                                  isCodeSnippet
-                              )
-                            : null}
+                        {buttons}
                     </div>
                 }
             </div>
@@ -360,7 +364,7 @@ function getPyreflyEditor(
 
     const editorTheme = colorMode === 'dark' ? 'vs-dark' : 'vs-light';
     if (isCodeSnippet) {
-                    return (
+        return (
             <Editor
                 defaultPath={fileName}
                 defaultValue={codeSample}
@@ -418,6 +422,51 @@ function getPyreflyEditor(
     }
 }
 
+function getMonacoButtons(
+    isCodeSnippet: boolean,
+    model: editor.ITextModel,
+    runPythonCodeCallback: () => Promise<void>,
+    pyodideStatus: PyodideStatus,
+    setPyodideStatus: React.Dispatch<React.SetStateAction<PyodideStatus>>,
+    forceRecheck: () => void,
+    codeSample: string
+): ReadonlyArray<React.ReactElement> {
+    let buttons: ReadonlyArray<React.ReactElement> = [];
+    if (isCodeSnippet) {
+        buttons = [
+            <OpenSandboxButton model={model} />,
+            getCopyButton(model),
+            /* Hide reset button if it's readonly, which is when it's a code snippet on mobile */
+            !isMobile()
+                ? getResetButton(model, forceRecheck, codeSample, isCodeSnippet)
+                : null,
+        ].filter(Boolean);
+    } else {
+        buttons = [
+            getRunPythonButton(
+                runPythonCodeCallback,
+                pyodideStatus,
+                setPyodideStatus
+            ),
+            getShareUrlButton(),
+            getResetButton(model, forceRecheck, codeSample, isCodeSnippet),
+            getGitHubIssuesButton(),
+        ];
+    }
+
+    // react requires a unique key for each element in an array
+    // Apply sandboxMobileButton style to buttons when they're in the sandbox (not code snippet) on mobile
+    return buttons.map((button, index) =>
+        React.cloneElement(button, {
+            key: `button-${index}`,
+            // Apply additional style for sandbox buttons on mobile
+            ...(!isCodeSnippet && isMobile()
+                ? { className: stylex.props(styles.sandboxMobileButton) }
+                : {}),
+        })
+    );
+}
+
 // Monaco Editor Buttons
 function getShareUrlButton(): React.ReactElement {
     return (
@@ -430,6 +479,25 @@ function getShareUrlButton(): React.ReactElement {
             defaultLabel="📋 Share URL"
             runningLabel="✓ URL Copied!" // we reuse the running label to indicate that the URL has been copied
             ariaLabel="share URL button"
+        />
+    );
+}
+
+function getGitHubIssuesButton(): React.ReactElement {
+    return (
+        <MonacoEditorButton
+            id="github-issues-button"
+            onClick={() => {
+                window.open(
+                    'https://github.com/facebook/pyrefly/issues/new/choose',
+                    '_blank',
+                    'noopener,noreferrer'
+                );
+                return Promise.resolve();
+            }}
+            defaultLabel="⚠️ Report Issue"
+            runningLabel="⚠️ Report Issue"
+            ariaLabel="report issue on GitHub"
         />
     );
 }
@@ -561,6 +629,9 @@ const styles = stylex.create({
         flexDirection: 'column',
         flex: 1,
     },
+    sandboxPadding: {
+        paddingHorizontal: '10px',
+    },
     codeEditorContainer: {
         position: 'relative',
         display: 'flex',
@@ -572,19 +643,23 @@ const styles = stylex.create({
     codeEditorContainerWithRadius: {
         border: '1px solid var(--color-background-secondary)',
         borderRadius: '0.25rem',
-        overflow: 'hidden', // Ensure content doesn't overflow the rounded corners
     },
     buttonContainerBase: {
         position: 'absolute',
         display: 'flex',
-        flexDirection: 'row', // Buttons start from left and go right
         zIndex: 10, // used to ensure it's beneath the navbar
+        gap: '8px',
     },
-    // Style for mobile buttons (always visible)
-    mobileButtonContainer: {
+    mobileButtonContainerCodeSnippet: {
         // Position at bottom right for mobile
         bottom: '16px',
         right: '16px',
+    },
+    mobileButtonContainerSandbox: {
+        // Position at bottom right for mobile
+        bottom: '16px',
+        right: '16px',
+        flexDirection: 'column', // Buttons stack vertically on mobile for sandbox
     },
     // Style for desktop buttons (hidden by default, visible on hover)
     desktopButtonContainer: {
@@ -604,5 +679,12 @@ const styles = stylex.create({
         opacity: 1,
         visibility: 'visible',
         transition: 'opacity 0.2s ease-in-out, visibility 0.2s ease-in-out',
+    },
+    // Style for sandbox mobile buttons
+    sandboxMobileButton: {
+        '@media (max-width: 768px)': {
+            margin: '0', // No margin needed as gap is handled by the container
+            width: '100%', // Make buttons full width on mobile for sandbox
+        },
     },
 });

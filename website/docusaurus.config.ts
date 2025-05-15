@@ -33,6 +33,7 @@ function getNavBarItems() {
             label: 'Learn',
             position: 'left' as const,
         },
+
         // TODO (T222948083) Re-enable internal sandbox after we fix issues with sandbox on static docs
         process.env.INTERNAL_STATIC_DOCS === '1'
         ? {
@@ -105,7 +106,31 @@ const config: Config = {
     baseUrl: process.env.DOCUSAURUS_BASE_URL || '/',
     onBrokenLinks: 'throw',
     onBrokenMarkdownLinks: 'warn',
-    favicon: 'img/Pyrefly-Symbol.svg',
+    // This is used instead of favicon to get the right icon based on light vs dark mode in google chrome. Note that this currently doesn't work in
+    // firefox, which is intentional as we expect more users to be using chrome instead of firefox. If we want to have this working in
+    // firefox instead of google chrome, we can add `favicon: "img/Pyrefly-Symbol-Dynamic.svg", which will override the headTags setting
+    headTags: [
+        {
+          tagName: "link",
+          attributes: {
+            rel: "icon",
+            href: "img/Pyrefly-Symbol.svg",
+            type: "image/svg",
+            sizes: "32x32",
+            media: "(prefers-color-scheme: light)",
+          },
+        },
+        {
+          tagName: "link",
+          attributes: {
+            rel: "icon",
+            href: "img/Pyrefly-Symbol-Invert.svg",
+            type: "image/svg",
+            sizes: "32x32",
+            media: "(prefers-color-scheme: dark)",
+          },
+        },
+      ],
     organizationName: 'facebook', // Usually your GitHub org/user name.
     projectName: 'Pyre', // Usually your repo name.
     trailingSlash: true,
@@ -238,7 +263,10 @@ const config: Config = {
     themeConfig: {
         prism: {
             theme: prismThemes.jettwaveLight,
-            darkTheme: prismThemes.dracula
+            darkTheme: prismThemes.dracula,
+            additionalLanguages: [
+                'toml'
+            ],
         },
         colorMode: {
             defaultMode: 'dark',

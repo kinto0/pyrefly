@@ -404,22 +404,26 @@ impl Callable {
         )
     }
 
-    pub fn subst_self_type_mut(&mut self, replacement: &Type) {
+    pub fn subst_self_type_mut(
+        &mut self,
+        replacement: &Type,
+        is_subset: &dyn Fn(&Type, &Type) -> bool,
+    ) {
         match &mut self.params {
             Params::List(params) => {
                 for param in params.0.iter_mut() {
-                    param.subst_self_type_mut(replacement);
+                    param.subst_self_type_mut(replacement, is_subset);
                 }
             }
             Params::Ellipsis => {}
             Params::ParamSpec(ts, t) => {
                 for t in ts.iter_mut() {
-                    t.subst_self_type_mut(replacement);
+                    t.subst_self_type_mut(replacement, is_subset);
                 }
-                t.subst_self_type_mut(replacement);
+                t.subst_self_type_mut(replacement, is_subset);
             }
         }
-        self.ret.subst_self_type_mut(replacement);
+        self.ret.subst_self_type_mut(replacement, is_subset);
     }
 }
 
@@ -462,13 +466,17 @@ impl Param {
         }
     }
 
-    fn subst_self_type_mut(&mut self, replacement: &Type) {
+    fn subst_self_type_mut(
+        &mut self,
+        replacement: &Type,
+        is_subset: &dyn Fn(&Type, &Type) -> bool,
+    ) {
         match self {
             Param::PosOnly(ty, _)
             | Param::Pos(_, ty, _)
             | Param::VarArg(_, ty)
             | Param::KwOnly(_, ty, _)
-            | Param::Kwargs(_, ty) => ty.subst_self_type_mut(replacement),
+            | Param::Kwargs(_, ty) => ty.subst_self_type_mut(replacement, is_subset),
         }
     }
 }

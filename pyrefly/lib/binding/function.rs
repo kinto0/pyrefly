@@ -9,6 +9,7 @@ use std::mem;
 
 use itertools::Either;
 use ruff_python_ast::AnyParameterRef;
+use ruff_python_ast::Decorator;
 use ruff_python_ast::ExceptHandler;
 use ruff_python_ast::Expr;
 use ruff_python_ast::Identifier;
@@ -48,16 +49,123 @@ use crate::binding::scope::InstanceAttribute;
 use crate::binding::scope::Scope;
 use crate::binding::scope::ScopeKind;
 use crate::config::base::UntypedDefBehavior;
+use crate::export::special::SpecialExport;
 use crate::graph::index::Idx;
 use crate::module::short_identifier::ShortIdentifier;
 use crate::ruff::ast::Ast;
 use crate::sys_info::SysInfo;
 use crate::types::types::Type;
 use crate::util::prelude::VecExt;
+use crate::util::visit::Visit;
+
+struct Decorators {
+    has_no_type_check: bool,
+    decorators: Box<[Idx<Key>]>,
+}
 
 struct SelfAssignments {
     method_name: Name,
     instance_attributes: SmallMap<Name, InstanceAttribute>,
+}
+
+/// Determine whether a function definition is annotated.
+/// Used in the `untyped-def-behavior = "skip-and-infer-returns-any"` mode.
+fn is_annotated<T>(returns: &Option<T>, params: &Parameters) -> bool {
+    if returns.is_some() {
+        return true;
+    }
+    for p in params.iter() {
+        if p.annotation().is_some() {
+            return true;
+        }
+    }
+    false
+}
+struct SelfAttrNames<'a> {
+    self_name: &'a Name,
+    names: SmallMap<Name, TextRange>,
+}
+
+impl<'a> SelfAttrNames<'a> {
+    fn expr_lvalue(&mut self, x: &Expr) {
+        match x {
+            Expr::Attribute(x) => {
+                if let Expr::Name(v) = x.value.as_ref()
+                    && &v.id == self.self_name
+                    && !self.names.contains_key(&x.attr.id)
+                {
+                    self.names.insert(x.attr.id.clone(), x.attr.range());
+                }
+            }
+            Expr::Tuple(x) => {
+                for x in &x.elts {
+                    self.expr_lvalue(x);
+                }
+            }
+
+            Expr::List(x) => {
+                for x in &x.elts {
+                    self.expr_lvalue(x);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn stmt(&mut self, x: &Stmt) {
+        match x {
+            Stmt::Assign(x) => {
+                for e in x.targets.iter() {
+                    self.expr_lvalue(e);
+                }
+            }
+            Stmt::AnnAssign(x) => {
+                self.expr_lvalue(x.target.as_ref());
+            }
+            _ => {}
+        }
+        x.recurse(&mut |x| self.stmt(x))
+    }
+
+    /// Given an unannotated method (it is the caller's responsibility to
+    /// check these conditions), traverse the body to find the name and range
+    /// of `self.<attr>` assignments.
+    fn find(
+        func_name: &Identifier,
+        parameters: &mut Box<Parameters>,
+        body: Vec<Stmt>,
+    ) -> Option<SelfAssignments> {
+        let self_name = if let Some(p) = parameters.iter_non_variadic_params().next() {
+            &p.parameter.name.id
+        } else {
+            return None;
+        };
+        let mut finder = SelfAttrNames {
+            self_name,
+            names: SmallMap::new(),
+        };
+        for x in body.iter() {
+            finder.stmt(x);
+        }
+        let instance_attributes = finder
+            .names
+            .into_iter()
+            .map(|(n, r)| {
+                (
+                    n,
+                    InstanceAttribute(
+                        super::binding::ExprOrBinding::Binding(Binding::Type(Type::any_implicit())),
+                        None,
+                        r,
+                    ),
+                )
+            })
+            .collect();
+        Some(SelfAssignments {
+            method_name: func_name.id.clone(),
+            instance_attributes,
+        })
+    }
 }
 
 impl<'a> BindingsBuilder<'a> {
@@ -195,6 +303,31 @@ impl<'a> BindingsBuilder<'a> {
         (yields_and_returns, self_assignments)
     }
 
+    fn unchecked_function_body_scope(
+        &mut self,
+        parameters: &mut Box<Parameters>,
+        body: Vec<Stmt>,
+        range: TextRange,
+        func_name: &Identifier,
+        function_idx: Idx<KeyFunction>,
+        class_key: Option<Idx<KeyClass>>,
+    ) -> Option<SelfAssignments> {
+        // Push a scope to create the parameter keys (but do nothing else with it).
+        if class_key.is_none() {
+            self.scopes.push(Scope::function(range));
+        } else {
+            self.scopes.push(Scope::method(range, func_name.clone()));
+        }
+        self.parameters(parameters, function_idx, class_key);
+        self.scopes.pop();
+        // If we are in a class, use a simple visiter to find `self.<attr>` assignments.
+        if class_key.is_some() {
+            SelfAttrNames::find(func_name, parameters, body)
+        } else {
+            None
+        }
+    }
+
     fn implicit_return(&mut self, body: &[Stmt], func_name: &Identifier) -> Idx<Key> {
         let last_exprs = function_last_expressions(body, self.sys_info).map(|x| {
             x.into_map(|(last, x)| {
@@ -293,11 +426,32 @@ impl<'a> BindingsBuilder<'a> {
         );
     }
 
+    fn mark_as_returns_any(&mut self, func_name: &Identifier) {
+        self.table.insert(
+            Key::ReturnType(ShortIdentifier::new(func_name)),
+            Binding::Type(Type::any_implicit()),
+        );
+    }
+
+    fn decorators(&mut self, decorator_list: Vec<Decorator>) -> Decorators {
+        let has_no_type_check = decorator_list
+            .iter()
+            .any(|d| self.as_special_export(&d.expression) == Some(SpecialExport::NoTypeCheck));
+
+        let decorators = self
+            .ensure_and_bind_decorators(decorator_list)
+            .into_boxed_slice();
+        Decorators {
+            has_no_type_check,
+            decorators,
+        }
+    }
+
     fn function_body(
         &mut self,
         parameters: &mut Box<Parameters>,
         body: Vec<Stmt>,
-        decorators: Box<[Idx<Key>]>,
+        decorators: &Decorators,
         range: TextRange,
         is_async: bool,
         return_ann_with_range: Option<(TextRange, Idx<KeyAnnotation>)>,
@@ -311,50 +465,63 @@ impl<'a> BindingsBuilder<'a> {
             FunctionStubOrImpl::Impl
         };
 
-        let self_assignments = match self.untyped_def_behavior {
-            // TODO(stroxler): Skip is not yet implemented, for now we just treat it the same as
-            // CheckAndInferReturnAny, which at least gets us the desired downstream behavior.
-            UntypedDefBehavior::SkipAndInferReturnAny
-            | UntypedDefBehavior::CheckAndInferReturnAny => {
-                let (yields_and_returns, self_assignments) = self.function_body_scope(
-                    parameters,
-                    body,
-                    range,
-                    func_name,
-                    function_idx,
-                    class_key,
-                );
-                self.analyze_return_type(
-                    func_name,
-                    is_async,
-                    yields_and_returns,
-                    return_ann_with_range,
-                    None, // this disables return type inference
-                    stub_or_impl,
-                    decorators,
-                );
-                self_assignments
-            }
-            UntypedDefBehavior::CheckAndInferReturnType => {
-                let implicit_return = self.implicit_return(&body, func_name);
-                let (yields_and_returns, self_assignments) = self.function_body_scope(
-                    parameters,
-                    body,
-                    range,
-                    func_name,
-                    function_idx,
-                    class_key,
-                );
-                self.analyze_return_type(
-                    func_name,
-                    is_async,
-                    yields_and_returns,
-                    return_ann_with_range,
-                    Some(implicit_return),
-                    stub_or_impl,
-                    decorators,
-                );
-                self_assignments
+        let self_assignments = if decorators.has_no_type_check
+            || (self.untyped_def_behavior == UntypedDefBehavior::SkipAndInferReturnAny
+                && !is_annotated(&return_ann_with_range, parameters))
+        {
+            self.mark_as_returns_any(func_name);
+            self.unchecked_function_body_scope(
+                parameters,
+                body,
+                range,
+                func_name,
+                function_idx,
+                class_key,
+            )
+        } else {
+            match self.untyped_def_behavior {
+                UntypedDefBehavior::SkipAndInferReturnAny
+                | UntypedDefBehavior::CheckAndInferReturnAny => {
+                    let (yields_and_returns, self_assignments) = self.function_body_scope(
+                        parameters,
+                        body,
+                        range,
+                        func_name,
+                        function_idx,
+                        class_key,
+                    );
+                    self.analyze_return_type(
+                        func_name,
+                        is_async,
+                        yields_and_returns,
+                        return_ann_with_range,
+                        None, // this disables return type inference
+                        stub_or_impl,
+                        decorators.decorators.clone(),
+                    );
+                    self_assignments
+                }
+                UntypedDefBehavior::CheckAndInferReturnType => {
+                    let implicit_return = self.implicit_return(&body, func_name);
+                    let (yields_and_returns, self_assignments) = self.function_body_scope(
+                        parameters,
+                        body,
+                        range,
+                        func_name,
+                        function_idx,
+                        class_key,
+                    );
+                    self.analyze_return_type(
+                        func_name,
+                        is_async,
+                        yields_and_returns,
+                        return_ann_with_range,
+                        Some(implicit_return),
+                        stub_or_impl,
+                        decorators.decorators.clone(),
+                    );
+                    self_assignments
+                }
             }
         };
 
@@ -391,16 +558,16 @@ impl<'a> BindingsBuilder<'a> {
             _ => (None, None),
         };
 
-        let decorators = self.ensure_and_bind_decorators(mem::take(&mut x.decorator_list));
-
         self.scopes.push(Scope::annotation(x.range));
         let (return_ann_with_range, legacy_tparams) =
             self.function_header(&mut x, &func_name, class_key);
 
+        let decorators = self.decorators(mem::take(&mut x.decorator_list));
+
         let (stub_or_impl, self_assignments) = self.function_body(
             &mut x.parameters,
             mem::take(&mut x.body),
-            decorators.clone().into_boxed_slice(),
+            &decorators,
             x.range,
             x.is_async,
             return_ann_with_range,
@@ -427,7 +594,7 @@ impl<'a> BindingsBuilder<'a> {
                 def: x,
                 stub_or_impl,
                 class_key,
-                decorators: decorators.into_boxed_slice(),
+                decorators: decorators.decorators,
                 legacy_tparams: legacy_tparams.into_boxed_slice(),
                 successor: None,
             },

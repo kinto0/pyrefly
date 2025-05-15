@@ -463,11 +463,15 @@ impl Answers {
                     }
                 };
                 let reference_range = bindings.idx_to_key(idx).range();
-                index
-                    .externally_defined_variable_references
-                    .entry((imported_module_name, imported_name))
-                    .or_default()
-                    .push(reference_range);
+                // Sanity check: the reference should have the same text as the definition.
+                // This check helps to filter out synthetic bindings.
+                if bindings.module_info().code_at(reference_range) == imported_name.as_str() {
+                    index
+                        .externally_defined_variable_references
+                        .entry((imported_module_name, imported_name))
+                        .or_default()
+                        .push(reference_range);
+                }
             }
         }
 

@@ -14,6 +14,7 @@ documentation = "https://pyrefly.org/en/docs/"
 [project]
 name = "pyrefly"
 description = "A faster Python type checker written in Rust"
+readme = "README.md"
 requires-python = ">=3.8"
 keywords = ["typechecker", "typechecking"]
 classifiers = [

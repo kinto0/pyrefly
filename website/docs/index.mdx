@@ -5,16 +5,16 @@ description: Guides and references for all you need to know about Pyrefly
 
 import CodeSnippet from '@site/src/sandbox/CodeSnippet'
 
-Pyrefly is a static typechecker for Python that helps you catch type-related errors before your code runs. It analyzes your Python code to ensure type consistency throughout your codebase, making your applications more reliable and easier to maintain. Pyrefly supports both IDE integration and CLI usage, giving you flexibility in how you incorporate type checking into your workflow.
+Pyrefly is a static type checker for Python that helps you catch type-related errors before your code runs. It analyzes your Python code to ensure type consistency throughout your codebase, making your applications more reliable and easier to maintain. Pyrefly supports both IDE integration and CLI usage, giving you flexibility in how you incorporate type checking into your workflow.
 
 ## Benefits of Type Checking
 
-Adding type annotations to your Python code and using a typechecker like Pyrefly provides several important benefits:
+Adding type annotations to your Python code and using a type checker like Pyrefly provides several important benefits:
 
 - **Catch bugs early** - Identify type-related errors during development rather than at runtime
 - **Improve code quality** - Type annotations serve as living documentation, making your code more readable and self-documenting
 - **Enhance developer experience** - Get better IDE support with accurate autocomplete, refactoring tools, and inline documentation
-- **Safer refactoring** - Make large-scale changes with confidence, knowing the typechecker will catch incompatible type usage
+- **Safer refactoring** - Make large-scale changes with confidence, knowing the type checker will catch incompatible type usage
 - **Better collaboration** - Types create clear contracts between different parts of your codebase, making it easier for teams to work together
 
 ## Try Pyrefly
@@ -37,38 +37,7 @@ error_message = greet(42)
 `}
 />
 
-In this example, Pyrefly flags the second call to `greet()` because we're passing an integer (`42`) where a string is expected, helping you catch this issue before your code runs. To learn more about Python typing and how to use it effectively, check out our [Python Typing for Beginners](python-typing-for-beginners) page.
+In this example, Pyrefly flags the second call to `greet()` because we're passing an integer (`42`) where a string is expected, helping you catch this issue before your code runs. To learn more about Python typing and how to use it effectively:
 
-## Next Steps
-
-Ready to get started with Pyrefly? Check out these resources:
-
-- [Installation Guide](./installation) - Install and set up Pyrefly for your project
-- [IDE Integration](./IDE) - Use Pyrefly in your favorite editor
-- [Python Typing for Beginners](./python-typing-for-beginners) - Master the basics of Python's type system
-- [Frequently Asked Questions](./pyrefly-faq) - Common questions about Pyrefly
-
-## Configuration
-
-Once you've installed Pyrefly, you can customize its behavior:
-
-- [Configuration Guide](./configuration) - Configure Pyrefly for your project's specific needs
-
-## Migrating from Other Typecheckers
-
-If you're currently using a different Python typechecker, we have guides to help you migrate to Pyrefly:
-
-- [Migrating to Pyrefly](./migrating-to-pyrefly) - Transition from other typecheckers like Mypy or Pyright to Pyrefly
-
-## Error Kinds
-
-Pyrefly provides detailed explanations for all the errors it can detect:
-
-- [Error Kinds](./error-kinds) - A comprehensive list of all Pyrefly errors with their explanations
-
-## Advanced Topics
-
-As you become more familiar with Pyrefly, explore these advanced topics:
-
-- [Error Suppressions](./error-suppresions) - Learn how to suppress specific errors that show up in Pyrefly
-- [Import Resolution](./import-resolution) - Learn how Pyrefly resolves imports in your code
+- If you're new to Python, check out our [Python Typing for Beginners](python-typing-for-beginners) guide.
+- If you're familiar with Python but new to typing, see our [Typing for Python Developers](typing-for-python-developers) guide.

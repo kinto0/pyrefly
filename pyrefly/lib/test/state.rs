@@ -174,8 +174,7 @@ impl Incremental {
         )
     }
 
-    /// Run a check. Expect recompute things to have changed.
-    fn check(&mut self, want: &[&str], recompute: &[&str]) {
+    fn check_internal(&mut self, want: &[&str], recompute: &[&str], ignore_expectations: bool) {
         let subscriber = TestSubscriber::new();
         let mut transaction = self
             .state
@@ -198,7 +197,9 @@ impl Incremental {
         );
         let loads = self.state.transaction().get_errors(handles.iter());
         print_errors(&loads.collect_errors().shown);
-        loads.check_against_expectations().unwrap();
+        if !ignore_expectations {
+            loads.check_against_expectations().unwrap();
+        }
 
         let mut recompute = recompute.map(|x| (*x).to_owned());
         recompute.sort();
@@ -214,6 +215,16 @@ impl Incremental {
         }
         changed.sort();
         assert_eq!(recompute, changed);
+    }
+
+    /// Run a check. Expect to recompute things to have changed and errors from # E: <> comments.
+    fn check(&mut self, want: &[&str], recompute: &[&str]) {
+        self.check_internal(want, recompute, false)
+    }
+
+    /// Run a check. Expect to recompute things to have changed, but ignore error comments.
+    fn check_ignoring_loads_expectations(&mut self, want: &[&str], recompute: &[&str]) {
+        self.check_internal(want, recompute, true)
     }
 }
 
@@ -398,4 +409,42 @@ fn test_change_require() {
         1
     );
     assert!(state.transaction().get_bindings(&handle).is_some());
+}
+
+#[test]
+fn test_error_clearing_on_dependency() {
+    let mut i = Incremental::new();
+
+    i.set("foo", "def xyz() -> int: ...");
+    i.set(
+        "main",
+        "from foo import x # E: Could not import `x` from `foo`",
+    );
+    i.check(&["main", "foo"], &["main", "foo"]);
+
+    let main_handle = i.handle("main");
+
+    let errors = i
+        .state
+        .transaction()
+        .get_errors([&main_handle])
+        .collect_errors();
+
+    assert!(
+        !errors.shown.is_empty(),
+        "Expected errors before fixing the dependency"
+    );
+
+    i.set("foo", "def x() -> int: ...");
+    i.check_ignoring_loads_expectations(&["main"], &["foo", "main"]);
+
+    let errors_after_fix = i
+        .state
+        .transaction()
+        .get_errors([&main_handle])
+        .collect_errors();
+    assert!(
+        errors_after_fix.shown.is_empty(),
+        "Expected errors after fixing the dependency"
+    );
 }

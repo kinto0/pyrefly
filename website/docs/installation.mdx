@@ -58,3 +58,59 @@ pyrefly check --remove-unused-ignores
 Repeat the steps above until you get a clean formatting run and a clean type check.
 
 This will add ` # pyrefly: ignore` comments to your code that will enable you to silence errors, and come back and fix them at a later date. This can make the process of upgrading a large codebase much more manageable.
+----
+
+## Add Pyrefly to CI
+
+Once your project passes type checks without errors, you can ensure no new bugs are introduced. This is best enforced through CI (Continuous Integration) to prevent other maintainers from merging code with errors. Here is an example for GitHub.
+
+Save your workflow in this path in your repository:
+```
+.github/workflows/typecheck.yml
+```
+
+GitHub automatically detects any `.yml` files inside `.github/workflows/` and sets up the defined workflows.
+
+```
+name: Pyrefly Type Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Allows manual triggering from the GitHub UI
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+
+      # Install Python dependencies and create environment
+      - name: Install dependencies and run type checking
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          # Install your dependencies; adjust the following lines as needed
+          pip install -r requirements-dev.txt
+
+      - name: Install Pyrefly
+        run: pip install pyrefly
+
+      - name: Run Pyrefly Type Checker
+        run: pyrefly check
+```
+
+### A few notes about this setup:
+- Building your environment and installing dependencies will enhance type safety by checking the types of imports. *This is not required, but encouraged!*
+- Simply drop in `pyrefly check` to existing workflows that build and test your environment.
+```
+      - name: Run Pyrefly Type Checker
+        run: pyrefly check
+```
+- Your `pyrefly.toml` or pyrefly configs in your `pyproject.toml` will be automatically detected. Learn how to [configure pyrefly here](../configuration).

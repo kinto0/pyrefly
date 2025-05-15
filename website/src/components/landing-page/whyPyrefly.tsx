@@ -12,6 +12,7 @@ import * as stylex from '@stylexjs/stylex';
 import WhyPyreflyGridItem from './whyPyreflyGridItem';
 import Firefly from './firefly';
 import { useEffect, useState } from 'react';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 
 export default function WhyPyrefly(): React.ReactElement {
     const [isLoaded, setIsLoaded] = useState(false);
@@ -44,40 +45,27 @@ export default function WhyPyrefly(): React.ReactElement {
                 {/* Short-term benefits */}
                 <WhyPyreflyGridItem
                     title="Scale with Confidence"
-                    content="Typecheck 1.8 million lines of code per second"
+                    content="Type check over 1.85 million lines of code per second."
+                    footnote="Tested using Meta infrastructure (166 cores, 228 GB RAM)"
                     index={0}
                     startAnimation={startAnimation}
                 />
                 <WhyPyreflyGridItem
                     title="Developer Delight"
-                    content="Catch errors as you write code, and get instant feedback right in your favorite editor"
+                    content="Get lightning fast autocomplete, and catch errors with instant feedback in your favorite editor."
                     index={1}
                     startAnimation={startAnimation}
                 />
                 <WhyPyreflyGridItem
                     title="Easy Onboarding"
-                    content="Start type checking your code in minutes"
+                    contentWithLink={{
+                        link: {
+                            text: 'Start type checking',
+                            url: `${useBaseUrl('/en/docs/installation/')}`,
+                        },
+                        afterText: ' your code in minutes.',
+                    }}
                     index={2}
-                    startAnimation={startAnimation}
-                />
-
-                {/* Long-term benefits */}
-                <WhyPyreflyGridItem
-                    title="Codebase Clarity"
-                    content="Improve code readability and maintainability with precise type annotations"
-                    index={3}
-                    startAnimation={startAnimation}
-                />
-                <WhyPyreflyGridItem
-                    title="Tooling for Improving Types"
-                    content="Comes packaged with tools to elevate your type coverage from 0 to 100"
-                    index={4}
-                    startAnimation={startAnimation}
-                />
-                <WhyPyreflyGridItem
-                    title="Fully Featured"
-                    content="Actively under development. Follows the official Python typing specification."
-                    index={5}
                     startAnimation={startAnimation}
                 />
             </div>

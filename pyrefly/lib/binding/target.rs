@@ -146,9 +146,9 @@ impl<'a> BindingsBuilder<'a> {
         target: &mut Expr,
         make_binding: &dyn Fn(Option<Idx<KeyAnnotation>>) -> Binding,
         value: Option<&Expr>,
-        ensure_mutable_name: bool,
+        is_aug_assign: bool,
     ) {
-        if ensure_mutable_name && let Expr::Name(name) = target {
+        if is_aug_assign && let Expr::Name(name) = target {
             // We normally should not ensure a top-level name, but if the target is for an
             // AugAssign operation, then the name needs to already be in scope and will be used
             // to resolve the target as a (possibly overwriting) mutation.
@@ -182,13 +182,13 @@ impl<'a> BindingsBuilder<'a> {
                 // the name assigned to.
                 self.bind_subscript_assign(x.clone(), ExprOrBinding::Binding(binding.clone()));
             }
-            Expr::Tuple(tup) => {
+            Expr::Tuple(tup) if !is_aug_assign => {
                 self.bind_unpacking(&mut tup.elts, make_binding, tup.range);
             }
-            Expr::List(lst) => {
+            Expr::List(lst) if !is_aug_assign => {
                 self.bind_unpacking(&mut lst.elts, make_binding, lst.range);
             }
-            Expr::Starred(x) => {
+            Expr::Starred(x) if !is_aug_assign => {
                 self.error(
                     x.range,
                     "Starred assignment target must be in a list or tuple".to_owned(),

@@ -51,8 +51,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .anon_callables();
             // Make assert_type(Self@SomeClass, typing.Self) work.
             let self_form = Type::SpecialForm(SpecialForm::SelfType);
-            a.subst_self_type_mut(&self_form);
-            b.subst_self_type_mut(&self_form);
+            a.subst_self_type_mut(&self_form, &|_, _| true);
+            b.subst_self_type_mut(&self_form, &|_, _| true);
             if a != b {
                 self.error(
                     errors,

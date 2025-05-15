@@ -15,6 +15,8 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 import { useEffect, useState } from 'react';
 import * as docusaurusTheme from '@docusaurus/theme-common';
 import PipInstallPyrefly from './pipInstallPyrefly';
+import ThemedImage from '@theme/ThemedImage';
+
 export default function LandingPageHeader(): React.ReactElement {
     const { colorMode } = docusaurusTheme.useColorMode();
 
@@ -34,9 +36,12 @@ export default function LandingPageHeader(): React.ReactElement {
     return (
         <header {...stylex.props(styles.featureHero)}>
             <section {...stylex.props(styles.logoContainer)}>
-                <img
-                    src={pyreflyLogoUrl}
+                <ThemedImage
                     alt="Pyrefly Logo"
+                    sources={{
+                        light: useBaseUrl('img/Pyrefly-Brandmark.svg'),
+                        dark: useBaseUrl('img/Pyrefly-Brandmark-Invert.svg'),
+                    }}
                     {...stylex.props(
                         styles.logo,
                         isLoaded && styles.logoVisible
@@ -113,14 +118,8 @@ const styles = stylex.create({
     },
 
     featureHero: {
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center', // Center content vertically
         width: '100%',
         height: '100%',
-        padding: '7rem 0',
-        position: 'relative',
         overflow: 'hidden',
         background: 'var(--color-background)',
         color: 'var(--color-text)',

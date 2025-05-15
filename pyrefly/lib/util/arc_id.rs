@@ -14,6 +14,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::Weak;
 
 use dupe::Clone_;
 use dupe::Dupe_;
@@ -111,5 +112,57 @@ impl<T: ?Sized> ArcId<T> {
 
     pub fn id(&self) -> usize {
         Arc::as_ptr(&self.0) as *const () as usize
+    }
+
+    /// Create a [`WeakArcId`] from this `ArcId`, which does
+    /// not increase its strong ref count.
+    pub fn downgrade(&self) -> WeakArcId<T> {
+        WeakArcId(Arc::downgrade(&self.0), self.id())
+    }
+}
+
+/// A [`Weak`] version of an [`ArcId`].
+/// Hash and equality is based on the original `ArcId`'s id
+/// without upgrading it.
+pub struct WeakArcId<T: ?Sized>(Weak<T>, usize);
+
+impl<T: ?Sized> WeakArcId<T> {
+    /// Turn this `WeakArcId` into an [`ArcId`], if it still exists.
+    pub fn upgrade(&self) -> Option<ArcId<T>> {
+        self.0.upgrade().map(|a| ArcId(a))
+    }
+
+    pub fn id(&self) -> usize {
+        self.1
+    }
+
+    /// Does this [`WeakArcId`] still exist, or have all
+    /// backing `ArcId`s been dropped?
+    pub fn vacant(&self) -> bool {
+        self.0.upgrade().is_none()
+    }
+}
+
+impl<T: ?Sized> PartialEq for WeakArcId<T> {
+    /// Is this `WeakArcId`'s [`ArcId::id`] equivalent to
+    /// `other`?
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl<T: ?Sized> Eq for WeakArcId<T> {}
+
+impl<T: ?Sized> Hash for WeakArcId<T> {
+    /// Hash the current `WeakArcId` based on the original
+    /// [`ArcId::id`].
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+impl<T: ?Sized> Clone for WeakArcId<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1)
     }
 }

@@ -10,7 +10,7 @@
     "version": "0.0.1",
     "repository": {
         "type": "git",
-        "url": "https://github.com/facebook/pyre"
+        "url": "https://github.com/facebook/pyrefly"
     },
     "publisher": "meta",
     "categories": [],
@@ -64,7 +64,12 @@
                 "python.pyrefly.disableLanguageServices": {
                     "type": "boolean",
                     "default": false,
-                    "description": "If true, pyrefly will only provide typechecking in the IDE. It will not provide other IDE services like completions, hover, definition, etc."
+                    "description": "If true, pyrefly will not provide other IDE services like completions, hover, definition, etc. To control type errors, see `python.pyrefly.disableTypeErrors`"
+                },
+                "python.pyrefly.disableTypeErrors": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "If true, pyrefly will not provide typecheck squiggles in the IDE. To control other IDE services, see `python.pyrefly.disableLanguageServices`"
                 },
                 "pyrefly.trace.server": {
                     "type": "string",

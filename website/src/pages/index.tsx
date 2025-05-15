@@ -8,23 +8,8 @@
  */
 
 import * as React from 'react';
-import Layout from '@theme/Layout';
 import NewLandingPage from './newLandingPage';
-import LandingPageHeader from '../components/landing-page/landingPageHeader';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 
 export default function Home(): React.ReactElement {
-    const { siteConfig } = useDocusaurusContext();
-
-    // TODO (T218370640): replace current landing page with new landing page
-    return process.env.INTERNAL_STATIC_DOCS === '1' ? (
-        <NewLandingPage />
-    ) : (
-        <Layout
-            title="Pyrefly: A Static Type Checker for Python"
-            description={siteConfig.description}
-        >
-            <LandingPageHeader />
-        </Layout>
-    );
+    return <NewLandingPage />;
 }

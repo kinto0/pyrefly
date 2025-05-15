@@ -36,7 +36,10 @@ pub enum SpecialExport {
     Cast,
     Super,
     Exit,
+    Quit,
+    OsExit,
     Len,
+    NoTypeCheck,
 }
 
 #[derive(Debug)]
@@ -73,7 +76,10 @@ impl SpecialExport {
             "cast" => Some(Self::Cast),
             "super" => Some(Self::Super),
             "exit" => Some(Self::Exit),
+            "quit" => Some(Self::Quit),
+            "_exit" => Some(Self::OsExit),
             "len" => Some(Self::Len),
+            "no_type_check" => Some(Self::NoTypeCheck),
             _ => None,
         }
     }
@@ -92,13 +98,16 @@ impl SpecialExport {
             | Self::Union
             | Self::Optional
             | Self::AssertType
+            | Self::NoTypeCheck
             | Self::Cast => {
                 matches!(m.as_str(), "typing" | "typing_extensions")
             }
             Self::CollectionsNamedTuple => matches!(m.as_str(), "collections"),
             Self::Enum | Self::StrEnum | Self::IntEnum => matches!(m.as_str(), "enum"),
             Self::Super | Self::Len => matches!(m.as_str(), "builtins"),
-            Self::Exit => matches!(m.as_str(), "sys"),
+            Self::Exit => matches!(m.as_str(), "sys" | "builtins"),
+            Self::Quit => matches!(m.as_str(), "builtins"),
+            Self::OsExit => matches!(m.as_str(), "os"),
         }
     }
 

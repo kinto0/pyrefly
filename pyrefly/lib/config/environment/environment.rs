@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use starlark_map::small_map::SmallMap;
 use tracing::error;
+use tracing::warn;
 #[cfg(not(target_arch = "wasm32"))]
 use which::which;
 
@@ -30,6 +31,26 @@ use crate::util::lock::Mutex;
 
 static INTERPRETER_ENV_REGISTRY: LazyLock<Mutex<SmallMap<PathBuf, Option<PythonEnvironment>>>> =
     LazyLock::new(|| Mutex::new(SmallMap::new()));
+
+#[derive(Debug, PartialEq, Eq, Deserialize, Serialize, Clone, Default)]
+pub enum SitePackagePathSource {
+    #[default]
+    ConfigFile,
+    CommandLine,
+    Interpreter(PathBuf),
+}
+
+impl Display for SitePackagePathSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConfigFile => write!(f, "from config file"),
+            Self::CommandLine => write!(f, "from command line"),
+            Self::Interpreter(path) => {
+                write!(f, "queried from interpreter at `{}`", path.display())
+            }
+        }
+    }
+}
 
 /// Values representing the environment of the Python interpreter.
 /// These values are `None` by default, so we can tell if a config
@@ -56,27 +77,16 @@ pub struct PythonEnvironment {
     /// Is the `site_package_path` here one we got from
     /// querying an interpreter?
     #[serde(skip, default)]
-    pub site_package_path_from_interpreter: bool,
+    pub site_package_path_source: SitePackagePathSource,
 }
 
 impl PythonEnvironment {
     const DEFAULT_INTERPRETERS: &[&str] = &["python3", "python"];
 
-    pub fn new(
-        python_platform: PythonPlatform,
-        python_version: PythonVersion,
-        site_package_path: Vec<PathBuf>,
-    ) -> Self {
-        Self {
-            python_platform: Some(python_platform),
-            python_version: Some(python_version),
-            site_package_path: Some(site_package_path),
-            site_package_path_from_interpreter: false,
-        }
-    }
-
     fn pyrefly_default() -> Self {
-        Self::new(Default::default(), Default::default(), Default::default())
+        let mut env = Self::default();
+        env.set_empty_to_default();
+        env
     }
 
     /// Are any Python environment values `None`?
@@ -97,7 +107,7 @@ impl PythonEnvironment {
         }
         if self.site_package_path.is_none() {
             self.site_package_path = Some(Vec::new());
-            self.site_package_path_from_interpreter = false;
+            self.site_package_path_source = SitePackagePathSource::ConfigFile;
         }
     }
 
@@ -112,7 +122,7 @@ impl PythonEnvironment {
         }
         if self.site_package_path.is_none() {
             self.site_package_path = other.site_package_path;
-            self.site_package_path_from_interpreter = other.site_package_path_from_interpreter;
+            self.site_package_path_source = other.site_package_path_source;
         }
     }
 
@@ -120,15 +130,20 @@ impl PythonEnvironment {
     /// version, platform, and site package path. Return an error in the case of failure during
     /// execution, parsing, or deserializing.
     fn get_env_from_interpreter(interpreter: &Path) -> anyhow::Result<PythonEnvironment> {
+        if let Ok(pythonpath) = std::env::var("PYTHONPATH") {
+            warn!(
+                "PYTHONPATH environment variable is set to '{}'. Checks on other computers may not include these paths.",
+                pythonpath
+            );
+        }
+
         let script = "\
-import json, site, sys
+import json, sys
 platform = sys.platform
 v = sys.version_info
 version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
-packages = site.getsitepackages()
-if site.ENABLE_USER_SITE:
-    packages.insert(0, site.getusersitepackages())
-print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': packages}))
+site_package_path = list(filter(lambda x: x != '' and '.zip' not in x, sys.path))
+print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path}))
 ";
 
         let mut command = Command::new(interpreter);
@@ -166,7 +181,8 @@ print(json.dumps({'python_platform': platform, 'python_version': version, 'site_
             anyhow!("Expected `site_package_path` from Python interpreter query to be non-empty")
         })?;
 
-        deserialized.site_package_path_from_interpreter = true;
+        deserialized.site_package_path_source =
+            SitePackagePathSource::Interpreter(interpreter.to_path_buf());
 
         Ok(deserialized)
     }
@@ -231,7 +247,7 @@ impl Display for PythonEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{{python_platform: {}, python_version: {}, site_package_path: [{}], site_package_path_from_interpreter: {}}}",
+            "{{python_platform: {}, python_version: {}, site_package_path: [{}], site_package_path_source: {:?}}}",
             self.python_platform
                 .as_ref()
                 .map_or_else(|| "None".to_owned(), |platform| platform.to_string()),
@@ -241,7 +257,7 @@ impl Display for PythonEnvironment {
                 || "".to_owned(),
                 |path| path.iter().map(|p| p.display()).join(", ")
             ),
-            self.site_package_path_from_interpreter,
+            self.site_package_path_source,
         )
     }
 }

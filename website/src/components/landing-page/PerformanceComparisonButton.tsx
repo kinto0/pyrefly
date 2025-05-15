@@ -11,6 +11,7 @@ import * as React from 'react';
 import * as stylex from '@stylexjs/stylex';
 import type { ProjectValue } from './PerformanceComparisonTypes';
 import typography from './typography';
+import { landingPageCardStyles } from './landingPageCardStyles';
 interface PerformanceComparisonButtonProps {
     project: ProjectValue;
     selectedProject: ProjectValue;
@@ -25,6 +26,7 @@ export default function PerformanceComparisonButton({
     return (
         <button
             {...stylex.props(
+                landingPageCardStyles.card,
                 styles.button,
                 typography.p,
                 selectedProject === project && styles.buttonActive
@@ -39,15 +41,14 @@ export default function PerformanceComparisonButton({
 const styles = stylex.create({
     button: {
         padding: '0.75rem 1.5rem',
-        borderRadius: '4px',
-        border: '1px solid var(--color-background)',
-        backgroundColor: 'transparent',
-        color: 'var(--color-background)',
+        backgroundColor: 'var(--color-background)',
         cursor: 'pointer',
-        transition: 'all 0.2s',
+        ':hover': {
+            transform: 'translateY(-5px)',
+        },
     },
     buttonActive: {
         backgroundColor: 'var(--color-background)',
-        color: 'white',
+        color: 'var(--color-primary)',
     },
 });

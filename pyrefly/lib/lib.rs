@@ -30,6 +30,7 @@
 #![feature(if_let_guard)]
 #![feature(let_chains)]
 #![feature(never_type)]
+#![feature(hash_extract_if)]
 
 mod alt;
 mod binding;

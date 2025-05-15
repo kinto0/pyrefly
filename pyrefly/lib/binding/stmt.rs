@@ -526,7 +526,11 @@ impl<'a> BindingsBuilder<'a> {
                     {
                         self.table.insert(
                             KeyExpect(name.range),
-                            BindingExpect::Eq(ann_key, ann, name.id.clone()),
+                            BindingExpect::Redefinition {
+                                new: ann_key,
+                                existing: ann,
+                                name: name.id.clone(),
+                            },
                         );
                     }
                 }

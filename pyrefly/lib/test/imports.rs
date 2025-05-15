@@ -767,3 +767,31 @@ from typing import Any, assert_type
 assert_type(f(), Any)
     "#,
 );
+
+fn env_literal_enum_validity() -> TestEnv {
+    TestEnv::one(
+        "foo",
+        r#"
+import enum
+class E(enum.IntEnum):
+    X = 0
+class F:
+    Y = 1
+"#,
+    )
+}
+
+testcase!(
+    test_literal_enum_validity,
+    env_literal_enum_validity(),
+    r#"
+import foo
+from typing import Literal, assert_type
+assert_type(foo.E.X, Literal[foo.E.X])
+
+def derp() -> Literal[foo.E.X]: ...
+def test() -> Literal[derp()]: ...  # E:  Invalid literal expression
+
+def test2() -> Literal[foo.F.Y]: ... # E: `foo.F.Y` is not a valid enum member
+"#,
+);

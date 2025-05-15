@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 use core::panic;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -31,6 +32,7 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 use crate::commands::lsp::Args;
+use crate::commands::lsp::IndexingMode;
 use crate::commands::lsp::run_lsp;
 use crate::test::util::init_test;
 use crate::util::fs_anyhow;
@@ -39,7 +41,7 @@ use crate::util::fs_anyhow;
 pub struct TestCase {
     pub(crate) messages_from_language_client: Vec<Message>,
     pub(crate) expected_messages_from_language_server: Vec<Message>,
-    pub(crate) experimental_project_path: Vec<PathBuf>,
+    pub(crate) indexing_mode: IndexingMode,
     /// workspace folders open in the client
     pub(crate) workspace_folders: Option<Vec<(String, Url)>>,
     /// if client has configuration capability
@@ -54,7 +56,7 @@ pub fn run_test_lsp(test_case: TestCase) {
     init_test();
     let timeout = Duration::from_secs(25);
     let args = Args {
-        experimental_project_path: test_case.experimental_project_path.clone(),
+        indexing_mode: test_case.indexing_mode,
     };
     // language_client_sender is used to send messages to the language client
     // language_client_receiver sees messages sent to the language client
@@ -136,7 +138,7 @@ pub fn run_test_lsp(test_case: TestCase) {
         // this thread receives messages from the language server and validates responses
         scope.spawn(move || {
             let mut responses =
-                get_initialize_responses(!test_case.experimental_project_path.is_empty())
+                get_initialize_responses(test_case.indexing_mode != IndexingMode::None)
                     .into_iter()
                     .chain(test_case.expected_messages_from_language_server)
                     .collect::<Vec<_>>();
@@ -329,9 +331,26 @@ pub fn get_test_files_root() -> TempDir {
     // We copy all files over to a separate temp directory so we are consistent between Cargo and Buck.
     // In particular, given the current directory, Cargo is likely to find a pyproject.toml, but Buck won't.
     let t = TempDir::new().unwrap();
-    for x in fs_anyhow::read_dir(&source_files).unwrap() {
-        let name = x.unwrap().file_name();
-        std::fs::copy(source_files.join(&name), t.path().join(&name)).unwrap();
-    }
+    copy_dir_recursively(&source_files, t.path());
+
     t
+}
+
+fn copy_dir_recursively(src: &Path, dst: &Path) {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst).unwrap();
+    }
+
+    for entry in fs_anyhow::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_recursively(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap();
+        }
+    }
 }

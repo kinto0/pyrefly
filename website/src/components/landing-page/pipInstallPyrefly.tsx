@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import * as stylex from '@stylexjs/stylex';
 import typography from './typography';
+import { landingPageCardStyles } from './landingPageCardStyles';
 
 const PipInstallPyrefly: React.FC = () => {
     const [isCopied, setIsCopied] = useState(false);
@@ -32,7 +33,13 @@ const PipInstallPyrefly: React.FC = () => {
                 isLoaded && styles.codeSnippetVisible
             )}
         >
-            <pre {...stylex.props(styles.pre, typography.p)}>
+            <pre
+                {...stylex.props(
+                    landingPageCardStyles.card,
+                    styles.pre,
+                    typography.p
+                )}
+            >
                 <code>$ {codeString}</code>
                 <button
                     onClick={copyToClipboard}
@@ -111,7 +118,6 @@ const styles = stylex.create({
         padding: '4px 10px',
         marginTop: '10px',
         position: 'relative',
-        backgroundColor: 'var(--color-background-secondary)',
     },
     copy: {
         position: 'absolute',

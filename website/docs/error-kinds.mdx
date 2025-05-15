@@ -160,170 +160,573 @@ For example, argument order is enforced by the parser, so `def f(x: int = 1, y: 
 
 ## bad-keyword-argument
 
-Attempting to call a function with an incorrect keyword argument. e.g. f(x=1,
-x=2), or perhaps f(y=1) (where `f` has no parameter `y`).
+bad-keyword-argument pops up when a keyword argument is given multiple values:
+
+```python
+def f(x: int) -> None:
+  pass
+f(x=1, x=2)
+```
+
+However, this is often accompanied by a `parse-error` for the same issue.
 
 ## bad-override
 
-A subclass field or method incorrectly overrides a field/method of a parent
-class.
+When a subclass overrides a field or method of its base class, care must be taken that the override won't cause problems.
+
+Some of these are obvious:
+
+```python
+class Base:
+  def f(self, a: int) -> None:
+    pass
+
+class NoArg(Base):
+  def f(self) -> None:
+    pass
+
+class WrongType(Base):
+  def f(self, a: str) -> None:
+    pass
+
+def uses_f(b: Base) -> None:
+  b.f(1)
+```
+
+These errors are rather obvious: `uses_f` will fail if given a `NoArg` or `WrongType` instance, because those methods don't expect an `int` argument!
+
+The guiding idea here is the [Liskov Substitution Principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle), the idea that a subclass can stand in for a base class at any point without breaking the program.
+
+This can be a little subtle at first blush. Consider:
+
+```python
+class Base:
+  def f(self, a: int) -> None:
+    pass
+
+class Sub(Base):
+  def f(self, a: float) -> None:
+    pass
+```
+
+Is this OK? Yes! `int` is treated as a subclass of `float`, or to put it another way, a function that accepts `float` can accept every `int`.
+That means everywhere that we call `Base.f` can safely call `Sub.f`.
+
+The opposite case, where `Base.f` takes `float` and `Sub.f` takes `int`, is an error because `Sub.f` cannot accept every `float` value.
 
 ## bad-return
 
-Attempting to return a value that does not match the function's return type. Can
-also arise when returning values from generators.
+Arises when a function does not return a value that is compatible with the function's return type annotation.
+
+```python
+def bad_return() -> None:
+  return 1
+```
+
+Real-world examples are often less obvious, of course, due to complex control flow and type relationships.
+
+This error is also raised for generator functions:
+
+```python
+from typing import Generator
+# Generator has 3 types: the yield, send, and return types.
+def bad_gen() -> Generator[int, None, str]:
+  yield 1
+  return 2  # should be a str!
+```
 
 ## bad-specialization
 
-Attempting to specialize a generic class with incorrect type arguments. e.g.
-`type[int, str]` is an error because `type` accepts only 1 type arg.
+"Specialization" refers to instantiating a generic type with a concrete type.
+For example, `list` is a generic type, and `list[int]` is that type specialized with `int`.
+
+Each generic type has an expected number of type vars, and each type var can be bound or constrained.
+Attempting to use specialize a generic type in a way that violates these specifications will result in a `bad-specialization` error:
+
+```python
+x: list[int, str]
+```
 
 ## bad-unpacking
 
-An error caused by unpacking. e.g. attempting to unpack an iterable into the
-wrong number of variables.
+An error caused by unpacking, such as attempting to unpack a list, tuple, or iterable into the wrong number of variables.
+
+```python
+def two_elems() -> tuple[int, str]:
+  return (1, "two")
+
+a, b, c = two_elems()
+```
+
+Note that pyrefly can only report this error if it knows how many elements the thing being unpacked has.
+
+```python
+# A bare `tuple` could have any number of elements
+def two_elems() -> tuple:
+  return (1, "two")
+
+a, b, c = two_elems()
+```
 
 ## delete-error
 
-Attempting to `del` something that cannot be deleted.
+This error occurs when attempting to `del` something that cannot be deleted.
+
+Besides obvious things like built-in values (you can't `del True`!), some object attributes are protected from deletion.
+For example, read-only and required `TypedDict` fields cannot be deleted.
 
 ## import-error
 
-An error related to the import machinery. e.g. failed to import a module.
+An error related to the import mechanism, such as when a module cannot be found.
+
+The error message will include which paths were searched, such as the site package paths.
+You may be missing a dependency, or you may need to inform Pyrefly where the module lives. See [Configuration](configuration.mdx) for further information.
 
 ## index-error
 
-Attempting to access a container with an incorrect index. This only occurs when
-pyre can statically verify that the index is incorrect.
+Attempting to access a container with an incorrect index.
+This only occurs when Pyrefly can statically verify that the index is incorrect, such as with a fixed-length tuple.
+
+```python
+def add_three(x: tuple[int, int]) -> int:
+  return x[0] + x[1] + x[2]
+```
+
+Pyrefly also knows the keys of `TypedDict`s, but those have their own error kind.
 
 ## internal-error
 
-Internal Pyre error.
+Ideally you'll never see this one. If you do, please consider [filing a bug](https://github.com/facebook/pyrefly/issues).
 
 ## invalid-annotation
 
-Attempting to write an annotation that is invalid for some reason.
+There are several reasons why an annotation may be invalid. The most common case is misusing a typing special form, such as `typing.Final`, `typing.ClassVar`, `typing.ParamSpec`, and so on.
+
+```python
+from typing import *
+
+# Final must have a value
+a: Final
+# ClassVar can only be used in a class body
+b: ClassVar[int] = 1
+```
+
+The error messages will explain how the special form is being misused. Consult the [typing docs](https://docs.python.org/3/library/typing.html) and [typing spec](https://typing.python.org/en/latest/spec/) for more information.
 
 ## invalid-argument
 
-Passing an argument that is invalid for reasons besides type.
+This error is used to indicate an issue with an argument to special typing-related functions.
+
+For example, `typing.NewType` is a handy special form for creating types that are distinct from a base type.
+
+
+```python
+from typing import *
+
+# The first arg must match the name!
+Mismatch = NewType("Wrong Name", int)
+
+# NewTypes cannot be used in isinstance.
+UserId = NewType("UserId", int)
+if isinstance(1, UserId):
+  ...
+```
 
 ## invalid-inheritance
 
-An error caused by incorrect inheritance in a class or type definition. e.g. a
-metaclass that is not a subclass of `type`.
+An error caused by incorrect inheritance in a class or type definition.
+This can pop up in quite a few cases:
+- Trying to subclass something that isn't a class.
+- Subclassing a type that does not support it, such as a `NewType` or a `Final` class.
+- Attempting to mix `Protocol`s with non-`Protocol` base classes.
+- Trying to make a generic enum.
+- Trying to give a `TypedDict` a metaclass.
+
+And so on!
 
 ## invalid-literal
 
-Attempting to use a value that is not a valid kind of Literal.
+`typing.Literal` only allows a [limited set](https://typing.python.org/en/latest/spec/literal.html#legal-parameters-for-literal-at-type-check-time) of types as parameters.
+Attempting to use `Literal` with anything else is an error.
+
+```python
+from typing import Literal
+
+# These are legal
+Literal[1.0]
+Literal['a', 'b', 'c']
+# This is not
+class A:
+  ...
+Literal[A()]
+```
 
 ## invalid-overload
 
-An error caused by incorrect usage of the @overload decorator. e.g. not defining
-multiple variants for an overloaded function.
+The `@overload` decorator requires that the decorated function has at least two overloaded signatures and a base implementation.
+
+```python
+from typing import *
+
+@overload
+def no_base(x: int) -> None:
+  pass
+
+@overload
+def no_base(x: str) -> int:
+  pass
+```
+
+```python
+@overload
+def just_one(x: int) -> None:
+  pass
+
+def just_one(x: str) -> None:
+  ...
+```
+
 
 ## invalid-param-spec
 
-An error related to ParamSpec definition or usage.
+This error is reported when `typing.ParamSpec` is defined incorrectly or misused. For example:
+
+```python
+from typing import *
+
+P = ParamSpec("Name Must Match!")
+
+P1 = ParamSpec("P1")
+P2 = ParamSpec("P2")
+
+def f(x, *args: P1.args, **kwargs: P2.kwargs) -> None:
+  pass
+```
+
+Here, `P1.args` and `P2.kwargs` can't be used together; `*args` and `**kwargs` must come from the same `ParamSpec`.
 
 ## invalid-super-call
 
-Attempting to call `super()` in a way that is not allowed. e.g. calling
-`super(Y, x)` on an object `x` that does not match the class `Y`.
+`super()` has [a few restrictions](https://docs.python.org/3/library/functions.html#super) on how it is called.
+
+`super()` can be called without arguments, but only when used inside a method of a class:
+
+```python
+class Legal(Base1, Base2):
+  def f(self) -> None:
+    super().f()
+
+def illegal(arg: SomeType) -> None:
+  super().f()
+```
+
+When the function is called with two arguments, like `super(T, x)`, then `T` must be a type, and the second argument is either an object where `isinstance(x, T)` is true
+or a type where `issubclass(x, T)` is true.
 
 ## invalid-syntax
 
-Incorrect Python syntax, construct is not allowed in this position.
+This error covers syntactical edge cases that are not flagged by the parser.
+
+For example:
+
+```python
+x: list[int] = [0, 2, 3]
+x[0]: int = 1
+```
+
+It's not a parse error for an assignment to have an annotation, but it is forbidden by the type checker to annotate assignment to a subscript like `x[0]`.
 
 ## invalid-type-var
 
-An error caused by incorrect usage or definition of a TypeVar.
+An error caused by incorrect usage or definition of a TypeVar. A few examples:
+
+```python
+from typing import TypeVar
+# Old-style TypeVars must be assigned to a matching variable.
+Wrong = TypeVar("Name")
+
+# PEP 695-style TypeVars can be constrained, but there must be at least two:
+def only_one_constriant[T: (int,)](x: T) -> T:
+  ...
+
+# It's also illegal to mix the two styles together.
+T = TypeVar("T")
+def mixed[S](a: S, b: T) -> None:
+  ...
+```
 
 ## invalid-type-var-tuple
 
 An error caused by incorrect usage or definition of a TypeVarTuple.
 
+TypeVarTuple has similar error cases to [TypeVar](#invalid-type-var), but also a few of its own. For example:
+
+```python
+from typing import TypeVarTuple
+
+Ts = TypeVarTuple("Ts")
+
+# TypeVarTuples must always be unpacked:
+bad: tuple[Ts] = (...)
+good: tuple[*Ts] = (...)
+
+# Only one TypeVarTuple is allowed in a list of type arguments:
+def two_tups[*Xs, *Ys](xs: tuple[*Xs], ys: tuple[*Ys]) -> None:
+  ...
+```
+
 ## invalid-yield
 
-Attempting to use `yield` in a way that is not allowed. e.g. `yield from` with
-something that's not an iterable.
+This error arises when `yield` is used in a way that is not allowed. For example:
+
+```python
+from typing import Generator
+
+for _ in range(1, 10):
+  yield "can't yield outside of a function!"
+
+def bad_yield_from() -> Generator[int, None, None]:
+  # `yield from` can only be used with iterables.
+  yield from 1
+```
 
 ## match-error
 
-An error caused by a bad match statement. e.g. Writing a Foo(x, y, z) pattern
-when Foo only matches on (x, y).
+This error is used in two cases.
+
+The first is when there is an issue with a `match` statement. For example, `Ex` only has 2 fields but the `case` lists 3:
+
+```python
+class Ex:
+  __match_args__ = ('a', 'b')
+  def __init__(self, a: int, b: str) -> None:
+    self.a = a
+    self.b = b
+
+def do(x: Ex) -> None:
+  match x:
+    case Ex(a, b, c):
+      print("This is an error")
+```
+
+It is also used when `__match_args__` is defined incorrectly. It must be a tuple of the names of the class's attributes as literal strings.
+For class `Ex` in the previous example, `__match_args__ = ('a', 'c')` would be an error because `Ex.c` does not exist.
 
 ## missing-argument
 
-An error caused by calling a function without all the required arguments. Should
-be used when we can name the specific arguments that are missing.
+An error caused by calling a function without all the required arguments.
+
+```python
+def takes_two(x: int, y: int) -> int:
+  return x + y
+
+takes_two(1)
+```
 
 ## missing-attribute
 
-Attempting to access an attribute that does not exist.
+This error is raised when attempting to access an attribute that does not exist on the given object or module.
+
+In the case of modules, attempting to import an nonexistent name will raise [`missing-module-attribute](#missing-module-attribute) instead.
+
+```python
+import os
+from os import bacarat  # missing-module-attribute
+os.jongleur()  # missing-attribute
+```
+
+Note that objects with type `Any` will never raise this error.
 
 ## missing-module-attribute
 
-Accessing an attribute that does not exist on a module.
+Arises when attempting to import a name that does not exist from a module.
+
+This is distinct from [`import-error`](#import-error), which is used when the module being imported does not exist, and [`missing-attribute`](#missing-attribute), when access attributes of the module.
+
+```python
+import this_does_not_exist  # import-error
+import os.bacarat  # import-error
+from os import joker  # missing-module-attribute
+os.perkeo  # missing-attribute
+```
+
+In this example, `os.bacarat` is treated as a module name, so failing to find it results in an `import-error`.
+`from os import joker` does not tell us if `joker` is a module, class, function, etc., so it is treated as the more general `missing-module-attribute`.
 
 ## no-access
 
-The attribute exists but does not support this access pattern.
+The `no-access` error indicates that an attribute exists, but it cannot be used in this way.
+
+For example, classes do not have access to their instances' attributes:
+
+```python
+class Ex:
+  def __init__(self) -> None:
+    self.meaning: int = 42
+
+del Ex.meaning  # no-access
+```
 
 ## no-matching-overload
 
-Attempting to call an overloaded function, but none of the signatures match.
+This error is similar to the other bad function call errors, but specifically for cases where a function decorated with `@overload` is called with arguments that do not match any of the overloaded variations.
+
+For example, neither of the signatures of `f` can take an argument of type `float`:
+
+```python
+from typing import overload
+
+@overload
+def f(x: int) -> int:
+    ...
+
+@overload
+def f(x: str) -> str:
+    ...
+
+def f(x: int | str) -> int | str:
+    return x
+
+f(1.0)
+```
 
 ## not-a-type
 
-Attempting to use something that isn't a type where a type is expected. This is
-a very general error and should be used sparingly.
+This indicates an attempt to use something that isn't a type where a type is expected.
+In most cases, a more specific error kind is used.
+
+You may see this error around incorrect type aliases:
+
+```python
+class A:
+  ...
+# Not an alias, just a string!
+X = "A"
+x: X = ...  # X is not a type alias, so this is illegal
+```
 
 ## not-callable
 
-Attempting to call a value that is not a callable.
+A straightforward error: something that is not a function was used as if it were a function.
+
+One interesting place this error may occur is with decorators:
+
+```python
+x = 1
+
+@x  # not-callable
+def foo() -> None:
+  ...
+```
 
 ## not-iterable
 
-Attempting to use a non-iterable value as an iterable.
+This is most likely to be seen in a `for` loop:
+
+```python
+x = 1  # Or some other value
+for val in x:  # not-iterable
+  ...
+```
 
 ## parse-error
 
-An error related to parsing or syntax.
+An error related to parsing or syntax. This covers a variety of cases, such as function calls with duplicate keyword args, some poorly defined functions, and so on.
 
 ## read-only
 
-The attribute exists but cannot be modified.
+This error indicates that the attribute being accessed does exist but cannot be modified.
+
+For example, a `@property` with no setter cannot be assigned to:
+
+```python
+class Ex:
+    @property
+    def meaning(self) -> int:
+        return 42
+
+x = Ex()
+x.meaning = 0
+```
 
 ## reveal-type
 
-Raised by a call to `reveal_type()`.
+Pyrefly uses this error to communicate the output of the [`reveal_type`](https://typing.python.org/en/latest/spec/directives.html#reveal-type) function.
 
 ## type-alias-error
 
-An error related to type alias usage or definition.
+An error related to the definition or usage of a `typing.TypeAlias`. Many of these cases are covered by [`invalid-annotation`](#invalid-annotation), so this error
+specifically handles illegal type alias values:
+
+```python
+from typing import TypeAlias
+x = 2
+Bad: TypeAlias = x
+```
 
 ## typed-dict-key-error
 
-An error related to TypedDict keys. e.g. attempting to access a TypedDict with a
-key that does not exist.
+This error arises when `TypedDict`s are used with incorrect keys, such as a key that does not exist in the `TypedDict`.
+
+```python
+from typing import TypedDict
+
+class Ex(TypedDict):
+    a: int
+    b: str
+
+def test(x: Ex) -> None:
+    # These two keys don't exist
+    x.nope
+    x["wrong"]
+    # TypedDict keys must be strings!
+    x[1]
+```
 
 ## unbound-name
 
-Attempting to use a name that may be unbound or uninitialized.
+This error corresponds to the runtime `NameError`, indicating that a variable is referenced but does not exist.
+
+```python
+def do_things(stuff: list[int]) -> str:
+  ...
+
+do_thing([1, 2])  # typo! Or, unbound-name
+```
 
 ## unexpected-keyword
 
-An error caused by a keyword argument used in the wrong place.
+A function was called with an extra keyword argument.
+
+```python
+def two_args(a: int, b: int) -> int:
+  ...
+
+two_args(a=1, b=2, c=3)
+```
 
 ## unknown-name
 
-Attempting to use a name that is not defined.
+`unknown-name` occurs when attempting to load a name from another scope, but the name cannot be found.
+
+```python
+def where() -> None:
+  # There is no spoon: unknown-name
+  global spoon
+```
 
 ## unsupported-operand
 
-Attempting to apply an operator to arguments that do not support it.
+This error arises when attempting to perform an operation between values of two incompatible types.
+Since many Python operators are actually syntactic sugar for function calls, many operations will result in [`bad-argument-type`](#bad-argument-type) errors.
+
+An exception is the `in` operator, which fails when looking for a value in something that does not support `in`:
+
+```python
+if "hello" in 1:  # int doesn't support `in`!
+  ...
+```
 
 ## unsupported
 
-Attempting to use a feature that is not yet supported.
+This error indicates that pyrefly does not currently support a typing feature.

@@ -74,7 +74,7 @@ impl PyrightConfig {
             cfg.project_excludes = excludes;
         }
         if let Some(search_path) = self.search_path {
-            cfg.search_path = search_path;
+            cfg.search_path_from_file = search_path;
         }
         if let Some(platform) = self.python_platform {
             cfg.python_environment.python_platform = Some(PythonPlatform::new(&platform));
@@ -207,6 +207,7 @@ pub fn parse_pyproject_toml(raw_file: &str) -> anyhow::Result<ConfigFile> {
 mod tests {
     use super::*;
     use crate::config::environment::environment::PythonEnvironment;
+    use crate::config::environment::environment::SitePackagePathSource;
 
     #[test]
     fn test_convert_pyright_config() -> anyhow::Result<()> {
@@ -236,12 +237,12 @@ mod tests {
                     "test/**/*.py".to_owned()
                 ]),
                 project_excludes: Globs::new(vec!["src/excluded/**/*.py".to_owned()]),
-                search_path: vec![PathBuf::from("src/extra")],
+                search_path_from_file: vec![PathBuf::from("src/extra")],
                 python_environment: PythonEnvironment {
                     python_platform: Some(PythonPlatform::linux()),
                     python_version: Some(PythonVersion::new(3, 10, 0)),
                     site_package_path: None,
-                    site_package_path_from_interpreter: false,
+                    site_package_path_source: SitePackagePathSource::ConfigFile,
                 },
                 ..Default::default()
             }
@@ -273,7 +274,7 @@ mod tests {
                     python_version: Some(PythonVersion::new(3, 11, 0)),
                     python_platform: None,
                     site_package_path: None,
-                    site_package_path_from_interpreter: false,
+                    site_package_path_source: SitePackagePathSource::ConfigFile,
                 },
                 ..Default::default()
             }

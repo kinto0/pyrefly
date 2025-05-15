@@ -44,7 +44,7 @@ def test(
     x5: tuple[int, int, ...],  # E: Invalid position for `...`
     x6: tuple[..., int],  # E: Invalid position for `...`
     x7: tuple[*tuple[int], ...]  # E: `...` cannot be used with an unpacked TypeVarTuple or tuple
-):  
+):
     assert_type(x2, tuple[Any, ...])
     assert_type(x3, tuple[Any, ...])
     assert_type(x4, tuple[Any, ...])
@@ -304,7 +304,7 @@ def test() -> None:
     x: tuple[object, ...] = (1,)
     x += (2, "y")
     y: tuple[int, ...] = (1,)
-    y += (2, "y")  # E: Augmented assignment produces a value of type `tuple[Literal[1], Literal[2], Literal['y']]`, which is not assignable to `tuple[int, ...]`
+    y += (2, "y")  # E: Augmented assignment produces a value of type `tuple[*tuple[int, ...], Literal[2], Literal['y']]`, which is not assignable to `tuple[int, ...]`
 "#,
 );
 

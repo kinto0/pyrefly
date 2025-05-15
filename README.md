@@ -2,71 +2,41 @@
 
 # Pyrefly: A fast type checker and IDE for Python
 
-NOT INTENDED FOR EXTERNAL USE YET. INCOMPLETE AND IN DEVELOPMENT.
+Currently under active development with known issues. Please open an issue if
+you find bugs.
 
-We are building a new version of Pyre (Meta's Python type checker), named
-Pyrefly, to increase our internal velocity and enable new features such as
-producing typed ASTs. We aim to fully replace the existing Pyre by the end
-of 2025.
+Pyrefly is a fast type checker for Python, It's designed to replace the existing
+Pyre type checker at Meta by the end of 2025. This README describes basic usage.
+See the [Pyrefly website](https://pyrefly.org) for full documentation and a tool
+for checking code.
 
-## Developer cheat sheet
+### Getting Started
 
-### GitHub developers
+Pyrefly aims to increase development velocity with IDE features and by checking
+your Python code.
 
-`cd pyrefly` then use the normal `cargo` commands (e.g. `cargo build`,
-`cargo test`).
+- Try out pyrefly in your browser: [Sandbox](https://pyrefly.org/sandbox/)
+- Get the command-line tool: `pip install pyrefly`
+- Get the VSCode extension:
+  [Link](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly)
 
-### Meta internal developers
+### Key Features:
 
-From this directory, you can run:
+- Type Inference: Pyrefly infers types in most locations, apart from function
+  parameters. It can infer types of variables and return types.
+- Flow Types: Pyrefly can understand your program's control flow to refine
+  static types.
+- Incrementality: Pyrefly aims for large-scale incrementality at the module
+  level, with optimized checking and parallelism.
 
-- Check things are plausible: `./test.py` (runs the basic tests and linter)
-- Run a command: `buck2 run pyrefly -- COMMAND_LINE_ARGUMENTS`
-  - For example, run on a single file: `buck2 run pyrefly -- check test.py`
-- Run a single test: `buck2 test pyrefly -- NAME_OF_THE_TEST`
-- Run the end-to-end tests: `buck2 test test:`
-- Run `arc pyre` (a.k.a. per-target type checking) with Pyrefly:
-  `arc pyre check <targets_to_check> -c python.type_checker=fbcode//pyrefly:pyrefly_for_buck`
-- Debug a file: `buck2 run pyrefly -- check <filename> --debug-info=debug.js`,
-  then open `debug.html` in your browser
-- Fetch Typeshed from upstream
-  `HTTPS_PROXY=https://fwdproxy:8080 fbpython scripts/fetch_typeshed.py -o pyrefly/third_party`
+## Getting Involved
 
-## Packaging
+If you have questions or would like to report a bug, please
+[create an issue](https://github.com/facebook/pyrefly/issues).
 
-We use [maturin](https://github.com/PyO3/maturin) to build wheels and source
-distributions. This also means that you can pip install `maturin` and use
-`maturin build` and `maturin develop` for local development. `pip install .` in
-the `pyrefly/pyrefly` directory works as well.
-
-### Deploying to PyPI
-
-Once a week, a
-[CodemodService job](https://www.internalfb.com/code/fbsource/xplat/scripts/codemod_service/configs/fbcode_pyrefly_version_upgrade.toml)
-generates a diff to update the version number. Accept this diff to upload a new
-version to PyPI.
-
-If you'd like to do a manual release between the weekly automated releases,
-follow the instructions in
-[version.bzl](https://www.internalfb.com/code/fbsource/fbcode/pyrefly/version.bzl)
-to update the version number.
-
-Behind the scenes, what's happening is:
-
-- The
-  [publish_to_pypi workflow](https://github.com/facebook/pyrefly/blob/main/.github/workflows/publish_to_pypi.yml)
-  triggers on any change to version.bzl.
-- This workflow calls the
-  [build_binaries workflow](https://github.com/facebook/pyrefly/blob/main/.github/workflows/build_binaries.yml)
-  to build release artifacts, uploads them, and tags the corresponding commit
-  with the version number.
-
-## Coding conventions
-
-We follow the
-[Buck2 coding conventions](https://github.com/facebook/buck2/blob/main/HACKING.md#coding-conventions),
-with the caveat that we use our internal error framework for errors reported by
-the type checker.
+See our
+[contributing guide](https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md)
+for information on how to contribute to Pyrefly.
 
 ## Choices
 
