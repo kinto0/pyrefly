@@ -38,22 +38,32 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            # necessary for glibc 2.31
+            container: ubuntu:20.04
             github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: linux
             arch: arm64
+            # necessary for glibc 2.31
+            container: ubuntu:20.04
             github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: linux
             arch: armhf
+            # necessary for glibc 2.31
+            container: ubuntu:20.04
             github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: alpine
             arch: x64
+            # necessary for glibc 2.31
+            container: ubuntu:20.04
             github_env: $GITHUB_ENV
           - os: ubuntu-latest
             platform: alpine
             arch: arm64
+            # necessary for glibc 2.31
+            container: ubuntu:20.04
             github_env: $GITHUB_ENV
           - os: macos-13
             platform: darwin
@@ -64,8 +74,7 @@ jobs:
             arch: arm64
             github_env: $GITHUB_ENV
     runs-on: ${{ matrix.os }}
-    # For backwards compatibility with GLIBC, build on older ubuntu
-    container: ${{ matrix.os == 'ubuntu-latest' && 'ubuntu:20.04' || '' }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v2
       - name: Read rust-toolchain file
