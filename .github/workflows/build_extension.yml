@@ -41,7 +41,7 @@ jobs:
             # necessary for glibc 2.31
             container: ubuntu:20.04
             github_env: $GITHUB_ENV
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             platform: linux
             arch: arm64
             # necessary for glibc 2.31
@@ -59,7 +59,7 @@ jobs:
             # necessary for glibc 2.31
             container: ubuntu:20.04
             github_env: $GITHUB_ENV
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             platform: alpine
             arch: arm64
             # necessary for glibc 2.31
@@ -83,7 +83,7 @@ jobs:
         # https://stackoverflow.com/questions/66733076/github-actions-set-environment-variable-for-windows-build-with-powershell
         run: echo "toolchain=$(cat pyrefly/rust-toolchain)" && echo "toolchain=$(cat pyrefly/rust-toolchain)" >> ${{ matrix.github_env }}
       - name: install toolchain dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.container == 'ubuntu:20.04'
         shell: bash
         run: |
           apt-get update && apt-get -y install curl build-essential
