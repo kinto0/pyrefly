@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   workflow_call:
   push:
+    paths:
+      - '!.*'
+      - '.github/workflows/build_extension.yml'
 
 jobs:
   get_version:
