@@ -58,7 +58,7 @@
     },
     {
       "type": "shell",
-      "command": "cargo build --release --all-features --target-dir ../lsp/bin",
+      "command": "cargo build --release --all-features --artifact-dir ../lsp/bin -Z unstable-options",
       "group": "build",
       "isBackground": true,
       "label": "cargo: build pyrefly for extension",

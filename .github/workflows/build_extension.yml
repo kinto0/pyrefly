@@ -99,7 +99,7 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
         run: echo "CARGO_HOME=C:\\cargo" >> ${{ matrix.github_env }}
       - name: build pyrefly binary
-        run: cargo build --release --all-features --target-dir lsp/bin --manifest-path pyrefly/Cargo.toml
+        run: cargo build --release --all-features --artifact-dir lsp/bin --manifest-path pyrefly/Cargo.toml -Z unstable-options
       - uses: actions/setup-node@v4
         with:
           node-version: 22
