@@ -48,7 +48,7 @@ use tracing::info;
 // Making jemalloc the default only when we do a cargo build.
 #[global_allocator]
 #[cfg(all(any(target_os = "linux", target_os = "macos"), not(fbcode_build)))]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[derive(Debug, Parser)]
 #[command(name = "pyrefly")]
