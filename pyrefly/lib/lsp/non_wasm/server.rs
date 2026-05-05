@@ -400,7 +400,7 @@ pub trait TspInterface: Send + Sync + 'static {
     /// Send a response back to the LSP client
     fn send_response(&self, response: Response);
 
-    fn sender(&self) -> &Sender<Message>;
+    fn sender(&self) -> &MessageSender;
 
     fn lsp_queue(&self) -> &LspQueue;
 
@@ -502,11 +502,105 @@ pub trait TspInterface: Send + Sync + 'static {
 }
 
 pub struct Connection {
-    pub sender: Sender<Message>,
+    pub sender: MessageSender,
     /// Channel receiver, only present for test connections created via
     /// `Connection::memory()`. The test client reads from this to observe
     /// messages sent by the server.
     channel_receiver: Option<Receiver<Message>>,
+}
+
+/// Send side of a connection's message channel.
+///
+/// - **`Channel`** (`Connection::stdio`, `Connection::memory`): fire-and-forget
+///   passthrough to a `crossbeam_channel::Sender<Message>`.
+/// - **`BlockingWriter`** (`Connection::ipc`): sends the message on a work
+///   channel, then blocks on a persistent ack channel until the writer thread
+///   confirms the write succeeded. This provides back-pressure and synchronous
+///   write-error detection.
+#[derive(Clone)]
+pub enum MessageSender {
+    Channel(Sender<Message>),
+    /// (work_tx, ack_rx): send the message, then wait for the write result.
+    BlockingWriter(Sender<Message>, Receiver<std::io::Result<()>>),
+}
+
+/// Error returned by [`MessageSender::send`].
+#[derive(Debug)]
+pub struct SendError;
+
+impl std::fmt::Display for SendError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("sending on a closed/failed channel")
+    }
+}
+
+/// Error returned by [`MessageSender::send_timeout`].
+#[derive(Debug)]
+pub enum SendTimeoutError {
+    Timeout,
+    Disconnected,
+}
+
+impl std::fmt::Display for SendTimeoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Timeout => f.write_str("timed out waiting for send"),
+            Self::Disconnected => f.write_str("sending on a closed/failed channel"),
+        }
+    }
+}
+
+impl MessageSender {
+    pub fn send(&self, message: Message) -> Result<(), SendError> {
+        match self {
+            Self::Channel(sender) => sender.send(message).map_err(|_| SendError),
+            Self::BlockingWriter(work_tx, ack_rx) => {
+                work_tx.send(message).map_err(|_| SendError)?;
+                match ack_rx.recv() {
+                    Ok(Ok(())) => Ok(()),
+                    _ => Err(SendError),
+                }
+            }
+        }
+    }
+
+    pub fn send_timeout(
+        &self,
+        message: Message,
+        timeout: Duration,
+    ) -> Result<(), SendTimeoutError> {
+        match self {
+            Self::Channel(sender) => sender.send_timeout(message, timeout).map_err(|e| match e {
+                crossbeam_channel::SendTimeoutError::Timeout(_) => SendTimeoutError::Timeout,
+                crossbeam_channel::SendTimeoutError::Disconnected(_) => {
+                    SendTimeoutError::Disconnected
+                }
+            }),
+            Self::BlockingWriter(work_tx, ack_rx) => {
+                let start = Instant::now();
+                work_tx
+                    .send_timeout(message, timeout)
+                    .map_err(|e| match e {
+                        crossbeam_channel::SendTimeoutError::Timeout(_) => {
+                            SendTimeoutError::Timeout
+                        }
+                        crossbeam_channel::SendTimeoutError::Disconnected(_) => {
+                            SendTimeoutError::Disconnected
+                        }
+                    })?;
+                let remaining = timeout.saturating_sub(start.elapsed());
+                match ack_rx.recv_timeout(remaining) {
+                    Ok(Ok(())) => Ok(()),
+                    Ok(Err(_)) | Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                        Err(SendTimeoutError::Disconnected)
+                    }
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                        Err(SendTimeoutError::Timeout)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Owns the message source for the LSP/TSP server. Either a crossbeam channel
@@ -565,7 +659,7 @@ impl Connection {
         });
         (
             Self {
-                sender: writer_sender,
+                sender: MessageSender::Channel(writer_sender),
                 channel_receiver: None,
             },
             MessageReader::Stdio(BufReader::new(std::io::stdin())),
@@ -578,17 +672,25 @@ impl Connection {
     /// or a pipe name on Windows (automatically prefixed with `\\.\pipe\`).
     pub fn ipc(pipe_name: &str) -> std::io::Result<(Self, MessageReader, IoThread)> {
         let (writer_stream, reader_stream) = Self::connect_ipc(pipe_name)?;
-        let (writer_sender, writer_receiver) = crossbeam_channel::unbounded();
+        let (work_tx, work_rx) = crossbeam_channel::unbounded::<Message>();
+        // Rendezvous channel: the sender blocks until the writer thread has
+        // consumed the ack, providing back-pressure and write-error feedback.
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded(0);
         let writer = std::thread::spawn(move || {
             let mut output = writer_stream;
-            while let Ok(msg) = writer_receiver.recv() {
-                write_lsp_message(&mut output, msg)?;
+            while let Ok(msg) = work_rx.recv() {
+                let result = write_lsp_message(&mut output, msg);
+                let is_err = result.is_err();
+                // If the ack receiver is dropped, stop writing.
+                if ack_tx.send(result).is_err() || is_err {
+                    break;
+                }
             }
             Ok(())
         });
         Ok((
             Self {
-                sender: writer_sender,
+                sender: MessageSender::BlockingWriter(work_tx, ack_rx),
                 channel_receiver: None,
             },
             MessageReader::Stream(BufReader::new(Box::new(reader_stream))),
@@ -610,7 +712,7 @@ impl Connection {
         pipe_name: &str,
     ) -> std::io::Result<(Box<dyn Write + Send>, Box<dyn std::io::Read + Send>)> {
         use std::fs::OpenOptions;
-        let stream = OpenOptions::new().read(true).write(true).open(&pipe_name)?;
+        let stream = OpenOptions::new().read(true).write(true).open(pipe_name)?;
         let reader = stream.try_clone()?;
         Ok((Box::new(stream), Box::new(reader)))
     }
@@ -639,14 +741,14 @@ impl Connection {
         (
             (
                 Self {
-                    sender: s1,
+                    sender: MessageSender::Channel(s1),
                     channel_receiver: Some(r2.clone()),
                 },
                 MessageReader::Channel(r2),
             ),
             (
                 Self {
-                    sender: s2,
+                    sender: MessageSender::Channel(s2),
                     channel_receiver: Some(r1.clone()),
                 },
                 MessageReader::Channel(r1),
@@ -926,6 +1028,8 @@ fn format_diagnostic_message_for_markdown(message: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use lsp_types::CodeActionKind;
 
     use super::SOURCE_FIX_ALL_PYREFLY;
@@ -990,6 +1094,115 @@ mod tests {
         )));
         assert!(!matches_fix_all_kind(&CodeActionKind::QUICKFIX));
         assert!(!matches_fix_all_kind(&CodeActionKind::REFACTOR_EXTRACT));
+    }
+
+    #[test]
+    fn test_blocking_writer_waits_for_ack() {
+        use std::sync::atomic::AtomicU32;
+        use std::sync::atomic::Ordering;
+        use std::time::Duration;
+        use std::time::Instant;
+
+        use super::Message;
+        use super::MessageSender;
+        use super::Notification;
+
+        let write_delay = Duration::from_millis(50);
+
+        // Set up channels: unbounded work channel, rendezvous ack channel.
+        let (work_tx, work_rx) = crossbeam_channel::unbounded::<Message>();
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded::<std::io::Result<()>>(0);
+
+        // Track how many writes have completed.
+        let writes_completed = Arc::new(AtomicU32::new(0));
+        let writes_completed_clone = writes_completed.clone();
+
+        // Simulate a slow writer thread.
+        std::thread::spawn(move || {
+            while let Ok(_msg) = work_rx.recv() {
+                std::thread::sleep(write_delay);
+                writes_completed_clone.fetch_add(1, Ordering::SeqCst);
+                if ack_tx.send(Ok(())).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let sender = MessageSender::BlockingWriter(work_tx, ack_rx);
+
+        let make_msg = || {
+            Message::Notification(Notification {
+                method: "test".to_owned(),
+                params: serde_json::Value::Null,
+                activity_key: None,
+            })
+        };
+
+        // Send 3 messages. Each should block until the writer acks.
+        let start = Instant::now();
+        for _ in 0..3 {
+            sender.send(make_msg()).unwrap();
+        }
+        let elapsed = start.elapsed();
+
+        // With the ack channel, total time should be >= 3 * write_delay because
+        // each send blocks until the writer finishes. With fire-and-forget, all
+        // three sends would return nearly instantly.
+        assert!(
+            elapsed >= write_delay * 3,
+            "expected >= {write_delay:?} * 3, got {elapsed:?}; sends did not block for acks"
+        );
+
+        // All 3 writes must have completed by the time the last send() returns.
+        assert_eq!(
+            writes_completed.load(Ordering::SeqCst),
+            3,
+            "not all writes completed before send() returned"
+        );
+    }
+
+    #[test]
+    fn test_blocking_writer_propagates_write_error() {
+        use super::Message;
+        use super::MessageSender;
+        use super::Notification;
+
+        // Set up channels.
+        let (work_tx, work_rx) = crossbeam_channel::unbounded::<Message>();
+        let (ack_tx, ack_rx) = crossbeam_channel::bounded::<std::io::Result<()>>(0);
+
+        // Writer thread that fails on the second message.
+        std::thread::spawn(move || {
+            let mut count = 0u32;
+            while let Ok(_msg) = work_rx.recv() {
+                count += 1;
+                if count == 2 {
+                    let _ = ack_tx.send(Err(std::io::Error::new(
+                        std::io::ErrorKind::BrokenPipe,
+                        "simulated write failure",
+                    )));
+                    break;
+                }
+                if ack_tx.send(Ok(())).is_err() {
+                    break;
+                }
+            }
+        });
+
+        let sender = MessageSender::BlockingWriter(work_tx, ack_rx);
+
+        let make_msg = || {
+            Message::Notification(Notification {
+                method: "test".to_owned(),
+                params: serde_json::Value::Null,
+                activity_key: None,
+            })
+        };
+
+        // First send succeeds.
+        assert!(sender.send(make_msg()).is_ok());
+        // Second send gets the write error.
+        assert!(sender.send(make_msg()).is_err());
     }
 }
 
@@ -1092,7 +1305,7 @@ pub struct Server {
     server_start_time: Instant,
 }
 
-pub fn shutdown_finish(sender: &Sender<Message>, reader: &mut MessageReader, id: RequestId) {
+pub fn shutdown_finish(sender: &MessageSender, reader: &mut MessageReader, id: RequestId) {
     let response = Response::new_ok(id, ());
     if sender.send(response.into()).is_err() {
         return;
@@ -1129,7 +1342,7 @@ pub fn shutdown_finish(sender: &Sender<Message>, reader: &mut MessageReader, id:
 // If the connection is closed, or we receive an exit notification, returns None.
 // If we receive an unexpected shutdown notification, respond and wait for exit.
 pub fn initialize_start(
-    sender: &Sender<Message>,
+    sender: &MessageSender,
     reader: &mut MessageReader,
 ) -> anyhow::Result<Option<(RequestId, InitializeInfo)>> {
     while let Some(msg) = reader.recv() {
@@ -1205,7 +1418,7 @@ struct InitializeResult<C> {
 }
 
 pub fn initialize_finish<C: Serialize>(
-    sender: &Sender<Message>,
+    sender: &MessageSender,
     reader: &mut MessageReader,
     id: RequestId,
     capabilities: C,
@@ -6291,7 +6504,7 @@ impl TspInterface for Server {
         self.send_response(response)
     }
 
-    fn sender(&self) -> &Sender<Message> {
+    fn sender(&self) -> &MessageSender {
         &self.connection.0.sender
     }
 
