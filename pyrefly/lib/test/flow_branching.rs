@@ -1167,7 +1167,6 @@ def f():
 );
 
 testcase!(
-    bug = "walrus in while condition should not be flagged as uninitialized after loop",
     test_walrus_in_while_condition,
     r#"
 from typing import Callable, Any
@@ -1179,7 +1178,28 @@ class Cat:
 def main(f: Callable[[], Cat]) -> None:
     while (a := f()).equals(1):
         break
-    print(a)  # E: `a` may be uninitialized
+    print(a)
+"#,
+);
+
+testcase!(
+    bug = "walrus on rhs of `and`/`or` in while condition may not execute due to short-circuit",
+    test_walrus_in_while_condition_short_circuit,
+    r#"
+def condition() -> bool: ...
+def get() -> int: ...
+
+def f_and(x: bool) -> None:
+    while x and (a := get()):
+        break
+    # Should be: E: `a` may be uninitialized
+    print(a)
+
+def f_or(x: bool) -> None:
+    while x or (b := get()):
+        break
+    # Should be: E: `b` may be uninitialized
+    print(b)
 "#,
 );
 
