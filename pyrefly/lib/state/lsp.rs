@@ -3172,6 +3172,9 @@ impl<'a> Transaction<'a> {
         .concat()
     }
 
+    /// Find references to an external definition within the given handle's module.
+    /// When the exact byte-range comparison fails (e.g. CRLF/LF differences),
+    /// falls back to comparing line numbers, which are encoding-invariant.
     fn local_references_from_external_definition(
         &self,
         handle: &Handle,
@@ -3181,6 +3184,10 @@ impl<'a> Transaction<'a> {
         let index = self.get_solutions(handle)?.get_index()?;
         let index = index.lock();
         let mut references = Vec::new();
+
+        // Lazily computed line number for fallback comparison.
+        let definition_line = || module.to_lsp_position(definition_range.start()).line;
+
         for ((imported_module_name, imported_name), ranges) in index
             .externally_defined_variable_references
             .iter()
@@ -3192,7 +3199,8 @@ impl<'a> Transaction<'a> {
                 imported_name.clone(),
                 FindPreference::default(),
             ) && imported_handle.path().as_path() == module.path().as_path()
-                && export.location == definition_range
+                && (export.location == definition_range
+                    || module.to_lsp_position(export.location.start()).line == definition_line())
             {
                 references.extend(ranges.iter().copied());
             }
@@ -3202,7 +3210,9 @@ impl<'a> Transaction<'a> {
         {
             if attribute_module_path == module.path() {
                 for (def_range, ref_range) in def_and_ref_ranges {
-                    if def_range == &definition_range {
+                    if *def_range == definition_range
+                        || module.to_lsp_position(def_range.start()).line == definition_line()
+                    {
                         references.push(*ref_range);
                     }
                 }
@@ -3947,18 +3957,25 @@ fn patch_definition_for_handle_impl<T: RdepTransaction>(
     match definition.module.path().details() {
         ModulePathDetails::Memory(path_buf) if handle.path() != definition.module.path() => {
             let TextRangeWithModule { module, range } = definition;
-            let module = if let Some(info) = transaction.module_info(&Handle::new(
+            let new_module = if let Some(info) = transaction.module_info(&Handle::new(
                 module.name(),
                 ModulePath::filesystem((**path_buf).clone()),
                 handle.sys_info().dupe(),
             )) {
                 info
             } else {
-                module.dupe()
+                return TextRangeWithModule {
+                    module: module.dupe(),
+                    range: *range,
+                };
             };
+            // Remap range from in-memory to on-disk byte offsets so that
+            // module and range stay consistent (e.g. when CRLF/LF differ).
+            let lsp_range = module.to_lsp_range(*range);
+            let range = new_module.from_lsp_range(lsp_range, None);
             TextRangeWithModule {
-                module,
-                range: *range,
+                module: new_module,
+                range,
             }
         }
         _ => definition.clone(),

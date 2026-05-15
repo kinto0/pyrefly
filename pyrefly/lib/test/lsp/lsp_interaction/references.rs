@@ -961,9 +961,8 @@ fn test_references_cross_file_with_module_docstring() {
         );
     }
 
-    // BUG: Class A (preceded by a docstring) loses cross-file references because
-    // the CRLF->LF byte offset drift causes the definition range comparison to
-    // fail. Only the declaration is returned.
+    // Class A defined in a.py (which starts with a docstring) should find
+    // cross-file references from services.py just like B.
     interaction
         .client
         .references("a.py", 8, 6, true)
@@ -972,12 +971,22 @@ fn test_references_cross_file_with_module_docstring() {
                 "range": {"start":{"line":8,"character":6},"end":{"line":8,"character":7}},
                 "uri": Url::from_file_path(a.clone()).unwrap().to_string()
             },
+            {
+                "range": {"start":{"line":5,"character":14},"end":{"line":5,"character":15}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":9,"character":13},"end":{"line":9,"character":14}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":9,"character":19},"end":{"line":9,"character":20}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
+            },
         ]))
         .unwrap();
 
-    // BUG: Class B also loses cross-file references because the license header
-    // introduces line breaks before the class definition, causing the same
-    // CRLF->LF byte offset drift. Only the declaration is returned.
+    // Class B should also find cross-file refs.
     interaction
         .client
         .references("b.py", 6, 6, true)
@@ -985,6 +994,18 @@ fn test_references_cross_file_with_module_docstring() {
             {
                 "range": {"start":{"line":6,"character":6},"end":{"line":6,"character":7}},
                 "uri": Url::from_file_path(b.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":6,"character":14},"end":{"line":6,"character":15}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":13,"character":13},"end":{"line":13,"character":14}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
+            },
+            {
+                "range": {"start":{"line":13,"character":19},"end":{"line":13,"character":20}},
+                "uri": Url::from_file_path(services.clone()).unwrap().to_string()
             },
         ]))
         .unwrap();
