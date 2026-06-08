@@ -356,10 +356,10 @@ impl TypeConverter<'_> {
             PyreflyType::Size(_) | PyreflyType::Dim(_) => builtin("int"),
 
             // --- Solver-internal variable → built-in unknown ---
-            PyreflyType::Var(_) => builtin("Unknown"),
+            PyreflyType::Var(_) => builtin("unknown"),
 
             // --- Materialization is a solver artifact ---
-            PyreflyType::Materialization => builtin("Unknown"),
+            PyreflyType::Materialization => builtin("unknown"),
         }
     }
 
@@ -690,6 +690,7 @@ mod tests {
     use pyrefly_types::types::AnyStyle;
     use pyrefly_types::types::NeverStyle;
     use pyrefly_types::types::Type as PyreflyType;
+    use pyrefly_types::types::Var;
     use tsp_types::SynthesizedType;
     use tsp_types::SynthesizedTypeMetadata;
 
@@ -1048,6 +1049,23 @@ mod tests {
                 );
             }
             other => panic!("expected Class type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_convert_var_is_lowercase_unknown() {
+        // The protocol-conformant sentinel name is lowercase `unknown`.
+        match convert_type(&PyreflyType::Var(Var::ZERO)) {
+            TspType::BuiltInType(b) => assert_eq!(b.name, "unknown"),
+            other => panic!("expected BuiltInType, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_convert_materialization_is_lowercase_unknown() {
+        match convert_type(&PyreflyType::Materialization) {
+            TspType::BuiltInType(b) => assert_eq!(b.name, "unknown"),
+            other => panic!("expected BuiltInType, got {other:?}"),
         }
     }
 }
