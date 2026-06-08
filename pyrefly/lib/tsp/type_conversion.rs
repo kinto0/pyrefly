@@ -38,6 +38,7 @@ use lsp_types::Url;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::FuncId;
 use pyrefly_types::callable::FunctionKind;
+use pyrefly_types::callable::Params;
 use pyrefly_types::callable_residual::CallableResidualKind;
 use pyrefly_types::class::Class;
 use pyrefly_types::class::ClassType as PyreflyClassType;
@@ -61,6 +62,7 @@ use tsp_types::OverloadedType as TspOverloadedType;
 use tsp_types::Position as TspPosition;
 use tsp_types::Range as TspRange;
 use tsp_types::RegularDeclaration;
+use tsp_types::SpecializedFunctionTypes;
 use tsp_types::SynthesizedDeclaration;
 use tsp_types::Type as TspType;
 use tsp_types::TypeFlags;
@@ -462,6 +464,7 @@ impl TypeConverter<'_> {
                 uri: String::new(),
             })
         };
+        let specialized_types = self.specialized_types(callable, &ret);
 
         TspType::Function(TspFunctionType {
             bound_to_type,
@@ -470,8 +473,39 @@ impl TypeConverter<'_> {
             id: next_id(),
             kind: TypeKind::Function,
             return_type: Some(Box::new(ret)),
-            specialized_types: None,
+            specialized_types,
             type_alias_info: None,
+        })
+    }
+
+    /// Build `SpecializedFunctionTypes` carrying the converted parameter and
+    /// return types.
+    ///
+    /// Pylance rebuilds a function's parameter *names* by parsing the source
+    /// declaration, but it cannot evaluate the parameter/return *types* of an
+    /// external type server's file (its in-process evaluator has not parsed
+    /// the typeshed/workspace those declarations live in), so they degrade to
+    /// `Unknown`. Sending the already-converted types here lets Pylance
+    /// overlay real types onto the source-derived parameter list.
+    fn specialized_types(
+        &self,
+        callable: &Callable,
+        ret: &TspType,
+    ) -> Option<SpecializedFunctionTypes> {
+        let Params::List(params) = &callable.params else {
+            return None;
+        };
+
+        let parameter_types: Vec<TspType> = params
+            .items()
+            .iter()
+            .map(|param| self.convert(param.as_type()))
+            .collect();
+
+        Some(SpecializedFunctionTypes {
+            parameter_default_types: None,
+            parameter_types,
+            return_type: Some(Box::new(ret.clone())),
         })
     }
 
@@ -757,7 +791,12 @@ fn builtin(name: &str) -> TspType {
 #[cfg(test)]
 mod tests {
     use pyrefly_python::module_name::ModuleName;
+    use pyrefly_types::callable::FuncFlags;
+    use pyrefly_types::callable::FuncMetadata;
+    use pyrefly_types::callable::Function;
+    use pyrefly_types::callable::Param;
     use pyrefly_types::callable::ParamList;
+    use pyrefly_types::callable::Required;
     use pyrefly_types::lit_int::LitInt;
     use pyrefly_types::literal::Lit;
     use pyrefly_types::literal::LitStyle;
@@ -1265,6 +1304,47 @@ mod tests {
                 assert_eq!(decl.category, DeclarationCategory::Typeparam);
             }
             other => panic!("expected Var, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_convert_function_populates_specialized_types() {
+        // A function's parameter and return types are carried in
+        // specialized_types so Pylance can overlay real types.
+        let callable = Callable::list(
+            ParamList::new(vec![
+                Param::Pos(Name::new_static("x"), PyreflyType::None, Required::Required),
+                Param::Pos(
+                    Name::new_static("y"),
+                    PyreflyType::Ellipsis,
+                    Required::Required,
+                ),
+            ]),
+            PyreflyType::None,
+        );
+        let func = Function {
+            signature: callable,
+            metadata: FuncMetadata {
+                kind: FunctionKind::Overload,
+                flags: FuncFlags::default(),
+            },
+        };
+        let ty = PyreflyType::Function(Box::new(func));
+        match convert_type(&ty) {
+            TspType::Function(f) => {
+                let specialized = f.specialized_types.expect("expected specialized_types");
+                assert_eq!(specialized.parameter_types.len(), 2);
+                match &specialized.parameter_types[0] {
+                    TspType::BuiltInType(b) => assert_eq!(b.name, "none"),
+                    other => panic!("expected BuiltInType, got {other:?}"),
+                }
+                match &specialized.parameter_types[1] {
+                    TspType::BuiltInType(b) => assert_eq!(b.name, "ellipsis"),
+                    other => panic!("expected BuiltInType, got {other:?}"),
+                }
+                assert!(specialized.return_type.is_some());
+            }
+            other => panic!("expected Function, got {other:?}"),
         }
     }
 
