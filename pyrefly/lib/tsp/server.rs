@@ -181,7 +181,7 @@ impl<T: TspInterface> TspConnection<T> {
         let module_path_resolver = |module: &pyrefly_types::module::ModuleType| {
             source_uri.and_then(|uri| self.inner().resolve_module_uri(uri, module))
         };
-        convert_type_with_resolvers(ty, Some(&resolver), Some(&module_path_resolver))
+        convert_type_with_resolvers(ty, Some(&resolver), Some(&module_path_resolver), None)
     }
 
     fn send_response(&self, response: Response) {
