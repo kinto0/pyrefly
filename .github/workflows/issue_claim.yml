@@ -1,0 +1,69 @@
+name: Claim issue via comment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  claim-issue:
+    # issue_comment fires for both issues and PRs; only act on issues.
+    if: ${{ github.event.issue.pull_request == null }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Assign issue to commenter on "@pyreflybot claim"
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // Match "@pyreflybot claim" case-insensitively, requiring "claim" as a
+            // whole word so "@pyreflybot unclaim" / "...claims" don't trigger.
+            const body = context.payload.comment.body || '';
+            if (!/@pyreflybot\s+claim\b/i.test(body)) {
+              console.log('No claim command found, skipping');
+              return;
+            }
+
+            const claimer = context.payload.comment.user.login;
+            const issue_number = context.payload.issue.number;
+            const { owner, repo } = context.repo;
+            const assignees = (context.payload.issue.assignees || []).map(a => a.login);
+
+            const comment = (body) =>
+              github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+            if (assignees.includes(claimer)) {
+              console.log(`${claimer} already assigned to #${issue_number}`);
+              await comment(`@${claimer} this issue is already assigned to you. Have at it! 🚀`);
+              return;
+            }
+
+            if (assignees.length > 0) {
+              console.log(`#${issue_number} already claimed by ${assignees.join(', ')}`);
+              await comment(`@${claimer} this issue is already claimed by ${assignees.map(a => '@' + a).join(', ')}. Please coordinate with them before starting.`);
+              return;
+            }
+
+            await github.rest.issues.addAssignees({ owner, repo, issue_number, assignees: [claimer] });
+
+            // GitHub silently ignores assignees who lack repo access, so verify the
+            // assignment actually took effect before confirming.
+            const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number });
+            if (!(issue.assignees || []).some(a => a.login === claimer)) {
+              console.log(`Failed to assign ${claimer} to #${issue_number}`);
+              await comment(`@${claimer} I couldn't assign this issue to you automatically — GitHub only allows assigning users with repository access. A maintainer can assign you manually.`);
+              return;
+            }
+
+            console.log(`Assigned ${claimer} to #${issue_number}`);
+            await comment(`@${claimer} you've claimed this issue — it's now assigned to you. Thanks for picking it up! 🎉`);
+
+            // A claimed issue no longer needs triage.
+            try {
+              await github.rest.issues.removeLabel({ owner, repo, issue_number, name: 'needs-triage' });
+            } catch (error) {
+              // Label may not be present; nothing to remove.
+            }
