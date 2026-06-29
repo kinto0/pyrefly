@@ -1687,4 +1687,11 @@ def get_mypy_primer_projects() -> list[Project]:
             pyrefly_cmd="{pyrefly} src/pytest_autoprofile tests",
             deps=["pytest", "pluggy", "line_profiler", "typing-extensions"],
         ),
+        Project(
+            location="https://github.com/python-attrs/cattrs",
+            mypy_cmd="{mypy} src",
+            pyright_cmd="{pyright} src",
+            pyrefly_cmd="{pyrefly} src",
+            deps=["attrs"],
+        ),
     ]

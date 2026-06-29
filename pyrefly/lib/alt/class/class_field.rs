@@ -1831,8 +1831,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             );
         }
 
-        let read_only_reason =
-            self.determine_read_only_reason(name, annotation.as_ref(), &metadata, field_definition);
+        let read_only_reason = self.determine_read_only_reason(
+            name,
+            annotation.as_ref(),
+            &metadata,
+            field_definition,
+            &initialization,
+        );
 
         // Determine the final type, promoting literals when appropriate.
         // Skip literal promotion for NNModule types: their fields are captured
@@ -2283,6 +2288,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         annotation: Option<&Annotation>,
         metadata: &ClassMetadata,
         field_definition: &ClassFieldDefinition,
+        initialization: &ClassFieldInitialization,
     ) -> Option<ReadOnlyReason> {
         if let Some(ann) = annotation {
             if ann.is_final() {
@@ -2309,16 +2315,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
         // ClassVars in dataclasses are class attributes rather than frozen instance fields.
         let is_classvar = annotation.is_some_and(|ann| ann.has_qualifier(&Qualifier::ClassVar));
-        // Frozen dataclass fields (not methods) are read-only
+        // A per-field `on_setattr` overrides the class-level attrs frozen-all default, so a field
+        // declared with e.g. `setters.NO_OP` (`Some(false)`) stays writable.
+        if let ClassFieldInitialization::ClassBody(Some(field_kws)) = initialization
+            && let Some(frozen) = field_kws.attrs_setattr_frozen
+            && !is_classvar
+        {
+            return frozen.then_some(ReadOnlyReason::AttrsFrozen);
+        }
         if let Some(dm) = metadata.dataclass_metadata()
-            && dm.kws.frozen
+            && (dm.kws.frozen || dm.kws.attrs_setattr_frozen)
             && !is_classvar
             && dm.fields.contains(name)
         {
             let reason = if metadata.is_pydantic_model() {
                 ReadOnlyReason::PydanticFrozen
-            } else {
+            } else if dm.kws.frozen {
                 ReadOnlyReason::FrozenDataclass
+            } else {
+                ReadOnlyReason::AttrsFrozen
             };
             return Some(reason);
         }

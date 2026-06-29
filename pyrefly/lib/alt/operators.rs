@@ -1029,9 +1029,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         match broadcast_shapes(&left.shape, &right.shape) {
-            Ok(result_shape) => {
-                ShapedArrayType::new(left.base_class.clone(), result_shape).to_type()
-            }
+            Ok(result_shape) => self.shaped_array_with_shape(left, result_shape).to_type(),
             Err(err) => {
                 self.error(
                     errors,

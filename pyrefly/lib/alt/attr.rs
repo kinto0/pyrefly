@@ -10,12 +10,12 @@ use std::iter;
 use dupe::Dupe;
 use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
-use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::heap::TypeHeap;
-use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::literal::LitEnum;
-use pyrefly_types::shaped_array::ShapedArrayShape;
+use pyrefly_types::shaped_array::ShapedArrayShapeArgStyle;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::shape_to_tuple_carrier;
+use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Forallable;
@@ -54,7 +54,6 @@ use crate::types::module::ModuleType;
 use crate::types::quantified::Quantified;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::read_only::ReadOnlyReason;
-use crate::types::tuple::Tuple;
 use crate::types::type_var::Restriction;
 use crate::types::typed_dict::TypedDict;
 use crate::types::types::AnyStyle;
@@ -1557,33 +1556,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 )),
             },
             AttributeBase1::ShapedArrayInstance(tensor) => {
-                // Special handling for .shape property - return tuple of dimensions.
-                // Converts SizeExpr::Literal to Literal[n] and other dim types to Dim[...].
-                // For Unpacked shapes (including shapeless), this naturally produces an
-                // Unpacked tuple, e.g. Tensor[B, *Ts] → tuple[Dim[B], *Ts].
                 if attr_name.as_str() == "shape" {
-                    let dim_to_type = |dim: &Type| -> Type {
-                        match dim {
-                            Type::Size(SizeExpr::Literal(n)) => {
-                                Lit::Int(LitInt::new(*n)).to_implicit_type()
-                            }
-                            _ => self.heap.mk_dim(dim.clone()),
-                        }
+                    let shape = if matches!(
+                        tensor.shape_arg_style,
+                        ShapedArrayShapeArgStyle::TupleCarrier { .. }
+                    ) {
+                        shape_to_tuple_carrier_arg(&tensor.shape)
+                    } else {
+                        shape_to_tuple_carrier(&tensor.shape)
                     };
-                    let tuple_type = match &tensor.shape {
-                        ShapedArrayShape::Concrete(dims) => {
-                            Type::concrete_tuple(dims.iter().map(dim_to_type).collect())
-                        }
-                        ShapedArrayShape::Unpacked(f) => {
-                            let (prefix, middle, suffix) = &**f;
-                            Type::Tuple(Tuple::Unpacked(Box::new((
-                                prefix.iter().map(dim_to_type).collect(),
-                                middle.clone(),
-                                suffix.iter().map(dim_to_type).collect(),
-                            ))))
-                        }
-                    };
-                    acc.found_type(tuple_type, base);
+                    acc.found_type(shape, base);
                     return;
                 }
 

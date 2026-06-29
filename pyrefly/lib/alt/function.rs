@@ -899,6 +899,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             {
                 Some(SpecialDecorator::UsesShapeDsl)
             }
+            Some(CalleeKind::Function(FunctionKind::DefinesAssertShape)) => {
+                Some(SpecialDecorator::DefinesAssertShape)
+            }
             Some(CalleeKind::Class(ClassKind::EnumNonmember)) => {
                 Some(SpecialDecorator::EnumNonmember)
             }
@@ -1002,6 +1005,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // loop in undecorated_function, where uses_shape_dsl_ir_name is
                 // available. Returning true here just filters the decorator out of
                 // the list so it doesn't go through the generic decorator pipeline.
+                true
+            }
+            SpecialDecorator::DefinesAssertShape => {
+                flags.is_assert_shape = true;
                 true
             }
             _ => false,

@@ -13,11 +13,11 @@ uphold (add a unit test).
 ## How the DSL works (the 30-second version)
 
 A shape rule has two pieces. An **IR function** is a Python function in
-`tensor-shapes/torch-stubs/_shapes.pyi`, decorated `@shape_dsl_function`, that
+`tensor-shapes/pyrefly-torch-stubs/torch-stubs/_shapes.pyi`, decorated `@shape_dsl_function`, that
 computes shapes using a restricted Python subset (arithmetic `+ - * // %`,
 comprehensions, `if`, a few builtins, `ShapedArray`). It is *traced*, not
 executed by CPython. A library stub attaches it to an op with
-`@uses_shape_dsl(ir_fn)` (e.g. `tensor-shapes/torch-stubs/linalg.pyi`); the
+`@uses_shape_dsl(ir_fn)` (e.g. `tensor-shapes/pyrefly-torch-stubs/torch-stubs/linalg.pyi`); the
 stub's declared return is a "fixture" (gives the base `Tensor`/tuple structure)
 and the IR function fills in the actual dims.
 
@@ -40,7 +40,7 @@ arithmetic is `eval_binop`); the symbolic dim algebra it calls
 
 ## You MUST unit-test the DSL logic, not just an example
 
-An end-to-end example (`tensor-shapes/examples/torch`) exercises an op but does
+An end-to-end example (`tensor-shapes/pyrefly-torch-stubs/examples`) exercises an op but does
 **not** pin the algebra — off-by-one, ceiling-vs-floor, and zero/negative-dim
 edge cases slip through. Add a targeted test that asserts the computed shape.
 

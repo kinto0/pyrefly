@@ -30,6 +30,7 @@ use xxhash_rust::xxh64::Xxh64;
 
 use super::TypeShapeContext;
 use super::TypeShapeTrait;
+use super::literal_value_shape_name;
 use super::qname_to_string;
 use super::typed_dict_traits;
 
@@ -302,7 +303,7 @@ pub(super) fn type_to_indexed_shape(
             )
         }
         Type::Literal(literal) => {
-            let value = indexed_named_leaf(table, literal.value.to_string());
+            let value = indexed_named_leaf(table, literal_value_shape_name(&literal.value));
             insert_indexed_named(table, "typing.Literal", vec![value], None, Vec::new())
         }
         Type::Sentinel(sentinel) => {

@@ -2395,27 +2395,35 @@ impl<'a> Transaction<'a> {
                 // Build the module name for lookup based on identifier position.
                 let components = resolved_module_name.components();
 
-                let target_module_name =
+                let target_idx =
                     if let Some(idx) = components.iter().position(|c| c == &identifier.id) {
-                        // Identifier matches a module component.
-                        ModuleName::from_parts(&components[..=idx])
+                        idx
                     } else if identifier.as_str() == resolved_module_name.as_str() {
                         // Identifier matches full module name; decide which component based on position offset.
                         let module_str = resolved_module_name.as_str();
                         let offset = (position - identifier.range.start())
                             .to_usize()
                             .min(module_str.len());
-                        let idx = module_str[..offset].matches('.').count();
-                        ModuleName::from_parts(&components[..=idx])
+                        module_str[..offset].matches('.').count()
                     } else {
-                        // Fallback: use the whole module name.
-                        resolved_module_name
+                        components.len() - 1
                     };
+                let target_module_name = ModuleName::from_parts(&components[..=target_idx]);
                 if let Ok(Some(item)) =
                     self.find_definition_for_imported_module(handle, target_module_name, preference)
                 {
                     return Ok(vec1![item]);
                 }
+
+                if let Some(item) = self.fallback_find_definition_module_name_with_suffix(
+                    handle,
+                    preference,
+                    &components,
+                    target_idx,
+                ) {
+                    return Ok(vec1![item]);
+                }
+
                 if let Some(item) = self.find_definition_directory_import(
                     handle,
                     resolved_module_name.as_str(),

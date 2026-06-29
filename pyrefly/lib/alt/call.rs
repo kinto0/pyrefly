@@ -1539,6 +1539,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         // First try the call without the hint to see if it succeeds.
         let mut ctor_targs_no_hint = ctor_targs.as_ref().map(|x| (**x).clone());
+        let arg_errors_no_hint = self.error_collector();
         let call_errors_no_hint = self.error_collector();
         let res_no_hint = self.callable_infer(
             callable.clone(),
@@ -1549,16 +1550,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             args,
             keywords,
             arguments_range,
-            arg_errors,
+            &arg_errors_no_hint,
             &call_errors_no_hint,
             context,
             None,
             ctor_targs_no_hint.as_mut(),
         );
         // If the call succeeds, attempt contextual typing with the hint.
-        let (chosen_ctor_targs, chosen_call_errors, chosen_res) =
+        let (chosen_ctor_targs, chosen_call_errors, chosen_arg_errors, chosen_res) =
             if call_errors_no_hint.is_empty() && hint.is_some() {
                 let mut ctor_targs_with_hint = ctor_targs.as_ref().map(|x| (**x).clone());
+                let arg_errors_with_hint = self.error_collector();
                 let call_errors_with_hint = self.error_collector();
                 let res_with_hint = self.callable_infer(
                     callable,
@@ -1569,21 +1571,39 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     args,
                     keywords,
                     arguments_range,
-                    arg_errors,
+                    &arg_errors_with_hint,
                     &call_errors_with_hint,
                     context,
                     hint,
                     ctor_targs_with_hint.as_mut(),
                 );
-                if call_errors_with_hint.is_empty() {
-                    (ctor_targs_with_hint, call_errors_with_hint, res_with_hint)
+                if call_errors_with_hint.is_empty()
+                    && arg_errors_with_hint.len() <= arg_errors_no_hint.len()
+                {
+                    (
+                        ctor_targs_with_hint,
+                        call_errors_with_hint,
+                        arg_errors_with_hint,
+                        res_with_hint,
+                    )
                 } else {
-                    (ctor_targs_no_hint, call_errors_no_hint, res_no_hint)
+                    (
+                        ctor_targs_no_hint,
+                        call_errors_no_hint,
+                        arg_errors_no_hint,
+                        res_no_hint,
+                    )
                 }
             } else {
-                (ctor_targs_no_hint, call_errors_no_hint, res_no_hint)
+                (
+                    ctor_targs_no_hint,
+                    call_errors_no_hint,
+                    arg_errors_no_hint,
+                    res_no_hint,
+                )
             };
         call_errors.extend(chosen_call_errors);
+        arg_errors.extend(chosen_arg_errors);
         if let Some(targs) = ctor_targs
             && let Some(chosen_targs) = chosen_ctor_targs
         {
@@ -1916,6 +1936,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         hint,
                         errors,
                     ),
+                _ if ty.is_assert_shape() => self
+                    .call_assert_shape(
+                        &x.arguments.args,
+                        &x.arguments.keywords,
+                        x.arguments.range,
+                        hint,
+                        errors,
+                    ),
                 Some(CalleeKind::Function(FunctionKind::RevealType)) => self
                     .call_reveal_type(
                         &x.arguments.args,
@@ -1934,8 +1962,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         errors,
                     )
                 }
-                Some(CalleeKind::Function(FunctionKind::DataclassReplace)) => {
-                    self.call_dataclasses_replace(
+                // `attr.evolve` validates kwargs like `dataclasses.replace`; `attr.assoc` validates
+                // against attribute names, including `init=False` fields. Both require an attrs class.
+                Some(CalleeKind::Function(
+                    FunctionKind::DataclassReplace
+                    | FunctionKind::AttrsEvolve
+                    | FunctionKind::AttrsAssoc,
+                )) => self.call_dataclasses_replace(
+                    ty,
+                    &args,
+                    &kws,
+                    x.func.range(),
+                    x.arguments.range,
+                    hint,
+                    errors,
+                ),
+                Some(CalleeKind::Function(FunctionKind::DataclassAsdict)) => {
+                    self.call_dataclasses_asdict(
                         ty,
                         &args,
                         &kws,
@@ -1945,8 +1988,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         errors,
                     )
                 }
-                Some(CalleeKind::Function(FunctionKind::DataclassAsdict)) => {
-                    self.call_dataclasses_asdict(
+                Some(CalleeKind::Function(
+                    kind @ (FunctionKind::AttrsFields | FunctionKind::AttrsFieldsDict),
+                )) => {
+                    self.call_attrs_fields(
+                        &kind.function_name(),
                         ty,
                         &args,
                         &kws,

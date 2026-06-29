@@ -523,7 +523,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
         ),
         Type::Literal(literal) => named_type_shape_kind(
             "typing.Literal",
-            vec![named_leaf(literal.value.to_string())],
+            vec![named_leaf(literal_value_shape_name(&literal.value))],
         ),
         Type::Sentinel(sentinel) => {
             named_type_shape_kind("sentinel", vec![named_leaf(format!("{}", sentinel))])
@@ -696,6 +696,24 @@ fn named_type_shape(name: impl Into<String>, args: Vec<TypeShape>) -> TypeShape 
 
 fn named_leaf(name: impl Into<String>) -> TypeShape {
     named_type_shape(name, Vec::new())
+}
+
+/// Render a literal value for the structured type-shape leaf. Enum members must
+/// carry their class's full module-qualified name (matching `qname_to_string`,
+/// the `ClassType`/`ClassDef` arms, and the module-qualified display string);
+/// the bare `Lit::Display` only emits the short class name. Shared with the
+/// type-table path in `query::type_table`.
+pub(crate) fn literal_value_shape_name(value: &Lit) -> String {
+    match value {
+        Lit::Enum(lit_enum) => {
+            format!(
+                "{}.{}",
+                qname_to_string(lit_enum.class.qname()),
+                lit_enum.member
+            )
+        }
+        _ => value.to_string(),
+    }
 }
 
 fn format_type_application(name: &str, args: &[TypeShape]) -> String {

@@ -108,8 +108,8 @@ shell search. You need to confirm presence and spot missing attributes
 ## Gate 1: Ops audit
 | Op | Stub location | Shape DSL decorator / IR fn (or "no decorator") | Status |
 |----|---------------|------------------------------|--------|
-| nn.Conv2d | tensor-shapes/torch-stubs/nn/__init__.pyi — generic [InC,OutC,K,S,P,D] | no decorator (stub generic) | tracked-stub |
-| F.adaptive_avg_pool2d | tensor-shapes/torch-stubs/nn/functional.pyi — bare declared return | `@uses_shape_dsl(adaptive_pool_ir)`, defined in `_shapes.pyi` | tracked-DSL |
+| nn.Conv2d | tensor-shapes/pyrefly-torch-stubs/torch-stubs/nn/__init__.pyi — generic [InC,OutC,K,S,P,D] | no decorator (stub generic) | tracked-stub |
+| F.adaptive_avg_pool2d | tensor-shapes/pyrefly-torch-stubs/torch-stubs/nn/functional.pyi — bare declared return | `@uses_shape_dsl(adaptive_pool_ir)`, defined in `_shapes.pyi` | tracked-DSL |
 | ...
 ```
 
@@ -746,9 +746,9 @@ type-level symbols.
 `shape_extensions` is installed alongside the shape-aware torch stubs (wherever
 those live in your environment — `pyrefly dump-config` reports the location). In an
 fbsource Buck checkout specifically, the runtime package is
-`fbcode//pyrefly/tensor-shapes:shape_extensions`, the importable stub package is
-`fbcode//pyrefly/tensor-shapes:torch-stubs`, and the filegroup to pass as a
-Pyrefly `--search-path` is
+`fbcode//pyrefly/tensor-shapes/pyrefly-shape-extensions:shape_extensions`, the importable stub package is
+`fbcode//pyrefly/tensor-shapes/pyrefly-torch-stubs:torch-stubs`, and the
+filegroup to pass as a Pyrefly `--search-path` is
 `fbcode//pyrefly/tensor-shapes:torch-stubs-search-path`.
 
 **Type-checking only (recommended for ports):** guard imports so annotations

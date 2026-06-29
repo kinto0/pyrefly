@@ -50,8 +50,8 @@ use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::answers_solver::TypeCheckOptions;
 use crate::alt::callable::CallArg;
+use crate::alt::class::attrs::is_attrs_nothing;
 use crate::alt::class::class_field::ClassField;
-use crate::alt::class::dataclass::is_attrs_nothing;
 use crate::alt::class::typed_dict::TypedDictErrorKind;
 use crate::alt::class::variance_inference::VarianceMap;
 use crate::alt::types::abstract_class::AbstractClassMembers;
@@ -146,6 +146,7 @@ use crate::types::callable::Callable;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
+use crate::types::class::AttrsFieldSpecifierKind;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
 use crate::types::display::TypeDisplayContext;
@@ -2496,7 +2497,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 ..
             } => {
                 let (annot, ty) =
-                    self.name_assign_infer(name, annot_key.as_ref(), None, expr, false, errors);
+                    self.name_assign_infer(name, annot_key.as_ref(), None, expr, None, errors);
                 if let Some(annot) = &annot
                     && let Some((AnnotationStyle::Forwarded, _)) = annot_key
                 {
@@ -3340,7 +3341,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         annot_key: Option<&(AnnotationStyle, Idx<KeyAnnotation>)>,
         receiver_idx: Option<Idx<Key>>,
         expr: &Expr,
-        is_attrs_specifier: bool,
+        attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
         errors: &ErrorCollector,
     ) -> (Option<Arc<AnnotationWithTarget>>, Type) {
         // Receiver-constrained class assignment: a same-scope rebind of a
@@ -3380,18 +3381,45 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .with_annotation(annot_range, "declared type".to_owned())
                 };
                 let annot_ty = annot.ty(self.heap, self.stdlib);
-                // Skip the assignment check for a NOTHING `default=`. Gating on the argument keeps
-                // ordinary `default=` calls (e.g. `ContextVar(default=None)`) on the hinted path.
-                let expr_ty = if let Expr::Call(call) = expr
-                    && let Some(default) =
-                        call.arguments.find_keyword("default").map(|kw| &kw.value)
-                    && is_attrs_nothing(&self.expr_infer(default, &self.error_swallower()))
+                // The annotation is authoritative for an attrs specifier, so we don't check the
+                // call's return (which `validator=` can widen) against it. We instead check the
+                // value the field will hold: the `default=`/positional value, or the `factory=`
+                // callable's return. A `converter=` intercepts that value (its type becomes the
+                // converter's input, enforced on `__init__`), so we skip the check when present.
+                let expr_ty = if attrs_field_specifier.is_some()
+                    && let Expr::Call(call) = expr
                 {
                     let got = self.expr_infer(expr, errors);
-                    if !is_attrs_nothing(&got)
-                        && let Some(annot_ty) = &annot_ty
+                    if let Some(annot_ty) = &annot_ty
+                        && call.arguments.find_keyword("converter").is_none()
                     {
-                        self.check_type(&got, annot_ty, expr.range(), errors, tcc);
+                        if let Some(default) = call
+                            .arguments
+                            .find_keyword("default")
+                            .map(|kw| &kw.value)
+                            // Only legacy `attr.ib` accepts a positional `default`; `field` is
+                            // keyword-only, so a positional there is not a default value.
+                            .or_else(|| {
+                                (attrs_field_specifier == Some(AttrsFieldSpecifierKind::Attrib))
+                                    .then(|| call.arguments.args.first())
+                                    .flatten()
+                            })
+                            && !is_attrs_nothing(&self.expr_infer(default, &self.error_swallower()))
+                        {
+                            self.expr_check(default, Some((annot_ty, tcc)), errors);
+                        } else if let Some(factory) = call.arguments.find_keyword("factory") {
+                            // Check factory return against annotation
+                            let factory_ty =
+                                self.expr_infer(&factory.value, &self.error_swallower());
+                            let callable = self.constructor_to_callable_distributed(&factory_ty);
+                            if let Some(ret) = callable
+                                .as_ref()
+                                .unwrap_or(&factory_ty)
+                                .callable_return_type(self.heap)
+                            {
+                                self.check_type(&ret, annot_ty, factory.value.range(), errors, tcc);
+                            }
+                        }
                     }
                     got
                 } else {
@@ -3399,7 +3427,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.expr_check(expr, hint, errors)
                 };
                 let ty = if style == &AnnotationStyle::Direct {
-                    if is_attrs_specifier {
+                    if attrs_field_specifier.is_some() {
                         self.heap.mk_any_implicit()
                     } else {
                         // For direct assignments, user-provided annotation takes
@@ -3431,7 +3459,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // Bare `x = attr.ib(type=T)`/`field(...)` (legacy, unannotated): same
                 // `_CountingAttr` reasoning as the annotated case.
                 let expr_ty = self.expr_check(expr, None, errors);
-                let ty = if is_attrs_specifier {
+                let ty = if attrs_field_specifier.is_some() {
                     self.heap.mk_any_implicit()
                 } else {
                     expr_ty
@@ -3452,7 +3480,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         expr: &Expr,
         legacy_tparams: &Option<Box<[Idx<KeyLegacyTypeParam>]>>,
         is_in_function_scope: bool,
-        is_attrs_field_specifier: bool,
+        attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
         errors: &ErrorCollector,
     ) -> Type {
         let (annot, ty) = self.name_assign_infer(
@@ -3460,7 +3488,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             annot_key.as_ref(),
             receiver_idx,
             expr,
-            is_attrs_field_specifier,
+            attrs_field_specifier,
             errors,
         );
         if let Some(annot) = &annot
@@ -5279,7 +5307,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 &x.expr,
                 &x.legacy_tparams,
                 x.is_in_function_scope,
-                x.is_attrs_field_specifier,
+                x.attrs_field_specifier,
                 errors,
             ),
             Binding::TypeVar(x) => {
@@ -6012,7 +6040,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 | TypeFormContext::ParamSpecDefault
         ) && matches!(
             ty,
-            Type::Concatenate(_, _) | Type::ParamSpecValue(_) | Type::ParamSpec(_)
+            Type::Concatenate(_, _) | Type::ParamSpecValue(_) | Type::ParamSpec(_) | Type::Ellipsis
         ) {
             return self.error(
                 errors,

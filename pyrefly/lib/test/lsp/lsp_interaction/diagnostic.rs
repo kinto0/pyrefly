@@ -57,6 +57,16 @@ fn require_markdown_initialize(interaction: &LspInteraction) {
     }
 }
 
+fn severity_count(
+    diagnostics: &[lsp_types::Diagnostic],
+    severity: lsp_types::DiagnosticSeverity,
+) -> usize {
+    diagnostics
+        .iter()
+        .filter(|d| d.severity == Some(severity))
+        .count()
+}
+
 #[test]
 fn test_show_syntax_errors_without_config() {
     let test_files_root = get_test_files_root();
@@ -163,6 +173,103 @@ fn test_diagnostics_markdown_messages() {
 
     interaction.shutdown().unwrap();
 }
+
+#[test]
+fn test_baseline_diagnostic_is_hint() {
+    let test_files_root = get_test_files_root();
+    let root_path = test_files_root.path().join("baseline_hint");
+    let mut interaction = LspInteraction::new();
+    interaction.set_root(root_path);
+    interaction
+        .initialize(InitializeSettings {
+            configuration: Some(None),
+            ..Default::default()
+        })
+        .expect("Failed to initialize");
+
+    interaction.client.did_open("bad.py");
+
+    interaction
+        .client
+        .diagnostic("bad.py")
+        .expect_response_with(|response| {
+            let DocumentDiagnosticReportResult::Report(report) = response else {
+                return false;
+            };
+            let lsp_types::DocumentDiagnosticReport::Full(full) = report else {
+                return false;
+            };
+            let items = &full.full_document_diagnostic_report.items;
+            // `bad.py` has two `bad-assignment` errors; only the one whose column
+            // matches the baseline entry is downgraded to HINT — the other must
+            // stay at ERROR, guarding against baseline filtering downgrading (or
+            // dropping) every diagnostic.
+            items.len() == 2
+                && items.iter().all(|item| {
+                    item.code
+                        == Some(lsp_types::NumberOrString::String(
+                            "bad-assignment".to_owned(),
+                        ))
+                })
+                && severity_count(items, lsp_types::DiagnosticSeverity::HINT) == 1
+                && severity_count(items, lsp_types::DiagnosticSeverity::ERROR) == 1
+        })
+        .expect("Failed to receive hint diagnostic");
+
+    interaction.shutdown().unwrap();
+}
+
+/// Push diagnostics (`publishDiagnostics`) is the primary user-facing path and
+/// has the same HINT-downgrade logic as the pull path exercised above, so assert
+/// the published notification downgrades only the baselined error.
+#[test]
+fn test_baseline_diagnostic_is_hint_push() {
+    let test_files_root = get_test_files_root();
+    let root_path = test_files_root.path().join("baseline_hint");
+    let bad_py = root_path.join("bad.py");
+    let mut interaction = LspInteraction::new();
+    interaction.set_root(root_path);
+    interaction
+        .initialize(InitializeSettings {
+            configuration: Some(None),
+            ..Default::default()
+        })
+        .expect("Failed to initialize");
+
+    interaction.client.did_open("bad.py");
+
+    interaction
+        .client
+        .expect_message("publishDiagnostics with baseline HINT", |msg| {
+            let Message::Notification(notification) = msg else {
+                return None;
+            };
+            if notification.method != PublishDiagnostics::METHOD {
+                return None;
+            }
+            let params: PublishDiagnosticsParams =
+                serde_json::from_value(notification.params).unwrap();
+            if params.uri.to_file_path().unwrap() != bad_py {
+                return None;
+            }
+            let hints = severity_count(&params.diagnostics, lsp_types::DiagnosticSeverity::HINT);
+            let errors = severity_count(&params.diagnostics, lsp_types::DiagnosticSeverity::ERROR);
+            if params.diagnostics.len() == 2 && hints == 1 && errors == 1 {
+                Some(Ok(()))
+            } else {
+                Some(Err(LspMessageError::Custom {
+                    description: format!(
+                        "Expected 1 HINT and 1 ERROR, got {hints} HINT and {errors} ERROR ({} total)",
+                        params.diagnostics.len()
+                    ),
+                }))
+            }
+        })
+        .expect("Failed to receive push diagnostics with baseline HINT");
+
+    interaction.shutdown().unwrap();
+}
+
 #[test]
 fn test_stream_diagnostics_after_save() {
     let root = get_test_files_root();
@@ -1462,9 +1569,7 @@ fn test_missing_source_with_config_diagnostic_has_errors() {
                     == Some(lsp_types::NumberOrString::String(
                         "missing-import".to_owned(),
                     ))
-                    && item
-                        .message
-                        .starts_with("Cannot find module `whatthepatch`")
+                    && matches!(&item.message, lsp_types::DiagnosticMessage::String(s) if s.starts_with("Cannot find module `whatthepatch`"))
                     && item.range.start.line == 5
                     && item.range.start.character == 7
                     && item.range.end.line == 5

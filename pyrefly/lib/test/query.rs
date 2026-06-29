@@ -381,6 +381,84 @@ second: list[int]
     );
 }
 
+/// Enum-member literals must carry the enum class's fully module-qualified name
+/// (`main.Color.RED`), not the bare class name (`Color.RED`), in the inline
+/// shape path — matching the module-qualified display string and the
+/// `ClassType` shape arm.
+#[test]
+fn test_type_shapes_qualify_enum_literal_members() {
+    let tdir = TempDir::new().unwrap();
+    let file_path = tdir.path().join("main.py");
+    let code = r#"import enum
+
+class Color(enum.Enum):
+    RED = 1
+    GREEN = 2
+
+c = Color.RED
+"#;
+    fs_anyhow::write(&file_path, code).unwrap();
+
+    let query = create_query();
+    let module_name = ModuleName::from_str("main");
+    let path = ModulePath::filesystem(file_path.clone());
+
+    let errors = query.add_files(vec![(module_name, path.clone())]);
+    assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
+
+    let shapes = type_shape_values(query.get_type_shapes_in_file(module_name, path).unwrap());
+    assert!(
+        shapes.iter().any(|shape| is_named_shape_with_args(
+            shape,
+            "typing.Literal",
+            &["main.Color.RED"]
+        )),
+        "Expected enum Literal to carry the fully module-qualified member name:\n{shapes:#?}",
+    );
+}
+
+/// Same invariant as `test_type_shapes_qualify_enum_literal_members`, but for
+/// the type-table (dedup) path that `/types_v2` actually serves — the path
+/// where the under-qualification bug originally hid.
+#[test]
+fn test_type_table_qualifies_enum_literal_members() {
+    let tdir = TempDir::new().unwrap();
+    let file_path = tdir.path().join("main.py");
+    let code = r#"import enum
+
+class Color(enum.Enum):
+    RED = 1
+    GREEN = 2
+
+c = Color.RED
+"#;
+    fs_anyhow::write(&file_path, code).unwrap();
+
+    let query = create_query();
+    let module_name = ModuleName::from_str("main");
+    let path = ModulePath::filesystem(file_path.clone());
+
+    let errors = query.add_files(vec![(module_name, path.clone())]);
+    assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
+
+    let response = query
+        .get_type_table_in_file_with_timing(module_name, path)
+        .unwrap()
+        .0;
+    let table = indexed_shape_values(&response.type_table);
+
+    let member_index = table
+        .iter()
+        .position(|shape| is_indexed_named_shape(shape, "main.Color.RED", &[]))
+        .expect("expected fully-qualified enum member leaf `main.Color.RED` in the type table");
+    assert!(
+        table
+            .iter()
+            .any(|shape| is_indexed_named_shape(shape, "typing.Literal", &[member_index])),
+        "Expected typing.Literal entry referencing the qualified enum member:\n{table:#?}",
+    );
+}
+
 #[test]
 fn test_if_else_in_loop() {
     let tdir = TempDir::new().unwrap();

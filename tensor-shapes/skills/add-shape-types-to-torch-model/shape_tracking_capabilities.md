@@ -21,7 +21,7 @@ use expressions (`D // NHead`, not a separate `HeadDim` param).
 ## The three shape-tracking mechanisms
 
 Paths below are shown relative to the **stub root** — the directory Pyrefly
-resolves the `torch` stubs from. It is `tensor-shapes/torch-stubs/` in an fbsource
+resolves the `torch` stubs from. It is `tensor-shapes/pyrefly-torch-stubs/torch-stubs/` in an fbsource
 checkout; in other environments (a clone, or stubs installed into a virtualenv)
 it lives elsewhere. `pyrefly dump-config` reports the resolved location.
 
@@ -53,8 +53,8 @@ record as a gap rather than fixing.
 ### 2. DSL functions
 
 **Location:** declarations use `@uses_shape_dsl(ir_fn)` in
-`tensor-shapes/torch-stubs/**/*.pyi`; IR functions live in
-`tensor-shapes/torch-stubs/_shapes.pyi` and are imported from stubs as
+`tensor-shapes/pyrefly-torch-stubs/torch-stubs/**/*.pyi`; IR functions live in
+`tensor-shapes/pyrefly-torch-stubs/torch-stubs/_shapes.pyi` and are imported from stubs as
 `torch._shapes` because `torch-stubs` provides the `torch` package for type
 checking.
 
@@ -109,7 +109,7 @@ not the problem. Trace back:
    `y = g(x); f(y)` preserves. Fix: break into separate assignments.
 6. **Stub returning bare?** Check whether it has `@uses_shape_dsl(...)`. If
    not, fix the `.pyi` signature or add DSL support.
-7. **DSL missing?** Add the IR function in `tensor-shapes/torch-stubs/_shapes.pyi`,
+7. **DSL missing?** Add the IR function in `tensor-shapes/pyrefly-torch-stubs/torch-stubs/_shapes.pyi`,
    decorate it with `@shape_dsl_function`, and attach it with
    `@uses_shape_dsl(...)`.
 

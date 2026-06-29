@@ -80,6 +80,7 @@ use crate::export::special::SpecialExport;
 use crate::module::module_info::ModuleInfo;
 use crate::types::annotation::Annotation;
 use crate::types::callable::FuncDefIndex;
+use crate::types::class::AttrsFieldSpecifierKind;
 use crate::types::class::Class;
 use crate::types::class::ClassDefIndex;
 use crate::types::equality::TypeEq;
@@ -2096,9 +2097,10 @@ pub struct NameAssign {
     /// the textual assignment is still bound as a real `NameAssign` so the
     /// RHS remains available for its own diagnostics and bookkeeping.
     pub receiver_idx: Option<Idx<Key>>,
-    /// Whether the RHS is an attrs field specifier call (`field()` / `attr.ib()`). The in-body
-    /// value is then `Any` so `@<field>.default` / `@<field>.validator` accesses resolve.
-    pub is_attrs_field_specifier: bool,
+    /// `Some(kind)` if the RHS is an attrs field specifier call (`field()` / `attr.ib()`). The
+    /// in-body value is then `Any` so `@<field>.default` / `@<field>.validator` accesses resolve.
+    /// The kind distinguishes legacy `attr.ib` (positional `default`) from kw-only `field`.
+    pub attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
 }
 
 impl NameAssign {

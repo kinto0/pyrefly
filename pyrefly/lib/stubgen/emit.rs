@@ -22,6 +22,9 @@ pub fn emit_stub(stub: &ModuleStub) -> String {
     if stub.uses_callable {
         typing_names.push("Callable");
     }
+    if stub.uses_classvar {
+        typing_names.push("ClassVar");
+    }
     if stub.uses_self {
         typing_names.push("Self");
     }

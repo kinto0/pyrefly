@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use pyrefly_build::handle::Handle;
+use pyrefly_python::ast::Ast;
 use pyrefly_python::module::Module;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_python::sys_info::SysInfo;
@@ -61,6 +62,9 @@ pub struct ModuleStub {
     /// Whether any item renders a `Callable[...]` annotation (so we know
     /// whether to emit `from typing import Callable`).
     pub uses_callable: bool,
+    /// Whether any item renders a `ClassVar[...]` annotation (so we know
+    /// whether to emit `from typing import ClassVar`).
+    pub uses_classvar: bool,
 }
 
 pub enum StubItem {
@@ -147,17 +151,19 @@ pub fn extract_module_stub(
         uses_incomplete: false,
         uses_self: false,
         uses_callable: false,
+        uses_classvar: false,
         function_map: &function_map,
         dunder_all: &dunder_all,
     };
 
-    let items = extract_stmts(&ast.body, &mut ctx, false);
+    let items = extract_stmts(&ast.body, &mut ctx, false, false);
 
     Some(ModuleStub {
         items,
         uses_incomplete: ctx.uses_incomplete,
         uses_self: ctx.uses_self,
         uses_callable: ctx.uses_callable,
+        uses_classvar: ctx.uses_classvar,
     })
 }
 
@@ -169,13 +175,19 @@ struct ExtractionContext<'a> {
     uses_incomplete: bool,
     uses_self: bool,
     uses_callable: bool,
+    uses_classvar: bool,
     function_map: &'a HashMap<TextRange, DecoratedFunction>,
     /// When `__all__` is explicitly defined, only these names are exported
     /// at module level. `None` means no explicit `__all__` — use convention.
     dunder_all: &'a Option<HashSet<Name>>,
 }
 
-fn extract_stmts(stmts: &[Stmt], ctx: &mut ExtractionContext, in_class: bool) -> Vec<StubItem> {
+fn extract_stmts(
+    stmts: &[Stmt],
+    ctx: &mut ExtractionContext,
+    in_class: bool,
+    in_enum: bool,
+) -> Vec<StubItem> {
     let mut items = Vec::new();
     let overloaded = collect_overloaded_names(stmts);
 
@@ -220,7 +232,7 @@ fn extract_stmts(stmts: &[Stmt], ctx: &mut ExtractionContext, in_class: bool) ->
                     let text = source_text(ctx.module_info, assign.range()).to_owned();
                     items.push(StubItem::TypeAlias(StubTypeAlias { text }));
                 } else {
-                    for item in extract_assign(assign, ctx, in_class) {
+                    for item in extract_assign(assign, ctx, in_class, in_enum) {
                         items.push(StubItem::Variable(item));
                     }
                 }
@@ -235,7 +247,7 @@ fn extract_stmts(stmts: &[Stmt], ctx: &mut ExtractionContext, in_class: bool) ->
                 items.push(StubItem::TypeAlias(StubTypeAlias { text }));
             }
             Stmt::If(if_stmt) if is_type_checking_guard(&if_stmt.test) => {
-                items.extend(extract_stmts(&if_stmt.body, ctx, in_class));
+                items.extend(extract_stmts(&if_stmt.body, ctx, in_class, in_enum));
             }
             _ => {}
         }
@@ -284,9 +296,16 @@ fn extract_function(
         .as_ref()
         .map(|tp| source_text(ctx.module_info, tp.range()).to_owned());
 
+    // An `async def` that yields is an async generator: calling it returns an
+    // `AsyncGenerator`, not a coroutine. A stub drops the body (and its
+    // `yield`), so emitting `async def` would mistype the call as
+    // `Coroutine[..., AsyncGenerator[...]]`. Follow the typeshed convention and
+    // emit a plain `def` returning the async-generator type.
+    let is_async = func_def.is_async && !Ast::body_contains_yield(&func_def.body);
+
     Some(StubFunction {
         name: name.to_owned(),
-        is_async: func_def.is_async,
+        is_async,
         type_params,
         decorators,
         params,
@@ -695,6 +714,24 @@ fn is_dataclass_or_pydantic_model(class_def: &StmtClassDef, ctx: &ExtractionCont
     metadata.dataclass_metadata().is_some() || metadata.is_pydantic_model()
 }
 
+/// Returns `true` when the class is an `Enum` (or subclass such as `IntEnum`,
+/// `Flag`, etc.), using the resolved `ClassMetadata`. Bare assignments in an
+/// enum body are enum members, not class variables, so they must not be
+/// wrapped in `ClassVar[...]`.
+fn is_enum_class(class_def: &StmtClassDef, ctx: &ExtractionContext) -> bool {
+    let Some(def_index) = ctx.bindings.class_def_index(class_def) else {
+        return false;
+    };
+    let key = KeyClassMetadata(def_index);
+    let Some(idx) = ctx.bindings.key_to_idx_hashed_opt(Hashed::new(&key)) else {
+        return false;
+    };
+    let Some(metadata) = ctx.answers.get_idx(idx) else {
+        return false;
+    };
+    metadata.is_enum()
+}
+
 /// Extract a synthesized `__init__` stub for dataclass and pydantic model
 /// classes that generate `__init__` at type-check time rather than declaring
 /// it in source.
@@ -868,7 +905,8 @@ fn extract_class(class_def: &StmtClassDef, ctx: &mut ExtractionContext) -> Optio
         .as_ref()
         .map(|tp| source_text(ctx.module_info, tp.range()).to_owned());
 
-    let mut body = extract_stmts(&class_def.body, ctx, true);
+    let in_enum = is_enum_class(class_def, ctx);
+    let mut body = extract_stmts(&class_def.body, ctx, true, in_enum);
     let has_explicit_init = body
         .iter()
         .any(|item| matches!(item, StubItem::Function(f) if f.name == "__init__"));
@@ -922,27 +960,52 @@ fn extract_assign(
     assign: &ruff_python_ast::StmtAssign,
     ctx: &mut ExtractionContext,
     in_class: bool,
+    in_enum: bool,
 ) -> Vec<StubVariable> {
     let mut result = Vec::new();
 
     for target in &assign.targets {
         if let Expr::Name(name_expr) = target {
             let name = name_expr.id.as_str();
-            if !should_include_name(name, ctx.config, in_class, ctx.dunder_all) {
+
+            // Preserve a static `__all__` literal verbatim so the stub keeps the
+            // module's re-export semantics (PEP 484): a name imported without a
+            // redundant `as` alias is re-exported only if listed in `__all__`.
+            // Dropping `__all__` would silently un-export such names. (#3924)
+            if !in_class && name == "__all__" {
+                if let Some(value) = dunder_all_value_text(&assign.value, ctx.module_info) {
+                    result.push(StubVariable {
+                        name: "__all__".to_owned(),
+                        annotation: None,
+                        value: Some(value),
+                    });
+                }
                 continue;
             }
 
-            if name == "__all__" {
+            if !should_include_name(name, ctx.config, in_class, ctx.dunder_all) {
                 continue;
             }
 
             let short_id = ShortIdentifier::expr_name(name_expr);
             let def_key = Key::Definition(short_id);
-            let annotation = ctx
+            let mut annotation = ctx
                 .bindings
                 .key_to_idx_hashed_opt(starlark_map::Hashed::new(&def_key))
                 .and_then(|idx| ctx.answers.get_type_at(idx))
                 .and_then(|ty| format_type(&ty, ctx));
+
+            // A bare assignment in a class body is an implicit class variable;
+            // wrap it in `ClassVar[...]` so the stub doesn't mistype it as an
+            // instance attribute. Enum members are excluded: a bare assignment
+            // in an enum body is a member, not a class variable.
+            if in_class
+                && !in_enum
+                && let Some(ann) = &annotation
+            {
+                ctx.uses_classvar = true;
+                annotation = Some(format!("ClassVar[{ann}]"));
+            }
 
             let value = simple_value_text(&assign.value, ctx.module_info);
 
@@ -957,6 +1020,15 @@ fn extract_assign(
     }
 
     result
+}
+
+/// Verbatim text of an `__all__` right-hand side when it's a static list or
+/// tuple literal; `None` for computed/dynamic forms we can't safely reproduce.
+fn dunder_all_value_text(value: &Expr, module_info: &Module) -> Option<String> {
+    match value {
+        Expr::List(_) | Expr::Tuple(_) => Some(expr_source_text(module_info, value.range())),
+        _ => None,
+    }
 }
 
 /// Returns `None` for complex expressions.

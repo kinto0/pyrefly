@@ -44,6 +44,7 @@ use crate::binding::narrow::identifier_and_chain_prefix_for_expr;
 use crate::binding::scope::FlowStyle;
 use crate::binding::scope::NameReadInfo;
 use crate::export::special::SpecialExport;
+use crate::types::class::AttrsFieldSpecifierKind;
 
 impl<'a> BindingsBuilder<'a> {
     /// Bind one level of an unpacked LHS target, for example in `x, (y, [*z]), q = foo`
@@ -638,13 +639,19 @@ impl<'a> BindingsBuilder<'a> {
         let def_idx = current.into_idx();
         // Only an in-class-body `field()`/`attr.ib()` is an attrs field specifier whose value is a
         // `_CountingAttr` (typed `Any` so `@<field>.default`/`.validator` resolve). Gating on the
-        // class body keeps this off the hot path for ordinary assignments.
-        let is_attrs_field_specifier = self.scopes.in_class_body()
-            && matches!(value.as_ref(), Expr::Call(call)
-            if matches!(
-                self.as_special_export(&call.func),
-                Some(SpecialExport::AttrsLegacyAttrib | SpecialExport::AttrsNextGenField)
-            ));
+        // class body keeps this off the hot path for ordinary assignments. The kind distinguishes
+        // legacy `attr.ib` (positional `default`) from kw-only `field`.
+        let attrs_field_specifier = if self.scopes.in_class_body()
+            && let Expr::Call(call) = value.as_ref()
+        {
+            match self.as_special_export(&call.func) {
+                Some(SpecialExport::AttrsLegacyAttrib) => Some(AttrsFieldSpecifierKind::Attrib),
+                Some(SpecialExport::AttrsNextGenField) => Some(AttrsFieldSpecifierKind::Field),
+                _ => None,
+            }
+        } else {
+            None
+        };
         let binding = if is_definitely_type_alias {
             let range = value.range();
             let key_type_alias = KeyTypeAlias(self.type_alias_index());
@@ -672,7 +679,7 @@ impl<'a> BindingsBuilder<'a> {
                 first_use: FirstUse::Undetermined,
                 def_idx: if uses_first_use { Some(def_idx) } else { None },
                 receiver_idx,
-                is_attrs_field_specifier,
+                attrs_field_specifier,
             }))
         };
         self.insert_binding_idx(def_idx, binding);

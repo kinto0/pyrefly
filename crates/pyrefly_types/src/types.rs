@@ -1142,6 +1142,11 @@ impl Type {
         self.lit_string_style().is_some()
     }
 
+    /// A scalar type cannot decompose into a container element type.
+    pub fn is_scalar(&self) -> bool {
+        matches!(self, Type::Literal(_) | Type::LiteralString(_) | Type::None)
+    }
+
     /// If this type is a literal string (either `LiteralString` or a `Literal` string value),
     /// return its `LitStyle`.
     pub fn lit_string_style(&self) -> Option<&LitStyle> {
@@ -1399,6 +1404,12 @@ impl Type {
             Type::Overload(overload) => overload.is_typeis(),
             _ => false,
         }
+    }
+
+    pub fn is_assert_shape(&self) -> bool {
+        self.visit_toplevel_func_metadata(&|meta| {
+            meta.flags.is_assert_shape || meta.kind == FunctionKind::AssertShape
+        })
     }
 
     pub fn is_none(&self) -> bool {

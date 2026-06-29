@@ -58,6 +58,7 @@ use crate::types::callable::ParamList;
 use crate::types::callable::Params;
 use crate::types::callable::Required;
 use crate::types::quantified::Quantified;
+use crate::types::quantified::QuantifiedKind;
 use crate::types::types::Type;
 use crate::types::types::Var;
 
@@ -1756,7 +1757,38 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             callable.ret.clone()
         };
 
-        (self.solver().for_return_boundary(ret), errors, argmap)
+        (
+            self.reproject_tuple_carrier_shape(self.solver().for_return_boundary(ret)),
+            errors,
+            argmap,
+        )
+    }
+
+    /// After a call's return type is resolved, re-project the shape of registered
+    /// tuple-carrier shaped arrays from their (now-substituted) base-class carrier
+    /// argument.
+    ///
+    /// Generic returns like `Array[S, float]` are stored shapeless at annotation
+    /// time because the raw carrier `S` carries no per-dimension information. Once
+    /// `S` is bound to a concrete carrier (e.g. `tuple[Literal[2], Literal[3]]`)
+    /// by call inference, the base-class argument projects to a real shape, so we
+    /// re-read it here.
+    ///
+    /// Scoped to TypeVar-mode (single tuple-carrier) shape parameters; TypeVarTuple
+    /// shapes are parsed into the shape field directly and need no reprojection.
+    fn reproject_tuple_carrier_shape(&self, ty: Type) -> Type {
+        ty.transform(&mut |ty| {
+            if let Type::ShapedArray(shaped_array) = ty {
+                let base_class = shaped_array.base_class.clone();
+                if let Some(shape_param) = self.shaped_array_shape_for_class_type(&base_class)
+                    && shape_param.kind() == QuantifiedKind::TypeVar
+                {
+                    *ty = self
+                        .shaped_array_classtype_to_shaped_array_type(&base_class)
+                        .to_type();
+                }
+            }
+        })
     }
 
     /// Auto-inject module field values into `bound_args` for DSL parameters
@@ -1847,7 +1879,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         let ret_type = self.canonicalize_shape_dsl_type(ret_type);
         match meta_shape_func.evaluate(bound_args, &ret_type) {
-            Some(Ok(ty)) => ty,
+            // The meta-shape evaluator (in `pyrefly_types`, which has no metadata
+            // knowledge) rebuilds the result `ShapedArray` with the computed shape
+            // but leaves the base-class tuple carrier stale. Re-sync each result
+            // carrier to its projected shape so tuple-carrier `.shape` stays
+            // coherent.
+            Some(Ok(ty)) => ty.transform(&mut |ty| {
+                if let Type::ShapedArray(shaped_array) = ty {
+                    *ty = self
+                        .shaped_array_with_shape(shaped_array, shaped_array.shape.clone())
+                        .to_type();
+                }
+            }),
             Some(Err(shape_error)) => {
                 errors
                     .error_builder(

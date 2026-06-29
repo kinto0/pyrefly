@@ -47,6 +47,25 @@ C(1)  # OK
 "#,
 );
 
+// `in_(EnumClass)` infers `_ValidatorType[object]`, but the annotation stays authoritative (#3429).
+attrs_testcase!(
+    test_attrs_field_validator_does_not_widen_annotation,
+    r#"
+from enum import Enum
+from attrs import define, field, validators
+
+class Color(Enum):
+    RED = 1
+    GREEN = 2
+
+@define
+class C:
+    color: Color = field(validator=validators.in_(Color))
+
+C(Color.RED)  # OK
+"#,
+);
+
 // A field's declared type flows to its `__init__` param, so construction args are
 // type-checked: passing a `str` for an `int` field is an error.
 attrs_testcase!(
@@ -83,6 +102,154 @@ assert_type(c.x, int)
 "#,
 );
 
+// An overloaded converter only contributes the input types of overloads callable with a single
+// positional argument; an overload requiring a second positional arg is ignored.
+attrs_testcase!(
+    test_attrs_field_overloaded_converter_single_positional,
+    r#"
+from typing import overload, reveal_type
+from attrs import define, field
+
+@overload
+def conv(x: int) -> str: ...
+@overload
+def conv(x: str, y: int) -> str: ...
+def conv(x: object, y: int = 0) -> str:
+    return str(x)
+
+@define
+class C:
+    a: str = field(converter=conv)
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, a: int) -> None
+"#,
+);
+
+// An overload requiring a second keyword-only argument is also ignored (it can't be called with
+// a single positional arg).
+attrs_testcase!(
+    test_attrs_field_overloaded_converter_required_kwonly,
+    r#"
+from typing import overload, reveal_type
+from attrs import define, field
+
+@overload
+def conv(x: int) -> str: ...
+@overload
+def conv(x: bytes, *, mode: int) -> str: ...
+def conv(x: object, *, mode: int = 0) -> str:
+    return str(x)
+
+@define
+class C:
+    a: str = field(converter=conv)
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, a: int) -> None
+"#,
+);
+
+// A generic-class converter (`list[int]`) applies its type arguments: the `__init__` param
+// takes the parameterized constructor's input type, not `Any`.
+attrs_testcase!(
+    test_attrs_field_generic_class_converter,
+    r#"
+from typing import assert_type
+from attrs import define, field
+
+@define
+class C:
+    xs: list[int] = field(converter=list[int])
+
+assert_type(C([1, 2, 3]).xs, list[int])
+C(5)  # E: not assignable to parameter `xs`
+"#,
+);
+
+// The element type of a builtin generic converter is enforced: `list[int]` accepts `Iterable[int]`,
+// so a `list[str]` argument is rejected.
+attrs_testcase!(
+    test_attrs_field_generic_converter_wrong_element,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    xs: list[int] = field(converter=list[int])
+
+C(["a"])  # E: not assignable to parameter `xs` with type `Iterable[int]`
+"#,
+);
+
+// A user-defined generic converter applies its type argument directly: `Box[int]`'s `__init__`
+// parameter `T` becomes `int`, while the stored attribute keeps the declared `Box[int]`.
+attrs_testcase!(
+    test_attrs_field_user_generic_converter,
+    r#"
+from typing import assert_type
+from attrs import define, field
+
+class Box[T]:
+    def __init__(self, x: T) -> None: ...
+
+@define
+class C:
+    b: Box[int] = field(converter=Box[int])
+
+assert_type(C(5).b, Box[int])
+C("x")  # E: not assignable to parameter `b` with type `int`
+"#,
+);
+
+// The type argument is substituted into nested positions of the converter's parameter: `Sink[int]`,
+// whose `__init__` takes `list[T]`, yields an `__init__` parameter of `list[int]`.
+attrs_testcase!(
+    test_attrs_field_generic_converter_nested_typevar,
+    r#"
+from attrs import define, field
+
+class Sink[T]:
+    def __init__(self, xs: list[T]) -> None: ...
+
+@define
+class C:
+    s: Sink[int] = field(converter=Sink[int])
+
+C(5)  # E: not assignable to parameter `s` with type `list[int]`
+"#,
+);
+
+// A bare (unsubscripted) generic converter still works via the class-object path: `list` promotes
+// to `list[Unknown]`, so the `__init__` parameter is `Iterable[Unknown]`.
+attrs_testcase!(
+    test_attrs_field_bare_generic_converter,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    xs: list[int] = field(converter=list)
+
+C(5)  # E: not assignable to parameter `xs` with type `Iterable[Unknown]`
+"#,
+);
+
+// `attr.converters.optional(c)` makes the `__init__` param the inner converter's input type
+// unioned with `None`.
+attrs_testcase!(
+    test_attrs_field_converters_optional,
+    r#"
+from attrs import define, field
+import attr
+
+@define
+class C:
+    x: int = field(converter=attr.converters.optional(int))
+
+C(None)     # OK: optional converter accepts None
+C([1, 2])   # E: not assignable to parameter `x`
+"#,
+);
+
 // A `factory=` field is optional in `__init__`, but its param keeps the declared
 // annotation type so construction args are still type-checked.
 attrs_testcase!(
@@ -96,6 +263,116 @@ class C:
 
 C()              # OK: factory supplies the default
 C("not a list")  # E: not assignable to parameter `items`
+"#,
+);
+
+// A `factory=` callable's return type must be assignable to the field type, just like an
+// explicit `default=` value.
+attrs_testcase!(
+    test_attrs_field_factory_return_type_mismatch,
+    r#"
+from attrs import define, field
+
+def make_str() -> str:
+    return ""
+
+@define
+class C:
+    x: int = field(factory=make_str)  # E: `str` is not assignable to `int`
+"#,
+);
+
+// A matching `factory=` return type is accepted.
+attrs_testcase!(
+    test_attrs_field_factory_return_type_match,
+    r#"
+from attrs import define, field
+
+def make_int() -> int:
+    return 0
+
+@define
+class C:
+    x: int = field(factory=make_int)
+"#,
+);
+
+// A `factory=` whose output feeds a `converter=` is checked against the converter's input,
+// not the field type, so a "mismatched" factory return is not flagged.
+attrs_testcase!(
+    test_attrs_field_factory_with_converter_not_checked,
+    r#"
+from attrs import define, field
+
+def make_str() -> str:
+    return ""
+
+def to_int(s: str) -> int:
+    return int(s)
+
+@define
+class C:
+    x: int = field(factory=make_str, converter=to_int)
+"#,
+);
+
+// Likewise an explicit `default=` value with a `converter=` is the converter's input, so it
+// is not checked against the field type.
+attrs_testcase!(
+    test_attrs_field_default_with_converter_not_checked,
+    r#"
+from attrs import define, field
+
+def to_int(s: str) -> int:
+    return int(s)
+
+@define
+class C:
+    x: int = field(default="5", converter=to_int)
+"#,
+);
+
+// A `converter=` that is itself a type constructor (`converter=int`) is supported: the init
+// parameter accepts the constructor's input types while the attribute keeps the converted output
+// type, and an argument the constructor can't accept is rejected.
+attrs_testcase!(
+    test_attrs_field_converter_is_constructor,
+    r#"
+from typing import assert_type
+from attrs import define, field
+
+@define
+class C:
+    x: int = field(default="5", converter=int)
+
+assert_type(C("5").x, int)
+C(b"10")
+C([1, 2])  # E: not assignable to parameter `x`
+"#,
+);
+
+// Legacy `attr.ib` accepts a positional `default`, so it is checked against the annotation.
+attrs_testcase!(
+    test_attrs_attr_ib_positional_default_checked,
+    r#"
+import attr
+
+@attr.s(auto_attribs=True)
+class C:
+    x: int = attr.ib("bad")  # E: `Literal['bad']` is not assignable to `int`
+"#,
+);
+
+// Next-gen `field` is keyword-only: a positional arg is only an arg-count error and must NOT also
+// be treated as a `default` and checked against the annotation (no spurious assignability error).
+attrs_testcase!(
+    test_attrs_field_positional_not_treated_as_default,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field("bad")  # E: No matching overload found
 "#,
 );
 
@@ -228,6 +505,66 @@ class C:
 "#,
 );
 
+// A non-default field inherited from one base, ordered after a defaulted field from another,
+// is a merge-induced ordering error reported at the subclass definition.
+attrs_testcase!(
+    test_attrs_inherited_nondefault_after_default,
+    r#"
+from attrs import define, field
+
+@define
+class Base:
+    a: int = field(default=5)
+
+@define
+class Mixin:
+    b: int = field()
+
+@define
+class Sub(Mixin, Base):  # E: without a default may not follow
+    pass
+"#,
+);
+
+// A conflict contained within a single base is reported once (on that base); a subclass that
+// merely inherits it does NOT re-report it.
+attrs_testcase!(
+    test_attrs_inherited_conflict_not_reported_on_subclass,
+    r#"
+from attrs import define, field
+
+@define
+class Base:
+    a: int = field(default=5)
+    b: int = field()  # E: without a default may not follow
+
+@define
+class Sub(Base):
+    pass
+"#,
+);
+
+// A required field declared in a class that *inherits* a defaulted field: the conflict
+// originates at — and is reported once at — that class; subclasses inheriting it stay silent.
+attrs_testcase!(
+    test_attrs_inherited_default_local_required_not_repeated,
+    r#"
+from attrs import define, field
+
+@define
+class HasDefault:
+    where: int = field(default=0)
+
+@define
+class Origin(HasDefault):
+    arg: int = field()  # E: without a default may not follow
+
+@define
+class Inheritor(Origin):
+    pass
+"#,
+);
+
 // Mixed class: NOTHING field required, real-default field optional, declared param types.
 attrs_testcase!(
     test_attrs_field_nothing_default_init_signature,
@@ -253,7 +590,7 @@ from attrs import define, field
 
 @define
 class C:
-    x: int = field(default="oops")  # E: `str` is not assignable to `int`
+    x: int = field(default="oops")  # E: `Literal['oops']` is not assignable to `int`
 "#,
 );
 
@@ -334,16 +671,16 @@ x: int = f(default=attr.NOTHING)  # E: `str` is not assignable to `int`
 "#,
 );
 
-// `attr.ib`'s first positional arg is `default`, so positional NOTHING ⇒ required.
+// `attr.ib`'s first positional arg is `default`, so positional NOTHING ⇒ required. The NOTHING
+// sentinel means "no default", so it must not be checked against the field's declared type.
 attrs_testcase!(
-    bug = "positional attr.ib(NOTHING) still emits a spurious `_Nothing` assignment error",
     test_attrs_field_nothing_positional_required,
     r#"
 import attr
 
 @attr.s(auto_attribs=True)
 class C:
-    x: int = attr.ib(attr.NOTHING)  # E: `_Nothing` is not assignable to `int`
+    x: int = attr.ib(attr.NOTHING)
 
 C()   # E: Missing argument `x`
 C(1)  # OK
@@ -1110,5 +1447,22 @@ from attrs import define, field
 @define
 class C:
     x: int = field(eq=str, order=True)
+"#,
+);
+
+// Per-field `on_setattr=setters.frozen` makes only that field read-only; siblings stay writable.
+attrs_testcase!(
+    test_attrs_field_on_setattr_frozen,
+    r#"
+from attr import define, field, setters
+
+@define
+class C:
+    x: int = field(on_setattr=setters.frozen)
+    y: int = field()
+
+c = C(1, 2)
+c.x = 5  # E: Cannot set field `x`
+c.y = 5  # OK
 "#,
 );

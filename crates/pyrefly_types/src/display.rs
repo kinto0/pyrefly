@@ -32,6 +32,11 @@ use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
 use crate::quantified::QuantifiedIdentity;
+use crate::shaped_array::ShapedArrayShape;
+use crate::shaped_array::ShapedArrayShapeArgStyle;
+use crate::shaped_array::ShapedArraySyntax;
+use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
 use crate::type_alias::TypeAliasData;
@@ -168,6 +173,9 @@ impl<'a> TypeDisplayContext<'a> {
 
     pub fn add(&mut self, t: &'a Type) {
         t.universe(&mut |t| {
+            if let Type::ShapedArray(shaped_array) = t {
+                self.add_qname(shaped_array.base_class.qname());
+            }
             if let Some(qname) = t.qname() {
                 self.add_qname(qname);
             }
@@ -340,6 +348,158 @@ impl<'a> TypeDisplayContext<'a> {
             self.fmt_targ(param, arg, output)?;
         }
         output.write_str("]")
+    }
+
+    fn fmt_shaped_array(
+        &self,
+        shaped_array: &ShapedArrayType,
+        output: &mut impl TypeOutput,
+    ) -> fmt::Result {
+        match shaped_array.syntax {
+            ShapedArraySyntax::Native => {
+                let (shape_idx, tuple_carrier) = match shaped_array.shape_arg_style {
+                    ShapedArrayShapeArgStyle::TypeVarTuple { index } => (index, false),
+                    ShapedArrayShapeArgStyle::TupleCarrier { index } => (index, true),
+                    ShapedArrayShapeArgStyle::Unknown => {
+                        output.write_qname(shaped_array.base_class.qname())?;
+                        if !shaped_array.is_shapeless() {
+                            output.write_str("[")?;
+                            output.write_str(&shaped_array.shape.to_string())?;
+                            output.write_str("]")?;
+                        }
+                        return Ok(());
+                    }
+                };
+                self.fmt_shaped_array_as_class(shaped_array, shape_idx, tuple_carrier, output)
+            }
+            ShapedArraySyntax::Jaxtyping => {
+                output.write_str("Shaped[")?;
+                output.write_qname(shaped_array.base_class.qname())?;
+                output.write_str(", \"")?;
+                output.write_str(&shaped_array.shape.fmt_jaxtyping())?;
+                output.write_str("\"]")
+            }
+        }
+    }
+
+    fn fmt_shaped_array_as_class(
+        &self,
+        shaped_array: &ShapedArrayType,
+        shape_idx: usize,
+        tuple_carrier: bool,
+        output: &mut impl TypeOutput,
+    ) -> fmt::Result {
+        let targs = shaped_array.base_class.targs();
+        let args = targs.as_slice();
+        args.get(shape_idx)
+            .expect("shape argument index should point to a class type argument");
+
+        output.write_qname(shaped_array.base_class.qname())?;
+        let display_count = targs.display_count().max(if shaped_array.is_shapeless() {
+            0
+        } else {
+            shape_idx + 1
+        });
+        if display_count == 0 {
+            return Ok(());
+        }
+
+        output.write_str("[")?;
+        for (i, (param, arg)) in targs.iter_paired().take(display_count).enumerate() {
+            if i > 0 {
+                output.write_str(", ")?;
+            }
+            if i == shape_idx {
+                if tuple_carrier {
+                    self.fmt_shape_as_tuple_carrier(shaped_array, output)?;
+                } else {
+                    self.fmt_shape_as_type_var_tuple(&shaped_array.shape, output)?;
+                }
+            } else {
+                self.fmt_targ(param, arg, output)?;
+            }
+        }
+        output.write_str("]")
+    }
+
+    fn fmt_shape_as_type_var_tuple(
+        &self,
+        shape: &ShapedArrayShape,
+        output: &mut impl TypeOutput,
+    ) -> fmt::Result {
+        match shape.as_tuple() {
+            Tuple::Concrete(dims) => {
+                if dims.is_empty() {
+                    output.write_str("()")
+                } else {
+                    self.fmt_type_sequence(dims.iter(), ", ", false, output)
+                }
+            }
+            Tuple::Unbounded(t) if t.is_any() => {
+                let unpacked_middle = Type::Unpack(Box::new(Type::any_tuple()));
+                self.fmt_helper_generic(&unpacked_middle, false, output)
+            }
+            Tuple::Unbounded(_) => {
+                unreachable!("shaped-array unbounded shapes must be tuple[Any, ...]")
+            }
+            Tuple::Unpacked(unpacked) => {
+                let (prefix, middle, suffix) = &**unpacked;
+                let unpacked_middle = Type::Unpack(Box::new(middle.clone()));
+                self.fmt_type_sequence(
+                    prefix
+                        .iter()
+                        .chain(std::iter::once(&unpacked_middle))
+                        .chain(suffix.iter()),
+                    ", ",
+                    false,
+                    output,
+                )
+            }
+        }
+    }
+
+    fn fmt_shape_as_tuple_carrier(
+        &self,
+        shaped_array: &ShapedArrayType,
+        output: &mut impl TypeOutput,
+    ) -> fmt::Result {
+        if shaped_array.is_shapeless() {
+            return self.fmt_helper_generic(&Type::any_tuple(), false, output);
+        }
+        match shaped_array.shape.as_tuple() {
+            Tuple::Concrete(dims) => {
+                output.write_str("(")?;
+                self.fmt_type_sequence(dims.iter(), ", ", false, output)?;
+                if dims.len() == 1 {
+                    output.write_str(",")?;
+                }
+                output.write_str(")")
+            }
+            Tuple::Unbounded(_) => {
+                unreachable!("shaped-array unbounded shapes must be tuple[Any, ...]")
+            }
+            Tuple::Unpacked(unpacked) => {
+                let (prefix, middle, suffix) = &**unpacked;
+                if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
+                    return self.fmt_helper_generic(middle, false, output);
+                }
+                output.write_str("(")?;
+                let unpacked_middle = Type::Unpack(Box::new(middle.clone()));
+                self.fmt_type_sequence(
+                    prefix
+                        .iter()
+                        .chain(std::iter::once(&unpacked_middle))
+                        .chain(suffix.iter()),
+                    ", ",
+                    false,
+                    output,
+                )?;
+                if prefix.is_empty() && suffix.is_empty() {
+                    output.write_str(",")?;
+                }
+                output.write_str(")")
+            }
+        }
     }
 
     pub(crate) fn fmt_qname(&self, qname: &QName, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -561,7 +721,7 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str("]")
                 }
             },
-            Type::ShapedArray(shaped_array) => output.write_str(&format!("{}", shaped_array)),
+            Type::ShapedArray(shaped_array) => self.fmt_shaped_array(shaped_array, output),
             Type::NNModule(module) => {
                 // Display as the class name (e.g., MaxPool2d)
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)

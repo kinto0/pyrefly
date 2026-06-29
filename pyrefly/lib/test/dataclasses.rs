@@ -1972,9 +1972,27 @@ class B:
     b: str = "default"
 
 @dataclass
-class C(A, B):
+class C(A, B):  # E: Dataclass field `a` without a default may not follow dataclass field with a default
     c: float = field(kw_only=True)  # OK - kw_only
     d: bool  # E: Dataclass field `d` without a default may not follow dataclass field with a default
+    "#,
+);
+
+testcase!(
+    test_field_ordering_inherited_conflict_not_repeated_on_subclass,
+    r#"
+from dataclasses import dataclass
+@dataclass
+class HasDefault:
+    a: int = 0
+
+@dataclass
+class Origin(HasDefault):
+    b: int  # E: Dataclass field `b` without a default may not follow dataclass field with a default
+
+@dataclass
+class Sub(Origin):
+    pass
     "#,
 );
 
@@ -2294,6 +2312,37 @@ class C:
 
 # Regardless of any errors, any descriptors assigned in the class body do have default values.
 c = C()
+    "#,
+);
+
+testcase!(
+    test_non_data_descriptor_returns_own_class,
+    r#"
+from dataclasses import dataclass
+from typing import assert_type
+
+# A __get__ returning the descriptor's own class (not literal Self) is sound.
+class Dev:
+    def __get__(self, obj, cls) -> "Dev": ...
+
+class Other: ...
+class Bad:
+    def __get__(self, obj, cls) -> Other: ...
+
+@dataclass
+class Base:
+    x: Dev = Dev()
+
+@dataclass
+class Sub(Base):
+    pass
+
+@dataclass
+class C:
+    y: Bad = Bad()  # E: Cannot set field `y` to non-data descriptor `Bad`
+
+assert_type(Base().x, Dev)
+assert_type(Sub().x, Dev)
     "#,
 );
 

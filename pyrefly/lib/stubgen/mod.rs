@@ -232,6 +232,11 @@ class BaseModel:
     }
 
     #[test]
+    fn test_stubgen_class_vars() {
+        assert_stubgen_snapshot("class_vars");
+    }
+
+    #[test]
     fn test_stubgen_typevar() {
         assert_stubgen_snapshot("typevar");
     }
@@ -249,6 +254,16 @@ class BaseModel:
     #[test]
     fn test_stubgen_dunder_all() {
         assert_stubgen_snapshot("dunder_all");
+    }
+
+    #[test]
+    fn test_stubgen_dunder_all_reexport() {
+        assert_stubgen_snapshot("dunder_all_reexport");
+    }
+
+    #[test]
+    fn test_stubgen_async_generator() {
+        assert_stubgen_snapshot("async_generator");
     }
 
     #[test]

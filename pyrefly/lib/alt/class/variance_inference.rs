@@ -16,7 +16,6 @@ use pyrefly_derive::VisitMut;
 use pyrefly_python::dunder;
 use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::heap::TypeHeap;
-use pyrefly_types::shaped_array::ShapedArrayShape;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
@@ -203,13 +202,16 @@ fn on_type(
             let mut visit_dim = |ty: &Type| {
                 on_type(Variance::Invariant, inj, ty, on_edge, on_var);
             };
-            match &tensor.shape {
-                ShapedArrayShape::Concrete(dims) => {
+            match tensor.shape.as_tuple() {
+                Tuple::Concrete(dims) => {
                     for dim in dims {
                         visit_dim(dim);
                     }
                 }
-                ShapedArrayShape::Unpacked(f) => {
+                Tuple::Unbounded(middle) => {
+                    visit_dim(middle);
+                }
+                Tuple::Unpacked(f) => {
                     let (prefix, middle, suffix) = &**f;
                     for dim in prefix {
                         visit_dim(dim);

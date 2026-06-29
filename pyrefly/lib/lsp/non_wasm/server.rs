@@ -52,6 +52,7 @@ use lsp_types::ConfigurationItem;
 use lsp_types::ConfigurationParams;
 use lsp_types::DeclarationCapability;
 use lsp_types::Diagnostic;
+use lsp_types::DiagnosticMessage;
 use lsp_types::DiagnosticSeverity;
 use lsp_types::DiagnosticTag;
 use lsp_types::DidChangeConfigurationParams;
@@ -62,6 +63,7 @@ use lsp_types::DidChangeWatchedFilesRegistrationOptions;
 use lsp_types::DidChangeWorkspaceFoldersParams;
 use lsp_types::DocumentDiagnosticParams;
 use lsp_types::DocumentDiagnosticReport;
+use lsp_types::DocumentDiagnosticReportKind;
 use lsp_types::DocumentHighlight;
 use lsp_types::DocumentHighlightKind;
 use lsp_types::DocumentHighlightParams;
@@ -87,9 +89,12 @@ use lsp_types::InlayHintLabel;
 use lsp_types::InlayHintLabelPart;
 use lsp_types::InlayHintParams;
 use lsp_types::Location;
-use lsp_types::NotebookCellSelector;
+use lsp_types::MarkupContent;
+use lsp_types::MarkupKind;
+use lsp_types::NotebookCellLanguage;
+use lsp_types::NotebookDocumentFilterWithCells;
+use lsp_types::NotebookDocumentSyncFilter;
 use lsp_types::NotebookDocumentSyncOptions;
-use lsp_types::NotebookSelector;
 use lsp_types::NumberOrString;
 use lsp_types::OneOf;
 use lsp_types::Position;
@@ -108,6 +113,7 @@ use lsp_types::RelativePattern;
 use lsp_types::RenameFilesParams;
 use lsp_types::RenameOptions;
 use lsp_types::RenameParams;
+use lsp_types::SaveOptions;
 use lsp_types::SemanticTokens;
 use lsp_types::SemanticTokensFullOptions;
 use lsp_types::SemanticTokensOptions;
@@ -128,6 +134,8 @@ use lsp_types::TextDocumentIdentifier;
 use lsp_types::TextDocumentPositionParams;
 use lsp_types::TextDocumentSyncCapability;
 use lsp_types::TextDocumentSyncKind;
+use lsp_types::TextDocumentSyncOptions;
+use lsp_types::TextDocumentSyncSaveOptions;
 use lsp_types::TextEdit;
 use lsp_types::TypeDefinitionProviderCapability;
 use lsp_types::TypeHierarchyItem;
@@ -288,7 +296,6 @@ use crate::lsp::non_wasm::module_helpers::module_info_to_uri;
 use crate::lsp::non_wasm::move_symbol_new_file::move_symbol_to_new_file_code_action;
 use crate::lsp::non_wasm::mru::CompletionMru;
 use crate::lsp::non_wasm::protocol::Message;
-use crate::lsp::non_wasm::protocol::Notification;
 use crate::lsp::non_wasm::protocol::Request;
 use crate::lsp::non_wasm::protocol::Response;
 use crate::lsp::non_wasm::queue::HeavyTaskQueue;
@@ -520,7 +527,7 @@ impl ServerConnection {
     fn publish_diagnostics_for_uri(
         &self,
         uri: Url,
-        diags: Vec<Diagnostic>,
+        mut diags: Vec<Diagnostic>,
         version: Option<i32>,
         source: DiagnosticSource,
         diagnostic_markdown_support: bool,
@@ -531,21 +538,13 @@ impl ServerConnection {
             info!("Published {} diagnostics for {}", diags.len(), uri);
         }
         if diagnostic_markdown_support {
-            let mut params =
-                serde_json::to_value(PublishDiagnosticsParams::new(uri, diags, version)).unwrap();
-            apply_diagnostic_markup(&mut params);
-            self.send(Message::Notification(Notification {
-                method: PublishDiagnostics::METHOD.to_owned(),
-                params,
-                activity_key: None,
-            }));
-        } else {
-            self.send(Message::Notification(
-                new_notification::<PublishDiagnostics>(PublishDiagnosticsParams::new(
-                    uri, diags, version,
-                )),
-            ));
+            diags.iter_mut().for_each(diagnostic_message_to_markdown);
         }
+        self.send(Message::Notification(
+            new_notification::<PublishDiagnostics>(PublishDiagnosticsParams::new(
+                uri, diags, version,
+            )),
+        ));
     }
 }
 
@@ -704,35 +703,37 @@ fn diagnostic_markdown_support(params: &Value) -> bool {
         .unwrap_or(false)
 }
 
-fn apply_diagnostic_markup(value: &mut Value) {
-    fn wrap_messages(diagnostics: &mut [Value]) {
-        for diagnostic in diagnostics {
-            let message = match diagnostic.get("message").and_then(|value| value.as_str()) {
-                Some(message) => format_diagnostic_message_for_markdown(message),
-                None => continue,
-            };
-            if let Some(obj) = diagnostic.as_object_mut() {
-                obj.insert(
-                    "message".to_owned(),
-                    serde_json::json!({"kind": "markdown", "value": message}),
-                );
-            }
+/// Rewrite a diagnostic's plain-text message into a markdown
+/// message for clients that advertise `markupMessageSupport` (LSP 3.18)
+fn diagnostic_message_to_markdown(diagnostic: &mut Diagnostic) {
+    if let DiagnosticMessage::String(message) = &diagnostic.message {
+        let value = format_diagnostic_message_for_markdown(message);
+        diagnostic.message = MarkupContent {
+            kind: MarkupKind::Markdown,
+            value,
         }
+        .into();
+    }
+}
+
+/// Apply `diagnostic_message_to_markdown` to every diagnostic in a document
+/// diagnostic report, including those reported for related documents.
+fn apply_markdown_to_document_report(report: &mut DocumentDiagnosticReport) {
+    fn wrap_full(report: &mut FullDocumentDiagnosticReport) {
+        report
+            .items
+            .iter_mut()
+            .for_each(diagnostic_message_to_markdown);
     }
 
-    if let Some(diagnostics) = value.get_mut("diagnostics").and_then(|v| v.as_array_mut()) {
-        wrap_messages(diagnostics);
-    }
-
-    if let Some(items) = value.get_mut("items").and_then(|v| v.as_array_mut()) {
-        wrap_messages(items);
-    }
-
-    if let Some(related_documents) = value.get_mut("relatedDocuments")
-        && let Some(related_documents) = related_documents.as_object_mut()
-    {
-        for report in related_documents.values_mut() {
-            apply_diagnostic_markup(report);
+    if let DocumentDiagnosticReport::Full(report) = report {
+        wrap_full(&mut report.full_document_diagnostic_report);
+        if let Some(related_documents) = &mut report.related_documents {
+            for related in related_documents.values_mut() {
+                if let DocumentDiagnosticReportKind::Full(report) = related {
+                    wrap_full(report);
+                }
+            }
         }
     }
 }
@@ -1251,8 +1252,15 @@ pub fn capabilities(
 
     let base = ServerCapabilities {
         position_encoding: Some(PositionEncodingKind::UTF16),
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(
-            TextDocumentSyncKind::INCREMENTAL,
+        text_document_sync: Some(TextDocumentSyncCapability::Options(
+            TextDocumentSyncOptions {
+                open_close: Some(true),
+                change: Some(TextDocumentSyncKind::INCREMENTAL),
+                save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                    include_text: Some(false),
+                })),
+                ..Default::default()
+            },
         )),
         definition_provider: Some(OneOf::Left(true)),
         declaration_provider: Some(DeclarationCapability::Simple(true)),
@@ -1351,15 +1359,18 @@ pub fn capabilities(
                 }),
                 ..Default::default()
             }),
+            text_document_content: None,
         }),
         notebook_document_sync: if sync_notebooks {
             Some(OneOf::Left(NotebookDocumentSyncOptions {
-                notebook_selector: vec![NotebookSelector::ByCells {
-                    notebook: None,
-                    cells: vec![NotebookCellSelector {
-                        language: "python".into(),
-                    }],
-                }],
+                notebook_selector: vec![NotebookDocumentSyncFilter::WithCells(
+                    NotebookDocumentFilterWithCells {
+                        notebook: None,
+                        cells: vec![NotebookCellLanguage {
+                            language: "python".into(),
+                        }],
+                    },
+                )],
                 save: None,
             }))
         } else {
@@ -2307,15 +2318,13 @@ impl Server {
                             params, &x.id,
                         )
                     {
-                        let mut result =
-                            serde_json::to_value(self.document_diagnostics(&transaction, params))
-                                .unwrap();
+                        let mut report = self.document_diagnostics(&transaction, params);
                         if self.diagnostic_markdown_support {
-                            apply_diagnostic_markup(&mut result);
+                            apply_markdown_to_document_report(&mut report);
                         }
                         self.send_response(Response {
                             id: x.id,
-                            result: Some(result),
+                            result: Some(serde_json::to_value(report).unwrap()),
                             error: None,
                         });
                     }
@@ -3001,11 +3010,20 @@ impl Server {
                 diags.insert(handle_path_buf, Vec::new());
             }
         }
-        for e in transaction
+        let (normal_errors, baseline_errors) = transaction
             .get_errors(handles)
-            .collect_display_errors_with_unused_ignores()
-        {
+            .collect_lsp_errors_with_baselines();
+        for e in normal_errors {
             if let Some((path, diag)) = self.get_diag_if_shown(&e, &open_files, None) {
+                diags.entry(path.to_owned()).or_default().push(diag);
+            }
+        }
+        for e in baseline_errors {
+            // Errors in open files that match a baseline file are downgraded to HINT.
+            if let Some((path, mut diag)) = self.get_diag_if_shown(&e, &open_files, None) {
+                if to_real_path(e.path()).is_some_and(|p| open_files.contains_key(&p)) {
+                    diag.severity = Some(DiagnosticSeverity::HINT);
+                }
                 diags.entry(path.to_owned()).or_default().push(diag);
             }
         }
@@ -5311,7 +5329,9 @@ impl Server {
                     range: lsp_range,
                     severity: Some(DiagnosticSeverity::HINT),
                     source: Some("Pyrefly".to_owned()),
-                    message: "This code is unreachable for the current configuration".to_owned(),
+                    message: "This code is unreachable for the current configuration"
+                        .to_owned()
+                        .into(),
                     code: Some(NumberOrString::String("unreachable-code".to_owned())),
                     code_description: None,
                     related_information: None,
@@ -5338,7 +5358,7 @@ impl Server {
                     range: lsp_range,
                     severity: Some(DiagnosticSeverity::HINT),
                     source: Some("Pyrefly".to_owned()),
-                    message: format!("Parameter `{}` is unused", unused.name.as_str()),
+                    message: format!("Parameter `{}` is unused", unused.name.as_str()).into(),
                     code: Some(NumberOrString::String("unused-parameter".to_owned())),
                     code_description: None,
                     related_information: None,
@@ -5362,7 +5382,7 @@ impl Server {
                     range: lsp_range,
                     severity: Some(DiagnosticSeverity::HINT),
                     source: Some("Pyrefly".to_owned()),
-                    message: format!("Import `{}` is unused", unused.name.as_str()),
+                    message: format!("Import `{}` is unused", unused.name.as_str()).into(),
                     code: Some(NumberOrString::String("unused-import".to_owned())),
                     code_description: None,
                     related_information: None,
@@ -5389,7 +5409,7 @@ impl Server {
                     range: lsp_range,
                     severity: Some(DiagnosticSeverity::HINT),
                     source: Some("Pyrefly".to_owned()),
-                    message: format!("Variable `{}` is unused", unused.name.as_str()),
+                    message: format!("Variable `{}` is unused", unused.name.as_str()).into(),
                     code: Some(NumberOrString::String("unused-variable".to_owned())),
                     code_description: None,
                     related_information: None,
@@ -5503,11 +5523,20 @@ impl Server {
         let handle = make_open_handle(&self.state, &path);
         let mut items = Vec::new();
         let open_files = &self.open_files.read();
-        for e in transaction
+        let (normal_errors, baseline_errors) = transaction
             .get_errors(once(&handle))
-            .collect_display_errors_with_unused_ignores()
-        {
+            .collect_lsp_errors_with_baselines();
+        for e in normal_errors {
             if let Some((_, diag)) = self.get_diag_if_shown(&e, open_files, cell_uri) {
+                items.push(diag);
+            }
+        }
+        for e in baseline_errors {
+            // Errors in open files that match a baseline file are downgraded to HINT.
+            if let Some((_, mut diag)) = self.get_diag_if_shown(&e, open_files, cell_uri) {
+                if to_real_path(e.path()).is_some_and(|p| open_files.contains_key(&p)) {
+                    diag.severity = Some(DiagnosticSeverity::HINT);
+                }
                 items.push(diag);
             }
         }

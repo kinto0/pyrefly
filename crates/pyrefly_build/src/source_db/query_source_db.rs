@@ -897,7 +897,7 @@ mod tests {
                     None,
                 ),
                 Target::from_string("//zzz/torch-stubs:torch-stubs".to_owned()) => TargetManifest::lib(
-                    &[("torch-stubs", &["pyrefly/tensor-shapes/torch-stubs/__init__.pyi"])],
+                    &[("torch-stubs", &["pyrefly/tensor-shapes/pyrefly-torch-stubs/torch-stubs/__init__.pyi"])],
                     &["//aaa/torch:torch"],
                     "pyrefly/tensor-shapes/BUCK",
                     &[],
@@ -916,9 +916,9 @@ mod tests {
                 Some(&root.join("app/model.py")),
                 None
             ),
-            Some(ModulePath::filesystem(
-                root.join("pyrefly/tensor-shapes/torch-stubs/__init__.pyi")
-            ))
+            Some(ModulePath::filesystem(root.join(
+                "pyrefly/tensor-shapes/pyrefly-torch-stubs/torch-stubs/__init__.pyi"
+            )))
         );
     }
 

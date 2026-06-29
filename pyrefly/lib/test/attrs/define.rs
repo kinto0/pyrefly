@@ -375,6 +375,22 @@ C(1)   # E: Expected 0 positional arguments
 "#,
 );
 
+// With `init=False`, attrs still synthesizes the field initializer as `__attrs_init__`, so a
+// hand-written `__init__` can delegate to it.
+attrs_testcase!(
+    test_attrs_define_init_false_attrs_init,
+    r#"
+from typing import reveal_type
+from attrs import define
+
+@define(init=False)
+class C:
+    x: int
+
+reveal_type(C.__attrs_init__)  # E: revealed type: (self: C, x: int) -> None
+"#,
+);
+
 // Explicit `frozen=True` keyword on `@define`.
 attrs_testcase!(
     test_attrs_define_frozen_kwarg,
@@ -793,5 +809,554 @@ import attr
 @attr.s(cmp=None, eq=True)
 class C:
     x = attr.ib()
+"#,
+);
+
+// `cmp` is the legacy alias setting both `eq` and `order`: `cmp=False` disables ordering even
+// though classic `@attr.s` enables it by default.
+attrs_testcase!(
+    test_attrs_cmp_false_disables_order,
+    r#"
+import attr
+
+@attr.s(auto_attribs=True, cmp=False)
+class C:
+    x: int
+
+C(1) < C(2)  # E: `<` is not supported
+"#,
+);
+
+// `cmp=True` is the same alias the other way: it enables both `eq` and `order`.
+attrs_testcase!(
+    test_attrs_cmp_true_enables_order,
+    r#"
+import attr
+
+@attr.s(auto_attribs=True, cmp=True)
+class C:
+    x: int
+
+C(1) < C(2)  # OK: cmp=True enables ordering
+"#,
+);
+
+// An explicit `cmp=None` is treated like an omitted argument (not as `cmp=False`), so the
+// per-decorator default applies — classic `@attr.s` still enables ordering.
+attrs_testcase!(
+    test_attrs_cmp_none_is_omitted,
+    r#"
+import attr
+
+@attr.s(auto_attribs=True, cmp=None)
+class C:
+    x: int
+
+C(1) < C(2)  # OK: cmp=None falls back to the order default (True for classic `@attr.s`)
+"#,
+);
+
+// ATTR.FIELDS: the result stays `Any` (it exposes fields by name, which a tuple can't model); we
+// only reject non-attrs class arguments.
+
+// `Any` result supports both indexing and by-name access.
+attrs_testcase!(
+    test_attrs_fields_returns_any,
+    r#"
+from typing import reveal_type
+import attr
+
+@attr.define
+class C:
+    x: int
+    y: str
+
+reveal_type(attr.fields(C))     # E: revealed type: Any
+attr.fields(C).x
+attr.fields(C)[0]
+"#,
+);
+
+attrs_testcase!(
+    test_attrs_fields_non_attrs_class,
+    r#"
+import attr
+
+class NotAttrs:
+    x: int
+
+attr.fields(NotAttrs)  # E: is not an attrs class
+"#,
+);
+
+// A dataclass has dataclass metadata of a non-attrs `kind` (distinct path from the plain class).
+attrs_testcase!(
+    test_attrs_fields_dataclass_rejected,
+    r#"
+import attr
+from dataclasses import dataclass
+
+@dataclass
+class D:
+    x: int
+
+attr.fields(D)  # E: is not an attrs class
+"#,
+);
+
+// `type[AttrsInstance]` (the canonical "any attrs class" annotation) must be accepted.
+attrs_testcase!(
+    test_attrs_fields_attrs_instance_param,
+    r#"
+import attr
+from attr import AttrsInstance
+
+def f(cls: type[AttrsInstance]) -> None:
+    attr.fields(cls)
+"#,
+);
+
+// `attrs.has` narrows to `type[AttrsInstance]` via `TypeGuard`.
+attrs_testcase!(
+    test_attrs_fields_has_narrowing,
+    r#"
+import attrs
+
+def f(cls: type) -> None:
+    if not attrs.has(cls):
+        return
+    attrs.fields(cls)
+"#,
+);
+
+attrs_testcase!(
+    test_attrs_fields_type_value,
+    r#"
+import attr
+
+@attr.define
+class C:
+    x: int
+
+def f(cls: type[C]) -> None:
+    attr.fields(cls)
+"#,
+);
+
+// ATTR.FIELDS_DICT: returns an ordered name -> `Attribute[T]` mapping, modeled as an anonymous
+// TypedDict so each field recovers its precise `Attribute[t]` on subscript.
+
+attrs_testcase!(
+    test_attrs_fields_dict_returns_dict,
+    r#"
+from typing import assert_type
+import attr
+
+@attr.define
+class C:
+    x: int
+    y: str
+
+d = attr.fields_dict(C)
+assert_type(d["x"], attr.Attribute[int])
+assert_type(d["y"], attr.Attribute[str])
+"#,
+);
+
+attrs_testcase!(
+    test_attrs_fields_dict_non_attrs_class,
+    r#"
+import attr
+
+class NotAttrs:
+    x: int
+
+attr.fields_dict(NotAttrs)  # E: `fields_dict()` is not an attrs class
+"#,
+);
+
+// Inherited fields appear, and a generic class substitutes its type argument.
+attrs_testcase!(
+    test_attrs_fields_dict_inheritance_generic,
+    r#"
+from typing import assert_type
+import attr
+
+@attr.define
+class Base[T]:
+    x: T
+
+@attr.define
+class Sub(Base[int]):
+    y: str
+
+d = attr.fields_dict(Sub)
+assert_type(d["x"], attr.Attribute[int])
+assert_type(d["y"], attr.Attribute[str])
+"#,
+);
+
+// Recognition keys off the function's origin, not the import style: a `from attr import` works.
+attrs_testcase!(
+    test_attrs_fields_dict_from_import,
+    r#"
+from attr import define, fields_dict
+from typing import assert_type
+import attr
+
+@define
+class C:
+    x: int
+
+assert_type(fields_dict(C)["x"], attr.Attribute[int])
+"#,
+);
+
+// ON_SETATTR
+//
+// `on_setattr=setters.frozen` makes attributes immutable (attrs raises FrozenAttributeError) without
+// the other effects of a fully `frozen` class (no __hash__ change, no frozen-inheritance rule).
+
+attrs_testcase!(
+    test_attrs_on_setattr_frozen_class_level,
+    r#"
+from attr import define, setters
+
+@define(on_setattr=setters.frozen)
+class C:
+    x: int
+    y: str
+
+c = C(1, "a")
+_ = c.x
+c.x = 2    # E: Cannot set field `x`
+c.y = "b"  # E: Cannot set field `y`
+"#,
+);
+
+attrs_testcase!(
+    test_attrs_on_setattr_no_op_writable,
+    r#"
+from attr import define, setters
+
+@define(on_setattr=setters.NO_OP)
+class C:
+    x: int
+
+C(1).x = 2  # OK
+"#,
+);
+
+// A per-field `on_setattr` overrides the class-level frozen-all default, so a field declared with
+// `setters.NO_OP` stays writable.
+attrs_testcase!(
+    test_attrs_field_on_setattr_overrides_class_frozen,
+    r#"
+from attr import define, field, setters
+
+@define(on_setattr=setters.frozen)
+class C:
+    x: int
+    y: int = field(on_setattr=setters.NO_OP)
+
+c = C(1, 2)
+c.x = 5  # E: Cannot set field `x`
+c.y = 5  # OK
+"#,
+);
+
+// `setters.frozen` inside a list of hooks still freezes the field (attrs runs them as a pipe).
+attrs_testcase!(
+    test_attrs_field_on_setattr_frozen_in_list,
+    r#"
+from attr import define, field, setters
+
+@define
+class C:
+    x: int = field(on_setattr=[setters.validate, setters.frozen])
+    y: int = field(on_setattr=[setters.validate])
+
+c = C(1, 2)
+c.x = 5  # E: Cannot set field `x`
+c.y = 5  # OK: no `frozen` hook
+"#,
+);
+
+// `setters.frozen` inside a `setters.pipe(...)` composition also freezes the field.
+attrs_testcase!(
+    test_attrs_field_on_setattr_frozen_in_pipe,
+    r#"
+from attr import define, field, setters
+
+@define
+class C:
+    x: int = field(on_setattr=setters.pipe(setters.validate, setters.frozen))
+
+C(1).x = 5  # E: Cannot set field `x`
+"#,
+);
+
+// `on_setattr=setters.frozen` is not full frozen-ness: a frozen-all subclass of a non-frozen base
+// must NOT raise the frozen/non-frozen inheritance error, but its own fields are still read-only.
+attrs_testcase!(
+    test_attrs_on_setattr_frozen_not_inheritance_error,
+    r#"
+from attr import define, setters
+
+@define
+class Base:
+    x: int
+
+@define(on_setattr=setters.frozen)
+class C(Base):
+    y: int
+
+c = C(1, 2)
+c.y = 3  # E: Cannot set field `y`
+"#,
+);
+
+// EVOLVE
+//
+// `attr.evolve`/`attrs.evolve` copy an instance with changes; the kwargs are validated against
+// the class fields like `dataclasses.replace`, and all fields are optional.
+
+attrs_testcase!(
+    test_attrs_evolve_basic,
+    r#"
+from typing import assert_type
+import attrs
+
+@attrs.frozen
+class Point:
+    x: int
+    y: int
+
+p = Point(1, 2)
+assert_type(attrs.evolve(p, x=5), Point)
+attrs.evolve(p)
+attrs.evolve(p, x="hello")     # E: not assignable to parameter `x`
+attrs.evolve(p, z=3)           # E: Unexpected keyword argument `z`
+attrs.evolve(p, nonexistent=4)  # E: Unexpected keyword argument `nonexistent`
+"#,
+);
+
+// ASSOC
+//
+// The deprecated `attr.assoc` keys on actual attribute names (no init-alias renaming) and includes
+// `init=False` fields, unlike `evolve`'s constructor-alias, init-only semantics.
+
+attrs_testcase!(
+    test_attrs_assoc_basic,
+    r#"
+from typing import assert_type
+import attr
+
+@attr.define
+class C:
+    x: int
+    y: int
+
+c = C(1, 2)
+assert_type(attr.assoc(c, x=5), C)
+attr.assoc(c)
+attr.assoc(c, x="bad")    # E: not assignable to parameter `x`
+attr.assoc(c, z=3)        # E: Unexpected keyword argument `z`
+"#,
+);
+
+// `assoc` keys on the attribute name `_x`, whereas `evolve` strips it to the constructor alias `x`.
+attrs_testcase!(
+    test_attrs_assoc_private_attribute,
+    r#"
+import attr
+
+@attr.define
+class C:
+    _x: int
+
+c = C(1)
+attr.assoc(c, _x=2)
+attr.assoc(c, x=2)        # E: Unexpected keyword argument `x`
+attr.evolve(c, x=2)
+attr.evolve(c, _x=2)      # E: Unexpected keyword argument `_x`
+"#,
+);
+
+// `init=False` fields are not constructor params, so `evolve` rejects them while `assoc` accepts them.
+attrs_testcase!(
+    test_attrs_assoc_init_false_field,
+    r#"
+import attr
+
+@attr.define
+class C:
+    x: int
+    y: int = attr.field(init=False, default=0)
+
+c = C(1)
+attr.assoc(c, y=5)
+attr.evolve(c, y=5)       # E: Unexpected keyword argument `y`
+"#,
+);
+
+// `attr.evolve` on a non-attrs instance is rejected (runtime `NotAnAttrsClassError`), unlike
+// `dataclasses.replace` whose stub permits any value.
+attrs_testcase!(
+    test_attrs_evolve_non_attrs_rejected,
+    r#"
+import attr
+
+class NotAttrs:
+    x: int
+
+attr.evolve(NotAttrs())  # E: is not an attrs class
+"#,
+);
+
+// A plain stdlib `@dataclass` instance is also not an attrs class: `attr.evolve` rejects it
+// even though `dataclasses.replace` would accept it.
+attrs_testcase!(
+    test_attrs_evolve_plain_dataclass_rejected,
+    r#"
+import attr
+from dataclasses import dataclass
+
+@dataclass
+class D:
+    x: int
+
+attr.evolve(D(1))  # E: is not an attrs class
+"#,
+);
+
+// The attrs-only restriction must not leak into `dataclasses.replace`, which still accepts a
+// plain `@dataclass`; and `attr.evolve` still works on a real attrs class.
+attrs_testcase!(
+    test_attrs_evolve_vs_replace_dataclass,
+    r#"
+import attr
+from dataclasses import dataclass, replace
+
+@dataclass
+class D:
+    x: int
+
+@attr.define
+class A:
+    x: int
+
+attr.evolve(A(1), x=2)   # OK: attrs class
+replace(D(1), x=2)       # OK: `replace` accepts a plain dataclass
+attr.evolve(A(1), y=2)   # E: Unexpected keyword argument `y`
+"#,
+);
+
+// In a union, `attr.evolve` flags the non-attrs member while still checking the attrs member.
+attrs_testcase!(
+    test_attrs_evolve_union_member_rejected,
+    r#"
+import attr
+from dataclasses import dataclass
+
+@attr.define
+class A:
+    x: int
+
+@dataclass
+class D:
+    x: int
+
+def f(o: A | D) -> None:
+    attr.evolve(o, x=2)  # E: is not an attrs class
+"#,
+);
+
+// Best-effort: we only flag concrete non-attrs `ClassType`s, so a non-class instance like a
+// TypedDict is left to the (untyped) stub rather than rejected here.
+attrs_testcase!(
+    test_attrs_evolve_non_class_instance_not_flagged,
+    r#"
+import attr
+from typing import TypedDict
+
+class TD(TypedDict):
+    x: int
+
+def f(d: TD) -> None:
+    attr.evolve(d)
+"#,
+);
+
+// `Any` and type variables could resolve to an attrs class at runtime, so `attr.evolve` must
+// not reject them.
+attrs_testcase!(
+    test_attrs_evolve_gradual_not_rejected,
+    r#"
+import attr
+from typing import Any
+
+def f(x: Any) -> None:
+    attr.evolve(x)  # OK: `Any` could be an attrs instance
+
+def g[T](y: T) -> None:
+    attr.evolve(y)  # OK: a type variable could be an attrs instance
+"#,
+);
+
+// Inherited fields can be evolved; unknown ones still error.
+attrs_testcase!(
+    test_attrs_evolve_inheritance,
+    r#"
+import attrs
+
+@attrs.define
+class Base:
+    x: int
+
+@attrs.define
+class Sub(Base):
+    y: str
+
+s = Sub(1, "a")
+attrs.evolve(s, x=2, y="b")
+attrs.evolve(s, z=3)  # E: Unexpected keyword argument `z`
+"#,
+);
+
+// Private fields are matched by their stripped init name (`_x` -> `x`).
+attrs_testcase!(
+    test_attrs_evolve_private_field,
+    r#"
+import attrs
+
+@attrs.define
+class C:
+    _x: int
+
+c = C(1)
+attrs.evolve(c, x=2)
+attrs.evolve(c, _x=2)  # E: Unexpected keyword argument `_x`
+"#,
+);
+
+// A dunder-leading field is name-mangled with its *defining* class, so an inherited `Base.__y` is
+// evolved as `Base__y` (not `Sub__y`) on a subclass instance — matching attrs at runtime.
+attrs_testcase!(
+    test_attrs_evolve_inherited_mangled_private_field,
+    r#"
+import attrs
+
+@attrs.define
+class Base:
+    __y: int
+
+@attrs.define
+class Sub(Base):
+    __z: int
+
+s = Sub(1, 2)
+attrs.evolve(s, Base__y=10, Sub__z=20)
+attrs.evolve(s, Sub__y=10)  # E: Unexpected keyword argument `Sub__y`
 "#,
 );

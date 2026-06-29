@@ -38,6 +38,7 @@ use starlark_map::small_set::SmallSet;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
+use crate::alt::class::attrs::is_attrs_setters_frozen;
 use crate::alt::class::django::is_django_choices_subclass;
 use crate::alt::solve::TypeFormContext;
 use crate::alt::types::abstract_class::AbstractClassMembers;
@@ -128,10 +129,10 @@ impl BaseClassParseResult {
 
 /// The dataclass configuration derived from a `@dataclass_transform` decorator or an inherited
 /// transform base.
-struct TransformDataclass {
+pub(crate) struct TransformDataclass {
     keywords: DataclassKeywords,
     /// Callees recognized as field specifiers (PEP 681), e.g. `attrs.field`.
-    field_specifiers: Vec<CalleeKind>,
+    pub(crate) field_specifiers: Vec<CalleeKind>,
     /// attrs' `hash=`/`unsafe_hash=` argument; `None` for non-attrs classes or when unset.
     attrs_hash: Option<bool>,
 }
@@ -552,14 +553,24 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let BindingShapedArrayMetadata { shape_name, range } = metadata?;
         let tparams = self.get_class_tparams(cls);
         match tparams.iter().find(|param| param.name() == shape_name) {
-            Some(param) if param.kind == QuantifiedKind::TypeVarTuple => Some(param.clone()),
+            // A shape parameter may be either a `TypeVarTuple` (variadic shape,
+            // e.g. `Array[*Shape]`) or a regular `TypeVar` that carries the shape
+            // as a single tuple type (e.g. NumPy's `ndarray[Shape, DType]`).
+            Some(param)
+                if matches!(
+                    param.kind,
+                    QuantifiedKind::TypeVarTuple | QuantifiedKind::TypeVar
+                ) =>
+            {
+                Some(param.clone())
+            }
             Some(param) => {
                 self.error(
                     errors,
                     *range,
                     ErrorKind::InvalidAnnotation,
                     format!(
-                        "Shape parameter `{}` must be a `TypeVarTuple`, got `{}`",
+                        "Shape parameter `{}` must be a `TypeVar` or `TypeVarTuple`, got `{}`",
                         shape_name, param.kind
                     ),
                 );
@@ -980,39 +991,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         dataclass_transform_metadata
     }
 
-    /// The default `auto_attribs` for an attrs decorator that doesn't set it, based on the decorator's name:
-    /// - `attr.s`/`attrs`/`attributes` -> `False`
-    /// - `@attr.dataclass` -> `True`.
-    /// - `define`/`frozen`/`mutable` -> `None`
-    ///   The behavior for None is: try `True` and falls back
-    ///   to `False` when a field is assigned `attr.ib()`/`field()` with no annotation.
-    fn attrs_default_auto_attribs(
-        &self,
-        cls: &Class,
-        decorator_range: TextRange,
-        order_default: bool,
-    ) -> bool {
-        let Some(idx) = self
-            .bindings()
-            .key_to_idx_hashed_opt(Hashed::new(&KeyDecorator(decorator_range)))
-        else {
-            // Can't recover the decorator name; fall back to the transform default.
-            return !order_default;
-        };
-        let binding = self.bindings().get::<KeyDecorator>(idx);
-        match binding.trailing_name.as_ref().map(Name::as_str) {
-            Some("s" | "attrs" | "attributes") => false,
-            Some("dataclass") => true,
-            Some("define" | "mutable" | "frozen") => !self.get_class_fields(cls).is_some_and(|f| {
-                f.class_body_fields()
-                    .any(|name| f.is_attrs_field_specifier(name) && !f.is_field_annotated(name))
-            }),
-            // Unknown decorator: attrs sets `order_default` only on its classic
-            // decorators, so it stands in for "classic" here.
-            _ => !order_default,
-        }
-    }
-
     fn dataclass_from_dataclass_transform(
         &self,
         cls: &Class,
@@ -1036,12 +1014,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if let Some(defaults) = dataclass_defaults_from_base_class {
             // This class inherits from a dataclass_transform-ed base class, so its keywords are
             // interpreted as dataclass keywords.
-            let map = keywords
-                .iter()
-                .map(|(name, annot)| (name.clone(), annot.get_type().clone()))
-                .collect::<OrderedMap<_, _>>();
-            let mut kws =
-                DataclassKeywords::from_type_map(&TypeMap(map), &defaults, strict_default);
+            let map = TypeMap(
+                keywords
+                    .iter()
+                    .map(|(name, annot)| (name.clone(), annot.get_type().clone()))
+                    .collect::<OrderedMap<_, _>>(),
+            );
+            let mut kws = DataclassKeywords::from_type_map(&map, &defaults, strict_default);
 
             // Inject pydantic model configuration from ConfigDict.
             // This path is for pydantic models (BaseModel, etc.), not pydantic dataclasses.
@@ -1057,6 +1036,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
             }
 
+            kws.attrs_setattr_frozen = map
+                .0
+                .get(&DataclassFieldKeywords::ON_SETATTR)
+                .is_some_and(is_attrs_setters_frozen);
             dataclass_from_dataclass_transform = Some(TransformDataclass {
                 keywords: kws,
                 field_specifiers: defaults.field_specifiers,
@@ -1094,6 +1077,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         defaults.order_default,
                     ));
                 }
+                kws.attrs_setattr_frozen = call
+                    .keywords
+                    .0
+                    .get(&DataclassFieldKeywords::ON_SETATTR)
+                    .is_some_and(is_attrs_setters_frozen);
                 let attrs_hash =
                     if Self::field_specifiers_reference_attrs(&defaults.field_specifiers) {
                         self.validate_attrs_eq_order_cmp(&call.keywords, *decorator_range, errors);
@@ -1109,30 +1097,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
         dataclass_from_dataclass_transform
-    }
-
-    fn field_specifiers_reference_attrs(field_specifiers: &[CalleeKind]) -> bool {
-        field_specifiers.iter().any(|callee| {
-            matches!(callee,
-                CalleeKind::Function(FunctionKind::Def(id))
-                    if id.module.name() == ModuleName::attr()
-                        || id.module.name() == ModuleName::attrs()
-            )
-        })
-    }
-
-    fn is_attrs_class(
-        &self,
-        dataclass_from_dataclass_transform: &Option<TransformDataclass>,
-        bases_with_metadata: &[(Class, Arc<ClassMetadata>)],
-    ) -> bool {
-        let has_attrs_field_specifiers = dataclass_from_dataclass_transform
-            .as_ref()
-            .is_some_and(|t| Self::field_specifiers_reference_attrs(&t.field_specifiers));
-        let has_attrs_base = bases_with_metadata
-            .iter()
-            .any(|(_, metadata)| metadata.is_attrs_class());
-        has_attrs_field_specifiers || has_attrs_base
     }
 
     /// Single annotation walk returning local
