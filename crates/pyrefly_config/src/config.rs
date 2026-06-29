@@ -3425,6 +3425,57 @@ output-format = "omit-errors"
     }
 
     #[test]
+    fn test_typings_autodiscovered_relative_to_config_root() {
+        // Regression test capturing the bug: on the default CLI path
+        // (`skip_interpreter_query` left at `false`), a `typings/` directory under
+        // the config root is NOT auto-discovered, so the CLI disagrees with the
+        // IDE. The fix in the next commit flips this assertion to the correct
+        // behavior (typings/ should be present).
+        let root = TempDir::new().unwrap();
+        let typings = root.path().join("typings");
+        fs::create_dir_all(&typings).unwrap();
+
+        let mut config = ConfigFile {
+            source: ConfigSource::File(root.path().join(ConfigFile::PYREFLY_FILE_NAME)),
+            ..Default::default()
+        };
+        config.configure();
+
+        assert!(
+            !config.site_package_path().any(|p| p == &typings),
+            "BUG: typings dir {typings:?} should be auto-discovered on the CLI path but is not; got {:?}",
+            config.site_package_path().collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn test_typings_not_added_when_site_package_path_explicit() {
+        // An explicit `site_package_path` disables `typings/` auto-discovery,
+        // even when a `typings/` directory exists under the config root.
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("typings")).unwrap();
+        let explicit = root.path().join("stubs");
+
+        let mut config = ConfigFile {
+            source: ConfigSource::File(root.path().join(ConfigFile::PYREFLY_FILE_NAME)),
+            interpreters: Interpreters {
+                skip_interpreter_query: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        config.python_environment.site_package_path = Some(vec![explicit.clone()]);
+        config.configure();
+
+        let paths = config.site_package_path().collect::<Vec<_>>();
+        assert!(paths.contains(&&explicit));
+        assert!(
+            !paths.iter().any(|p| p.ends_with("typings")),
+            "typings should not be auto-added when site_package_path is explicit, got {paths:?}",
+        );
+    }
+
+    #[test]
     fn test_pytorch_efficiency_lints_flag_enables_lints() {
         let mut config = ConfigFile {
             root: ConfigBase {
