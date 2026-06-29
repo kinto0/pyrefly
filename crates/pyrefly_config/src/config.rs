@@ -1208,6 +1208,10 @@ impl ConfigFile {
     pub fn configure(&mut self) -> Vec<ConfigError> {
         let mut configure_errors = Vec::new();
 
+        // Whether the user explicitly configured `site_package_path` (via config
+        // file or CLI flag). If not, we auto-discover a `typings/` directory below.
+        let site_package_path_set = self.python_environment.site_package_path.is_some();
+
         if self.interpreters.skip_interpreter_query {
             self.python_environment.set_empty_to_default();
         } else {
@@ -1231,6 +1235,25 @@ impl ConfigFile {
                     self.python_environment.set_empty_to_default();
                     configure_errors.push(error.context("While finding Python interpreter"));
                 }
+            }
+        }
+
+        // A `typings/` directory under the config root is always a default
+        // `site_package_path` entry (in addition to any interpreter-provided
+        // site-packages, which live in `interpreter_site_package_path`), unless
+        // the user explicitly set `site_package_path`. We resolve it relative to
+        // the config root here, rather than in `set_empty_to_default`, so the CLI
+        // and IDE agree regardless of the process's working directory and so it
+        // applies even when an interpreter query succeeds. A `Synthetic` config
+        // has no on-disk root to anchor `typings/` to, so we skip discovery
+        // rather than fall back to a CWD-relative path.
+        if !site_package_path_set && let Some(root) = self.source.root() {
+            let typings = root.join("typings");
+            if typings.exists() {
+                self.python_environment
+                    .site_package_path
+                    .get_or_insert_with(Vec::new)
+                    .push(typings);
             }
         }
 
@@ -3426,11 +3449,11 @@ output-format = "omit-errors"
 
     #[test]
     fn test_typings_autodiscovered_relative_to_config_root() {
-        // Regression test capturing the bug: on the default CLI path
-        // (`skip_interpreter_query` left at `false`), a `typings/` directory under
-        // the config root is NOT auto-discovered, so the CLI disagrees with the
-        // IDE. The fix in the next commit flips this assertion to the correct
-        // behavior (typings/ should be present).
+        // With no explicit `site_package_path`, a `typings/` directory under the
+        // config root is auto-discovered and resolved relative to that root (not
+        // the process CWD, which is never the temp dir). This must hold on the
+        // default CLI path that queries an interpreter, so we leave
+        // `skip_interpreter_query` at its default of `false`.
         let root = TempDir::new().unwrap();
         let typings = root.path().join("typings");
         fs::create_dir_all(&typings).unwrap();
@@ -3442,8 +3465,8 @@ output-format = "omit-errors"
         config.configure();
 
         assert!(
-            !config.site_package_path().any(|p| p == &typings),
-            "BUG: typings dir {typings:?} should be auto-discovered on the CLI path but is not; got {:?}",
+            config.site_package_path().any(|p| p == &typings),
+            "expected auto-discovered typings dir {typings:?} in site_package_path, got {:?}",
             config.site_package_path().collect::<Vec<_>>(),
         );
     }
