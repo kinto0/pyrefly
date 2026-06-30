@@ -24,6 +24,11 @@ path = "test_laziness/mod.rs"
 name = "pyrefly_lsp_interaction_tests"
 path = "lib/test/lsp/lsp_interaction/mod.rs"
 
+[[bench]]
+name = "type_check"
+path = "benches/type_check.rs"
+harness = false
+
 [dependencies]
 anstream = "0.6.11"
 anyhow = "1.0.102"
@@ -80,7 +85,9 @@ xxhash-rust = { version = "0.8.15", features = ["xxh64"] }
 yansi = { version = "1.0.0-rc.1", features = ["hyperlink"] }
 
 [dev-dependencies]
+criterion = { version = "5.0.1", package = "codspeed-criterion-compat" }
 pretty_assertions = { version = "1.4.1", features = ["alloc"], default-features = false }
+starlark_map = "0.14.2"
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 backtrace-on-stack-overflow = { version = "0.3", optional = true }
