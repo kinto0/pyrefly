@@ -1,0 +1,34 @@
+name: CodSpeed
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  # workflow_dispatch lets CodSpeed trigger backtest runs to seed baseline data.
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write # OpenID Connect auth with CodSpeed (no token secret required)
+jobs:
+  benchmarks:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    - name: set up rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: pyrefly-codspeed
+    - name: install cargo-codspeed
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-codspeed
+    - name: build benchmarks
+      run: cargo codspeed build -p pyrefly
+    - name: run benchmarks
+      uses: CodSpeedHQ/action@v4
+      with:
+        mode: simulation
+        run: cargo codspeed run -p pyrefly
