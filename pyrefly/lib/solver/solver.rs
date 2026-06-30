@@ -3114,7 +3114,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         if self.gas.stop() {
             return Err(SubsetError::Other);
         }
-        if matches!(got, Type::Materialization) {
+        // Normalize before var solving so decorator metadata does not get pinned as part of a type.
+        if let Type::KwCall(call) = got {
+            let res = self.is_subset_eq(&call.return_ty, want);
+            self.gas.restore();
+            return res;
+        } else if let Type::KwCall(call) = want {
+            let res = self.is_subset_eq(got, &call.return_ty);
+            self.gas.restore();
+            return res;
+        } else if matches!(got, Type::Materialization) {
             let res = self.is_subset_eq(
                 &self
                     .solver
