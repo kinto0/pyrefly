@@ -265,6 +265,14 @@ impl TestClient {
         }
     }
 
+    /// Override the send/receive timeouts. Benchmarks running under CodSpeed's
+    /// Valgrind instrumentation are much slower than native, so they need far
+    /// larger timeouts than the interactive-test defaults.
+    pub fn set_timeouts(&mut self, send: Duration, recv: Duration) {
+        self.send_timeout = send;
+        self.recv_timeout = recv;
+    }
+
     fn get_root_or_panic(&self) -> PathBuf {
         self.root
             .clone()

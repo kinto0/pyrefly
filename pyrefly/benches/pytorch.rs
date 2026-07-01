@@ -33,6 +33,7 @@
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use lsp_types::Url;
 use pyrefly::commands::lsp::IndexingMode;
@@ -87,6 +88,11 @@ fn prepare(root: &Path) -> Prepared {
     };
     let mut interaction =
         LspInteraction::new_with_args(args, NoTelemetry, Some(ThreadCount::AllThreads), None);
+    // Valgrind instrumentation makes the initial check far slower than native, so
+    // the server can stay silent well past the interactive-test defaults.
+    interaction
+        .client
+        .set_timeouts(Duration::from_secs(120), Duration::from_secs(3600));
     interaction.set_root(root.to_path_buf());
 
     interaction
@@ -109,12 +115,14 @@ fn prepare(root: &Path) -> Prepared {
     interaction.client.did_open(NN_INIT);
     interaction.client.did_open(BACKWARD);
 
-    // Wait for the server to finish the initial check. `nn/__init__.py` settles
-    // first; `_backward.py` only gets diagnostics once all imports across the
-    // project have resolved, so it marks the end of cold start.
+    // Wait for the server to finish the initial check of both files. We only
+    // require that diagnostics arrive (not a specific count, which varies with
+    // the pyrefly version and platform); `_backward.py`'s diagnostics arrive once
+    // its import closure — reaching torch.nn — has resolved, marking the end of
+    // cold start.
     interaction
         .client
-        .expect_publish_diagnostics_eventual_error_count(nn_init_path.clone(), 0)
+        .expect_publish_diagnostics_for_file(nn_init_path.clone())
         .unwrap();
     interaction
         .client
