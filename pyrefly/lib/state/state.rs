@@ -1849,10 +1849,7 @@ impl<'a> Transaction<'a> {
             .updated_loaders
             .ensure(loader, || match self.readable.loaders.get(loader) {
                 Some(v) => v.dupe(),
-                None => Arc::new(LoaderFindCache::new(
-                    loader.dupe(),
-                    self.data.state.dir_cache_enabled,
-                )),
+                None => Arc::new(LoaderFindCache::new(loader.dupe())),
             })
             .0
             .dupe()
@@ -2239,22 +2236,10 @@ impl<'a> Transaction<'a> {
     fn invalidate_find(&mut self) {
         let new_loaders = LockedMap::new();
         for loader in self.data.updated_loaders.keys() {
-            new_loaders.insert(
-                loader.dupe(),
-                Arc::new(LoaderFindCache::new(
-                    loader.dupe(),
-                    self.data.state.dir_cache_enabled,
-                )),
-            );
+            new_loaders.insert(loader.dupe(), Arc::new(LoaderFindCache::new(loader.dupe())));
         }
         for loader in self.readable.loaders.keys() {
-            new_loaders.insert(
-                loader.dupe(),
-                Arc::new(LoaderFindCache::new(
-                    loader.dupe(),
-                    self.data.state.dir_cache_enabled,
-                )),
-            );
+            new_loaders.insert(loader.dupe(), Arc::new(LoaderFindCache::new(loader.dupe())));
         }
         self.data.updated_loaders = new_loaders;
 
@@ -2314,13 +2299,7 @@ impl<'a> Transaction<'a> {
                 new_loaders.insert(c.dupe(), l.dupe());
             });
         configs.iter().for_each(|config| {
-            new_loaders.insert(
-                config.dupe(),
-                Arc::new(LoaderFindCache::new(
-                    config.dupe(),
-                    self.data.state.dir_cache_enabled,
-                )),
-            );
+            new_loaders.insert(config.dupe(), Arc::new(LoaderFindCache::new(config.dupe())));
         });
         self.data.updated_loaders = new_loaders;
 
@@ -3222,19 +3201,10 @@ pub struct State {
     state: RwLock<StateData>,
     run_count: AtomicUsize,
     committing_transaction_lock: Mutex<()>,
-    dir_cache_enabled: bool,
 }
 
 impl State {
     pub fn new(config_finder: ConfigFinder, thread_count: ThreadCount) -> Self {
-        Self::new_with_options(config_finder, thread_count, false)
-    }
-
-    pub fn new_with_options(
-        config_finder: ConfigFinder,
-        thread_count: ThreadCount,
-        dir_cache_enabled: bool,
-    ) -> Self {
         Self {
             threads: ThreadPool::new(thread_count),
             uniques: UniqueFactory::new(),
@@ -3242,16 +3212,11 @@ impl State {
             state: RwLock::new(StateData::new()),
             run_count: AtomicUsize::new(0),
             committing_transaction_lock: Mutex::new(()),
-            dir_cache_enabled,
         }
     }
 
     pub fn config_finder(&self) -> &ConfigFinder {
         &self.config_finder
-    }
-
-    pub fn dir_cache_enabled(&self) -> bool {
-        self.dir_cache_enabled
     }
 
     /// Run `op` on the state's thread pool, which has an increased stack size.

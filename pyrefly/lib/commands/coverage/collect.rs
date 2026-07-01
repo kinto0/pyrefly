@@ -1700,7 +1700,7 @@ pub fn collect_module_reports(
                 h.module(),
                 None,
                 Some(ModuleStyle::Executable),
-                &DirEntryCache::new(true),
+                &DirEntryCache::new(),
                 None,
             )
             .finding()
@@ -1718,7 +1718,7 @@ pub fn collect_module_reports(
         HashMap::new()
     };
     let config_finder = holder.as_ref().config_finder();
-    let dir_cache = DirEntryCache::new(true);
+    let dir_cache = DirEntryCache::new();
     // Safe to parallelize: per-module collection is read-only and independent.
     let transaction: &Transaction = transaction;
     let collect_one = |handle: &Handle| -> Option<(ModuleReport, Vec<Error>)> {
@@ -2083,7 +2083,7 @@ mod tests {
             ModuleName::from_str("test"),
             None,
             Some(ModuleStyle::Executable),
-            &DirEntryCache::new(true),
+            &DirEntryCache::new(),
             None,
         )
         .finding()
@@ -2111,7 +2111,7 @@ mod tests {
         config.interpreters.skip_interpreter_query = true;
         config.configure();
 
-        let cache = DirEntryCache::new(true);
+        let cache = DirEntryCache::new();
         let find = |m| {
             find_import_filtered(&config, ModuleName::from_str(m), None, None, &cache, None)
                 .finding()

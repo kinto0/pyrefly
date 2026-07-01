@@ -151,16 +151,9 @@ else:
 
     let f = |name: &str, sys_info: &SysInfo| {
         let name = ModuleName::from_str(name);
-        let path = find_import(
-            &config_file,
-            name,
-            None,
-            None,
-            &DirEntryCache::new(true),
-            None,
-        )
-        .finding()
-        .unwrap();
+        let path = find_import(&config_file, name, None, None, &DirEntryCache::new(), None)
+            .finding()
+            .unwrap();
         Handle::new(name, path, sys_info.dupe())
     };
 
@@ -207,16 +200,9 @@ fn test_lookup_export_location_warm_with_multiple_sysinfos() {
 
     let f = |name: &str, sys_info: &SysInfo| {
         let name = ModuleName::from_str(name);
-        let path = find_import(
-            &config_file,
-            name,
-            None,
-            None,
-            &DirEntryCache::new(true),
-            None,
-        )
-        .finding()
-        .unwrap();
+        let path = find_import(&config_file, name, None, None, &DirEntryCache::new(), None)
+            .finding()
+            .unwrap();
         Handle::new(name, path, sys_info.dupe())
     };
 
@@ -271,16 +257,9 @@ fn test_resolve_export_location_inherits_source_sysinfo() {
 
     let f = |name: &str, sys_info: &SysInfo| {
         let name = ModuleName::from_str(name);
-        let path = find_import(
-            &config_file,
-            name,
-            None,
-            None,
-            &DirEntryCache::new(true),
-            None,
-        )
-        .finding()
-        .unwrap();
+        let path = find_import(&config_file, name, None, None, &DirEntryCache::new(), None)
+            .finding()
+            .unwrap();
         Handle::new(name, path, sys_info.dupe())
     };
 
@@ -317,16 +296,9 @@ fn test_cross_module_literal_promotion() {
     let state = State::new(test_env.config_finder(), TEST_THREAD_COUNT);
     let f = |name: &str| {
         let name = ModuleName::from_str(name);
-        let path = find_import(
-            &config_file,
-            name,
-            None,
-            None,
-            &DirEntryCache::new(true),
-            None,
-        )
-        .finding()
-        .unwrap();
+        let path = find_import(&config_file, name, None, None, &DirEntryCache::new(), None)
+            .finding()
+            .unwrap();
         Handle::new(name, path, sys_info.dupe())
     };
     let handles = [f("main")];
