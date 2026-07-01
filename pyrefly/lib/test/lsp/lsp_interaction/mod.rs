@@ -5,7 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-mod init;
+// The LSP test harness lives in its own crate so the Pyrefly benchmarks can
+// share it. Re-export `object_model` here so the test modules below can keep
+// referring to it as `crate::object_model`.
+pub(crate) use pyrefly_lsp_test::object_model;
 
 mod basic;
 mod call_hierarchy;
@@ -45,11 +48,9 @@ mod notebook_sync;
 mod notebook_tokens;
 mod notebook_type_definition;
 mod notebook_type_error_display_status;
-mod object_model;
 mod open_file_benchmark;
 mod progress;
 mod provide_type;
-mod pytorch_benchmark;
 mod references;
 mod rename;
 mod safe_delete_file;

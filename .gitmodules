@@ -1,0 +1,3 @@
+[submodule "pyrefly/benches/pytorch"]
+	path = pyrefly/benches/pytorch
+	url = https://github.com/pytorch/pytorch.git
