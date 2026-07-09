@@ -1161,7 +1161,33 @@ impl<'a> Transaction<'a> {
         else {
             return self.type_from_expression_at_impl(handle, position, false, for_display);
         };
-        match self.classify_surface(handle, &identifier, &context) {
+        let kind = self.classify_surface(handle, &identifier, &context);
+        self.type_from_resolution(
+            handle,
+            position,
+            &identifier,
+            &context,
+            kind,
+            for_display,
+            coerce_callees,
+        )
+    }
+
+    /// Compute the type for an already-classified identifier resolution. Split
+    /// out so callers that have already run `identifier_at`/`classify_surface`
+    /// (e.g. `get_computed_type_at_range`) can reuse that work instead of
+    /// re-resolving the same range.
+    fn type_from_resolution(
+        &self,
+        handle: &Handle,
+        position: TextSize,
+        identifier: &Identifier,
+        context: &IdentifierContext,
+        kind: ResolutionKind,
+        for_display: bool,
+        coerce_callees: bool,
+    ) -> Option<Type> {
+        match kind {
             ResolutionKind::Type(ty) => Some(ty),
             ResolutionKind::Key(key) => {
                 let bindings = self.get_bindings(handle)?;
@@ -1170,7 +1196,7 @@ impl<'a> Transaction<'a> {
                 }
                 let mut ty = self.get_type_for_surface(handle, &key, for_display)?;
                 // Only a plain expression reference coerces to its callee signature.
-                if coerce_callees && let IdentifierContext::Expr(_) = &context {
+                if coerce_callees && let IdentifierContext::Expr(_) = context {
                     let call_args_range = self.callee_at(handle, position).and_then(
                         |ExprCall {
                              func, arguments, ..
@@ -1242,18 +1268,37 @@ impl<'a> Transaction<'a> {
     ///
     /// TSP prefers raw bound types of identifiers since it re-resolves declarations.
     pub fn get_computed_type_at_range(&self, handle: &Handle, range: TextRange) -> Option<Type> {
-        // Bare names need declaration-preserving lookup to avoid coercing
-        // overloaded functions into synthesized callables.
-        if range.is_empty()
-            || self.get_ast(handle).is_some_and(|module| {
-                Ast::locate_node(&module, range.start())
-                    .into_iter()
-                    .any(|node| node.range() == range && matches!(node, AnyNodeRef::ExprName(_)))
-            })
-        {
+        // An empty range is a point query on the declaration-preserving path.
+        if range.is_empty() {
             return self.get_type_at_preserving_declaration(handle, range.start());
         }
-        self.get_type_trace(handle, range)
+        // A range that is exactly an identifier resolving through a binding asks
+        // "what is this declared as"; anything else asks "what does this range
+        // evaluate to". Classify once and reuse the resolution to compute the
+        // type, rather than re-resolving via `get_type_at_preserving_declaration`.
+        let Some(IdentifierWithContext {
+            identifier,
+            context,
+        }) = self.identifier_at(handle, range.start())
+        else {
+            return self.get_type_trace(handle, range);
+        };
+        let kind = self.classify_surface(handle, &identifier, &context);
+        if identifier.range == range
+            && matches!(kind, ResolutionKind::Key(_) | ResolutionKind::Type(_))
+        {
+            self.type_from_resolution(
+                handle,
+                range.start(),
+                &identifier,
+                &context,
+                kind,
+                false,
+                false,
+            )
+        } else {
+            self.get_type_trace(handle, range)
+        }
     }
 
     fn get_result_type_at_impl(

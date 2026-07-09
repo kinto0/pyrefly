@@ -20,7 +20,26 @@ use crate::test::tsp::tsp_interaction::object_model::write_pyproject;
 fn setup_project(file_content: &str) -> (TspInteraction, String, i32) {
     let temp_dir = TempDir::new().unwrap();
     write_pyproject(temp_dir.path());
+    setup_project_in_dir(temp_dir, file_content)
+}
 
+fn setup_project_with_pyrefly_config(
+    file_content: &str,
+    pyrefly_config: &str,
+) -> (TspInteraction, String, i32) {
+    let temp_dir = TempDir::new().unwrap();
+    write_pyproject(temp_dir.path());
+
+    let pyproject = temp_dir.path().join("pyproject.toml");
+    let mut content = std::fs::read_to_string(&pyproject).unwrap();
+    content.push_str("\n[tool.pyrefly]\n");
+    content.push_str(pyrefly_config);
+    std::fs::write(pyproject, content).unwrap();
+
+    setup_project_in_dir(temp_dir, file_content)
+}
+
+fn setup_project_in_dir(temp_dir: TempDir, file_content: &str) -> (TspInteraction, String, i32) {
     let test_file = temp_dir.path().join("main.py");
     std::fs::write(&test_file, file_content).unwrap();
 
@@ -98,6 +117,34 @@ fn get_computed_type_range_ok(
     let result = resp.result.expect("Expected result");
     assert!(!result.is_null(), "Expected non-null type result");
     result
+}
+
+/// Like `get_computed_type_range_ok` but returns the raw result value, which may
+/// be JSON `null`. Used to document ranges that resolve to no type.
+fn get_computed_type_range_raw(
+    tsp: &mut TspInteraction,
+    file_uri: &str,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+    snapshot: i32,
+) -> serde_json::Value {
+    tsp.server.get_computed_type_range(
+        file_uri,
+        start_line,
+        start_character,
+        end_line,
+        end_character,
+        snapshot,
+    );
+    let resp = tsp.client.receive_response_skip_notifications();
+    assert!(
+        resp.error.is_none(),
+        "Expected success, got error: {:?}",
+        resp.error
+    );
+    resp.result.expect("Expected result field")
 }
 
 /// Helper to send a getExpectedType request and return a successful (non-null) result.
@@ -787,174 +834,245 @@ fn test_get_computed_type_function_has_return_type() {
     tsp.shutdown();
 }
 
-// =======================================================================
-// getComputedType range routing: current behavior of identifier-name ranges,
-// which (apart from bare-name references) are NOT routed through the
-// declaration-preserving path.
-//
-// These document the stable baseline so a later change to the routing
-// predicate has something to diff against. The cases marked BUG return `null`
-// today even though a point query at the same position resolves correctly; the
-// following diff routes every identifier-name range through the binding path.
-// =======================================================================
+#[test]
+fn test_get_computed_type_definition_site_uses_inferred_return_type() {
+    let code = "\
+def plain():
+    return True
 
-/// Like `get_computed_type_range_ok` but returns the raw result value, which
-/// may be JSON `null`. Used to document ranges that currently resolve to no
-/// type.
-fn get_computed_type_range_raw(
-    tsp: &mut TspInteraction,
-    file_uri: &str,
-    start_line: u32,
-    start_character: u32,
-    end_line: u32,
-    end_character: u32,
-    snapshot: i32,
-) -> serde_json::Value {
-    tsp.server.get_computed_type_range(
-        file_uri,
-        start_line,
-        start_character,
-        end_line,
-        end_character,
-        snapshot,
+class C:
+    def method(self):
+        return 1
+
+    @property
+    def ok(self):
+        return True
+
+plain
+";
+    let (mut tsp, file_uri, snapshot) = setup_project_with_pyrefly_config(
+        code,
+        "untyped-def-behavior = \"check-and-infer-return-type\"\n",
     );
-    let resp = tsp.client.receive_response_skip_notifications();
-    assert!(
-        resp.error.is_none(),
-        "Expected success, got error: {:?}",
-        resp.error
-    );
-    resp.result.expect("Expected result field")
+
+    for (start_line, start_character, end_line, end_character, label) in [
+        (0, 4, 0, 9, "plain function definition"),
+        (4, 8, 4, 14, "method definition"),
+        (8, 8, 8, 10, "property getter definition"),
+        (11, 0, 11, 5, "plain function reference"),
+    ] {
+        let result = get_computed_type_range_ok(
+            &mut tsp,
+            &file_uri,
+            start_line,
+            start_character,
+            end_line,
+            end_character,
+            snapshot,
+        );
+        assert_kind(&result, TypeKind::Function);
+
+        let return_type = result
+            .get("returnType")
+            .unwrap_or_else(|| panic!("Expected returnType for {label}: {result}"));
+        assert_kind(return_type, TypeKind::Class);
+    }
+
+    tsp.shutdown();
 }
+
+// =======================================================================
+// getComputedType range routing: an identifier-name range resolves through
+// the declaration-preserving binding path, matching a point query at the
+// same position, rather than falling through to the (empty) expression trace.
+// =======================================================================
 
 #[test]
 fn test_get_computed_type_class_def_name_range() {
-    // BUG: a class-def name range is routed to the trace path, which has no
-    // recorded type for a bare declaration name, so this returns null. A point
-    // query at the same position returns the class.
+    // A class-def name is the same category of identifier as a function-def
+    // name; its range resolves to the class through the binding path.
     let (mut tsp, file_uri, snapshot) = setup_project("class Foo:\n    x: int = 0\n");
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 9, snapshot);
-    assert!(
-        result.is_null(),
-        "class-def name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 0, 6, 0, 9, snapshot);
+    assert_kind(&result, TypeKind::Class);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_parameter_name_range() {
-    // BUG: a parameter name resolves through Key::Definition on the point path,
-    // but its range is routed to the trace path and returns null.
     let (mut tsp, file_uri, snapshot) = setup_project("def f(x: int) -> int:\n    return x\n");
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
-    assert!(
-        result.is_null(),
-        "parameter name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
+    assert_kind(&result, TypeKind::Class);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_imported_name_range() {
-    // BUG: an imported name resolves through Key::Definition on the point path,
-    // but its range is routed to the trace path and returns null.
     let (mut tsp, file_uri, snapshot) = setup_project("from os import getcwd\n");
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 15, 0, 21, snapshot);
-    assert!(
-        result.is_null(),
-        "imported name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 0, 15, 0, 21, snapshot);
+    assert_kind(&result, TypeKind::Function);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_type_parameter_range() {
-    // BUG: a type-parameter name range is routed to the trace path and returns
-    // null.
     let (mut tsp, file_uri, snapshot) = setup_project("def f[T](x: T) -> T:\n    return x\n");
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
-    assert!(
-        result.is_null(),
-        "type-parameter name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
+    assert_kind(&result, TypeKind::Typevar);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_imported_module_range() {
-    // BUG: an imported-module name range is routed to the trace path and
-    // returns null.
     let (mut tsp, file_uri, snapshot) = setup_project("import os\n");
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 7, 0, 9, snapshot);
-    assert!(
-        result.is_null(),
-        "imported-module name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 0, 7, 0, 9, snapshot);
+    assert_kind(&result, TypeKind::Module);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_exception_handler_range() {
-    // BUG: an exception-handler name range is routed to the trace path and
-    // returns null.
     let code = "try:\n    pass\nexcept Exception as e:\n    pass\n";
     let (mut tsp, file_uri, snapshot) = setup_project(code);
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 20, 2, 21, snapshot);
-    assert!(
-        result.is_null(),
-        "exception-handler name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 2, 20, 2, 21, snapshot);
+    assert_kind(&result, TypeKind::Class);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_global_capture_range() {
-    // BUG: `global x` inside a function is a MutableCapture identifier; its
-    // range is routed to the trace path and returns null.
+    // `global x` inside a function is a MutableCapture identifier.
     let code = "x = 1\ndef f():\n    global x\n";
     let (mut tsp, file_uri, snapshot) = setup_project(code);
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 11, 2, 12, snapshot);
-    assert!(
-        result.is_null(),
-        "global-capture name range currently returns null, got: {result}"
-    );
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 2, 11, 2, 12, snapshot);
+    assert_kind(&result, TypeKind::Class);
 
     tsp.shutdown();
 }
 
 #[test]
 fn test_get_computed_type_match_capture_range() {
-    // BUG: a match-capture name range is routed to the trace path and returns
-    // null.
     let code = "x = 1\nmatch x:\n    case y:\n        pass\n";
     let (mut tsp, file_uri, snapshot) = setup_project(code);
 
-    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 9, 2, 10, snapshot);
+    let result = get_computed_type_range_ok(&mut tsp, &file_uri, 2, 9, 2, 10, snapshot);
+    assert_kind(&result, TypeKind::Class);
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_keyword_argument_label_range() {
+    // A keyword-argument label maps to the matched parameter's declaration, so
+    // its range resolves to the parameter's type through the binding path. A
+    // label that matches no parameter has no type of its own and falls back to
+    // the (empty) trace path.
+    let code = "def f(x: int) -> int:\n    return x\n\nf(x=1)\nf(y=1)\n";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    // `x` label in `f(x=1)` resolves to parameter `x`'s type.
+    let matched = get_computed_type_range_ok(&mut tsp, &file_uri, 3, 2, 3, 3, snapshot);
+    assert_kind(&matched, TypeKind::Class);
+
+    // `y` label in `f(y=1)` matches no parameter, so it falls through to the
+    // trace path, which has no recorded type for the label.
+    let unmatched = get_computed_type_range_raw(&mut tsp, &file_uri, 4, 2, 4, 3, snapshot);
     assert!(
-        result.is_null(),
-        "match-capture name range currently returns null, got: {result}"
+        unmatched.is_null(),
+        "unmatched keyword label should fall back to the trace path (null), got: {unmatched}"
     );
 
     tsp.shutdown();
 }
 
 #[test]
+fn test_get_computed_type_overload_def_and_call_range() {
+    // Overloaded defs already route through the declaration-preserving path
+    // (FunctionDef context for the def, Expr context for the reference), so
+    // both sites resolve to the overloaded type rather than a synthesized
+    // callable for the selected overload.
+    let code = "\
+from typing import overload
+
+@overload
+def f(x: int) -> int: ...
+@overload
+def f(x: str) -> str: ...
+def f(x):
+    return x
+
+f(1)
+";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    // Implementation def-site name range.
+    let def_site = get_computed_type_range_ok(&mut tsp, &file_uri, 6, 4, 6, 5, snapshot);
+    assert_kind(&def_site, TypeKind::Overloaded);
+
+    // Call-site name range.
+    let call_site = get_computed_type_range_ok(&mut tsp, &file_uri, 9, 0, 9, 1, snapshot);
+    assert_kind(&call_site, TypeKind::Overloaded);
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_classmethod_staticmethod_inferred_return() {
+    let code = "\
+class C:
+    @classmethod
+    def cm(cls):
+        return 1
+
+    @staticmethod
+    def sm():
+        return True
+";
+    let (mut tsp, file_uri, snapshot) = setup_project_with_pyrefly_config(
+        code,
+        "untyped-def-behavior = \"check-and-infer-return-type\"\n",
+    );
+
+    for (start_line, start_character, end_line, end_character, label) in [
+        (2, 8, 2, 10, "classmethod definition"),
+        (6, 8, 6, 10, "staticmethod definition"),
+    ] {
+        let result = get_computed_type_range_ok(
+            &mut tsp,
+            &file_uri,
+            start_line,
+            start_character,
+            end_line,
+            end_character,
+            snapshot,
+        );
+        assert_kind(&result, TypeKind::Function);
+
+        let return_type = result
+            .get("returnType")
+            .unwrap_or_else(|| panic!("Expected returnType for {label}: {result}"));
+        assert_kind(return_type, TypeKind::Class);
+    }
+
+    tsp.shutdown();
+}
+
+#[test]
 fn test_get_computed_type_compound_expression_range_is_value() {
-    // A compound (non-identifier) range asks "what does this evaluate to"; it
-    // uses the trace path and returns the value type. This positive control
+    // A compound (non-identifier) range asks "what does this evaluate to";
+    // it must keep using the trace path and return the value type. This
     // locks in the negative case so a future "always preserve declaration"
     // change cannot silently break it.
     let code = "\
