@@ -787,6 +787,195 @@ fn test_get_computed_type_function_has_return_type() {
     tsp.shutdown();
 }
 
+// =======================================================================
+// getComputedType range routing: current behavior of identifier-name ranges,
+// which (apart from bare-name references) are NOT routed through the
+// declaration-preserving path.
+//
+// These document the stable baseline so a later change to the routing
+// predicate has something to diff against. The cases marked BUG return `null`
+// today even though a point query at the same position resolves correctly; the
+// following diff routes every identifier-name range through the binding path.
+// =======================================================================
+
+/// Like `get_computed_type_range_ok` but returns the raw result value, which
+/// may be JSON `null`. Used to document ranges that currently resolve to no
+/// type.
+fn get_computed_type_range_raw(
+    tsp: &mut TspInteraction,
+    file_uri: &str,
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+    snapshot: i32,
+) -> serde_json::Value {
+    tsp.server.get_computed_type_range(
+        file_uri,
+        start_line,
+        start_character,
+        end_line,
+        end_character,
+        snapshot,
+    );
+    let resp = tsp.client.receive_response_skip_notifications();
+    assert!(
+        resp.error.is_none(),
+        "Expected success, got error: {:?}",
+        resp.error
+    );
+    resp.result.expect("Expected result field")
+}
+
+#[test]
+fn test_get_computed_type_class_def_name_range() {
+    // BUG: a class-def name range is routed to the trace path, which has no
+    // recorded type for a bare declaration name, so this returns null. A point
+    // query at the same position returns the class.
+    let (mut tsp, file_uri, snapshot) = setup_project("class Foo:\n    x: int = 0\n");
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 9, snapshot);
+    assert!(
+        result.is_null(),
+        "class-def name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_parameter_name_range() {
+    // BUG: a parameter name resolves through Key::Definition on the point path,
+    // but its range is routed to the trace path and returns null.
+    let (mut tsp, file_uri, snapshot) = setup_project("def f(x: int) -> int:\n    return x\n");
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
+    assert!(
+        result.is_null(),
+        "parameter name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_imported_name_range() {
+    // BUG: an imported name resolves through Key::Definition on the point path,
+    // but its range is routed to the trace path and returns null.
+    let (mut tsp, file_uri, snapshot) = setup_project("from os import getcwd\n");
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 15, 0, 21, snapshot);
+    assert!(
+        result.is_null(),
+        "imported name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_type_parameter_range() {
+    // BUG: a type-parameter name range is routed to the trace path and returns
+    // null.
+    let (mut tsp, file_uri, snapshot) = setup_project("def f[T](x: T) -> T:\n    return x\n");
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 6, 0, 7, snapshot);
+    assert!(
+        result.is_null(),
+        "type-parameter name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_imported_module_range() {
+    // BUG: an imported-module name range is routed to the trace path and
+    // returns null.
+    let (mut tsp, file_uri, snapshot) = setup_project("import os\n");
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 0, 7, 0, 9, snapshot);
+    assert!(
+        result.is_null(),
+        "imported-module name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_exception_handler_range() {
+    // BUG: an exception-handler name range is routed to the trace path and
+    // returns null.
+    let code = "try:\n    pass\nexcept Exception as e:\n    pass\n";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 20, 2, 21, snapshot);
+    assert!(
+        result.is_null(),
+        "exception-handler name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_global_capture_range() {
+    // BUG: `global x` inside a function is a MutableCapture identifier; its
+    // range is routed to the trace path and returns null.
+    let code = "x = 1\ndef f():\n    global x\n";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 11, 2, 12, snapshot);
+    assert!(
+        result.is_null(),
+        "global-capture name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_match_capture_range() {
+    // BUG: a match-capture name range is routed to the trace path and returns
+    // null.
+    let code = "x = 1\nmatch x:\n    case y:\n        pass\n";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    let result = get_computed_type_range_raw(&mut tsp, &file_uri, 2, 9, 2, 10, snapshot);
+    assert!(
+        result.is_null(),
+        "match-capture name range currently returns null, got: {result}"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_compound_expression_range_is_value() {
+    // A compound (non-identifier) range asks "what does this evaluate to"; it
+    // uses the trace path and returns the value type. This positive control
+    // locks in the negative case so a future "always preserve declaration"
+    // change cannot silently break it.
+    let code = "\
+def g(a: int, b: int) -> int:
+    return a + b
+
+g(1, 2)
+";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    // `a + b`
+    let binop = get_computed_type_range_ok(&mut tsp, &file_uri, 1, 11, 1, 16, snapshot);
+    assert_kind(&binop, TypeKind::Class);
+
+    // `g(1, 2)` — the call's return value, not the callee.
+    let call = get_computed_type_range_ok(&mut tsp, &file_uri, 3, 0, 3, 7, snapshot);
+    assert_kind(&call, TypeKind::Class);
+
+    tsp.shutdown();
+}
+
 #[test]
 fn test_get_computed_type_function_has_declaration() {
     // Verify that a def-function has a Regular declaration with name
