@@ -110,17 +110,19 @@ pub type ExportLocationResolver<'a> =
 
 /// The stdlib classes used to encode pyrefly types that would otherwise be
 /// emitted as off-spec `BuiltInType` sentinels: the protocol restricts
-/// `BuiltInType.name` to a fixed set that excludes names like `none` and `bool`.
-/// Passing the real classes (rather than re-deriving them by name) keeps each
-/// declaration version-correct — e.g. `NoneType` is sourced from `types` on
-/// Python 3.10+ and `_typeshed` before — and identical to writing the
-/// annotation explicitly.
+/// `BuiltInType.name` to a fixed set that excludes names like `none`, `bool`,
+/// and `int`. Passing the real classes (rather than re-deriving them by name)
+/// keeps each declaration version-correct — e.g. `NoneType` is sourced from
+/// `types` on Python 3.10+ and `_typeshed` before — and identical to writing
+/// the annotation explicitly.
 #[derive(Clone, Copy)]
 pub struct StdlibClasses<'a> {
     /// `NoneType`, encoding `None`.
     pub none_type: &'a PyreflyClassType,
     /// `bool`, encoding `TypeGuard`/`TypeIs` (their runtime type).
     pub bool_type: &'a PyreflyClassType,
+    /// `int`, encoding `Size`/`Dim` (integer tensor dimensions).
+    pub int_type: &'a PyreflyClassType,
 }
 
 /// Convert a pyrefly `Type` to a TSP protocol `Type` using optional
@@ -160,6 +162,7 @@ pub fn convert_type(ty: &PyreflyType) -> TspType {
 struct TestStdlib {
     none_type: PyreflyClassType,
     bool_type: PyreflyClassType,
+    int_type: PyreflyClassType,
 }
 
 #[cfg(test)]
@@ -168,6 +171,7 @@ impl TestStdlib {
         Self {
             none_type: test_class(ModuleName::types(), "NoneType"),
             bool_type: test_class(ModuleName::builtins(), "bool"),
+            int_type: test_class(ModuleName::builtins(), "int"),
         }
     }
 
@@ -175,6 +179,7 @@ impl TestStdlib {
         StdlibClasses {
             none_type: &self.none_type,
             bool_type: &self.bool_type,
+            int_type: &self.int_type,
         }
     }
 }
@@ -454,8 +459,13 @@ impl TypeConverter<'_> {
             // --- KwCall → convert the return type ---
             PyreflyType::KwCall(kw) => self.convert(&kw.return_ty),
 
-            // --- Size / Dim → int (they represent integer dimensions) ---
-            PyreflyType::Size(_) | PyreflyType::Dim(_) => builtin("int"),
+            // --- Size / Dim → the stdlib `int` class (they represent integer dimensions) ---
+            // Emitted as the real class, not `builtin("int")`: the protocol
+            // restricts `BuiltInType.name` to a fixed sentinel set that excludes
+            // `int`, so a bare builtin surfaces as Unknown on the consumer.
+            PyreflyType::Size(_) | PyreflyType::Dim(_) => {
+                self.convert_class_type(self.stdlib.int_type, TypeFlags::INSTANCE)
+            }
 
             // --- Solver-internal variable → built-in unknown ---
             PyreflyType::Var(_) => builtin("unknown"),
@@ -1188,6 +1198,30 @@ mod tests {
                     assert_eq!(decl.category, DeclarationCategory::Class);
                 }
                 other => panic!("expected bool Class, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_convert_size_and_dim_are_int_class() {
+        use pyrefly_types::dimension::SizeExpr;
+
+        // `Size`/`Dim` are integer tensor dimensions, emitted as the real `int`
+        // class rather than an off-spec `int` `BuiltInType`.
+        for ty in [
+            PyreflyType::Size(SizeExpr::literal(6)),
+            PyreflyType::Dim(Box::new(PyreflyType::Size(SizeExpr::literal(3)))),
+        ] {
+            match convert_type(&ty) {
+                TspType::Class(c) => {
+                    assert!(c.flags.contains(TypeFlags::INSTANCE));
+                    let Declaration::Regular(decl) = c.declaration else {
+                        panic!("expected RegularDeclaration");
+                    };
+                    assert_eq!(decl.name.as_deref(), Some("int"));
+                    assert_eq!(decl.category, DeclarationCategory::Class);
+                }
+                other => panic!("expected int Class, got {other:?}"),
             }
         }
     }
