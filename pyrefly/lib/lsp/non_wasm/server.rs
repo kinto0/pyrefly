@@ -6330,9 +6330,10 @@ impl Server {
         let resolve_export = |module_name: ModuleName, name: &Name| {
             resolve_export_location(transaction, source_handle, module_name, name)
         };
-        // `None` is encoded as the stdlib's version-aware `NoneType` class.
-        // Computing `ty` already populated this transaction's `Stdlib`, so
-        // `get_stdlib` stays on the warm path (see the doc comment above).
+        // Sentinel-like types (`None`, `TypeGuard`/`TypeIs`) are encoded as the
+        // stdlib's version-aware classes. Computing `ty` already populated this
+        // transaction's `Stdlib`, so `get_stdlib` stays on the warm path (see
+        // the doc comment above).
         let stdlib = transaction.get_stdlib(source_handle);
         convert_type_with_resolvers(
             ty,
@@ -6341,6 +6342,7 @@ impl Server {
             Some(&resolve_export),
             StdlibClasses {
                 none_type: stdlib.none_type(),
+                bool_type: stdlib.bool(),
             },
         )
     }

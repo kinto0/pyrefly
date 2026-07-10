@@ -110,8 +110,8 @@ pub type ExportLocationResolver<'a> =
 
 /// The stdlib classes used to encode pyrefly types that would otherwise be
 /// emitted as off-spec `BuiltInType` sentinels: the protocol restricts
-/// `BuiltInType.name` to a fixed set that excludes names like `none`. Passing
-/// the real classes (rather than re-deriving them by name) keeps each
+/// `BuiltInType.name` to a fixed set that excludes names like `none` and `bool`.
+/// Passing the real classes (rather than re-deriving them by name) keeps each
 /// declaration version-correct — e.g. `NoneType` is sourced from `types` on
 /// Python 3.10+ and `_typeshed` before — and identical to writing the
 /// annotation explicitly.
@@ -119,6 +119,8 @@ pub type ExportLocationResolver<'a> =
 pub struct StdlibClasses<'a> {
     /// `NoneType`, encoding `None`.
     pub none_type: &'a PyreflyClassType,
+    /// `bool`, encoding `TypeGuard`/`TypeIs` (their runtime type).
+    pub bool_type: &'a PyreflyClassType,
 }
 
 /// Convert a pyrefly `Type` to a TSP protocol `Type` using optional
@@ -157,6 +159,7 @@ pub fn convert_type(ty: &PyreflyType) -> TspType {
 #[cfg(test)]
 struct TestStdlib {
     none_type: PyreflyClassType,
+    bool_type: PyreflyClassType,
 }
 
 #[cfg(test)]
@@ -164,12 +167,14 @@ impl TestStdlib {
     fn new() -> Self {
         Self {
             none_type: test_class(ModuleName::types(), "NoneType"),
+            bool_type: test_class(ModuleName::builtins(), "bool"),
         }
     }
 
     fn classes(&self) -> StdlibClasses<'_> {
         StdlibClasses {
             none_type: &self.none_type,
+            bool_type: &self.bool_type,
         }
     }
 }
@@ -384,8 +389,13 @@ impl TypeConverter<'_> {
             // --- Annotated[X, ...] → unwrap to X ---
             PyreflyType::Annotated(inner, _) => self.convert(inner),
 
-            // --- TypeGuard[X] / TypeIs[X] → convert as bool (the runtime return type) ---
-            PyreflyType::TypeGuard(_) | PyreflyType::TypeIs(_) => builtin("bool"),
+            // --- TypeGuard[X] / TypeIs[X] → the stdlib `bool` class (their runtime type) ---
+            // Emitted as the real class, not `builtin("bool")`: the protocol
+            // restricts `BuiltInType.name` to a fixed sentinel set that excludes
+            // `bool`, so a bare builtin surfaces as Unknown on the consumer.
+            PyreflyType::TypeGuard(_) | PyreflyType::TypeIs(_) => {
+                self.convert_class_type(self.stdlib.bool_type, TypeFlags::INSTANCE)
+            }
 
             // --- SuperInstance → convert as the class type ---
             PyreflyType::SuperInstance(si) => self.convert_class_type(&si.0, TypeFlags::INSTANCE),
@@ -1157,6 +1167,28 @@ mod tests {
         match tsp {
             TspType::BuiltInType(b) => assert_eq!(b.name, "ellipsis"),
             other => panic!("expected BuiltInType, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_convert_type_guard_and_type_is_are_bool_class() {
+        // `TypeGuard`/`TypeIs` erase to their runtime type `bool`, emitted as
+        // the real `bool` class rather than an off-spec `bool` `BuiltInType`.
+        for ty in [
+            PyreflyType::TypeGuard(Box::new(PyreflyType::None)),
+            PyreflyType::TypeIs(Box::new(PyreflyType::None)),
+        ] {
+            match convert_type(&ty) {
+                TspType::Class(c) => {
+                    assert!(c.flags.contains(TypeFlags::INSTANCE));
+                    let Declaration::Regular(decl) = c.declaration else {
+                        panic!("expected RegularDeclaration");
+                    };
+                    assert_eq!(decl.name.as_deref(), Some("bool"));
+                    assert_eq!(decl.category, DeclarationCategory::Class);
+                }
+                other => panic!("expected bool Class, got {other:?}"),
+            }
         }
     }
 
