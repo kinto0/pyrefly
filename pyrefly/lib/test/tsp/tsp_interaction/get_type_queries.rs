@@ -281,6 +281,14 @@ fn test_get_computed_type_string_is_class() {
 
 #[test]
 fn test_get_computed_type_none_is_class() {
+    // Regression test for https://github.com/facebook/pyrefly/issues/4035:
+    // `None` must be a `NoneType` `ClassType`, not an off-spec `none`
+    // `BuiltInType`, so consumers can reconstruct unions like `str | None`.
+    // The declaration is sourced from the stdlib's `NoneType` class, so it
+    // carries a real location (e.g. `types.pyi`) that matches goto-definition
+    // rather than a synthesized stub. This asserts the wire shape; the
+    // downstream Pylance hover fix (`str | Unknown` → `str | None`) should be
+    // confirmed against a real client, which this test harness cannot drive.
     let (mut tsp, file_uri, snapshot) = setup_project("x = None\n");
 
     let result = get_computed_type_ok(&mut tsp, &file_uri, 0, 0, snapshot);
@@ -289,6 +297,50 @@ fn test_get_computed_type_none_is_class() {
     let declaration = result.get("declaration").expect("Expected declaration");
     let name = declaration.get("name").and_then(|v| v.as_str());
     assert_eq!(name, Some("NoneType"), "Expected class name 'NoneType'");
+
+    // The declaration points at NoneType's real definition, not an empty stub.
+    let uri = declaration
+        .get("node")
+        .and_then(|n| n.get("uri"))
+        .and_then(|v| v.as_str())
+        .expect("Expected declaration node URI");
+    assert!(
+        !uri.is_empty(),
+        "Expected a real NoneType definition URI, got empty"
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
+fn test_get_computed_type_str_or_none_union_reconstructs_none() {
+    // The concrete #4035 symptom: `str | None` must round-trip with its `None`
+    // member encoded as a reconstructable `NoneType` `ClassType` (previously an
+    // off-spec `none` `BuiltInType` that Pylance rendered as `Unknown`).
+    let code = "x: str | None = None\n";
+    let (mut tsp, file_uri, snapshot) = setup_project(code);
+
+    tsp.server.get_declared_type(&file_uri, 0, 0, snapshot);
+    let resp = tsp.client.receive_response_skip_notifications();
+    let result = resp.result.expect("Expected result");
+    assert_kind(&result, TypeKind::Union);
+
+    let sub_types = result
+        .get("subTypes")
+        .and_then(|v| v.as_array())
+        .expect("Expected subTypes array");
+    let has_none_class = sub_types.iter().any(|member| {
+        member.get("kind").and_then(|v| v.as_u64()) == Some(TypeKind::Class as u64)
+            && member
+                .get("declaration")
+                .and_then(|d| d.get("name"))
+                .and_then(|v| v.as_str())
+                == Some("NoneType")
+    });
+    assert!(
+        has_none_class,
+        "Expected a NoneType Class member in the union, got {sub_types:?}"
+    );
 
     tsp.shutdown();
 }

@@ -26,9 +26,9 @@
 //!  - `Any`, `Never`, `Ellipsis` → TSP `BuiltInType`.
 //!  - Solver-internal types → TSP `BuiltInType` with a representative name.
 //!
-//! Note: `None` is emitted as a `types.NoneType` `ClassType`, not as a
-//! `BuiltInType`, because `BuiltInType.name` is restricted to protocol
-//! sentinel names.
+//! Note: `None` is emitted as a `NoneType` `ClassType`, not as a `BuiltInType`,
+//! because `BuiltInType.name` is restricted to protocol sentinel names. See
+//! [`convert_type_with_resolvers`] for how the version-correct class is sourced.
 //! All `Type` variants are explicitly handled; no types fall through to a
 //! generic `SynthesizedType` stub.
 
@@ -110,16 +110,24 @@ pub type ExportLocationResolver<'a> =
 
 /// Convert a pyrefly `Type` to a TSP protocol `Type` using optional
 /// source-range and module-URI resolvers.
+///
+/// `none_type` is the stdlib's authoritative `NoneType` class, used to encode
+/// `None`. Passing the real class (rather than re-deriving `NoneType` by name)
+/// keeps the declaration version-correct — sourced from `types` on Python 3.10+
+/// and `_typeshed` before — and identical to an explicit `types.NoneType`
+/// annotation.
 pub fn convert_type_with_resolvers<'a>(
     ty: &PyreflyType,
     func_range_resolver: Option<&'a FuncRangeResolver<'a>>,
     module_path_resolver: Option<&'a ModulePathResolver<'a>>,
     export_location_resolver: Option<&'a ExportLocationResolver<'a>>,
+    none_type: &'a PyreflyClassType,
 ) -> TspType {
     TypeConverter {
         resolve_func_range: func_range_resolver,
         resolve_module_path: module_path_resolver,
         resolve_export: export_location_resolver,
+        none_type,
     }
     .convert(ty)
 }
@@ -131,7 +139,33 @@ pub fn convert_type_with_resolvers<'a>(
 /// locations are needed.
 #[cfg(test)]
 pub fn convert_type(ty: &PyreflyType) -> TspType {
-    convert_type_with_resolvers(ty, None, None, None)
+    convert_type_with_resolvers(ty, None, None, None, &test_none_type())
+}
+
+/// Build a stand-in for `Stdlib::none_type()` used by the resolver-free tests,
+/// which have no real stdlib. Mirrors the real class closely enough to exercise
+/// the production `None` path: a top-level `NoneType` class in bundled `types`.
+#[cfg(test)]
+fn test_none_type() -> PyreflyClassType {
+    use pyrefly_python::module::Module;
+    use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_types::class::ClassDefIndex;
+    use pyrefly_types::types::TArgs;
+    use ruff_python_ast::Identifier;
+
+    let module = Module::new(
+        ModuleName::types(),
+        ModulePath::bundled_typeshed(PathBuf::from("types.pyi")),
+        Arc::new(String::new()),
+    );
+    let class = Class::new(
+        ClassDefIndex(0),
+        Identifier::new(Name::new("NoneType"), TextRange::default()),
+        NestingContext::toplevel(),
+        module,
+        None,
+    );
+    PyreflyClassType::new(class, TArgs::default())
 }
 
 /// Holds an optional range resolver and drives recursive type conversion.
@@ -139,6 +173,9 @@ struct TypeConverter<'a> {
     resolve_func_range: Option<&'a FuncRangeResolver<'a>>,
     resolve_module_path: Option<&'a ModulePathResolver<'a>>,
     resolve_export: Option<&'a ExportLocationResolver<'a>>,
+    /// The stdlib's authoritative `NoneType` class, used to encode `None`; see
+    /// [`convert_type_with_resolvers`].
+    none_type: &'a PyreflyClassType,
 }
 
 impl TypeConverter<'_> {
@@ -148,7 +185,8 @@ impl TypeConverter<'_> {
             // --- Built-in special types ---
             PyreflyType::Any(_) => builtin("any"),
             PyreflyType::Never(_) => builtin("never"),
-            PyreflyType::None => self.types_class("NoneType", TypeFlags::INSTANCE),
+            // `None` → the stdlib's real `NoneType` class (see `none_type`).
+            PyreflyType::None => self.convert_class_type(self.none_type, TypeFlags::INSTANCE),
             PyreflyType::Ellipsis => builtin("ellipsis"),
 
             // --- Class instances (int, str, list[int], user-defined classes, etc.) ---
@@ -662,19 +700,6 @@ impl TypeConverter<'_> {
         })
     }
 
-    /// Build a TSP `ClassType` whose declaration points at `types.<name>`.
-    fn types_class(&self, name: &str, flags: TypeFlags) -> TspType {
-        TspType::Class(TspClassType {
-            declaration: Declaration::Regular(self.types_class_declaration(name)),
-            flags,
-            id: next_id(),
-            kind: TypeKind::Class,
-            literal_value: None,
-            type_alias_info: None,
-            type_args: None,
-        })
-    }
-
     /// Build a class declaration for `typing.<name>`. Resolves the real source
     /// range via the export-location resolver; falls back to a zero range
     /// pointing at bundled `typing.pyi` when unavailable.
@@ -695,28 +720,6 @@ impl TypeConverter<'_> {
             };
         }
         make_typing_class_declaration(name)
-    }
-
-    /// Build a class declaration for `types.<name>`. Resolves the real source
-    /// range via the export-location resolver; falls back to a zero range
-    /// pointing at bundled `types.pyi` when unavailable.
-    fn types_class_declaration(&self, name: &str) -> RegularDeclaration {
-        let symbol = Name::new(name);
-        if let Some((module_path, lsp_range)) = self
-            .resolve_export
-            .and_then(|resolve| resolve(ModuleName::types(), &symbol))
-        {
-            return RegularDeclaration {
-                kind: DeclarationKind::Regular,
-                category: DeclarationCategory::Class,
-                name: Some(name.to_owned()),
-                node: Node {
-                    range: lsp_range_to_tsp(lsp_range),
-                    uri: path_to_uri(&module_path),
-                },
-            };
-        }
-        make_types_class_declaration(name)
     }
 
     /// Convert a pyrefly `Overload` to a TSP `OverloadedType`.
@@ -864,21 +867,6 @@ fn make_builtin_class_declaration(name: &str) -> RegularDeclaration {
 fn make_typing_class_declaration(name: &str) -> RegularDeclaration {
     let module_path =
         pyrefly_python::module_path::ModulePath::bundled_typeshed(PathBuf::from("typing.pyi"));
-    RegularDeclaration {
-        kind: DeclarationKind::Regular,
-        category: DeclarationCategory::Class,
-        name: Some(name.to_owned()),
-        node: Node {
-            range: zero_range(),
-            uri: path_to_uri(&module_path),
-        },
-    }
-}
-
-/// Build a declaration for a class in `types.pyi`.
-fn make_types_class_declaration(name: &str) -> RegularDeclaration {
-    let module_path =
-        pyrefly_python::module_path::ModulePath::bundled_typeshed(PathBuf::from("types.pyi"));
     RegularDeclaration {
         kind: DeclarationKind::Regular,
         category: DeclarationCategory::Class,
@@ -1422,7 +1410,13 @@ mod tests {
                 None
             }
         };
-        let tsp = convert_type_with_resolvers(&ty, None, Some(&module_path_resolver), None);
+        let tsp = convert_type_with_resolvers(
+            &ty,
+            None,
+            Some(&module_path_resolver),
+            None,
+            &test_none_type(),
+        );
         match tsp {
             TspType::Module(m) => {
                 assert_eq!(m.module_name, "pkg");
@@ -1499,7 +1493,7 @@ mod tests {
                 range,
             ))
         };
-        match convert_type_with_resolvers(&ty, None, None, Some(&resolver)) {
+        match convert_type_with_resolvers(&ty, None, None, Some(&resolver), &test_none_type()) {
             TspType::Class(c) => {
                 let Declaration::Regular(decl) = c.declaration else {
                     panic!("expected RegularDeclaration");
@@ -1618,7 +1612,7 @@ mod tests {
             ))
         };
         let ty = PyreflyType::TypeAlias(Box::new(TypeAliasData::Ref(make_ref())));
-        match convert_type_with_resolvers(&ty, None, None, Some(&resolver)) {
+        match convert_type_with_resolvers(&ty, None, None, Some(&resolver), &test_none_type()) {
             TspType::Class(c) => {
                 let Declaration::Regular(decl) = c.declaration else {
                     panic!("expected RegularDeclaration");
@@ -1679,7 +1673,7 @@ mod tests {
                 range,
             ))
         };
-        match convert_type_with_resolvers(&ty, None, None, Some(&resolver)) {
+        match convert_type_with_resolvers(&ty, None, None, Some(&resolver), &test_none_type()) {
             TspType::Var(v) => {
                 let Declaration::Regular(decl) = v.declaration else {
                     panic!("expected RegularDeclaration");
@@ -1710,7 +1704,7 @@ mod tests {
                 lsp_types::Range::default(),
             ))
         };
-        match convert_type_with_resolvers(&ty, None, None, Some(&resolver)) {
+        match convert_type_with_resolvers(&ty, None, None, Some(&resolver), &test_none_type()) {
             TspType::Var(v) => {
                 let Declaration::Regular(decl) = v.declaration else {
                     panic!("expected RegularDeclaration");
@@ -1857,6 +1851,9 @@ mod tests {
                 character: 12,
             },
         };
+        // The `None` return converts through the stdlib `NoneType` class, not
+        // the export resolver, so the only lookup here is `typing.overload`;
+        // any other lookup is a regression.
         let resolver = |module: ModuleName, name: &Name| {
             if module == ModuleName::typing() && name.as_str() == "overload" {
                 return Some((
@@ -1864,15 +1861,9 @@ mod tests {
                     range,
                 ));
             }
-            if module == ModuleName::types() && name.as_str() == "NoneType" {
-                return Some((
-                    ModulePath::filesystem(PathBuf::from("/typeshed/types.pyi")),
-                    range,
-                ));
-            }
             panic!("unexpected export lookup for {module}.{name}");
         };
-        match convert_type_with_resolvers(&ty, None, None, Some(&resolver)) {
+        match convert_type_with_resolvers(&ty, None, None, Some(&resolver), &test_none_type()) {
             TspType::Function(f) => {
                 let Declaration::Regular(decl) = f.declaration else {
                     panic!("expected RegularDeclaration");

@@ -6329,11 +6329,16 @@ impl Server {
         let resolve_export = |module_name: ModuleName, name: &Name| {
             resolve_export_location(transaction, source_handle, module_name, name)
         };
+        // `None` is encoded as the stdlib's version-aware `NoneType` class.
+        // Computing `ty` already populated this transaction's `Stdlib`, so
+        // `get_stdlib` stays on the warm path (see the doc comment above).
+        let stdlib = transaction.get_stdlib(source_handle);
         convert_type_with_resolvers(
             ty,
             Some(&resolve_func_range),
             Some(&resolve_module_path),
             Some(&resolve_export),
+            stdlib.none_type(),
         )
     }
 }
