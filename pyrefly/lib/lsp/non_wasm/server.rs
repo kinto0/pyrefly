@@ -351,6 +351,7 @@ use crate::state::state::Transaction;
 use crate::state::subscriber::CompositeSubscriber;
 use crate::state::subscriber::PublishDiagnosticsSubscriber;
 use crate::state::subscriber::Subscriber;
+use crate::tsp::type_conversion::StdlibClasses;
 use crate::tsp::type_conversion::convert_type_with_resolvers;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassType;
@@ -6338,7 +6339,9 @@ impl Server {
             Some(&resolve_func_range),
             Some(&resolve_module_path),
             Some(&resolve_export),
-            stdlib.none_type(),
+            StdlibClasses {
+                none_type: stdlib.none_type(),
+            },
         )
     }
 }
