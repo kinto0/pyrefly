@@ -15,6 +15,7 @@ use pyrefly_python::ignore::Ignore;
 use pyrefly_python::ignore::Suppression;
 use pyrefly_python::ignore::Tool;
 use pyrefly_python::ignore::find_comment_start_in_line;
+use pyrefly_python::ignore::misplaced_ignore_errors;
 use pyrefly_python::ignore::parse_ignore_all;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_path::ModulePath;
@@ -235,6 +236,9 @@ pub struct ModuleRanges {
     pub multi_line: Vec<(LineNumber, LineNumber)>,
     /// Top-level ignore-all directives (e.g. `# pyrefly: ignore-errors`).
     pub ignore_all: Vec<Suppression>,
+    /// Lines of pyrefly `ignore-errors` directives placed after the preamble,
+    /// where they are inert. Surfaced as `misplaced-ignore` warnings.
+    pub misplaced_ignore_all: Vec<LineNumber>,
 }
 
 impl ModuleRanges {
@@ -245,9 +249,11 @@ impl ModuleRanges {
         multi_line.extend(sorted_backslash_continuation_ranges(&lines, &multi_line));
         multi_line.sort();
         let ignore_all = parse_ignore_all(module_info.contents(), &multi_line);
+        let misplaced_ignore_all = misplaced_ignore_errors(module_info.contents(), &multi_line);
         Self {
             multi_line,
             ignore_all,
+            misplaced_ignore_all,
         }
     }
 }
@@ -292,6 +298,7 @@ impl Errors {
                 &error_config,
                 &ranges.multi_line,
                 &ranges.ignore_all,
+                &ranges.misplaced_ignore_all,
                 &mut errors,
             );
         }
@@ -654,6 +661,7 @@ impl Errors {
                 &error_config,
                 &ranges.multi_line,
                 &ranges.ignore_all,
+                &ranges.misplaced_ignore_all,
                 &mut result,
             );
             let output_errors = Self::merge_display_errors(result.ordinary, result.directives);

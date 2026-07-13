@@ -259,6 +259,10 @@ pub enum ErrorKind {
     /// Attempting to use `yield` in a way that is not allowed.
     /// e.g. `yield from` with something that's not an iterable.
     InvalidYield,
+    /// A file-level `# pyrefly: ignore-errors` (or `ignore-errors[code]`) directive
+    /// appears after the first line of code, where it is silently inert. File-level
+    /// suppressions are only honored in the preamble, at the top of the file.
+    MisplacedIgnore,
     /// An error caused by calling a function without all the required arguments.
     /// Should be used when we can name the specific arguments that are missing.
     MissingArgument,
@@ -505,6 +509,7 @@ impl ErrorKind {
             ErrorKind::ImplicitlyDefinedAttribute => Severity::Ignore,
             ErrorKind::IncompatibleComparison => Severity::Ignore,
             ErrorKind::InvalidDecorator => Severity::Warn,
+            ErrorKind::MisplacedIgnore => Severity::Warn,
             ErrorKind::MissingOverrideDecorator => Severity::Ignore,
             ErrorKind::MissingSource => Severity::Ignore,
             ErrorKind::NameMismatch => Severity::Warn,

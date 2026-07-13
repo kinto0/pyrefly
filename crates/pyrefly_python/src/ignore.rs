@@ -538,29 +538,12 @@ pub fn parse_ignore_all(
             res.push(Suppression::blanket(Tool::Pyre, line, comment_offset));
         } else if let Some(tool) = lex.starts_with_tool() {
             lex.trim_start();
-            if lex.starts_with("ignore-errors") {
-                lex.trim_start();
-                // Parse an optional `[code, ...]` list, sharing `parse_error_codes`
-                // with the line-level parser. A file-level directive must close its
-                // bracket and have nothing after it, so malformed lines are rejected.
-                let kind = if lex.starts_with("[") {
-                    lex.0.split_once(']').and_then(|(inside, after)| {
-                        // Drop empty entries so `[]`/trailing commas act as a blanket
-                        // ignore rather than a directive that matches nothing.
-                        Lexer(after).blank().then(|| {
-                            parse_error_codes(inside)
-                                .into_iter()
-                                .filter(|code| !code.is_empty())
-                                .collect()
-                        })
-                    })
-                } else if lex.blank() {
-                    Some(Vec::new())
-                } else {
-                    None
-                };
+            if lex.0.starts_with("ignore-errors") {
+                // A file-level directive must have nothing after it (unlike the
+                // misplaced-directive scan, which tolerates a trailing comment).
                 // Only Pyrefly honors specific codes; other tools are blanket-only.
-                if let Some(kind) = kind
+                if let Some((kind, tail)) = parse_ignore_errors_body(&mut lex)
+                    && Lexer(tail).blank()
                     && (tool == Tool::Pyrefly || kind.is_empty())
                 {
                     res.push(Suppression {
@@ -583,6 +566,102 @@ pub fn parse_ignore_all(
 /// Split the comma-separated error codes inside a `[...]` suppression into trimmed names.
 fn parse_error_codes(inside: &str) -> Vec<String> {
     inside.split(',').map(|x| x.trim().to_owned()).collect()
+}
+
+/// Recognize an `ignore-errors` / `ignore-errors[code]` directive body, with the
+/// leading `#` and `<tool>:` already consumed. Returns the error codes it names
+/// (empty = blanket) together with the unparsed remainder after the directive,
+/// or `None` if this is not an `ignore-errors` directive or its `[` bracket is
+/// unclosed. The caller decides whether the remainder is acceptable — the
+/// file-level parser requires it blank, while the misplaced-directive scan
+/// tolerates a trailing comment.
+fn parse_ignore_errors_body<'a>(lex: &mut Lexer<'a>) -> Option<(Vec<String>, &'a str)> {
+    if !lex.starts_with("ignore-errors") {
+        return None;
+    }
+    lex.trim_start();
+    if lex.starts_with("[") {
+        // Drop empty entries so `[]`/trailing commas act as a blanket ignore
+        // rather than a directive that matches nothing.
+        let (inside, after) = lex.0.split_once(']')?;
+        let codes = parse_error_codes(inside)
+            .into_iter()
+            .filter(|code| !code.is_empty())
+            .collect();
+        Some((codes, after))
+    } else {
+        Some((Vec::new(), lex.0))
+    }
+}
+
+/// Returns `true` if `comment` (a single `#…` comment, starting at its leading
+/// `#`) is a pyrefly `ignore-errors` / `ignore-errors[code]` directive.
+///
+/// Shares directive recognition with `parse_ignore_all` via
+/// `parse_ignore_errors_body`; the parsed codes are discarded since callers only
+/// care whether the directive is present. A trailing explanatory `# …` comment
+/// is tolerated (so tests can append `# E:` markers); any other trailing content
+/// (e.g. prose) is not a directive. Other tools and the line-level
+/// `# pyrefly: ignore` form are intentionally excluded.
+fn is_pyrefly_ignore_errors(comment: &str) -> bool {
+    let mut lex = Lexer(comment);
+    if !lex.starts_with("#") {
+        return false;
+    }
+    lex.trim_start();
+    if lex.starts_with_tool() != Some(Tool::Pyrefly) {
+        return false;
+    }
+    lex.trim_start();
+    let Some((_, tail)) = parse_ignore_errors_body(&mut lex) else {
+        return false;
+    };
+    let tail = tail.trim_start();
+    tail.is_empty() || tail.starts_with('#')
+}
+
+/// Find the lines of pyrefly `ignore-errors` directives that appear *after* the
+/// preamble, where a file-level suppression is silently inert.
+///
+/// The preamble is the leading run of blank lines, comments, and docstrings.
+/// A directive there is honored by `parse_ignore_all`, so it is not reported.
+/// Once the first real code line is seen, every subsequent comment-only line is
+/// checked for a pyrefly `ignore-errors` directive (blanket or typed). Line
+/// classification mirrors `parse_ignore_all` so the two functions partition
+/// directives into "honored" (preamble) and "misplaced" (after code).
+pub fn misplaced_ignore_errors(
+    code: &str,
+    multiline_string_ranges: &[(LineNumber, LineNumber)],
+) -> Vec<LineNumber> {
+    let mut res = Vec::new();
+    let mut seen_code = false;
+
+    for (idx, raw_line) in code.lines().enumerate() {
+        let line = LineNumber::from_zero_indexed(idx as u32);
+        let trimmed = raw_line.trim();
+
+        // Lines inside a multiline string (docstring, multi-line assignment) and
+        // triple-quote boundary lines are neither code nor comment — skip them,
+        // matching `parse_ignore_all`.
+        if is_in_multiline_string(multiline_string_ranges, line)
+            || trimmed.starts_with("\"\"\"")
+            || trimmed.starts_with("'''")
+            || trimmed.is_empty()
+        {
+            continue;
+        }
+
+        if !trimmed.starts_with('#') {
+            // A non-empty, non-comment line is real code: it ends the preamble.
+            seen_code = true;
+            continue;
+        }
+
+        if seen_code && is_pyrefly_ignore_errors(trimmed) {
+            res.push(line);
+        }
+    }
+    res
 }
 
 #[cfg(test)]
@@ -920,6 +999,87 @@ x = """
                 LineNumber::from_zero_indexed(3),
             )],
             &[(Tool::Pyrefly, 1, &[])],
+        );
+    }
+
+    #[test]
+    fn test_misplaced_ignore_errors() {
+        fn f(x: &str, expect: &[u32]) {
+            assert_eq!(
+                misplaced_ignore_errors(x, &[]),
+                expect
+                    .iter()
+                    .map(|line| LineNumber::new(*line).unwrap())
+                    .collect::<Vec<_>>(),
+                "{x:?}"
+            );
+        }
+
+        // A directive after code, after an import, or sandwiched between code
+        // lines is inert and therefore misplaced.
+        f("x = 5\n# pyrefly: ignore-errors", &[2]);
+        f("x = 5\n# pyrefly: ignore-errors[bad-assignment]", &[2]);
+        f(
+            "import os\n# pyrefly: ignore-errors[bad-assignment]\nx = 5",
+            &[2],
+        );
+        f("x = 5\n# pyrefly: ignore-errors\ny = 6", &[2]);
+        // Multiple misplaced directives are all reported.
+        f(
+            "x = 5\n# pyrefly: ignore-errors\n# pyrefly: ignore-errors[bad-return]",
+            &[2, 3],
+        );
+        // A trailing explanatory comment (or a test `# E:` marker) is tolerated.
+        f("x = 5\n# pyrefly: ignore-errors  # E:", &[2]);
+        f("x = 5\n# pyrefly: ignore-errors[bad-return]  # note", &[2]);
+
+        // A directive in the preamble is honored by `parse_ignore_all`, so it is
+        // never misplaced — whether it is the first line or follows comments.
+        f("# pyrefly: ignore-errors\nx = 5", &[]);
+        f("# comment\n# pyrefly: ignore-errors\nx = 5", &[]);
+        f("# pyrefly: ignore-errors[bad-assignment]\nx = 5", &[]);
+
+        // Other tools and the line-level form are not flagged.
+        f("x = 5\n# mypy: ignore-errors", &[]);
+        f("x = 5\n# pyre-ignore-all-errors", &[]);
+        f("x = 5\n# pyrefly: ignore", &[]);
+        f("x = 5\n# pyrefly: ignore[bad-return]", &[]);
+        // Trailing prose (no `#`) is not a directive.
+        f("x = 5\n# pyrefly: ignore-errors because I want to", &[]);
+        // A same-line trailing directive is not on a comment-only line.
+        f("x = 5  # pyrefly: ignore-errors", &[]);
+    }
+
+    #[test]
+    fn test_misplaced_ignore_errors_with_docstring() {
+        fn f(x: &str, ranges: &[(LineNumber, LineNumber)], expect: &[u32]) {
+            assert_eq!(
+                misplaced_ignore_errors(x, ranges),
+                expect
+                    .iter()
+                    .map(|line| LineNumber::new(*line).unwrap())
+                    .collect::<Vec<_>>(),
+                "{x:?}"
+            );
+        }
+
+        // A directive after a docstring is still in the preamble: not misplaced.
+        f(
+            "\"\"\"\nmodule docstring\n\"\"\"\n# pyrefly: ignore-errors\nx = 5",
+            &[(
+                LineNumber::from_zero_indexed(0),
+                LineNumber::from_zero_indexed(2),
+            )],
+            &[],
+        );
+        // A directive after code that follows a docstring is misplaced.
+        f(
+            "\"\"\"\nmodule docstring\n\"\"\"\nx = 5\n# pyrefly: ignore-errors",
+            &[(
+                LineNumber::from_zero_indexed(0),
+                LineNumber::from_zero_indexed(2),
+            )],
+            &[5],
         );
     }
 }

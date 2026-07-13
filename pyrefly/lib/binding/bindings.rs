@@ -356,6 +356,7 @@ impl Bindings {
             module_ranges: Arc::new(ModuleRanges {
                 multi_line: Vec::new(),
                 ignore_all: Vec::new(),
+                misplaced_ignore_all: Vec::new(),
             }),
             scope_trace: None,
             module_deletes: SmallSet::new(),
