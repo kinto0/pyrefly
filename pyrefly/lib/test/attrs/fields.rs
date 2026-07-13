@@ -250,6 +250,26 @@ C([1, 2])   # E: not assignable to parameter `x`
 "#,
 );
 
+// `attr.converters.pipe(c1, ...)` runs `c1` first, so the `__init__` param takes `c1`'s input type
+// (here `int`'s) while the attribute keeps the declared output type. An argument `c1` can't accept
+// is rejected, even though a later converter (`str`) could.
+attrs_testcase!(
+    test_attrs_field_converters_pipe,
+    r#"
+from typing import assert_type
+from attrs import define, field
+import attr
+
+@define
+class C:
+    x: str = field(converter=attr.converters.pipe(int, str))
+
+assert_type(C(3.4).x, str)
+C("09")  # OK
+C({})    # E: not assignable to parameter `x`
+"#,
+);
+
 // A `factory=` field is optional in `__init__`, but its param keeps the declared
 // annotation type so construction args are still type-checked.
 attrs_testcase!(

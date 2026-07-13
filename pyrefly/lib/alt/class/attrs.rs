@@ -10,7 +10,7 @@
 //! module implements the behaviors that diverge from plain dataclasses, including: init-parameter
 //! renaming (stripping leading underscores), the `auto_attribs` defaults per decorator flavor,
 //! `eq`/`order`/`cmp` validation, `on_setattr`/`setters.frozen` read-only detection,
-//! `converters.optional` handling, `@x.default` decorator return-type checks, `@x.converter`
+//! `converters.optional`/`converters.pipe` handling, `@x.default` decorator return-type checks, `@x.converter`
 //! decorator input types, and the `assoc`/`fields`/`fields_dict` runtime helpers.
 
 use std::sync::Arc;
@@ -503,10 +503,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         attrs_type_is_frozen_setter(&self.expr_infer(expr, &self.error_swallower()))
     }
 
-    /// `attr.converters.optional(c)` wraps an inner converter so the field also accepts `None`.
-    /// Returns `<c's input> | None` when `converter=` is such a call, else `None` so the caller
-    /// falls back to plain converter handling.
-    pub(crate) fn attrs_converters_optional_param(
+    /// The `__init__` input for an `attr.converters`/`attrs.converters` combinator `converter=`:
+    /// `optional(c)` adds `None` to `c`'s input; `pipe(c1, ...)` uses `c1`'s (it runs first). `None`
+    /// for any other `converter=`.
+    pub(crate) fn attrs_converters_combinator_param(
         &self,
         args: &Arguments,
         errors: &ErrorCollector,
@@ -519,14 +519,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let Expr::Call(call) = &kw.value else {
             return None;
         };
+        // These converters are overloaded, so match on the resolved definition identity via
+        // `callee_kind` (which looks through overloads) rather than a bare `Type::Function`.
+        let Some(CalleeKind::Function(FunctionKind::Def(id))) =
+            self.expr_infer(&call.func, errors).callee_kind()
+        else {
+            return None;
+        };
         if !matches!(
-            self.expr_infer(&call.func, errors).callee_kind(),
-            Some(CalleeKind::Function(FunctionKind::AttrsConvertersOptional))
+            id.module.name().as_str(),
+            "attr.converters" | "attrs.converters"
         ) {
             return None;
         }
-        let inner = call.arguments.args.first()?;
-        let inner_ty = self.expr_infer(inner, errors);
-        Some(self.union(self.get_converter_param(&inner_ty), self.heap.mk_none()))
+        let first_input = || {
+            Some(self.get_converter_param(&self.expr_infer(call.arguments.args.first()?, errors)))
+        };
+        match id.name.as_str() {
+            "optional" => Some(self.union(first_input()?, self.heap.mk_none())),
+            "pipe" => first_input(),
+            _ => None,
+        }
     }
 }
