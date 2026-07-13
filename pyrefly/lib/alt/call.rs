@@ -49,6 +49,8 @@ use crate::binding::binding::Key;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::ErrorContext;
+use crate::error::context::TypeCheckContext;
+use crate::error::context::TypeCheckKind;
 use crate::solver::solver::QuantifiedHandle;
 use crate::solver::solver::TypeVarSpecializationError;
 use crate::types::callable::Callable;
@@ -2164,6 +2166,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     let arg_ty = self.expr_infer(&x.arguments.args[0], errors);
                     self.type_of(arg_ty)
                 }
+                _ if let Some(ret) = self.call_builtin_enumerate(ty, x, errors) => ret,
                 // Decorators can be applied in two ways:
                 //   - (common, idiomatic) via `@decorator`:
                 //     @staticmethod
@@ -2228,6 +2231,64 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 .args
                 .iter()
                 .all(|e| !matches!(e, Expr::Starred(_)))
+    }
+
+    fn call_builtin_enumerate(
+        &self,
+        ty: &Type,
+        x: &ExprCall,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        // `enumerate` is a class in the bundled typeshed, so `ClassDef` is the normal path. The
+        // `builtins.enumerate` function form is accepted defensively for alternate stubs.
+        let is_enumerate = matches!(ty, Type::ClassDef(cls) if cls.is_builtin("enumerate"))
+            || matches!(
+                ty.callee_kind(),
+                Some(CalleeKind::Function(FunctionKind::Def(func)))
+                    if func.module.name().as_str() == "builtins"
+                        && func.cls.is_none()
+                        && func.name.as_str() == "enumerate"
+            );
+        if !is_enumerate {
+            return None;
+        }
+        let args = &x.arguments.args;
+        // Starred args or more than two positionals don't match `enumerate(iterable, start=0)`.
+        if args.len() > 2 || args.iter().any(|arg| matches!(arg, Expr::Starred(_))) {
+            return None;
+        }
+        // Resolve the `iterable` and optional `start` arguments, accepting both positional and
+        // keyword forms. Fall back to normal call solving for any shape we don't handle: `**kwargs`,
+        // an unknown keyword, a duplicated argument, or a missing `iterable`.
+        let mut iterable_expr = args.first();
+        let mut start_expr = args.get(1);
+        for kw in &x.arguments.keywords {
+            let slot = match kw.arg.as_ref().map(|id| id.as_str()) {
+                Some("iterable") => &mut iterable_expr,
+                Some("start") => &mut start_expr,
+                _ => return None,
+            };
+            if slot.is_some() {
+                return None;
+            }
+            *slot = Some(&kw.value);
+        }
+        let iterable_expr = iterable_expr?;
+
+        if let Some(start) = start_expr {
+            let int_ty = self.heap.mk_class_type(self.stdlib.int().clone());
+            let start_ty = self.expr_infer(start, errors);
+            self.check_type(&start_ty, &int_ty, start.range(), errors, &|| {
+                TypeCheckContext::of_kind(TypeCheckKind::CallArgument(
+                    Some(Name::new_static("start")),
+                    None,
+                ))
+            });
+        }
+        let iterable = self.expr_infer(iterable_expr, errors);
+        let value =
+            self.get_produced_type(self.iterate(&iterable, iterable_expr.range(), errors, None));
+        Some(self.heap.mk_class_type(self.stdlib.enumerate(value)))
     }
 }
 
