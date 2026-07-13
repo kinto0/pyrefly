@@ -351,6 +351,186 @@ C([1, 2])  # E: not assignable to parameter `x`
 "#,
 );
 
+// A `@<field>.converter` decorator (attrs 26.2.0+) supplies the converter. attrs invokes it as
+// `converter(self, field, value)`, so the `value` parameter's type becomes the `__init__` param type
+// while the attribute keeps its declared output type.
+attrs_testcase!(
+    test_attrs_field_converter_decorator,
+    r#"
+from typing import assert_type, reveal_type
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, attribute, value: str) -> int:
+        return int(value)
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, x: str) -> None
+assert_type(C("5").x, int)
+C(5)  # E: not assignable to parameter `x`
+"#,
+);
+
+// A union `value` type flows to the `__init__` parameter, accepting either member and rejecting
+// anything else. (The runtime `int(...)` may still raise, but that is not a type error.)
+attrs_testcase!(
+    test_attrs_field_converter_decorator_union_input,
+    r#"
+from attrs import define, field
+
+@define
+class DecoratorConverter:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, attribute, value: str | float) -> int:
+        return int(value)
+
+DecoratorConverter("foo")  # OK
+DecoratorConverter(1.5)    # OK
+DecoratorConverter([])     # E: not assignable to parameter `x`
+"#,
+);
+
+// An unannotated `value` parameter makes the `__init__` parameter `Any`, so any argument is accepted.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_unannotated_value,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, attribute, value) -> int:
+        return int(value)
+
+C("anything")  # OK
+C(123)         # OK
+"#,
+);
+
+// attrs always calls the decorated converter as `converter(self, field, value)`. A method missing the
+// `field` parameter can never be called, so its signature is rejected (this is the naive 2-arg form).
+attrs_testcase!(
+    test_attrs_field_converter_decorator_too_few_params,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, value: str) -> int:  # E: The `@x.converter` method must accept `(self, field, value)`, but it accepts too few positional parameters
+        return int(value)
+"#,
+);
+
+// A converter with a required parameter beyond `(self, field, value)` can never be called by attrs.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_too_many_params,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, attribute, value: str, extra: int) -> int:  # E: The `@x.converter` method must accept `(self, field, value)`, but it has required parameters that attrs does not pass
+        return int(value)
+"#,
+);
+
+// attrs passes converter arguments positionally, so a required keyword-only parameter can never be
+// filled.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_required_kwonly,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _to_int(self, attribute, value: str, *, mode: int) -> int:  # E: The `@x.converter` method must accept `(self, field, value)`, but it has a required keyword-only parameter that attrs cannot pass
+        return int(value)
+"#,
+);
+
+// An explicit `converter=` composes before a `@<field>.converter` decorator (attrs `pipe`), so the
+// keyword converter's input type is what `__init__` accepts.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_kwarg_takes_precedence,
+    r#"
+from typing import reveal_type
+from attrs import define, field
+
+def to_int(x: bytes) -> int:
+    return 0
+
+@define
+class C:
+    x: int = field(converter=to_int)
+
+    @x.converter
+    def _extra(self, attribute, value: str) -> int:
+        return 0
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, x: bytes) -> None
+"#,
+);
+
+// Multiple `@<field>.converter` methods compose via `pipe` in definition order, so the first one's
+// input type is what `__init__` accepts.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_first_wins,
+    r#"
+from typing import reveal_type
+from attrs import define, field
+
+@define
+class C:
+    x: int = field()
+
+    @x.converter
+    def _first(self, attribute, value: str) -> int:
+        return 0
+
+    @x.converter
+    def _second(self, attribute, value: bytes) -> int:
+        return 0
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, x: str) -> None
+"#,
+);
+
+// A `default=` feeds the converter, so it is checked against the converter's input type (`str`), not
+// the field's declared output type, and the field stays optional.
+attrs_testcase!(
+    test_attrs_field_converter_decorator_with_default,
+    r#"
+from attrs import define, field
+
+@define
+class C:
+    x: int = field(default="5")
+
+    @x.converter
+    def _to_int(self, attribute, value: str) -> int:
+        return int(value)
+
+C()     # OK
+C("9")  # OK
+"#,
+);
+
 // Legacy `attr.ib` accepts a positional `default`, so it is checked against the annotation.
 attrs_testcase!(
     test_attrs_attr_ib_positional_default_checked,

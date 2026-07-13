@@ -21,6 +21,7 @@ use starlark_map::Hashed;
 
 use crate::binding::binding::AnnotationStyle;
 use crate::binding::binding::AssignToAttribute;
+use crate::binding::binding::AttrsSpecifier;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingExpect;
 use crate::binding::binding::BindingTypeAlias;
@@ -731,14 +732,16 @@ impl<'a> BindingsBuilder<'a> {
         // Compute def_idx before building the binding, since the NameAssign needs
         // its own idx for partial type inference support.
         let def_idx = current.into_idx();
-        // Only an in-class-body `field()`/`attr.ib()` is an attrs field specifier whose value is a
-        // `_CountingAttr` (typed `Any` so `@<field>.default`/`.validator` resolve). Gating on the
-        // class body keeps this off the hot path for ordinary assignments. The kind distinguishes
-        // legacy `attr.ib` (positional `default`) from kw-only `field`.
-        let attrs_field_specifier = if self.scopes.in_class_body()
-            && let Expr::Call(call) = value.as_ref()
+        // Only an in-class-body `field()`/`attr.ib()` is an attrs field specifier; gating on the
+        // class body keeps this off the hot path for ordinary assignments.
+        let attrs_field_specifier = if let Expr::Call(call) = value.as_ref()
+            && let Some(class_def_index) = self.scopes.current_class_def_index()
+            && let Some(kind) = self.attrs_field_specifier_kind(&call.func)
         {
-            self.attrs_field_specifier_kind(&call.func)
+            Some(AttrsSpecifier {
+                kind,
+                class_def_index,
+            })
         } else {
             None
         };

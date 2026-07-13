@@ -71,6 +71,7 @@ use crate::binding::binding::AnnAssignHasValue;
 use crate::binding::binding::AnnotationStyle;
 use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::AnnotationWithTarget;
+use crate::binding::binding::AttrsSpecifier;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
 use crate::binding::binding::BindingClass;
@@ -3455,7 +3456,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         annot_key: Option<&(AnnotationStyle, Idx<KeyAnnotation>)>,
         receiver_idx: Option<Idx<Key>>,
         expr: &Expr,
-        attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
+        attrs_field_specifier: Option<AttrsSpecifier>,
         errors: &ErrorCollector,
     ) -> (Option<Arc<AnnotationWithTarget>>, Type) {
         // Receiver-constrained class assignment: a same-scope rebind of a
@@ -3495,17 +3496,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .with_annotation(annot_range, "declared type".to_owned())
                 };
                 let annot_ty = annot.ty(self.heap, self.stdlib);
-                // The annotation is authoritative for an attrs specifier, so we don't check the
-                // call's return (which `validator=` can widen) against it. We instead check the
-                // value the field will hold: the `default=`/positional value, or the `factory=`
-                // callable's return. A `converter=` intercepts that value (its type becomes the
-                // converter's input, enforced on `__init__`), so we skip the check when present.
-                let expr_ty = if attrs_field_specifier.is_some()
+                // The annotation is authoritative, so rather than the call's return (which
+                // `validator=` can widen) we check the value the field will hold: the
+                // `default=`/positional value or the `factory=` return. A converter (`converter=` or
+                // a `@<field>.converter` decorator) intercepts that value, so we skip the check then.
+                let expr_ty = if let Some(spec) = attrs_field_specifier
                     && let Expr::Call(call) = expr
                 {
                     let got = self.expr_infer(expr, errors);
                     if let Some(annot_ty) = &annot_ty
                         && call.arguments.find_keyword("converter").is_none()
+                        && self
+                            .bindings()
+                            .get_class_fields(spec.class_def_index)
+                            .and_then(|f| f.attrs_converter_decorator_method_range(name))
+                            .is_none()
                     {
                         if let Some(default) = call
                             .arguments
@@ -3514,7 +3519,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             // Only legacy `attr.ib` accepts a positional `default`; `field` is
                             // keyword-only, so a positional there is not a default value.
                             .or_else(|| {
-                                (attrs_field_specifier == Some(AttrsFieldSpecifierKind::Attrib))
+                                (spec.kind == AttrsFieldSpecifierKind::Attrib)
                                     .then(|| call.arguments.args.first())
                                     .flatten()
                             })
@@ -3595,7 +3600,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         legacy_tparams: &Option<Box<[Idx<KeyLegacyTypeParam>]>>,
         is_in_function_scope: bool,
         is_class_body_assignment: bool,
-        attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
+        attrs_field_specifier: Option<AttrsSpecifier>,
         errors: &ErrorCollector,
     ) -> Type {
         let (annot, ty) = self.name_assign_infer(

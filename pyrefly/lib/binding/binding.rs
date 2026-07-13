@@ -2075,6 +2075,17 @@ pub enum TypeAliasParams {
     },
 }
 
+/// attrs specifier info for a class-body assignment whose RHS is a `field()` / `attr.ib()` call.
+/// The in-body value is typed `Any` so `@<field>.default`/`.validator`/`.converter` accesses resolve.
+#[derive(Clone, Copy, Debug)]
+pub struct AttrsSpecifier {
+    /// Legacy `attr.ib` accepts a positional `default`; kw-only `field` does not.
+    pub kind: AttrsFieldSpecifierKind,
+    /// The enclosing class, so solving can look up whether the field has a `@<field>.converter`
+    /// decorator (which intercepts the `default=` value, exempting it from the field-type check).
+    pub class_def_index: ClassDefIndex,
+}
+
 /// Data for a name assignment binding.
 #[derive(Clone, Debug)]
 pub struct NameAssign {
@@ -2101,10 +2112,8 @@ pub struct NameAssign {
     /// the textual assignment is still bound as a real `NameAssign` so the
     /// RHS remains available for its own diagnostics and bookkeeping.
     pub receiver_idx: Option<Idx<Key>>,
-    /// `Some(kind)` if the RHS is an attrs field specifier call (`field()` / `attr.ib()`). The
-    /// in-body value is then `Any` so `@<field>.default` / `@<field>.validator` accesses resolve.
-    /// The kind distinguishes legacy `attr.ib` (positional `default`) from kw-only `field`.
-    pub attrs_field_specifier: Option<AttrsFieldSpecifierKind>,
+    /// `Some` if the RHS is an attrs field specifier call (`field()` / `attr.ib()`).
+    pub attrs_field_specifier: Option<AttrsSpecifier>,
 }
 
 impl NameAssign {

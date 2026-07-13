@@ -10,8 +10,8 @@
 //! module implements the behaviors that diverge from plain dataclasses, including: init-parameter
 //! renaming (stripping leading underscores), the `auto_attribs` defaults per decorator flavor,
 //! `eq`/`order`/`cmp` validation, `on_setattr`/`setters.frozen` read-only detection,
-//! `converters.optional` handling, `@x.default` decorator return-type checks, and the
-//! `assoc`/`fields`/`fields_dict` runtime helpers.
+//! `converters.optional` handling, `@x.default` decorator return-type checks, `@x.converter`
+//! decorator input types, and the `assoc`/`fields`/`fields_dict` runtime helpers.
 
 use std::sync::Arc;
 
@@ -40,9 +40,11 @@ use crate::alt::unwrap::HintRef;
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyDecorator;
 use crate::binding::binding::KeyExport;
+use crate::binding::binding::KeyUndecoratedFunction;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::types::callable::FunctionKind;
+use crate::types::callable::Param;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
 use crate::types::keywords::DataclassFieldKeywords;
@@ -257,6 +259,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 );
             }
         }
+    }
+
+    /// The `__init__` input type from a `@<field>.converter` method. attrs invokes it as
+    /// `converter(self, field, value)`, so the `value` (third positional) parameter's type is the
+    /// converter's input; falls back to `Any` when that parameter is absent or unannotated.
+    pub(crate) fn attrs_converter_decorator_param(&self, method_range: TextRange) -> Type {
+        let func = self.get(&KeyUndecoratedFunction(ShortIdentifier::from_text_range(
+            method_range,
+        )));
+        func.params
+            .iter()
+            .filter_map(|p| match p {
+                Param::PosOnly(_, ty, _) | Param::Pos(_, ty, _) => Some(ty.clone()),
+                _ => None,
+            })
+            .nth(2)
+            .unwrap_or_else(|| self.heap.mk_any_implicit())
     }
 
     /// attrs rejects two `eq`/`order`/`cmp` combinations at runtime (`ValueError`), on both the
