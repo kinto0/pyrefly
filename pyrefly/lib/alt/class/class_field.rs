@@ -1608,7 +1608,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             });
                         }
                     }
-                    let mut flags = self.compute_dataclass_field_initialization(call, dm);
+                    let mut flags = self.compute_dataclass_field_initialization(
+                        call,
+                        direct_annotation.as_ref().and_then(|a| a.ty.as_ref()),
+                        dm,
+                    );
                     if flags.is_some() {
                         // A field specifier with no type annotation is a definition-time error,
                         // except under classic attrs (`auto_attribs=False`), where an unannotated
@@ -2922,6 +2926,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub fn compute_dataclass_field_initialization(
         &self,
         call: &ExprCall,
+        annotated_field_ty: Option<&Type>,
         dm: &DataclassMetadata,
     ) -> Option<DataclassFieldKeywords> {
         let ExprCall {
@@ -2938,7 +2943,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if let Some(func_kind) = func_kind
             && dm.kind.field_specifiers().contains(&func_kind)
         {
-            let flags = self.dataclass_field_keywords(&func_ty, arguments, dm, &ignore_errors);
+            let flags = self.dataclass_field_keywords(
+                &func_ty,
+                arguments,
+                annotated_field_ty,
+                dm,
+                &ignore_errors,
+            );
             Some(flags)
         } else {
             None

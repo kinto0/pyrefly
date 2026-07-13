@@ -504,11 +504,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     /// The `__init__` input for an `attr.converters`/`attrs.converters` combinator `converter=`:
-    /// `optional(c)` adds `None` to `c`'s input; `pipe(c1, ...)` uses `c1`'s (it runs first). `None`
-    /// for any other `converter=`.
+    /// `optional(c)` adds `None` to `c`'s input; `pipe(c1, ...)` uses `c1`'s (it runs first);
+    /// `default_if_none(...)` passes non-`None` values through, so it is `annotated_field_ty | None`.
+    /// `None` for any other `converter=`.
+    ///
+    /// `annotated_field_ty` is the field's declared type annotation, if the field has one.
     pub(crate) fn attrs_converters_combinator_param(
         &self,
         args: &Arguments,
+        annotated_field_ty: Option<&Type>,
         errors: &ErrorCollector,
     ) -> Option<Type> {
         let kw = args.keywords.iter().find(|kw| {
@@ -538,6 +542,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         match id.name.as_str() {
             "optional" => Some(self.union(first_input()?, self.heap.mk_none())),
             "pipe" => first_input(),
+            "default_if_none" => Some(self.union(annotated_field_ty?.clone(), self.heap.mk_none())),
             _ => None,
         }
     }

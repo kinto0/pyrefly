@@ -270,6 +270,44 @@ C({})    # E: not assignable to parameter `x`
 "#,
 );
 
+// `attr.converters.default_if_none(d)` replaces `None` with `d` and passes other values through, so
+// the `__init__` param is the field's declared type unioned with `None`, not a useless `Any`.
+attrs_testcase!(
+    test_attrs_field_converters_default_if_none,
+    r#"
+from typing import assert_type, reveal_type
+from attrs import define, field
+import attr
+
+@define
+class C:
+    x: int = field(converter=attr.converters.default_if_none(42))
+
+reveal_type(C.__init__)  # E: revealed type: (self: C, x: int | None) -> None
+assert_type(C(1).x, int)
+C(None)  # OK: None becomes the default
+C({})    # E: not assignable to parameter `x`
+"#,
+);
+
+// The `factory=` form behaves the same: non-`None` values pass through, so the input stays
+// `field type | None`.
+attrs_testcase!(
+    test_attrs_field_converters_default_if_none_factory,
+    r#"
+from attrs import define, field
+import attr
+
+@define
+class C:
+    xs: list[int] = field(converter=attr.converters.default_if_none(factory=list))
+
+C(None)    # OK
+C([1, 2])  # OK
+C("nope")  # E: not assignable to parameter `xs`
+"#,
+);
+
 // A `factory=` field is optional in `__init__`, but its param keeps the declared
 // annotation type so construction args are still type-checked.
 attrs_testcase!(

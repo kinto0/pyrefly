@@ -768,6 +768,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         func: &Type,
         args: &Arguments,
+        annotated_field_ty: Option<&Type>,
         dataclass_metadata: &DataclassMetadata,
         errors: &ErrorCollector,
     ) -> DataclassFieldKeywords {
@@ -823,7 +824,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Read the converter from an explicit `converter=` argument only, not the specifier
         // signature (which always declares one) — else every plain field's param goes Unknown.
         let converter_param = self
-            .attrs_converters_combinator_param(args, errors)
+            .attrs_converters_combinator_param(args, annotated_field_ty, errors)
             .or_else(|| {
                 map.0
                     .get(&DataclassFieldKeywords::CONVERTER)
