@@ -366,6 +366,8 @@ pub enum ErrorKind {
     UnexpectedPositionalArgument,
     /// Attempting to use a type checker directive without importing it from `typing`.
     UnimportedDirective,
+    /// Accessing a DataFrame column that does not exist in the inferred schema.
+    UnknownColumn,
     /// Attempting to use a name that is not defined.
     UnknownName,
     /// Identity comparison (`is` or `is not`) between types that are provably disjoint
@@ -607,6 +609,20 @@ mod tests {
     fn test_error_kind_name() {
         assert_eq!(ErrorKind::Unsupported.to_name(), "unsupported");
         assert_eq!(ErrorKind::ParseError.to_name(), "parse-error");
+    }
+
+    #[test]
+    fn test_unknown_column_kind_exists() {
+        assert_eq!(ErrorKind::UnknownColumn.to_name(), "unknown-column");
+        assert_eq!(
+            "unknown-column".parse::<ErrorKind>(),
+            Ok(ErrorKind::UnknownColumn)
+        );
+    }
+
+    #[test]
+    fn test_unknown_column_default_severity() {
+        assert_eq!(ErrorKind::UnknownColumn.default_severity(), Severity::Error);
     }
 
     #[test]
