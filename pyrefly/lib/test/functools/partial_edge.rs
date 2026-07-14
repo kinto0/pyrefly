@@ -10,6 +10,8 @@
 //! as `# WANT: ...`.
 
 use crate::functools_testcase;
+use crate::test::util::TestEnv;
+use crate::testcase;
 
 // Regression: https://github.com/facebook/pyrefly/issues/149 (closed — pyrefly already passes)
 functools_testcase!(
@@ -157,6 +159,25 @@ p(Base())
 p(Other())  # E: Argument `Other` is not assignable to parameter `node` with type `Base`
 "#,
 );
+
+// Binding the base-class positional with a subclass instance is accepted at construction. The
+// same-typevar residual stays generic, so a later `Base()` re-solves `T` to `Base` (matching the
+// direct call `pick(Sub(), Base())`) rather than being frozen to `Sub`.
+functools_testcase!(
+    test_partial_edge_bind_subclass_to_generic_base,
+    r#"
+from typing import TypeVar, reveal_type
+import functools
+class Base: ...
+class Sub(Base): ...
+T = TypeVar("T", bound=Base)
+def pick(first: T, second: T) -> T: ...
+p = functools.partial(pick, Sub())
+reveal_type(p(Sub()))  # E: revealed type: Sub
+reveal_type(p(Base()))  # E: revealed type: Base
+"#,
+);
+
 // A partial over a bound method reached through a subclass that overrides it currently defers to
 // the stub (bound-method targets are deferred), so no residual arg-checking happens.
 functools_testcase!(
@@ -172,5 +193,152 @@ class Sub(Base):
 p = functools.partial(Sub().act, 1)
 reveal_type(p)  # E: revealed type: partial[float]
 p(2)  # WANT: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
+"#,
+);
+
+// ===== Cross-module dimension: generic target imported across the module boundary =====
+
+testcase!(
+    test_partial_cross_module_generic,
+    TestEnv::one(
+        "ghelper",
+        "from typing import TypeVar, List\n_T = TypeVar('_T')\ndef nth(n: int, xs: List[_T]) -> _T: ...",
+    ).enable_strict_partial_subtyping(),
+    r#"
+from typing import reveal_type
+import functools
+from ghelper import nth
+first = functools.partial(nth, 0)
+reveal_type(first([1]))  # E: revealed type: int
+reveal_type(first(["a"]))  # E: revealed type: str
+"#,
+);
+
+// An enclosing-scope TypeVar that appears in BOTH a keyword-bound parameter (`make`, unified with
+// the outer `factory`'s `_S`) AND a required residual positional (`x`) must not freeze `x` to a rigid
+// `_S`: the residual call `pf(5)` re-solves it exactly as the direct call `pair(5, factory)` does.
+functools_testcase!(
+    test_partial_kwbind_and_required_positional_same_typevar,
+    r#"
+import functools
+from typing import Callable, TypeVar, reveal_type
+_S = TypeVar('_S')
+def pair(x: _S, make: Callable[[], _S]) -> _S: return x
+def test(factory: Callable[[], _S]) -> None:
+    reveal_type(pair(5, factory))  # E: revealed type: int | _S
+    pf = functools.partial(pair, make=factory)
+    reveal_type(pf(5))  # E: revealed type: int
+"#,
+);
+
+// Cross-module variant of the kw-bind + required-positional enclosing-scope-TypeVar case.
+testcase!(
+    test_partial_xmod_kwbind_and_required_positional,
+    TestEnv::one(
+        "pmod",
+        "from typing import Callable, TypeVar\n_S = TypeVar('_S')\ndef pair(x: _S, make: Callable[[], _S]) -> _S: return x\n",
+    ).enable_strict_partial_subtyping(),
+    r#"
+import functools
+from typing import Callable, TypeVar, reveal_type
+from pmod import pair
+_S = TypeVar('_S')
+def test(factory: Callable[[], _S]) -> None:
+    reveal_type(pair(5, factory))  # E: revealed type: int | _S
+    pf = functools.partial(pair, make=factory)
+    reveal_type(pf(5))  # E: revealed type: int
+"#,
+);
+
+// Cross-module #3546 enclosing-scope unification: `build` (own `_S`) imported; caller's `_S` is a
+// DIFFERENT locally-defined TypeVar. Binding enclosing-scope `factory` must unify.
+testcase!(
+    test_partial_xmod_factory_unify,
+    TestEnv::one(
+        "bhelper",
+        "from typing import Callable, TypeVar\n_S = TypeVar('_S')\ndef build(x: int, factory: Callable[[], _S]) -> _S: return factory()\n",
+    ).enable_strict_partial_subtyping(),
+    r#"
+import functools
+from typing import Callable, Generic, TypeVar, reveal_type
+from bhelper import build
+_S = TypeVar('_S')
+class Box(Generic[_S]): pass
+def run(f: Callable[[int], _S]) -> Box[_S]: return Box()
+def test(factory: Callable[[], _S]) -> Box[_S]:
+    partial_fn = functools.partial(build, factory=factory)
+    reveal_type(partial_fn)  # E: revealed type: (x: int, *, factory: () -> _S = ...) -> _S
+    reveal_type(run(partial_fn))  # E: revealed type: Box[_S]
+    return run(partial_fn)
+"#,
+);
+
+// Cross-module #3330 decorator, imported.
+testcase!(
+    test_partial_xmod_decorator,
+    TestEnv::one(
+        "dhelper",
+        "from typing import TypeVar\nC = TypeVar('C')\ndef decorator(fn: C, s: str) -> C: return fn\n",
+    ).enable_strict_partial_subtyping(),
+    r#"
+import functools
+from typing import reveal_type
+from dhelper import decorator
+@functools.partial(decorator, s="foo")
+def f(x: int) -> int: return x
+reveal_type(f)  # E: revealed type: (x: int) -> int
+f(None)  # E: Argument `None` is not assignable to parameter `x` with type `int` in function `f`
+"#,
+);
+
+// Cross-module #3329 bounded-TypeVar decorator, imported. Must be zero errors.
+testcase!(
+    test_partial_xmod_bounded_decorator,
+    TestEnv::one(
+        "ahelper",
+        "from typing import TypeVar, Callable\nC = TypeVar('C', bound=Callable)\ndef api_boundary2(fun: C, *, s: str | None = None) -> C: return fun\n",
+    ).enable_strict_partial_subtyping(),
+    r#"
+import functools
+from ahelper import api_boundary2
+@functools.partial(api_boundary2, s="foo")
+def test() -> None: ...
+"#,
+);
+
+// Partial over a local generic whose return uses an IMPORTED generic class `Box[_S]`.
+testcase!(
+    test_partial_xmod_generic_box_return,
+    TestEnv::one(
+        "boxmod2",
+        "from typing import Generic, TypeVar\n_S = TypeVar('_S')\nclass Box(Generic[_S]):\n    def __init__(self, v: _S) -> None: self.v = v\n",
+    ).enable_strict_partial_subtyping(),
+    r#"
+from typing import TypeVar, reveal_type
+import functools
+from boxmod2 import Box
+_S = TypeVar('_S')
+def wrap(tag: int, v: _S) -> Box[_S]: ...
+p = functools.partial(wrap, 1)
+reveal_type(p("x"))  # E: revealed type: Box[str]
+reveal_type(p(5))  # E: revealed type: Box[int]
+"#,
+);
+
+// Decorator with a TypeVar bound to an IMPORTED base class, applied cross-module.
+testcase!(
+    test_partial_xmod_decorator_imported_bound,
+    TestEnv::one("basemod3", "class MyBase: ...\n",).enable_strict_partial_subtyping(),
+    r#"
+import functools
+from typing import TypeVar, Callable, reveal_type
+from basemod3 import MyBase
+C = TypeVar("C", bound=Callable[..., MyBase])
+def deco(fn: C, s: str) -> C: return fn
+class Impl(MyBase): ...
+@functools.partial(deco, s="foo")
+def make(x: int) -> Impl: ...
+reveal_type(make)  # E: revealed type: (x: int) -> Impl
+make("bad")  # E: Argument `Literal['bad']` is not assignable to parameter `x` with type `int` in function `make`
 "#,
 );
