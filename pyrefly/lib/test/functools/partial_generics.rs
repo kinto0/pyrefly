@@ -245,6 +245,64 @@ p1("a", "b")  # E: No matching overload found for function `foo`
 "#,
 );
 
+// Binding an argument compatible with exactly one overload branch drops the others, so the residual
+// is that branch's remaining parameters and calls are checked against them.
+functools_testcase!(
+    test_partial_bound_over_overloaded_selects_branch,
+    r#"
+from typing import reveal_type, overload, Any
+import functools
+@overload
+def foo(a: int, b: str) -> int: ...
+@overload
+def foo(a: str, b: int) -> str: ...
+def foo(*a: Any, **k: Any) -> Any: ...
+p = functools.partial(foo, 1)
+reveal_type(p)  # E: revealed type: (b: str) -> int
+reveal_type(p("ok"))  # E: revealed type: int
+p(2)  # E: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
+q = functools.partial(foo, "s")
+reveal_type(q)  # E: revealed type: (b: int) -> str
+reveal_type(q(2))  # E: revealed type: str
+"#,
+);
+
+// Binding an argument compatible with several branches keeps all of them, recombined into an overload
+// so per-call resolution still selects a branch and a call matching none is rejected.
+functools_testcase!(
+    test_partial_bound_over_overloaded_multiple_survivors,
+    r#"
+from typing import reveal_type, overload, Any
+import functools
+@overload
+def h(a: int, b: str) -> int: ...
+@overload
+def h(a: int, b: bytes) -> bool: ...
+def h(*a: Any, **k: Any) -> Any: ...
+p = functools.partial(h, 1)
+reveal_type(p("x"))  # E: revealed type: int
+reveal_type(p(b"x"))  # E: revealed type: bool
+p(5)  # E: No matching overload found for function `h`
+"#,
+);
+
+// A keyword-bound argument filters branches the same way; the branch whose keyword type matches wins.
+functools_testcase!(
+    test_partial_kwbound_over_overloaded,
+    r#"
+from typing import reveal_type, overload, Any
+import functools
+@overload
+def foo(a: int, b: str) -> int: ...
+@overload
+def foo(a: str, b: int) -> str: ...
+def foo(*a: Any, **k: Any) -> Any: ...
+p = functools.partial(foo, b="s")
+reveal_type(p(1))  # E: revealed type: int
+p("x")  # E: Argument `Literal['x']` is not assignable to parameter `a` with type `int`
+"#,
+);
+
 functools_testcase!(
     bug = "partial of an overloaded __call__ protocol always resolves the first overload: partial(x, \"a\")() should be str but is int",
     test_partial_over_overloaded_protocol,

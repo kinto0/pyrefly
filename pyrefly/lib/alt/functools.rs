@@ -19,6 +19,7 @@ use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
+use vec1::Vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
@@ -27,11 +28,15 @@ use crate::alt::callable::CallKeyword;
 use crate::alt::unwrap::HintRef;
 use crate::error::collector::ErrorCollector;
 use crate::types::callable::Callable;
+use crate::types::callable::Function;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Params;
+use crate::types::callable::PrefixParam;
 use crate::types::callable::Required;
 use crate::types::types::Forallable;
+use crate::types::types::Overload;
+use crate::types::types::OverloadType;
 use crate::types::types::Type;
 
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
@@ -83,11 +88,72 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if args.len() == 1 && kws.is_empty() && matches!(target_ty, Type::Overload(_)) {
             return target_ty;
         }
+        // Overloaded target with bound arguments: drop branches the bound arguments can't satisfy and
+        // recombine the surviving residuals into an overload, so per-call resolution still works.
+        if let Type::Overload(overload) = &target_ty {
+            // Generic branches need per-branch var instantiation we don't do here, so defer.
+            if overload
+                .signatures
+                .iter()
+                .any(|ot| matches!(ot, OverloadType::Forall(_)))
+            {
+                return fallback(self);
+            }
+            let mut residuals: Vec<Callable> = Vec::new();
+            for ot in overload.signatures.iter() {
+                let OverloadType::Function(func) = ot else {
+                    unreachable!("Forall branches handled above");
+                };
+                let branch_sig = &func.signature;
+                // Trial-check the bound arguments against this branch; keep it only if they fit.
+                // Optional params keep the still-unbound parameters from erroring as missing.
+                let mut probe = branch_sig.clone();
+                make_params_optional(&mut probe);
+                let trial = self.error_collector();
+                self.freeform_call_infer(
+                    self.heap.mk_callable_from(probe),
+                    &args[1..],
+                    kws,
+                    target.range(),
+                    arg_range,
+                    None,
+                    &trial,
+                );
+                if !trial.is_empty() {
+                    continue;
+                }
+                // Defer the whole overload rather than silently drop a matched branch we can't
+                // represent, which would break a call that only matched that branch.
+                match partial_residual_callable(branch_sig, &args[1..], kws) {
+                    Some(residual) => residuals.push(residual),
+                    None => return fallback(self),
+                }
+            }
+            return match residuals.len() {
+                0 => fallback(self),
+                1 => self.heap.mk_callable_from(residuals.pop().unwrap()),
+                _ => {
+                    let branches = residuals
+                        .into_iter()
+                        .map(|c| {
+                            OverloadType::Function(Function {
+                                signature: c,
+                                metadata: (*overload.metadata).clone(),
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    Type::Overload(Overload {
+                        signatures: Vec1::try_from_vec(branches).unwrap(),
+                        metadata: overload.metadata.clone(),
+                    })
+                }
+            };
+        }
         // We handle a directly-typed function/callable and a generic (`Forall`-wrapped) function.
         // A generic target keeps its `tparams`: type variables the bound args don't pin stay symbolic
         // in the residual and are re-scoped into a `Forall` below, so a partial over a generic
         // function (including decorator use) preserves its genericity instead of leaking a residual
-        // through the stub. Class objects, bound methods, overloads with bound args, and unions defer.
+        // through the stub. Class objects, bound methods, and unions defer.
         let (tparams, sig) = match &target_ty {
             Type::Callable(c) => (None, (**c).clone()),
             Type::Function(f) => (None, f.signature.clone()),
@@ -263,16 +329,78 @@ fn restore_partial_generics(heap: &TypeHeap, callable: Callable, tparams: &TPara
 /// Make every parameter of a callable optional, so a `functools.partial` construction can bind a
 /// prefix of the arguments without the remaining parameters being reported as missing.
 fn make_params_optional(callable: &mut Callable) {
-    if let Params::List(params) = &mut callable.params {
-        for param in params.items_mut() {
-            match param {
-                Param::PosOnly(_, _, r) | Param::Pos(_, _, r) | Param::KwOnly(_, _, r) => {
-                    *r = Required::Optional(None)
+    match &mut callable.params {
+        Params::List(params) => {
+            for param in params.items_mut() {
+                match param {
+                    Param::PosOnly(_, _, r) | Param::Pos(_, _, r) | Param::KwOnly(_, _, r) => {
+                        *r = Required::Optional(None)
+                    }
+                    Param::Varargs(..) | Param::Kwargs(..) => {}
                 }
-                Param::Varargs(..) | Param::Kwargs(..) => {}
             }
         }
+        // The trailing `ParamSpec` already absorbs extra arguments; only the prefix needs relaxing.
+        Params::ParamSpec(prefix, _) => {
+            for param in prefix.iter_mut() {
+                match param {
+                    PrefixParam::PosOnly(_, _, r) | PrefixParam::Pos(_, _, r) => {
+                        *r = Required::Optional(None)
+                    }
+                }
+            }
+        }
+        Params::Partial(_) | Params::Ellipsis | Params::Materialization => {}
     }
+}
+
+/// Residual `Callable` for one matched overload branch, or `None` if it can't be represented
+/// structurally (the caller then defers instead of dropping the branch).
+fn partial_residual_callable(
+    branch: &Callable,
+    bound_args: &[CallArg],
+    keywords: &[CallKeyword],
+) -> Option<Callable> {
+    match &branch.params {
+        Params::List(_) => partial_residual(branch, bound_args, keywords)
+            .map(|params| Callable::partial(params, branch.ret.clone())),
+        // `(...)` still accepts anything after binding a prefix.
+        Params::Ellipsis => Some(Callable::ellipsis(branch.ret.clone())),
+        // `Concatenate[..., P]` binds its prefix first; the residual keeps the unbound prefix and `P`.
+        Params::ParamSpec(prefix, tail) => partial_paramspec_prefix(prefix, bound_args, keywords)
+            .map(|prefix| Callable {
+                params: Params::ParamSpec(prefix, tail.clone()),
+                ret: branch.ret.clone(),
+            }),
+        Params::Partial(_) | Params::Materialization => None,
+    }
+}
+
+/// Peel the bound `bound_args`/`keywords` off a `Concatenate` prefix. `None` if an argument would
+/// fall through into the trailing `ParamSpec`, which can't be peeled structurally.
+fn partial_paramspec_prefix(
+    prefix: &[PrefixParam],
+    bound_args: &[CallArg],
+    keywords: &[CallKeyword],
+) -> Option<Box<[PrefixParam]>> {
+    let mut remaining = prefix.to_vec();
+    for arg in bound_args {
+        let CallArg::Arg(_) = arg else {
+            return None;
+        };
+        if remaining.is_empty() {
+            return None;
+        }
+        remaining.remove(0);
+    }
+    for kw in keywords {
+        let name = &kw.arg?.id;
+        let idx = remaining
+            .iter()
+            .position(|p| matches!(p, PrefixParam::Pos(n, ..) if n == name))?;
+        remaining.remove(idx);
+    }
+    Some(remaining.into_boxed_slice())
 }
 
 /// Residual parameters after binding arguments to `callable`. Returns `None` when the
