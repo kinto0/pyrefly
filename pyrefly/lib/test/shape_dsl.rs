@@ -589,6 +589,30 @@ def gradual_middle(
 );
 
 testcase!(
+    test_symbolic_size_subset_delegates_to_symbolic_leaf,
+    shaped_array_env(),
+    r#"
+from typing import Any, reveal_type
+from shape_extensions import Elements, SizeTuple, SymVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]: ...
+
+def append_dim[S: SizeTuple, OUT: SymVar](
+    source: Array[S, int],
+    result: Array[[*Elements[S], OUT], int],
+) -> Array[[*Elements[S], OUT], int]:
+    return result
+
+def f[M: SymVar, N: SymVar](
+    source: Array[[M], int],
+    result: Array[[M, N], int],
+) -> None:
+    reveal_type(append_dim(source, result))  # E: revealed type: Array[[M, N], int]
+"#,
+);
+
+testcase!(
     test_ordinary_typevar_shape_dimension_is_rejected,
     shaped_array_env(),
     r#"

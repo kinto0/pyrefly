@@ -3004,10 +3004,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
                 // The final canonicalization happens in ShapedArrayShape::from_types.
-                return Type::Size(SizeExpr::Mul(
-                    Box::new(Type::Size(SizeExpr::Literal(-1))),
-                    Box::new(inner_dim),
-                ));
+                return Type::Size(SizeExpr::mul(Type::Size(SizeExpr::Literal(-1)), inner_dim));
             }
             let ty = self.expr_infer(expr, errors);
             match ty {

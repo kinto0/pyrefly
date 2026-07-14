@@ -1710,6 +1710,17 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.solver.expand_with_bounds(&mut got_expanded);
                 self.solver.expand_with_bounds(&mut want_expanded);
 
+                if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::Size(_))
+                {
+                    return self.is_subset_eq(&got_expanded, want_symbolic);
+                }
+                if let Type::Size(SizeExpr::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::Size(_))
+                {
+                    return self.is_subset_eq(got_symbolic, &want_expanded);
+                }
+
                 // Check if the expanded "want" side contains unbound Vars in nested positions
                 if contains_var_in_type(&want_expanded) {
                     return Err(SubsetError::ShapedArrayShape(
@@ -1740,8 +1751,15 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Size(s), Type::Quantified(q)) if q.is_type_var() => {
                 let mut got_expanded = Type::Size(s.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
+                if let Type::Size(SizeExpr::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::Size(_))
+                {
+                    return self.is_subset_eq(got_symbolic, want);
+                }
                 let got_canonical = got_expanded.canonicalize();
-                let want_canonical = Type::Quantified(q.clone());
+                let want_canonical =
+                    Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
+                        .canonicalize();
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
@@ -1759,7 +1777,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Quantified(q), Type::Size(s)) if q.is_type_var() => {
                 let mut want_expanded = Type::Size(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);
-                let got_canonical = Type::Quantified(q.clone());
+                if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::Size(_))
+                {
+                    return self.is_subset_eq(got, want_symbolic);
+                }
+                let got_canonical =
+                    Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
+                        .canonicalize();
                 let want_canonical = want_expanded.canonicalize();
                 if got_canonical == want_canonical {
                     Ok(())

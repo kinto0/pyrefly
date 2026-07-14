@@ -28,29 +28,32 @@ use crate::types::Type;
 /// - Concrete literals: `Tensor[2, 3]`
 /// - Symbolic expressions: `Tensor[N, N+1]`, `Tensor[N*M]`
 ///
-/// Type variables (`Type::Quantified`), solver variables (`Type::Var`), and
-/// unknown dimensions (`Type::Any`) are represented directly as `Type` in
-/// `ShapedArrayShape.dims`, not wrapped in `SizeExpr`.
+/// Type variables, solver variables, and unknown dimensions are represented as
+/// symbolic leaves.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SizeExpr {
     /// Concrete dimension: Tensor[2, 3]
     /// Only positive integers are allowed
     Literal(i64),
 
+    /// A symbolic dimension leaf, typically a quantified type parameter or a
+    /// solver variable standing for one.
+    Symbolic(Box<Type>),
+
     /// Addition: N + M (for concat, etc.)
-    Add(Box<Type>, Box<Type>),
+    Add(Box<SizeExpr>, Box<SizeExpr>),
 
     /// Subtraction: N - M
-    Sub(Box<Type>, Box<Type>),
+    Sub(Box<SizeExpr>, Box<SizeExpr>),
 
     /// Multiplication: N * M (for reshape, etc.)
-    Mul(Box<Type>, Box<Type>),
+    Mul(Box<SizeExpr>, Box<SizeExpr>),
 
     /// Floor division: N // M
-    FloorDiv(Box<Type>, Box<Type>),
+    FloorDiv(Box<SizeExpr>, Box<SizeExpr>),
 
     /// Exponentiation: N ** M (for geometric progressions)
-    Pow(Box<Type>, Box<Type>),
+    Pow(Box<SizeExpr>, Box<SizeExpr>),
 }
 
 impl SizeExpr {
@@ -72,39 +75,59 @@ impl SizeExpr {
     /// Helper constructors for expressions.
     /// Take Type arguments to support type variables in expressions.
     pub fn add(left: Type, right: Type) -> Self {
-        Self::Add(Box::new(left), Box::new(right))
+        Self::Add(
+            Box::new(Self::from_type_or_legacy_symbolic(left)),
+            Box::new(Self::from_type_or_legacy_symbolic(right)),
+        )
     }
 
     pub fn sub(left: Type, right: Type) -> Self {
-        Self::Sub(Box::new(left), Box::new(right))
+        Self::Sub(
+            Box::new(Self::from_type_or_legacy_symbolic(left)),
+            Box::new(Self::from_type_or_legacy_symbolic(right)),
+        )
     }
 
     pub fn mul(left: Type, right: Type) -> Self {
-        Self::Mul(Box::new(left), Box::new(right))
+        Self::Mul(
+            Box::new(Self::from_type_or_legacy_symbolic(left)),
+            Box::new(Self::from_type_or_legacy_symbolic(right)),
+        )
     }
 
     pub fn floor_div(left: Type, right: Type) -> Self {
-        Self::FloorDiv(Box::new(left), Box::new(right))
+        Self::FloorDiv(
+            Box::new(Self::from_type_or_legacy_symbolic(left)),
+            Box::new(Self::from_type_or_legacy_symbolic(right)),
+        )
     }
 
     pub fn pow(left: Type, right: Type) -> Self {
-        Self::Pow(Box::new(left), Box::new(right))
+        Self::Pow(
+            Box::new(Self::from_type_or_legacy_symbolic(left)),
+            Box::new(Self::from_type_or_legacy_symbolic(right)),
+        )
     }
 
-    /// Convert a Type to a SizeExpr (used for extracting literal dimensions).
-    /// Returns None if the type is not a concrete literal or expression.
-    /// Type variables, Vars, and Any should remain as Type in ShapedArrayShape.dims.
+    /// Convert a Type to a SizeExpr.
     pub fn from_type(ty: &Type) -> Option<SizeExpr> {
         match ty {
-            // SizeExpr type -> unwrap and return the SizeExpr directly
             Type::Size(dim) => Some(dim.clone()),
-            // Literal integer -> Literal dimension
             Type::Literal(lit) if let Lit::Int(i) = &lit.value => i.as_i64().map(SizeExpr::Literal),
-            // Symbolic integer -> recursively extract SizeExpr from the Type
             Type::Dim(ty) => SizeExpr::from_type(ty),
-            // All other types (Quantified, Var, Any, etc.) should remain as Type
+            Type::Quantified(_) | Type::Var(_) | Type::Any(_) => {
+                Some(SizeExpr::Symbolic(Box::new(ty.clone())))
+            }
             _ => None,
         }
+    }
+
+    fn from_type_or_legacy_symbolic(ty: Type) -> SizeExpr {
+        Self::from_type(&ty).unwrap_or_else(|| Self::Symbolic(Box::new(ty)))
+    }
+
+    fn into_type(self) -> Type {
+        Type::Size(self)
     }
 }
 
@@ -112,19 +135,20 @@ impl Display for SizeExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Literal(n) => write!(f, "{}", n),
+            Self::Symbolic(ty) => write!(f, "{}", ty),
             Self::Add(left, right) => write!(f, "({} + {})", left, right),
             Self::Sub(left, right) => write!(f, "({} - {})", left, right),
             Self::Mul(left, right) => {
                 // Simplify display: (1 * x) -> x, (x * 1) -> x
                 match (left.as_ref(), right.as_ref()) {
-                    (Type::Size(SizeExpr::Literal(1)), _) => write!(f, "{}", right),
-                    (_, Type::Size(SizeExpr::Literal(1))) => write!(f, "{}", left),
+                    (SizeExpr::Literal(1), _) => write!(f, "{}", right),
+                    (_, SizeExpr::Literal(1)) => write!(f, "{}", left),
                     _ => write!(f, "({} * {})", left, right),
                 }
             }
             Self::FloorDiv(left, right) => {
                 // Simplify display: (x // 1) -> x
-                if matches!(right.as_ref(), Type::Size(SizeExpr::Literal(1))) {
+                if matches!(right.as_ref(), SizeExpr::Literal(1)) {
                     write!(f, "{}", left)
                 } else {
                     write!(f, "({} // {})", left, right)
@@ -156,8 +180,8 @@ pub fn canonicalize(ty: Type) -> Type {
     match ty {
         Type::Size(dim) => {
             // Check for Any - if present anywhere, entire expression becomes Any
-            if contains_any_in_sizeexpr(&dim) {
-                return Type::Any(AnyStyle::Explicit);
+            if let Some(style) = any_style_in_sizeexpr(&dim) {
+                return Type::Any(style);
             }
             canonicalize_sizeexpr(dim)
         }
@@ -175,23 +199,26 @@ fn canonicalize_inner(ty: Type) -> Type {
     }
 }
 
-/// Check if Type::Any appears anywhere in the expression tree
-fn contains_any(ty: &Type) -> bool {
+/// Return the style of a Type::Any appearing anywhere in the expression tree.
+fn any_style_in_type(ty: &Type) -> Option<AnyStyle> {
     match ty {
-        Type::Any(_) => true,
-        Type::Size(dim) => contains_any_in_sizeexpr(dim),
-        _ => false,
+        Type::Any(style) => Some(*style),
+        Type::Size(dim) => any_style_in_sizeexpr(dim),
+        _ => None,
     }
 }
 
-fn contains_any_in_sizeexpr(dim: &SizeExpr) -> bool {
+fn any_style_in_sizeexpr(dim: &SizeExpr) -> Option<AnyStyle> {
     match dim {
+        SizeExpr::Symbolic(ty) => any_style_in_type(ty),
         SizeExpr::Add(left, right)
         | SizeExpr::Sub(left, right)
         | SizeExpr::Mul(left, right)
         | SizeExpr::FloorDiv(left, right)
-        | SizeExpr::Pow(left, right) => contains_any(left) || contains_any(right),
-        SizeExpr::Literal(_) => false,
+        | SizeExpr::Pow(left, right) => {
+            any_style_in_sizeexpr(left).or_else(|| any_style_in_sizeexpr(right))
+        }
+        SizeExpr::Literal(_) => None,
     }
 }
 
@@ -199,16 +226,38 @@ fn contains_any_in_sizeexpr(dim: &SizeExpr) -> bool {
 fn canonicalize_sizeexpr(dim: SizeExpr) -> Type {
     match dim {
         SizeExpr::Literal(_) => Type::Size(dim),
-        SizeExpr::Add(left, right) => canonicalize_sum(*left, *right),
+        SizeExpr::Symbolic(ty) => canonicalize_symbolic(*ty),
+        SizeExpr::Add(left, right) => canonicalize_sum(left.into_type(), right.into_type()),
         SizeExpr::Sub(left, right) => {
             // Normalize: a - b → a + (-1) * b
             let neg_one = Type::Size(SizeExpr::Literal(-1));
-            let neg_right = Type::Size(SizeExpr::Mul(Box::new(neg_one), right));
-            canonicalize_sum(*left, neg_right)
+            let neg_right = Type::Size(SizeExpr::mul(neg_one, right.into_type()));
+            canonicalize_sum(left.into_type(), neg_right)
         }
-        SizeExpr::Mul(left, right) => canonicalize_product(*left, *right),
-        SizeExpr::FloorDiv(left, right) => canonicalize_division(*left, *right),
-        SizeExpr::Pow(left, right) => canonicalize_pow(*left, *right),
+        SizeExpr::Mul(left, right) => canonicalize_product(left.into_type(), right.into_type()),
+        SizeExpr::FloorDiv(left, right) => {
+            canonicalize_division(left.into_type(), right.into_type())
+        }
+        SizeExpr::Pow(left, right) => canonicalize_pow(left.into_type(), right.into_type()),
+    }
+}
+
+fn canonicalize_symbolic(ty: Type) -> Type {
+    match ty {
+        Type::Size(dim) => canonicalize_sizeexpr(dim),
+        Type::Literal(lit) => {
+            let n = match &lit.value {
+                Lit::Int(i) => i.as_i64(),
+                _ => unreachable!(
+                    "only integer literals can be converted into symbolic size expressions"
+                ),
+            };
+            n.map(|n| Type::Size(SizeExpr::Literal(n)))
+                .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(Type::Literal(lit)))))
+        }
+        Type::Dim(inner) => canonicalize_symbolic(*inner),
+        Type::Any(style) => Type::Any(style),
+        other => Type::Size(SizeExpr::Symbolic(Box::new(other))),
     }
 }
 
@@ -248,10 +297,7 @@ fn canonicalize_sum(left: Type, right: Type) -> Type {
         } else {
             // General case: coeff * part
             let coeff_ty = Type::Size(SizeExpr::Literal(coeff));
-            new_terms.push(Type::Size(SizeExpr::Mul(
-                Box::new(coeff_ty),
-                Box::new(part),
-            )));
+            new_terms.push(Type::Size(SizeExpr::mul(coeff_ty, part)));
         }
     }
 
@@ -266,13 +312,13 @@ fn canonicalize_sum(left: Type, right: Type) -> Type {
 fn collect_operands(
     ty: Type,
     items: &mut Vec<Type>,
-    extract: fn(&SizeExpr) -> Option<(&Type, &Type)>,
+    extract: fn(&SizeExpr) -> Option<(&SizeExpr, &SizeExpr)>,
 ) {
     match &ty {
         Type::Size(dim) => {
             if let Some((left, right)) = extract(dim) {
-                collect_operands(left.clone(), items, extract);
-                collect_operands(right.clone(), items, extract);
+                collect_operands(left.clone().into_type(), items, extract);
+                collect_operands(right.clone().into_type(), items, extract);
             } else {
                 items.push(ty);
             }
@@ -281,14 +327,14 @@ fn collect_operands(
     }
 }
 
-fn extract_add_operands(dim: &SizeExpr) -> Option<(&Type, &Type)> {
+fn extract_add_operands(dim: &SizeExpr) -> Option<(&SizeExpr, &SizeExpr)> {
     match dim {
         SizeExpr::Add(l, r) => Some((l.as_ref(), r.as_ref())),
         _ => None,
     }
 }
 
-fn extract_mul_operands(dim: &SizeExpr) -> Option<(&Type, &Type)> {
+fn extract_mul_operands(dim: &SizeExpr) -> Option<(&SizeExpr, &SizeExpr)> {
     match dim {
         SizeExpr::Mul(l, r) => Some((l.as_ref(), r.as_ref())),
         _ => None,
@@ -308,9 +354,7 @@ fn rebuild_sum(terms: Vec<Type>) -> Type {
     } else {
         let mut iter = terms.into_iter();
         let first = iter.next().unwrap();
-        iter.fold(first, |acc, term| {
-            Type::Size(SizeExpr::Add(Box::new(acc), Box::new(term)))
-        })
+        iter.fold(first, |acc, term| Type::Size(SizeExpr::add(acc, term)))
     }
 }
 
@@ -388,7 +432,10 @@ fn canonicalize_product(left: Type, right: Type) -> Type {
 
         for factor in non_literal_factors.drain(..) {
             if let Type::Size(SizeExpr::Pow(base, exp)) = factor {
-                pow_groups.entry(*base).or_default().push(*exp);
+                pow_groups
+                    .entry(base.into_type())
+                    .or_default()
+                    .push(exp.into_type());
             } else {
                 remaining.push(factor);
             }
@@ -415,7 +462,7 @@ fn canonicalize_product(left: Type, right: Type) -> Type {
             // via canonicalize_inner on the exponent
             let exp_sum = exponents
                 .into_iter()
-                .reduce(|acc, e| Type::Size(SizeExpr::Add(Box::new(acc), Box::new(e))))
+                .reduce(|acc, e| Type::Size(SizeExpr::add(acc, e)))
                 .unwrap();
             let combined = canonicalize_pow(base, exp_sum);
             match &combined {
@@ -459,8 +506,7 @@ fn canonicalize_product(left: Type, right: Type) -> Type {
             let distributed_terms: Vec<Type> = terms
                 .into_iter()
                 .map(|term| {
-                    let product =
-                        Type::Size(SizeExpr::Mul(Box::new(coeff.clone()), Box::new(term)));
+                    let product = Type::Size(SizeExpr::mul(coeff.clone(), term));
                     canonicalize_inner(product)
                 })
                 .collect();
@@ -498,9 +544,7 @@ fn rebuild_product(factors: Vec<Type>) -> Type {
     } else {
         let mut iter = factors.into_iter();
         let first = iter.next().unwrap();
-        iter.fold(first, |acc, f| {
-            Type::Size(SizeExpr::Mul(Box::new(acc), Box::new(f)))
-        })
+        iter.fold(first, |acc, f| Type::Size(SizeExpr::mul(acc, f)))
     }
 }
 
@@ -512,8 +556,8 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
     // Step 2: Check if numerator is a division - if so, flatten
     if let Type::Size(SizeExpr::FloorDiv(inner_num, inner_den)) = canonical_num {
         // Apply composition law: (a // b) // c = a // (b * c)
-        let new_den = Type::Size(SizeExpr::Mul(inner_den, Box::new(den)));
-        return canonicalize_division(*inner_num, new_den);
+        let new_den = Type::Size(SizeExpr::mul(inner_den.into_type(), den));
+        return canonicalize_division(inner_num.into_type(), new_den);
     }
 
     // Step 3: Now canonicalize the denominator
@@ -562,7 +606,7 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
                 if matches!(new_den, Type::Size(SizeExpr::Literal(1))) {
                     new_num
                 } else {
-                    Type::Size(SizeExpr::FloorDiv(Box::new(new_num), Box::new(new_den)))
+                    Type::Size(SizeExpr::floor_div(new_num, new_den))
                 }
             } else if remaining.is_empty() {
                 // All terms extracted — result is just the extracted literal
@@ -570,8 +614,10 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
             } else {
                 // Some terms extracted: extracted_sum + remaining // d
                 let remainder_div = Type::Size(SizeExpr::FloorDiv(
-                    Box::new(rebuild_sum(remaining)),
-                    Box::new(Type::Size(SizeExpr::Literal(d))),
+                    Box::new(SizeExpr::from_type_or_legacy_symbolic(rebuild_sum(
+                        remaining,
+                    ))),
+                    Box::new(SizeExpr::Literal(d)),
                 ));
                 if extracted_sum == 0 {
                     remainder_div
@@ -593,7 +639,7 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
                 if matches!(new_den, Type::Size(SizeExpr::Literal(1))) {
                     new_num
                 } else {
-                    Type::Size(SizeExpr::FloorDiv(Box::new(new_num), Box::new(new_den)))
+                    Type::Size(SizeExpr::floor_div(new_num, new_den))
                 }
             }
         }
@@ -606,7 +652,7 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
             if matches!(new_den, Type::Size(SizeExpr::Literal(1))) {
                 new_num
             } else {
-                Type::Size(SizeExpr::FloorDiv(Box::new(new_num), Box::new(new_den)))
+                Type::Size(SizeExpr::floor_div(new_num, new_den))
             }
         }
     }
@@ -638,22 +684,22 @@ fn canonicalize_pow(base: Type, exp: Type) -> Type {
                     Some(result) => Type::Size(SizeExpr::Literal(result)),
                     None => {
                         // Overflow: keep symbolic
-                        Type::Size(SizeExpr::Pow(Box::new(canon_base), Box::new(canon_exp)))
+                        Type::Size(SizeExpr::pow(canon_base, canon_exp))
                     }
                 }
             } else {
                 // Negative exponent: not meaningful for integer dimensions
-                Type::Size(SizeExpr::Pow(Box::new(canon_base), Box::new(canon_exp)))
+                Type::Size(SizeExpr::pow(canon_base, canon_exp))
             }
         }
 
         // (a ** b) ** c = a ** (b * c)
         (Type::Size(SizeExpr::Pow(inner_base, inner_exp)), _) => {
-            let new_exp = Type::Size(SizeExpr::Mul(inner_exp.clone(), Box::new(canon_exp)));
-            canonicalize_pow(*inner_base.clone(), new_exp)
+            let new_exp = Type::Size(SizeExpr::mul(inner_exp.clone().into_type(), canon_exp));
+            canonicalize_pow(inner_base.clone().into_type(), new_exp)
         }
 
-        _ => Type::Size(SizeExpr::Pow(Box::new(canon_base), Box::new(canon_exp))),
+        _ => Type::Size(SizeExpr::pow(canon_base, canon_exp)),
     }
 }
 
@@ -809,7 +855,7 @@ fn gcd(mut a: i64, mut b: i64) -> i64 {
 }
 
 /// Compare types for canonical ordering.
-/// Ordering: Literal < Quantified < Var < SizeExpr(FloorDiv) < SizeExpr(Mul) < SizeExpr(Add) < SizeExpr(Sub)
+/// Ordering: Literal < Quantified < Var < SizeExpr(Symbolic) < SizeExpr(FloorDiv) < SizeExpr(Mul) < SizeExpr(Add) < SizeExpr(Sub)
 fn compare_type(a: &Type, b: &Type) -> Ordering {
     match (a, b) {
         // Literals: compare numerically
@@ -845,10 +891,14 @@ fn compare_sizeexpr(a: &SizeExpr, b: &SizeExpr) -> Ordering {
     use SizeExpr::*;
     match (a, b) {
         (Literal(n1), Literal(n2)) => n1.cmp(n2),
+        (Symbolic(t1), Symbolic(t2)) => compare_type(t1, t2),
 
-        // Type ordering: Literal < FloorDiv < Pow < Mul < Add < Sub
+        // Type ordering: Literal < Symbolic < FloorDiv < Pow < Mul < Add < Sub
         (Literal(_), _) => Ordering::Less,
         (_, Literal(_)) => Ordering::Greater,
+
+        (Symbolic(_), _) => Ordering::Less,
+        (_, Symbolic(_)) => Ordering::Greater,
 
         (FloorDiv(_, _), Pow(_, _) | Mul(_, _) | Add(_, _) | Sub(_, _)) => Ordering::Less,
         (Pow(_, _) | Mul(_, _) | Add(_, _) | Sub(_, _), FloorDiv(_, _)) => Ordering::Greater,
@@ -867,8 +917,8 @@ fn compare_sizeexpr(a: &SizeExpr, b: &SizeExpr) -> Ordering {
         | (Pow(n1, d1), Pow(n2, d2))
         | (Mul(n1, d1), Mul(n2, d2))
         | (Add(n1, d1), Add(n2, d2))
-        | (Sub(n1, d1), Sub(n2, d2)) => match compare_type(n1, n2) {
-            Ordering::Equal => compare_type(d1, d2),
+        | (Sub(n1, d1), Sub(n2, d2)) => match compare_sizeexpr(n1, n2) {
+            Ordering::Equal => compare_sizeexpr(d1, d2),
             other => other,
         },
     }
@@ -882,13 +932,14 @@ impl pyrefly_util::visit::Visit<Type> for SizeExpr {
     fn recurse<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
         match self {
             SizeExpr::Literal(_) => {}
+            SizeExpr::Symbolic(ty) => f(ty),
             SizeExpr::Add(left, right)
             | SizeExpr::Sub(left, right)
             | SizeExpr::Mul(left, right)
             | SizeExpr::FloorDiv(left, right)
             | SizeExpr::Pow(left, right) => {
-                f(left);
-                f(right);
+                left.recurse(f);
+                right.recurse(f);
             }
         }
     }
@@ -898,13 +949,14 @@ impl pyrefly_util::visit::VisitMut<Type> for SizeExpr {
     fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
         match self {
             SizeExpr::Literal(_) => {}
+            SizeExpr::Symbolic(ty) => f(ty),
             SizeExpr::Add(left, right)
             | SizeExpr::Sub(left, right)
             | SizeExpr::Mul(left, right)
             | SizeExpr::FloorDiv(left, right)
             | SizeExpr::Pow(left, right) => {
-                f(left);
-                f(right);
+                left.recurse_mut(f);
+                right.recurse_mut(f);
             }
         }
     }
@@ -1038,18 +1090,103 @@ impl ShapeError {
 pub fn contains_var_in_type(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
-        Type::Size(dim) => contains_var_in_size_expr(dim),
+        Type::Size(dim) => contains_var_in_size_expr(dim, false),
         _ => false,
     }
 }
 
-fn contains_var_in_size_expr(dim: &SizeExpr) -> bool {
+fn contains_var_in_size_expr(dim: &SizeExpr, nested: bool) -> bool {
     match dim {
+        SizeExpr::Symbolic(ty) => contains_var_in_symbolic_type(ty, nested),
         SizeExpr::Add(left, right)
         | SizeExpr::Sub(left, right)
         | SizeExpr::Mul(left, right)
         | SizeExpr::FloorDiv(left, right)
-        | SizeExpr::Pow(left, right) => contains_var_in_type(left) || contains_var_in_type(right),
+        | SizeExpr::Pow(left, right) => {
+            contains_var_in_size_expr(left, true) || contains_var_in_size_expr(right, true)
+        }
         _ => false,
+    }
+}
+
+fn contains_var_in_symbolic_type(ty: &Type, nested: bool) -> bool {
+    match ty {
+        Type::Var(_) => nested,
+        Type::Size(dim) => contains_var_in_size_expr(dim, true),
+        _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_ast::Int;
+
+    use super::*;
+    use crate::lit_int::LitInt;
+    use crate::literal::Lit;
+    use crate::literal::LitStyle;
+    use crate::literal::Literal;
+    use crate::types::Var;
+
+    fn size_literal(n: i64) -> Type {
+        Type::Size(SizeExpr::Literal(n))
+    }
+
+    #[test]
+    fn canonicalize_preserves_any_style_in_symbolic_size_expr() {
+        let error_any = Type::Size(SizeExpr::Symbolic(Box::new(Type::Any(AnyStyle::Error))));
+        assert_eq!(canonicalize(error_any), Type::Any(AnyStyle::Error));
+
+        let implicit_any_expr = Type::Size(SizeExpr::add(
+            Type::Any(AnyStyle::Implicit),
+            size_literal(1),
+        ));
+        assert_eq!(
+            canonicalize(implicit_any_expr),
+            Type::Any(AnyStyle::Implicit)
+        );
+    }
+
+    #[test]
+    fn contains_var_detects_nested_var_inside_symbolic_size_expr() {
+        let top_level_symbolic_var = Type::Size(SizeExpr::Symbolic(Box::new(Type::Var(Var::ZERO))));
+        assert!(!contains_var_in_type(&top_level_symbolic_var));
+
+        let nested_var = Type::Size(SizeExpr::Symbolic(Box::new(Type::Size(SizeExpr::add(
+            Type::Var(Var::ZERO),
+            size_literal(1),
+        )))));
+        assert!(contains_var_in_type(&nested_var));
+
+        let nested_symbolic_var = Type::Size(SizeExpr::Symbolic(Box::new(Type::Size(
+            SizeExpr::Symbolic(Box::new(Type::Var(Var::ZERO))),
+        ))));
+        assert!(contains_var_in_type(&nested_symbolic_var));
+    }
+
+    #[test]
+    fn canonicalize_symbolic_overflow_int_literal_stays_symbolic() {
+        let overflow_lit = Type::Literal(Box::new(Literal {
+            value: Lit::Int(LitInt::from_ast(&Int::from(i64::MAX as u64 + 1))),
+            style: LitStyle::Explicit,
+        }));
+        let symbolic_overflow = Type::Size(SizeExpr::Symbolic(Box::new(overflow_lit.clone())));
+        assert_eq!(
+            canonicalize(symbolic_overflow),
+            Type::Size(SizeExpr::Symbolic(Box::new(overflow_lit)))
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "only integer literals can be converted into symbolic size expressions"
+    )]
+    fn canonicalize_symbolic_non_int_literal_panics() {
+        let bool_literal = Type::Literal(Box::new(Literal {
+            value: Lit::Bool(true),
+            style: LitStyle::Explicit,
+        }));
+        let invalid_size = Type::Size(SizeExpr::Symbolic(Box::new(bool_literal)));
+        let _ = canonicalize(invalid_size);
     }
 }

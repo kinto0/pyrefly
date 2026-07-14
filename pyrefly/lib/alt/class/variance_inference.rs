@@ -142,6 +142,28 @@ fn handle_tuple_type(
     }
 }
 
+fn on_size_expr(
+    dim: &SizeExpr,
+    inj: bool,
+    on_edge: &mut impl FnMut(&Class) -> InferenceMap,
+    on_var: &mut impl FnMut(&Name, Variance, bool, PreInferenceVariance),
+) {
+    match dim {
+        SizeExpr::Literal(_) => {}
+        SizeExpr::Symbolic(ty) => {
+            on_type(Variance::Invariant, inj, ty, on_edge, on_var);
+        }
+        SizeExpr::Add(left, right)
+        | SizeExpr::Sub(left, right)
+        | SizeExpr::Mul(left, right)
+        | SizeExpr::FloorDiv(left, right)
+        | SizeExpr::Pow(left, right) => {
+            on_size_expr(left, inj, on_edge, on_var);
+            on_size_expr(right, inj, on_edge, on_var);
+        }
+    }
+}
+
 fn on_type(
     variance: Variance,
     inj: bool,
@@ -238,17 +260,7 @@ fn on_type(
         }
         Type::Size(dim) => {
             // SizeExpr expressions contain types - all invariant
-            match dim {
-                SizeExpr::Literal(_) => {}
-                SizeExpr::Add(l, r)
-                | SizeExpr::Sub(l, r)
-                | SizeExpr::Mul(l, r)
-                | SizeExpr::FloorDiv(l, r)
-                | SizeExpr::Pow(l, r) => {
-                    on_type(Variance::Invariant, inj, l, on_edge, on_var);
-                    on_type(Variance::Invariant, inj, r, on_edge, on_var);
-                }
-            }
+            on_size_expr(dim, inj, on_edge, on_var);
         }
         _ => {}
     }
