@@ -33,6 +33,7 @@ class SizeTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 class Dim[T]: ...
+class Size[T]: ...
 class D: ...
 def assert_shape[T](x: T, shape: tuple[Any, ...]) -> T: ...
 def defines_assert_shape[F: Callable[..., Any]](fn: F) -> F: ...
@@ -617,7 +618,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Generic, TypeVar
-from shape_extensions import Dim, Elements, SizeTuple, SymVar, shaped_array
+from shape_extensions import Dim, Elements, Size, SizeTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]: ...
@@ -626,6 +627,7 @@ class SymBox[N: SymVar]: ...
 
 def invalid[N, Shape: SizeTuple](
     dim: Dim[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
+    size: Size[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
     list_shape: Array[[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     size_tuple: Array[SizeTuple[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     unpack_prefix: Array[SizeTuple[N, *Elements[Shape]], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
@@ -639,7 +641,40 @@ LegacyN = TypeVar("LegacyN")
 
 class LegacyBox(Generic[LegacyN]):
     dim: Dim[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
+    size: Size[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
     shape: Array[[LegacyN], int]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_size_annotations_parse_to_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Dim, Size, SymVar
+from typing import assert_type, reveal_type
+
+def sizes[N: SymVar](
+    literal: Size[3],
+    symbolic: Size[N],
+    arithmetic: Size[N + 1],
+    dim: Dim[N + 1],
+) -> None:
+    reveal_type(literal)  # E: revealed type: Size[3]
+    reveal_type(symbolic)  # E: revealed type: Size[N]
+    reveal_type(arithmetic)  # E: revealed type: Size[(1 + N)]
+    assert_type(arithmetic, Size[N + 1])
+    dim
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_size_annotations_reject_multiple_arguments,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size
+
+def bad_size(x: Size[3, 4]) -> None:  # E: Expected 1 type argument for `Size`, got 2
+    pass
 "#,
 );
 
@@ -1537,7 +1572,7 @@ def explicit[N: SymVar](x: ExplicitBox[N + 1]) -> None:
     assert_type(x, ExplicitBox[N + 1])
 
 def legacy(x: LegacyBox[N + M]) -> None:
-    reveal_type(x)  # E: revealed type: LegacyBox[(N + M)]
+    reveal_type(x)  # E: revealed type: LegacyBox[Size[(N + M)]]
 
 def explicit_literals[S: SymVar](literal: ExplicitBox[3], symbolic: ExplicitBox[S]) -> None:
     assert_type(literal, ExplicitBox[3])

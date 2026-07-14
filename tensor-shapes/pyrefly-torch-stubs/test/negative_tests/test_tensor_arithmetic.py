@@ -171,7 +171,7 @@ def broadcast_wrong_return(x: Tensor[[1, 3]], y: Tensor[[2, 3]]) -> Tensor[[1, 3
 def broadcast_incompatible_dims(x: Tensor[[2, 3]], y: Tensor[[4, 5]]) -> Tensor[[4, 5]]:
     """Incompatible dimensions cannot broadcast."""
     # E: Cannot broadcast tensor shapes:
-    #    Cannot broadcast dimension 3 with dimension 5 at position 1
+    #    Cannot broadcast dimension Size[3] with dimension Size[5] at position 1
     return x + y
 
 
@@ -217,7 +217,7 @@ def broadcast_different_symbolic[N: SymVar, M: SymVar](
 ) -> Tensor[[N, 3]]:
     """Different symbolic dimensions are not compatible for broadcasting."""
     # E: Cannot broadcast tensor shapes:
-    #    Cannot broadcast dimension N with dimension M at position 0
+    #    Cannot broadcast dimension Size[N] with dimension Size[M] at position 0
     return x + y
 
 

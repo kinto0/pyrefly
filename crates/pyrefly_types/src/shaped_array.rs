@@ -475,6 +475,13 @@ fn fmt_jaxtyping_dim(d: &Type) -> String {
     }
 }
 
+pub(crate) fn fmt_shape_dim(d: &Type) -> String {
+    match d {
+        Type::Size(expr) => format!("{expr}"),
+        _ => format!("{d}"),
+    }
+}
+
 /// Format a SizeExpr in jaxtyping syntax (no parens, no spaces around operators).
 fn fmt_jaxtyping_size_expr(expr: &SizeExpr) -> String {
     match expr {
@@ -513,7 +520,7 @@ impl Display for ShapedArrayShape {
                 if dims.is_empty() {
                     write!(f, "()") // Scalar tensor: Tensor[()]
                 } else {
-                    write!(f, "{}", commas_iter(|| dims.iter()))
+                    write!(f, "{}", commas_iter(|| dims.iter().map(fmt_shape_dim)))
                 }
             }
             Tuple::Unbounded(t) if t.is_any() => write!(f, "*{}", Type::any_tuple()),
@@ -525,12 +532,12 @@ impl Display for ShapedArrayShape {
                 let prefix_str = if prefix.is_empty() {
                     "".to_owned()
                 } else {
-                    format!("{}, ", commas_iter(|| prefix.iter()))
+                    format!("{}, ", commas_iter(|| prefix.iter().map(fmt_shape_dim)))
                 };
                 let suffix_str = if suffix.is_empty() {
                     "".to_owned()
                 } else {
-                    format!(", {}", commas_iter(|| suffix.iter()))
+                    format!(", {}", commas_iter(|| suffix.iter().map(fmt_shape_dim)))
                 };
                 write!(f, "{}*{}{}", prefix_str, middle, suffix_str)
             }

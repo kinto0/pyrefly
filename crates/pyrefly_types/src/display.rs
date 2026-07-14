@@ -29,6 +29,7 @@ use crate::callable::FunctionKind;
 use crate::callable::ParamOverlay;
 use crate::callable_residual::CallableResidualKind;
 use crate::class::Class;
+use crate::dimension::SizeExpr;
 use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
@@ -36,6 +37,7 @@ use crate::quantified::QuantifiedIdentity;
 use crate::shaped_array::ShapedArrayShapeArgStyle;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
@@ -439,7 +441,12 @@ impl<'a> TypeDisplayContext<'a> {
         match shaped_array.shape.as_tuple() {
             Tuple::Concrete(dims) => {
                 output.write_str("[")?;
-                self.fmt_type_sequence(dims.iter(), ", ", false, output)?;
+                for (i, dim) in dims.iter().enumerate() {
+                    if i > 0 {
+                        output.write_str(", ")?;
+                    }
+                    output.write_str(&fmt_shape_dim(dim))?;
+                }
                 output.write_str("]")
             }
             Tuple::Unbounded(_) => {
@@ -451,16 +458,26 @@ impl<'a> TypeDisplayContext<'a> {
                     return self.fmt_helper_generic(middle, false, output);
                 }
                 output.write_str("[")?;
-                let unpacked_middle = Type::Unpack(Box::new(middle.clone()));
-                self.fmt_type_sequence(
-                    prefix
-                        .iter()
-                        .chain(std::iter::once(&unpacked_middle))
-                        .chain(suffix.iter()),
-                    ", ",
-                    false,
-                    output,
-                )?;
+                let mut first = true;
+                for dim in prefix {
+                    if !first {
+                        output.write_str(", ")?;
+                    }
+                    first = false;
+                    output.write_str(&fmt_shape_dim(dim))?;
+                }
+                if !first {
+                    output.write_str(", ")?;
+                }
+                first = false;
+                self.fmt_helper_generic(&Type::Unpack(Box::new(middle.clone())), false, output)?;
+                for dim in suffix {
+                    if !first {
+                        output.write_str(", ")?;
+                    }
+                    first = false;
+                    output.write_str(&fmt_shape_dim(dim))?;
+                }
                 output.write_str("]")
             }
         }
@@ -690,10 +707,10 @@ impl<'a> TypeDisplayContext<'a> {
                 // Display as the class name (e.g., MaxPool2d)
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)
             }
-            Type::Size(dim) => {
-                // Display dimension value directly without Literal wrapper
-                output.write_str(&format!("{}", dim))
-            }
+            Type::Size(dim) => match dim {
+                SizeExpr::Symbolic(ty) if ty.is_any() => output.write_str("Size"),
+                _ => output.write_str(&format!("Size[{dim}]")),
+            },
             Type::Dim(inner) => {
                 // Display Dim[Unknown] as just "Dim" for cleaner output
                 // (Unknown represents implicit Any from gradual typing)
@@ -1674,6 +1691,73 @@ pub mod tests {
 
         assert_eq!(shaped.to_string(), "Array[2]");
         assert_eq!(shapeless.to_string(), "Array");
+    }
+
+    #[test]
+    fn test_display_size_type_marks_standalone_sizes() {
+        let heap = TypeHeap::new();
+        let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
+
+        assert_eq!(Type::Size(SizeExpr::Literal(3)).to_string(), "Size[3]");
+        assert_eq!(
+            Type::Size(SizeExpr::Symbolic(Box::new(n.clone()))).to_string(),
+            "Size[N]"
+        );
+        assert_eq!(
+            Type::Size(SizeExpr::Mul(
+                Box::new(SizeExpr::Symbolic(Box::new(n))),
+                Box::new(SizeExpr::Symbolic(Box::new(m))),
+            ))
+            .to_string(),
+            "Size[(N * M)]"
+        );
+        assert_eq!(
+            Type::Size(SizeExpr::Symbolic(Box::new(Type::any_explicit()))).to_string(),
+            "Size"
+        );
+    }
+
+    #[test]
+    fn test_display_shaped_array_keeps_size_wrapper_out_of_shapes() {
+        let heap = TypeHeap::new();
+        let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
+        let shape = ShapedArrayShape::new(vec![
+            SizeExpr::Literal(3),
+            SizeExpr::Symbolic(Box::new(n.clone())),
+            SizeExpr::Mul(
+                Box::new(SizeExpr::Symbolic(Box::new(n))),
+                Box::new(SizeExpr::Symbolic(Box::new(m))),
+            ),
+        ]);
+        let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
+
+        assert_eq!(
+            ShapedArrayType::new(array, shape).to_type().to_string(),
+            "Array[3, N, (N * M)]"
+        );
+    }
+
+    #[test]
+    fn test_display_tuple_carrier_shape_keeps_size_wrapper_out_of_shapes() {
+        let heap = TypeHeap::new();
+        let shape_param = fake_tparams(vec![fake_tparam(0, "Shape", QuantifiedKind::TypeVar)]);
+        let array = ClassType::new(
+            fake_class("Array", "arrays", 0),
+            TArgs::new(shape_param, vec![Type::any_tuple()]),
+        );
+        let n = fake_tparam(1, "N", QuantifiedKind::SymVar).to_type(&heap);
+        let shape =
+            ShapedArrayShape::new(vec![SizeExpr::Literal(3), SizeExpr::Symbolic(Box::new(n))]);
+
+        assert_eq!(
+            ShapedArrayType::new(array, shape)
+                .with_shape_arg_style(ShapedArrayShapeArgStyle::TupleCarrier { index: 0 })
+                .to_type()
+                .to_string(),
+            "Array[[3, N]]"
+        );
     }
 
     fn fake_generic_bound_method(

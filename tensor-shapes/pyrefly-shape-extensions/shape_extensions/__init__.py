@@ -116,6 +116,16 @@ class Dim[T]:
     pass
 
 
+class Size[T]:
+    """Symbolic integer type for size values.
+
+    At runtime this is a no-op generic class. The type checker uses the
+    .pyi stub for shape inference.
+    """
+
+    pass
+
+
 class ProxyMethod[T]:
     """Type-checker marker for method forwarding annotations."""
 

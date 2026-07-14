@@ -43,8 +43,8 @@ def numel_returns_bad_explicit_symint[N: SymVar, M: SymVar](
 ) -> Dim[N + M]:
     s = x.numel()
     assert_type(s, Dim[N * M])
-    # E: Returned type `Dim[(N * M)]` is not assignable
-    #    to declared return type `Dim[(N + M)]`
+    # E: Returned type `Dim[Size[(N * M)]]` is not assignable
+    #    to declared return type `Dim[Size[(N + M)]]`
     return s
 
 
@@ -63,7 +63,7 @@ def numel_returns_bad_implicit_symint[N: SymVar, M: SymVar, K: SymVar](
 ) -> Dim[K]:
     s = x.numel()
     assert_type(s, Dim[N * M])
-    # E: Returned type `Dim[(N * M)]` is not assignable
+    # E: Returned type `Dim[Size[(N * M)]]` is not assignable
     #    to declared return type `Dim[K]`
     return s
 

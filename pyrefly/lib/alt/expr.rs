@@ -2657,6 +2657,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
                     self.parse_symint_type(xs, range, errors)
                 }
+                Type::ClassDef(ref cls) if self.is_size_class(cls) => {
+                    self.parse_size_type(xs, range, errors)
+                }
                 Type::ClassDef(ref cls)
                     if cls.has_toplevel_qname("shape_extensions", "ProxyMethod") =>
                 {
@@ -3328,6 +3331,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Check if a class is a Dim class (shape_extensions.Dim)
     fn is_symint_class(&self, cls: &Class) -> bool {
         cls.has_toplevel_qname("shape_extensions", "Dim")
+    }
+
+    /// Check if a class is a Size class (shape_extensions.Size)
+    fn is_size_class(&self, cls: &Class) -> bool {
+        cls.has_toplevel_qname("shape_extensions", "Size")
     }
 
     /// Check if a class is the shape arithmetic wrapper (shape_extensions.D)
@@ -4029,6 +4037,28 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Wrap in Type::Dim(...)
         self.heap
             .mk_type_of(self.heap.mk_dim(dims.into_iter().next().unwrap()))
+    }
+
+    /// Parse Size[3], Size[N], Size[N+1] into Type::Size(...)
+    fn parse_size_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
+        if args.len() != 1 {
+            self.error(
+                errors,
+                range,
+                ErrorKind::BadSpecialization,
+                format!("Expected 1 type argument for `Size`, got {}", args.len()),
+            );
+            return Type::any_error();
+        }
+
+        let Some(dims) = self.parse_dimension_list(args, errors) else {
+            return Type::any_error();
+        };
+        let dim = dims.into_iter().next().unwrap();
+        let size = SizeExpr::from_type(&dim)
+            .map(|size| canonicalize(self.heap.mk_size(size)))
+            .expect("parse_dimension_list ensures all types are valid Size dimensions");
+        self.heap.mk_type_of(size)
     }
 
     /// Return the reason why we think `ty` is suspicious to use as a branching condition
