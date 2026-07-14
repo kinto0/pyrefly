@@ -27,9 +27,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // meta-codesync[bot] posts "@<handle> has imported this pull
-            // request. ..." on import.
-            const IMPORT_RE = /@([A-Za-z0-9-]+) has imported this pull request/;
+            // meta-codesync[bot] posts "@<handle> has **imported** this pull
+            // request. ..." on import ("imported" is bold, so tolerate "**").
+            const IMPORT_RE = /@([A-Za-z0-9-]+) has \**imported\** this pull request/;
 
             const dryRun = context.payload.inputs.dry_run !== 'false';
             const { owner, repo } = context.repo;

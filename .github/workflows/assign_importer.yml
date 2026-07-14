@@ -24,13 +24,14 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // meta-codesync[bot] posts "@<handle> has imported this pull
+            // meta-codesync[bot] posts "@<handle> has **imported** this pull
             // request. ..." when a Meta employee imports the PR to Phabricator.
-            // The named importer is always a Meta employee, so there is no
-            // allowlist to check — the bot-author gate above is the trust
-            // boundary, and the verify step below drops anyone lacking repo access.
+            // "imported" is bold in the raw markdown, so tolerate the "**". The
+            // named importer is always a Meta employee, so there is no allowlist
+            // to check — the bot-author gate above is the trust boundary, and
+            // the verify step below drops anyone lacking repo access.
             const body = context.payload.comment.body || '';
-            const match = body.match(/@([A-Za-z0-9-]+) has imported this pull request/);
+            const match = body.match(/@([A-Za-z0-9-]+) has \**imported\** this pull request/);
             if (!match) {
               console.log('Comment is not an import notice, skipping');
               return;
