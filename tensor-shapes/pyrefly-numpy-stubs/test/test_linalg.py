@@ -120,11 +120,8 @@ def test_svd_reduced_wide_matrix() -> None:
 
     u, s, vt = np.linalg.svd(x, full_matrices=False)
 
-    # E: assert_shape((*tuple[Unknown, ...]), (3, 3)) failed
     assert_shape(u, (3, 3))
-    # E: assert_shape((*tuple[Unknown, ...]), (3,)) failed
     assert_shape(s, (3,))
-    # E: assert_shape((*tuple[Unknown, ...]), (3, 5)) failed
     assert_shape(vt, (3, 5))
 
 
@@ -145,11 +142,8 @@ def test_svd_all_component_pca_projection() -> None:
     u, s, vt = np.linalg.svd(x_centered, full_matrices=False)
     projection = x_centered @ vt.T
 
-    # E: assert_shape((*tuple[Unknown, ...]), (5, 3)) failed
     assert_shape(u, (5, 3))
-    # E: assert_shape((*tuple[Unknown, ...]), (3,)) failed
     assert_shape(s, (3,))
-    # E: assert_shape((*tuple[Unknown, ...]), (3, 3)) failed
     assert_shape(vt, (3, 3))
     assert_shape(projection, (5, 3))
 

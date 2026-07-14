@@ -2923,6 +2923,12 @@ fn val_eq(a: &Val, b: &Val) -> bool {
         (Val::Str(x), Val::Str(y)) => x == y,
         (Val::Bool(x), Val::Bool(y)) => x == y,
         (Val::None, Val::None) => true,
+        // Structurally equal symbolic dims compare equal (e.g. `int_min(N, N) == N`),
+        // matching how a literal dim compares equal to the same integer.
+        (Val::Dim(x), Val::Dim(y)) => x == y,
+        (Val::Int(x), Val::Dim(y)) | (Val::Dim(y), Val::Int(x)) => {
+            *y == Type::Size(SizeExpr::Literal(*x))
+        }
         _ => false,
     }
 }
