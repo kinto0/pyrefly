@@ -380,6 +380,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         }
                     }
                 }
+                (
+                    Some(Param::KwOnly(..) | Param::Kwargs(..)),
+                    Some(Param::Varargs(_, Type::Unpack(u))),
+                ) => {
+                    // `u`'s unpacked `*args` has no positionals left to consume (l's remaining
+                    // params are keyword-only / **kwargs), so the TypeVarTuple binds to the empty
+                    // tuple. Keep `l_arg` so its keyword params match the rest of `u` below.
+                    self.is_subset_eq(&self.solver.heap.mk_concrete_tuple(Vec::new()), u)?;
+                    u_arg = u_args.next();
+                }
                 (Some(Param::Varargs(_, l)), Some(Param::PosOnly(_, u, _))) => {
                     self.is_subset_eq(u, l)?;
                     u_arg = u_args.next();
@@ -564,8 +574,6 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         l_params: &Params,
         u_params: &Params,
     ) -> Result<(), SubsetError> {
-        // A partial residual has the same call-shape as its parameter list, so `Partial` is folded
-        // into the `List` arms below.
         let result = match (l_params, u_params) {
             (Params::Ellipsis, Params::ParamSpec(_, pspec)) => {
                 self.is_subset_eq(&Type::Ellipsis, pspec)
@@ -574,6 +582,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.is_subset_eq(pspec, &Type::Ellipsis)
             }
             (Params::Ellipsis, _) | (_, Params::Ellipsis) => Ok(()),
+            // `Partial` is gradual in parameter position by default, so any params match unless
+            // `strict_partial_subtyping` is enabled.
+            _ if !self.solver.strict_partial_subtyping
+                && (matches!(l_params, Params::Partial(_))
+                    || matches!(u_params, Params::Partial(_))) =>
+            {
+                Ok(())
+            }
             (
                 Params::List(l_args) | Params::Partial(l_args),
                 Params::List(u_args) | Params::Partial(u_args),

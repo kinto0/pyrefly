@@ -203,7 +203,6 @@ use_func_callable(partial(func_fn_unpack, b=""))
 );
 
 functools_testcase!(
-    bug = "a TypeVar bound by the enclosing function (not by the partial target) is correctly NOT erased; the downstream incompatible use is flagged",
     test_partial_type_var_erasure_in_scope_bounded,
     r#"
 from typing import reveal_type
@@ -215,13 +214,13 @@ def use_int_callable(x: Callable[[int], int]) -> None:
 def outer_b(arg: Tb) -> None:
     def inner(a: Tb, b: str) -> Tb:
         return a
-    reveal_type(partial(inner, b=""))  # E: revealed type: partial[Tb]
-    use_int_callable(partial(inner, b=""))  # E: Argument `partial[Tb]` is not assignable to parameter `x` with type `(int) -> int` in function `use_int_callable`
+    reveal_type(partial(inner, b=""))  # E: revealed type: (a: Tb, *, b: str = ...) -> Tb
+    use_int_callable(partial(inner, b=""))  # E: Argument `(a: Tb, *, b: str = ...) -> Tb` is not assignable to parameter `x` with type `(int) -> int` in function `use_int_callable`
 "#,
 );
 
 functools_testcase!(
-    bug = "an in-scope constrained TypeVar is left as partial[Tc] rather than being expanded to partial[int]/partial[str]",
+    bug = "an in-scope constrained TypeVar is kept symbolic in the residual rather than expanded to the int/str constraint alternatives",
     test_partial_type_var_erasure_in_scope_constrained,
     r#"
 from typing import reveal_type
@@ -234,8 +233,8 @@ def outer_c(arg: Tc) -> None:
     def inner(a: Tc, b: str) -> Tc:
         return a
     # WANT: revealed type: partial[int] / partial[str] (constrained typevar expanded)
-    reveal_type(partial(inner, b=""))  # E: revealed type: partial[Tc]
-    use_int_callable(partial(inner, b=""))  # E: Argument `partial[Tc]` is not assignable to parameter `x` with type `(int) -> int` in function `use_int_callable`
+    reveal_type(partial(inner, b=""))  # E: revealed type: (a: Tc, *, b: str = ...) -> Tc
+    use_int_callable(partial(inner, b=""))  # E: Argument `(a: Tc, *, b: str = ...) -> Tc` is not assignable to parameter `x` with type `(int) -> int` in function `use_int_callable`
 "#,
 );
 

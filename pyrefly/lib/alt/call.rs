@@ -2186,6 +2186,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.type_of(arg_ty)
                 }
                 _ if let Some(ret) = self.call_builtin_enumerate(ty, x, errors) => ret,
+                _ if matches!(ty, Type::ClassDef(cls) if cls.has_toplevel_qname("functools", "partial")) => {
+                    self.call_functools_partial(
+                        ty,
+                        &args,
+                        &kws,
+                        x.func.range(),
+                        x.arguments.range(),
+                        hint,
+                        errors,
+                    )
+                }
                 // Decorators can be applied in two ways:
                 //   - (common, idiomatic) via `@decorator`:
                 //     @staticmethod
