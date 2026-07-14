@@ -151,16 +151,16 @@ mod tests {
     }
 
     #[test]
-    fn display_delegates_to_underlying() {
+    fn partial_schema_display_delegates_to_underlying() {
         let df = schema(
             vec![col("a", class_ty("builtins", "int"))],
-            SchemaCompleteness::Complete,
+            SchemaCompleteness::Partial,
         )
         .to_type();
         let shown = format!("{df}");
         assert!(
             !shown.contains('['),
-            "this diff renders no column list, only the underlying instance, got `{shown}`"
+            "a Partial DataFrame renders as its underlying instance with no column list, got `{shown}`"
         );
     }
 

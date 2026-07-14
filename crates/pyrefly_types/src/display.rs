@@ -29,6 +29,7 @@ use crate::callable::FunctionKind;
 use crate::callable::ParamOverlay;
 use crate::callable_residual::CallableResidualKind;
 use crate::class::Class;
+use crate::data_frame::SchemaCompleteness;
 use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
@@ -710,7 +711,22 @@ impl<'a> TypeDisplayContext<'a> {
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)
             }
             Type::DataFrame(schema) => {
-                self.fmt_helper_generic(&schema.underlying_type(), false, output)
+                self.fmt_helper_generic(&schema.underlying_type(), false, output)?;
+                // Only a Complete schema renders its columns; a Partial one is
+                // indistinguishable from the plain underlying instance.
+                if schema.completeness == SchemaCompleteness::Complete {
+                    output.write_str("[")?;
+                    for (i, (name, ty)) in schema.columns.iter().enumerate() {
+                        if i > 0 {
+                            output.write_str(", ")?;
+                        }
+                        output.write_str(name.as_str())?;
+                        output.write_str(": ")?;
+                        self.fmt_helper_generic(ty, false, output)?;
+                    }
+                    output.write_str("]")?;
+                }
+                Ok(())
             }
             Type::Size(dim) => output.write_str(&format!("Size[{dim}]")),
             Type::Dim(inner) => {

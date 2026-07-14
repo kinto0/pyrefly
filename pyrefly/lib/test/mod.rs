@@ -58,6 +58,7 @@ mod pandas;
 mod paramspec;
 mod pattern_match;
 mod perf;
+mod polars;
 mod protocol;
 mod pydantic;
 mod pysa;

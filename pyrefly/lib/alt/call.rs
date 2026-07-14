@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 use dupe::Dupe;
 use pyrefly_python::dunder;
+use pyrefly_types::data_frame::DataFrameSchema;
+use pyrefly_types::data_frame::SchemaCompleteness;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::meta_shape_dsl::ShapeTransform;
 use pyrefly_types::quantified::Quantified;
@@ -43,6 +45,7 @@ use crate::alt::class::class_field::DescriptorBase;
 use crate::alt::class::dataclass::ReplaceKind;
 use crate::alt::expr::TypeOrExpr;
 use crate::alt::nn_module_specials::is_nn_sequential;
+use crate::alt::polars_specials::is_polars_dataframe;
 use crate::alt::unwrap::HintRef;
 use crate::alt::unwrap::MAX_CALL_HINT_WIDTH;
 use crate::binding::binding::Key;
@@ -1965,7 +1968,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
 
-        if matches!(&callee_ty, Type::ClassDef(cls) if cls.is_builtin("super")) {
+        // An inferred Polars column schema is layered onto the constructor result below.
+        let polars_columns = if let Type::ClassDef(cls) = &callee_ty
+            && is_polars_dataframe(cls)
+            && x.arguments.args.len() == 1
+            && x.arguments.keywords.is_empty()
+            && let Expr::Dict(dict) = &x.arguments.args[0]
+        {
+            self.infer_polars_schema(dict)
+        } else {
+            None
+        };
+
+        let result = if matches!(&callee_ty, Type::ClassDef(cls) if cls.is_builtin("super")) {
             // Because we have to construct a binding for super in order to fill in implicit arguments,
             // we can't handle things like local aliases to super. If we hit a case where the binding
             // wasn't constructed, fall back to `Any`.
@@ -2200,7 +2215,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 other => other,
             }
+        };
+
+        if let Some(columns) = polars_columns
+            && let Type::ClassType(underlying) = result.clone()
+        {
+            return DataFrameSchema {
+                underlying,
+                columns,
+                completeness: SchemaCompleteness::Complete,
+            }
+            .to_type();
         }
+        result
     }
 
     pub fn freeform_call_infer(

@@ -19,6 +19,7 @@ pub mod narrow;
 pub mod nn_module_specials;
 pub mod operators;
 pub mod overload;
+pub mod polars_specials;
 pub mod singledispatch;
 pub mod solve;
 pub mod special_calls;

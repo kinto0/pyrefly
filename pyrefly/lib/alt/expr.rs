@@ -2852,6 +2852,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
                 ),
+                // A DataFrame delegates subscription to its underlying instance type.
+                Type::DataFrame(schema) => self.subscript_infer_for_type_with_key_present(
+                    &schema.underlying_type(),
+                    slice,
+                    range,
+                    errors,
+                    key_present,
+                ),
                 Type::Quantified(ref q) if q.is_type_var() && q.restriction().is_restricted() => {
                     match q.restriction() {
                         Restriction::Bound(bound) => self
