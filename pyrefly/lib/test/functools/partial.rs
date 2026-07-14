@@ -185,6 +185,24 @@ def main2(f: CallbackProto) -> None:
 "#,
 );
 
+// ===== Nominal `partial` attributes =====
+
+functools_testcase!(
+    test_partial_attribute_access,
+    r#"
+import functools
+from typing import reveal_type
+def f(a: int, b: str, c: float) -> bytes: return b""
+p = functools.partial(f, 1)
+reveal_type(p.func)  # E: revealed type: (...) -> bytes
+reveal_type(p.args)  # E: revealed type: tuple[Any, ...]
+reveal_type(p.keywords)  # E: revealed type: dict[str, Any]
+x: object = p
+if isinstance(x, functools.partial):
+    reveal_type(x)  # E: revealed type: partial[Unknown]
+"#,
+);
+
 // ===== Class-object (Type[...]) targets =====
 
 functools_testcase!(

@@ -45,6 +45,7 @@ use crate::error::style::ErrorStyle;
 use crate::solver::solver::SubsetError;
 use crate::state::loader::FindingOrError;
 use crate::types::callable::FunctionKind;
+use crate::types::callable::Params;
 use crate::types::callable::PropertyMetadata;
 use crate::types::callable::PropertyRole;
 use crate::types::class::Class;
@@ -2589,6 +2590,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     deleter: metadata.has_deleter,
                 }));
             }
+            // A `functools.partial(...)` result is a `Callable` with `Params::Partial`; resolve its
+            // attributes (`func`, `args`, `keywords`, ...) against `functools.partial[ret]`.
+            Type::Callable(c) if matches!(c.params, Params::Partial(_)) => acc.push(
+                AttributeBase1::ClassInstance(self.stdlib.partial(c.ret.clone())),
+            ),
             Type::Callable(_) | Type::CallableResidual(_) => acc.push(
                 AttributeBase1::ClassInstance(self.stdlib.function_type().clone()),
             ),
