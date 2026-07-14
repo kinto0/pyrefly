@@ -1940,8 +1940,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             // If `__new__` is overridden and `__init__` is inherited from object, use `__new__`
             new_attr_ty
         } else {
+            // Neither overridden: normally object's no-arg constructor, but if the class inherits
+            // from an unknown base its real constructor may come from there, so accept any args
+            // (matching direct construction, which treats an unknown-base class as gradual).
+            if !overrides_new
+                && !overrides_init
+                && self
+                    .get_metadata_for_class(cls.class_object())
+                    .has_base_any()
+            {
+                return heap.mk_callable_from(Callable::ellipsis(class_type.clone()));
+            }
             // If both are overridden, take the union
-            // Only if neither are overridden, use the `__new__` and `__init__` from object
             self.unions(vec![new_attr_ty, init_attr_ty])
         }
     }
@@ -2186,7 +2196,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.type_of(arg_ty)
                 }
                 _ if let Some(ret) = self.call_builtin_enumerate(ty, x, errors) => ret,
-                _ if matches!(ty, Type::ClassDef(cls) if cls.has_toplevel_qname("functools", "partial")) => {
+                // `functools.partial(func, ...)` synthesizes the residual callable instead of the
+                // opaque stub, so calls on the result are checked (see `alt::functools`).
+                _ if matches!(ty, Type::ClassDef(cls) if cls.has_toplevel_qname("functools", "partial")) =>
+                {
                     self.call_functools_partial(
                         ty,
                         &args,

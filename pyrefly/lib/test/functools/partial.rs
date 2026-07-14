@@ -188,7 +188,6 @@ def main2(f: CallbackProto) -> None:
 // ===== Class-object (Type[...]) targets =====
 
 functools_testcase!(
-    bug = "partial over a class does not check bound/remaining args against __init__",
     test_partial_type_class,
     r#"
 import functools
@@ -196,15 +195,14 @@ from typing import reveal_type
 class A:
     def __init__(self, a: int, b: str) -> None: ...
 p = functools.partial(A, 1)
-reveal_type(p)  # E: revealed type: partial[A]
+reveal_type(p)  # E: revealed type: (b: str) -> A
 p("a")
-p(1)  # WANT: Argument 1 to "A" has incompatible type "int"; expected "str"
-p(z=1)  # WANT: Unexpected keyword argument "z" for "A"
+p(1)  # E: Argument `Literal[1]` is not assignable to parameter `b` with type `str`
+p(z=1)  # E: Missing argument `b` # E: Unexpected keyword argument `z`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial over a `Type[A]` value does not check bound/remaining args against __init__",
     test_partial_type_type_of,
     r#"
 import functools
@@ -213,15 +211,14 @@ class A:
     def __init__(self, a: int, b: str) -> None: ...
 def main(t: Type[A]) -> None:
     p = functools.partial(t, 1)
-    reveal_type(p)  # E: revealed type: partial[A]
+    reveal_type(p)  # E: revealed type: (b: str) -> A
     p("a")
-    p(1)  # WANT: Argument 1 to "A" has incompatible type "int"; expected "str"
-    p(z=1)  # WANT: Unexpected keyword argument "z" for "A"
+    p(1)  # E: Argument `Literal[1]` is not assignable to parameter `b` with type `str`
+    p(z=1)  # E: Missing argument `b` # E: Unexpected keyword argument `z`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial over a concrete class object does not check the bound arg against __init__",
     test_partial_type_object_plain,
     r#"
 import functools
@@ -230,12 +227,11 @@ class A:
     def __init__(self, val: int) -> None: ...
 def f1(cls1: Type[A]) -> None:
     reveal_type(functools.partial(cls1, 2)())  # E: revealed type: A
-    functools.partial(cls1, "asdf")  # WANT: Argument 1 to "A" has incompatible type "str"; expected "int"
+    functools.partial(cls1, "asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `val` with type `int` in function `A.__init__`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial over a parameterized generic class object does not check the bound arg against the specialized __init__",
     test_partial_type_object_generic,
     r#"
 import functools
@@ -245,12 +241,11 @@ class B(Generic[T]):
     def __init__(self, val: T) -> None: ...
 def f2(cls2: Type[B[int]]) -> None:
     reveal_type(functools.partial(cls2, 2)())  # E: revealed type: B[int]
-    functools.partial(cls2, "asdf")  # WANT: Argument 1 to "B" has incompatible type "str"; expected "int"
+    functools.partial(cls2, "asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `val` with type `int` in function `B.__init__`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial over a `Type[B[T]]` does not check the bound arg against the unsolved type parameter T",
     test_partial_type_object_generic_param,
     r#"
 import functools
@@ -259,10 +254,8 @@ T = TypeVar("T")
 class B(Generic[T]):
     def __init__(self, val: T) -> None: ...
 def foo(cls3: Type[B[T]]) -> None:
-    # WANT: Argument 1 to "B" has incompatible type "str"; expected "T"
-    reveal_type(functools.partial(cls3, "asdf"))  # E: revealed type: partial[B[T]]
-    # WANT: Argument 1 to "B" has incompatible type "int"; expected "T"
-    reveal_type(functools.partial(cls3, 2)())  # E: revealed type: B[T]
+    reveal_type(functools.partial(cls3, "asdf"))  # E: revealed type: () -> B[T] # E: Argument `Literal['asdf']` is not assignable to parameter `val` with type `T` in function `B.__init__`
+    reveal_type(functools.partial(cls3, 2)())  # E: revealed type: B[T] # E: Argument `Literal[2]` is not assignable to parameter `val` with type `T` in function `B.__init__`
 "#,
 );
 
@@ -454,14 +447,13 @@ def main6(a2good: A2Good, a2bad: A2Bad, **d1: Unpack[D1]) -> None:
 // ===== Misc single scenarios =====
 
 functools_testcase!(
-    bug = "partial over a TypeGuard function should collapse the residual return to bool, but pyrefly keeps TypeGuard[list[str]] in the residual signature",
+    bug = "the residual return type still carries `TypeGuard`; it is only collapsed to `bool` in a later diff",
     test_partial_wrapping_type_guard,
     r#"
 from typing import reveal_type
 import functools
 from typing_extensions import TypeGuard
 def is_str_list(val: list[object]) -> TypeGuard[list[str]]: ...
-# WANT: revealed type: () -> bool
 reveal_type(functools.partial(is_str_list, [1, 2, 3]))  # E: revealed type: () -> TypeGuard[list[str]]
 reveal_type(functools.partial(is_str_list, [1, 2, 3])())  # E: revealed type: bool
 "#,
@@ -621,7 +613,6 @@ c: Callable[[int], str] = partial(foo, 1, 2)  # E: `(c: str) -> str` is not assi
 );
 
 functools_testcase!(
-    bug = "partial wrapping a class object does not check argument types; the incompatible str arg is missed",
     test_partial_class_object_arg_check,
     r#"
 from typing import reveal_type
@@ -629,9 +620,22 @@ from functools import partial
 class A:
     def __init__(self, var: int, b: int, c: int) -> None: ...
 p = partial(A, 1)
-reveal_type(p)  # E: revealed type: partial[A]
-p(1, "no")  # WANT: Argument 2 to "A" has incompatible type "str"; expected "int"
+reveal_type(p)  # E: revealed type: (b: int, c: int) -> A
+p(1, "no")  # E: Argument `Literal['no']` is not assignable to parameter `c` with type `int`
 q: partial[A] = partial(A, 1)
+"#,
+);
+
+// Classes extending `Any` are gradual, so their constructors can be
+// partially-applied with any arguments
+functools_testcase!(
+    test_partial_class_object_any_base_gradual,
+    r#"
+from typing import Any
+from functools import partial
+class C(Any):
+    field: int
+partial(C, field=1, other="x")
 "#,
 );
 

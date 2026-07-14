@@ -11,9 +11,7 @@ use crate::test::util::TestEnv;
 /// search-path is needed. This mirrors the per-library test-module layout and gives the
 /// `functools` tests their own macro/namespace.
 pub fn functools_env() -> TestEnv {
-    // `functools.partial` residual modeling is opt-in; enable it so the partial tests exercise it.
-    // Harmless for the `singledispatch` tests, which construct no partials.
-    TestEnv::new().enable_strict_partial_subtyping()
+    TestEnv::new()
 }
 
 #[macro_export]

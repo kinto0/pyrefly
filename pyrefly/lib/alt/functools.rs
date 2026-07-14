@@ -34,6 +34,7 @@ use crate::types::callable::ParamList;
 use crate::types::callable::Params;
 use crate::types::callable::PrefixParam;
 use crate::types::callable::Required;
+use crate::types::types::BoundMethodType;
 use crate::types::types::Forallable;
 use crate::types::types::Overload;
 use crate::types::types::OverloadType;
@@ -68,6 +69,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             );
         };
         let target_ty = target.infer(self, errors);
+        // A class object / `type[C]` is callable via its constructor; normalize to that signature
+        // so the same argument checking and residual logic apply, with the instance as the return.
+        let target_ty = match target_ty {
+            Type::ClassDef(cls) => match self.promote_silently(&cls) {
+                Type::ClassType(instance) => self.constructor_to_callable(&instance),
+                _ => Type::ClassDef(cls),
+            },
+            Type::Type(inner) => match *inner {
+                Type::ClassType(instance) => self.constructor_to_callable(&instance),
+                other => Type::Type(Box::new(other)),
+            },
+            other => other,
+        };
         // Fall back to the stub, reusing the already-inferred target so it isn't inferred twice.
         let fallback = |me: &Self| {
             let mut args_with_ty = args.to_vec();
@@ -157,6 +171,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let (tparams, sig) = match &target_ty {
             Type::Callable(c) => (None, (**c).clone()),
             Type::Function(f) => (None, f.signature.clone()),
+            // Strip the already-bound `self`/`cls` so the residual is the remaining parameters;
+            // bound-argument checking against `target_ty` still binds the receiver as usual.
+            Type::BoundMethod(bm) => match &bm.func {
+                BoundMethodType::Function(f) => match f.signature.strip_first_param() {
+                    Some(sig) => (None, sig),
+                    None => return fallback(self),
+                },
+                BoundMethodType::Forall(forall) => {
+                    match forall.body.signature.strip_first_param() {
+                        Some(sig) => (Some(forall.tparams.clone()), sig),
+                        None => return fallback(self),
+                    }
+                }
+                BoundMethodType::Overload(_) => return fallback(self),
+            },
             Type::Forall(forall) => match &forall.body {
                 Forallable::Function(f) => (Some(forall.tparams.clone()), f.signature.clone()),
                 Forallable::Callable(c) => (Some(forall.tparams.clone()), c.clone()),

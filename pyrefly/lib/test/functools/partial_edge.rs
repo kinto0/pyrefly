@@ -74,7 +74,6 @@ p()  # E: Missing argument `b`
 );
 
 functools_testcase!(
-    bug = "partial over a bound method drops remaining-arg type checking: p(2) passes int where b: str is expected, but pyrefly emits no error",
     test_partial_edge_target_bound_method_badcall,
     r#"
 from typing import reveal_type
@@ -82,8 +81,8 @@ import functools
 class C:
     def m(self, a: int, b: str) -> float: return 0.0
 p = functools.partial(C().m, 1)
-reveal_type(p)  # E: revealed type: partial[float]
-p(2)  # WANT: Argument 1 to "m" has incompatible type "int"; expected "str"
+reveal_type(p)  # E: revealed type: (b: str) -> float
+p(2)  # E: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
 "#,
 );
 
@@ -181,7 +180,6 @@ reveal_type(p(Base()))  # E: revealed type: Base
 // A partial over a bound method reached through a subclass that overrides it currently defers to
 // the stub (bound-method targets are deferred), so no residual arg-checking happens.
 functools_testcase!(
-    bug = "partial over an overridden bound method defers to the stub, so the residual's remaining arg is not type-checked",
     test_partial_edge_overridden_bound_method,
     r#"
 from typing import reveal_type
@@ -191,8 +189,8 @@ class Base:
 class Sub(Base):
     def act(self, a: int, b: str) -> float: return 1.0
 p = functools.partial(Sub().act, 1)
-reveal_type(p)  # E: revealed type: partial[float]
-p(2)  # WANT: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
+reveal_type(p)  # E: revealed type: (b: str) -> float
+p(2)  # E: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
 "#,
 );
 
@@ -211,6 +209,28 @@ from ghelper import nth
 first = functools.partial(nth, 0)
 reveal_type(first([1]))  # E: revealed type: int
 reveal_type(first(["a"]))  # E: revealed type: str
+"#,
+);
+
+// A class object whose `__init__` is inherited from a base in another module is reduced to that
+// constructor, so the residual is checked against the inherited signature.
+testcase!(
+    test_partial_xmod_class_object_inherited_init,
+    TestEnv::one(
+        "basemod",
+        "class Base:\n    def __init__(self, a: int, b: str) -> None: ...\n",
+    )
+    .enable_strict_partial_subtyping(),
+    r#"
+from typing import reveal_type
+import functools
+from basemod import Base
+class Sub(Base):
+    pass
+p = functools.partial(Sub, 1)
+reveal_type(p)  # E: revealed type: (b: str) -> Sub
+p("ok")
+p(2)  # E: Argument `Literal[2]` is not assignable to parameter `b` with type `str`
 "#,
 );
 

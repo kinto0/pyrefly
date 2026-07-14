@@ -173,9 +173,9 @@ reveal_type(partial(func_fn, b=""))  # E: revealed type: partial[(ParamSpec(Gene
 # WANT: revealed type: partial[(*Any) -> Any]
 reveal_type(partial(func_fn_unpack, b=""))  # E: revealed type: partial[(**tuple[*GenericResidual@Ts]) -> GenericResidual@Tc]
 use_int_callable(partial(func_b, b=""))
-use_func_callable(partial(func_b, b=""))  # E: `(int) -> None` is not assignable to upper bound `int | str` of type variable `Tb`
+use_func_callable(partial(func_b, b=""))
 use_int_callable(partial(func_c, b=""))
-use_func_callable(partial(func_c, b=""))  # E: `(int) -> None` is not assignable to any of constraints `int`, `str` of type variable `Tc`
+use_func_callable(partial(func_c, b=""))
 # WANT: error: partial[(*Any, **Any) -> Any] not assignable to Callable[[int], int]
 use_int_callable(partial(func_fn, b=""))  # E: Argument `partial[(ParamSpec(GenericResidual@P)) -> GenericResidual@Tc]` is not assignable to parameter `x` with type `(int) -> int` in function `use_int_callable`
 use_func_callable(partial(func_fn, b=""))
