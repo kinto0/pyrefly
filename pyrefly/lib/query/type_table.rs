@@ -499,6 +499,7 @@ pub(super) fn type_to_indexed_shape(
                 Vec::new(),
             )
         }
+        Type::DataFrame(schema) => type_to_indexed_shape(context, &schema.underlying_type(), table),
         Type::Size(_) => indexed_named_leaf(table, "Size"),
         Type::Dim(inner) => {
             let inner = type_to_indexed_shape(context, inner, table);

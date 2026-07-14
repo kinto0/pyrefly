@@ -46,6 +46,7 @@ use crate::callable_residual::CallableResidual;
 use crate::class::Class;
 use crate::class::ClassKind;
 use crate::class::ClassType;
+use crate::data_frame::DataFrameSchema;
 use crate::dimension;
 use crate::dimension::SizeExpr;
 use crate::equality::TypeEq;
@@ -791,6 +792,10 @@ pub enum Type {
     /// Wraps a ClassType + field map of init args, enabling DSL forward
     /// functions to access shape-relevant constructor parameters directly.
     NNModule(Box<NNModuleType>),
+    /// DataFrame instance with an inferred column schema.
+    /// Wraps an underlying DataFrame instance type and an ordered column schema;
+    /// all behavior delegates to the underlying type.
+    DataFrame(Box<DataFrameSchema>),
     /// Dimension value type - represents values that satisfy Dim bound
     /// Examples:
     ///   - Type::Size(SizeExpr::Literal(6)) for concrete dimension 6
@@ -909,6 +914,7 @@ impl Visit for Type {
             Type::PartialTypedDict(x) => x.visit(f),
             Type::ShapedArray(x) => x.visit(f),
             Type::NNModule(x) => x.visit(f),
+            Type::DataFrame(x) => x.visit(f),
             Type::Size(x) => x.visit(f),
             Type::Dim(x) => x.visit(f),
             Type::Tuple(x) => x.visit(f),
@@ -966,6 +972,7 @@ impl VisitMut for Type {
             Type::PartialTypedDict(x) => x.visit_mut(f),
             Type::ShapedArray(x) => x.visit_mut(f),
             Type::NNModule(x) => x.visit_mut(f),
+            Type::DataFrame(x) => x.visit_mut(f),
             Type::Size(x) => x.visit_mut(f),
             Type::Dim(x) => x.visit_mut(f),
             Type::Tuple(x) => x.visit_mut(f),

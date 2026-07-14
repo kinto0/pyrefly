@@ -415,6 +415,9 @@ impl TypeConverter<'_> {
             // --- NNModule → ClassType from class ---
             PyreflyType::NNModule(m) => self.convert_class_type(&m.class, TypeFlags::INSTANCE),
 
+            // --- DataFrame → convert the underlying instance type ---
+            PyreflyType::DataFrame(schema) => self.convert(&schema.underlying_type()),
+
             // --- TypeAlias → unwrap to the aliased type, or typing class for refs ---
             PyreflyType::TypeAlias(ta) | PyreflyType::UntypedAlias(ta) => {
                 self.convert_type_alias_data(ta.as_ref())

@@ -2060,6 +2060,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 &Type::ClassType(got.class.clone()),
                 &Type::ClassType(want.class.clone()),
             ),
+            // A DataFrame delegates subtyping to its underlying instance type in
+            // both directions.
+            (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
+            (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
             // Type::Dim is a subtype of int and float (numeric tower: Dim <: int <: float)
             // This allows Dim[N] values to be passed where int or float parameters are expected
             (Type::Dim(_), Type::ClassType(cls))

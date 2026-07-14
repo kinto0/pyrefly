@@ -860,7 +860,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 | Type::SelfType(_)
                 | Type::Quantified(_)
                 | Type::ShapedArray(_)
-                | Type::NNModule(_) => {
+                | Type::NNModule(_)
+                | Type::DataFrame(_) => {
                     self.call_method_or_error(t, method, x.range, &[], &[], errors, Some(&context))
                 }
                 Type::Literal(lit) if let Lit::Enum(lit_enum) = &lit.value => self

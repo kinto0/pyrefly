@@ -451,6 +451,7 @@ fn type_kind_name(ty: &Type) -> &'static str {
         Type::Var(_) => "var",
         Type::ShapedArray(_) => "shaped_array",
         Type::NNModule(_) => "nn_module",
+        Type::DataFrame(_) => "data_frame",
         Type::Size(_) => "size",
         Type::Dim(_) => "dim",
         Type::TypeForm(_) => "type_form",
@@ -662,6 +663,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
                 .collect::<Vec<_>>();
             named_type_shape_kind(qname_to_string(module.class.qname()), args)
         }
+        Type::DataFrame(schema) => type_shape_kind(context, &schema.underlying_type()),
         Type::Size(_) => named_type_shape_kind("Size", Vec::new()),
         Type::Dim(inner) => named_type_shape_kind("Dim", vec![type_to_shape(context, inner)]),
         Type::TypeForm(inner) => {

@@ -488,6 +488,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     None => CallTargetLookup::Error(vec![]),
                 }
             }
+            // A DataFrame delegates call dispatch to its underlying instance type.
+            Type::DataFrame(schema) => {
+                self.as_call_target_impl(schema.underlying_type(), quantified)
+            }
             Type::SelfType(cls) => {
                 // Ignoring `quantified` is okay here because Self is not a valid typevar bound.
                 self.self_as_dunder_call(&cls)

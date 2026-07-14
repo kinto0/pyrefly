@@ -177,6 +177,9 @@ impl<'a> TypeDisplayContext<'a> {
             if let Type::ShapedArray(shaped_array) = t {
                 self.add_qname(shaped_array.base_class.qname());
             }
+            if let Type::DataFrame(schema) = t {
+                self.add_qname(schema.underlying.qname());
+            }
             // A singledispatch dispatcher is displayed as its backing `_SingleDispatchCallable`
             // class, so that class needs a registered qname to display unqualified.
             if let Type::Function(func) = t
@@ -705,6 +708,9 @@ impl<'a> TypeDisplayContext<'a> {
             Type::NNModule(module) => {
                 // Display as the class name (e.g., MaxPool2d)
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)
+            }
+            Type::DataFrame(schema) => {
+                self.fmt_helper_generic(&schema.underlying_type(), false, output)
             }
             Type::Size(dim) => output.write_str(&format!("Size[{dim}]")),
             Type::Dim(inner) => {

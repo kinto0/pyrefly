@@ -251,6 +251,13 @@ fn on_type(
                 on_type(Variance::Invariant, inj, ty, on_edge, on_var);
             }
         }
+        Type::DataFrame(schema) => {
+            // Delegate to the underlying instance; column types are invariant.
+            on_type(variance, inj, &schema.underlying_type(), on_edge, on_var);
+            for (_, ty) in &schema.columns {
+                on_type(Variance::Invariant, inj, ty, on_edge, on_var);
+            }
+        }
         Type::Tuple(t) => {
             handle_tuple_type(t, variance, inj, on_edge, on_var);
         }
