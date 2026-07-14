@@ -465,14 +465,13 @@ def main6(a2good: A2Good, a2bad: A2Bad, **d1: Unpack[D1]) -> None:
 // ===== Misc single scenarios =====
 
 functools_testcase!(
-    bug = "the residual return type still carries `TypeGuard`; it is only collapsed to `bool` in a later diff",
     test_partial_wrapping_type_guard,
     r#"
 from typing import reveal_type
 import functools
 from typing_extensions import TypeGuard
 def is_str_list(val: list[object]) -> TypeGuard[list[str]]: ...
-reveal_type(functools.partial(is_str_list, [1, 2, 3]))  # E: revealed type: () -> TypeGuard[list[str]]
+reveal_type(functools.partial(is_str_list, [1, 2, 3]))  # E: revealed type: () -> bool
 reveal_type(functools.partial(is_str_list, [1, 2, 3])())  # E: revealed type: bool
 "#,
 );
@@ -677,6 +676,8 @@ def f2() -> None:
     partial_cls()  # WANT: Cannot instantiate abstract class "A" with abstract attribute "method"
 "#,
 );
+
+// ===== `partial[ret]` identity via subtyping =====
 
 functools_testcase!(
     test_partial_assignable_to_partial_type,

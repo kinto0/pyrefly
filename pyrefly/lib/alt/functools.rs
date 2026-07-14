@@ -324,7 +324,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let Some(residual) = partial_residual(&sig, &args[1..], kws) else {
             return nominal_partial(self, sig.ret);
         };
-        let callable = Callable::partial(residual, sig.ret);
+        // A `TypeGuard`/`TypeIs` narrows only in a direct call; the residual just returns `bool`.
+        let ret = match sig.ret {
+            Type::TypeGuard(_) | Type::TypeIs(_) => self.stdlib.bool().clone().to_type(),
+            other => other,
+        };
+        let callable = Callable::partial(residual, ret);
         match tparams {
             None => self.heap.mk_callable_from(callable),
             Some(tparams) => restore_partial_generics(self.heap, callable, &tparams),
