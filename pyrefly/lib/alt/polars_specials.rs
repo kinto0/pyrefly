@@ -57,26 +57,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         Some(columns)
     }
 
-    /// The modeled element type of a list literal: `int` if all elements are integer
-    /// literals, `str` if all are string literals, else `None`.
+    /// The modeled element type of a list literal: the one builtin scalar type shared by
+    /// every element, or `None` for an empty, mixed, or non-literal list. `complex` is
+    /// excluded because Polars has no complex dtype.
     fn polars_list_element_type(&self, elts: &[Expr]) -> Option<Type> {
-        if elts.is_empty() {
-            return None;
-        }
-        if elts.iter().all(|e| {
-            matches!(
-                e,
-                Expr::NumberLiteral(ExprNumberLiteral {
-                    value: Number::Int(_),
-                    ..
-                })
-            )
-        }) {
-            Some(self.heap.mk_class_type(self.stdlib.int().clone()))
-        } else if elts.iter().all(|e| matches!(e, Expr::StringLiteral(_))) {
-            Some(self.heap.mk_class_type(self.stdlib.str().clone()))
-        } else {
-            None
-        }
+        let scalar = |e: &Expr| match e {
+            Expr::NumberLiteral(ExprNumberLiteral {
+                value: Number::Int(_),
+                ..
+            }) => Some(self.stdlib.int()),
+            Expr::NumberLiteral(ExprNumberLiteral {
+                value: Number::Float(_),
+                ..
+            }) => Some(self.stdlib.float()),
+            Expr::BooleanLiteral(_) => Some(self.stdlib.bool()),
+            Expr::StringLiteral(_) => Some(self.stdlib.str()),
+            Expr::BytesLiteral(_) => Some(self.stdlib.bytes()),
+            _ => None,
+        };
+        let (first, rest) = elts.split_first()?;
+        let cls = scalar(first)?;
+        (rest.iter().all(|e| scalar(e) == Some(cls))).then(|| self.heap.mk_class_type(cls.clone()))
     }
 }

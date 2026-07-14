@@ -108,12 +108,52 @@ reveal_type(pl.DataFrame({"a": [1, "s"]}))  # E: revealed type: DataFrame
 );
 
 testcase!(
-    test_fallback_float_not_modeled,
+    test_construct_float_column,
     env_with_polars_stubs(),
     r#"
 import polars as pl
 from typing import reveal_type
-reveal_type(pl.DataFrame({"a": [1.0]}))  # E: revealed type: DataFrame
+reveal_type(pl.DataFrame({"a": [1.0, 2.0]}))  # E: revealed type: DataFrame[a: float]
+"#,
+);
+
+testcase!(
+    test_construct_bool_column,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [True, False]}))  # E: revealed type: DataFrame[a: bool]
+"#,
+);
+
+testcase!(
+    test_construct_bytes_column,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [b"x", b"y"]}))  # E: revealed type: DataFrame[a: bytes]
+"#,
+);
+
+testcase!(
+    test_fallback_complex_not_modeled,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [1j]}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_fallback_mixed_int_and_bool,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [1, True]}))  # E: revealed type: DataFrame
 "#,
 );
 
