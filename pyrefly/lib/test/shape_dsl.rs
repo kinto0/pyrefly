@@ -668,6 +668,51 @@ def sizes[N: SymVar](
 );
 
 testcase!(
+    test_tensor_shapes_size_numeric_tower_and_literal_equivalence,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SymVar
+from typing import Literal, reveal_type
+
+def take_int(x: int) -> None: ...
+def take_float(x: float) -> None: ...
+def take_complex(x: complex) -> None: ...
+def take_str(x: str) -> None: ...
+def take_size3(x: Size[3]) -> None: ...
+def take_literal3(x: Literal[3]) -> None: ...
+def take_literal4(x: Literal[4]) -> None: ...
+def take_huge_literal(x: Literal[100000000000000000000000000000000]) -> None: ...
+
+def use(s: Size[3]) -> None:
+    take_int(s)
+    take_float(s)
+    take_complex(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `complex`
+    take_str(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `str`
+    take_size3(3)
+    take_size3(4)  # E: Argument `Literal[4]` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(-3)  # E: Argument `Literal[-3]` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(1.0)  # E: Argument `float` is not assignable to parameter `x` with type `Size[3]`
+    take_literal3(s)
+    take_literal4(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `Literal[4]`
+    reveal_type(s * 1.5)  # E: revealed type: float
+
+def use_symbolic[N: SymVar](s: Size[N]) -> None:
+    take_int(s)
+    take_float(s)
+    take_complex(s)  # E: Argument `Size[N]` is not assignable to parameter `x` with type `complex`
+    take_literal3(s)  # E: Argument `Size[N]` is not assignable to parameter `x` with type `Literal[3]`
+
+def use_int(n: int) -> None:
+    take_size3(n)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+
+def use_huge(s: Size[1]) -> None:
+    take_size3(100000000000000000000000000000000)  # E: Argument `Literal[100000000000000000000000000000000]` is not assignable to parameter `x` with type `Size[3]`
+    take_huge_literal(s - 1)  # E: Argument `Size[0]` is not assignable to parameter `x` with type `Literal[100000000000000000000000000000000]`
+"#,
+);
+
+testcase!(
     test_tensor_shapes_size_annotations_reject_multiple_arguments,
     shaped_array_env(),
     r#"

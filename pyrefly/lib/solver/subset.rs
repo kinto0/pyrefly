@@ -193,6 +193,23 @@ struct FreshForall {
 }
 
 impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
+    fn is_subset_literal_int_size(
+        &mut self,
+        literal: i64,
+        size: &Type,
+        literal_is_got: bool,
+    ) -> Result<(), SubsetError> {
+        let literal_size = Type::Size(SizeExpr::Literal(literal));
+        let result = if literal_is_got {
+            self.is_subset_eq(&literal_size, size)
+        } else {
+            self.is_subset_eq(size, &literal_size)
+        };
+        // Keep the outer argument diagnostic for the original literal instead
+        // of exposing the recursive structural `Size` comparison.
+        result.map_err(|_| SubsetError::Other)
+    }
+
     /// Can a function with l_args be called as a function with u_args?
     fn is_subset_param_list(
         &mut self,
@@ -2042,6 +2059,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             {
                 Ok(())
             }
+            // Any exact Size expression represents an integer dimension value.
+            (Type::Size(_), Type::ClassType(cls))
+                if cls.is_builtin("int") || cls.is_builtin("float") =>
+            {
+                Ok(())
+            }
             (Type::Kwargs(_), _) => {
                 // We know kwargs will always be a dict w/ str keys
                 self.is_subset_eq(
@@ -2330,6 +2353,19 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Dim(dim_inner), Type::Literal(lit)) if let Lit::Int(n) = &lit.value => {
                 let size_type = Type::Size(SizeExpr::Literal(n.as_i64().unwrap_or(0)));
                 self.is_subset_eq(dim_inner, &size_type)
+            }
+            // Representable integer literals compare exactly with Size expressions in either direction.
+            (Type::Literal(lit), want @ Type::Size(_))
+                if let Lit::Int(n) = &lit.value
+                    && let Some(n) = n.as_i64() =>
+            {
+                self.is_subset_literal_int_size(n, want, true)
+            }
+            (got @ Type::Size(_), Type::Literal(lit))
+                if let Lit::Int(n) = &lit.value
+                    && let Some(n) = n.as_i64() =>
+            {
+                self.is_subset_literal_int_size(n, got, false)
             }
             // ClassType(int) <: Dim[...]
             // Redirect: int <: Dim[...] becomes Dim[any_implicit] <: Dim[...]
