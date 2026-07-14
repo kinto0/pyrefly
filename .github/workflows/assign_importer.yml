@@ -9,16 +9,14 @@ permissions: {}
 jobs:
   assign-importer:
     # issue_comment fires for both issues and PRs. Only act on PRs, and only on
-    # the facebook-github-bot comment that records who imported the PR to
-    # Phabricator. Gating on the bot author is also the security boundary: it
-    # stops an arbitrary commenter from spoofing an "imported" notice to assign
-    # someone.
+    # the import bot's comment that records who imported the PR to Phabricator.
+    # Gating on the bot author is also the security boundary: it stops an
+    # arbitrary commenter from spoofing an "imported" notice to assign someone.
     if: >-
       ${{ github.event.issue.pull_request != null
-          && github.event.comment.user.login == 'facebook-github-bot' }}
+          && github.event.comment.user.login == 'meta-codesync[bot]' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       pull-requests: write
     steps:
       - name: Assign the importer named in the import comment
@@ -26,34 +24,18 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // Pyrefly team GitHub handles — single source of truth in
-            // .github/owners.json.
-            const ownersFile = await github.rest.repos.getContent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              path: '.github/owners.json',
-            });
-            const OWNERS = JSON.parse(
-              Buffer.from(ownersFile.data.content, 'base64').toString('utf8'),
-            );
-
-            // facebook-github-bot posts "@<handle> has imported this pull
+            // meta-codesync[bot] posts "@<handle> has imported this pull
             // request. ..." when a Meta employee imports the PR to Phabricator.
-            // The leading "@" is occasionally dropped, so match it optionally.
+            // The named importer is always a Meta employee, so there is no
+            // allowlist to check — the bot-author gate above is the trust
+            // boundary, and the verify step below drops anyone lacking repo access.
             const body = context.payload.comment.body || '';
-            const match = body.match(/(?:^|@)([A-Za-z0-9-]+) has imported this pull request/m);
+            const match = body.match(/@([A-Za-z0-9-]+) has imported this pull request/);
             if (!match) {
               console.log('Comment is not an import notice, skipping');
               return;
             }
-
-            // Only auto-assign recognized team members. This also skips
-            // bot-attributed automatic imports, whose handle is not in OWNERS.
             const importer = match[1];
-            if (!OWNERS.includes(importer.toLowerCase())) {
-              console.log(`${importer} is not a known team member, skipping`);
-              return;
-            }
 
             const issue_number = context.payload.issue.number;
             const { owner, repo } = context.repo;

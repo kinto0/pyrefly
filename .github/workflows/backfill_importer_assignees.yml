@@ -2,8 +2,8 @@ name: Backfill importer assignees
 
 # One-off / on-demand catch-up for PRs that were imported before the
 # assign_importer.yml event workflow existed (that workflow only fires on new
-# import comments). Scans open, unassigned PRs, finds the facebook-github-bot
-# import comment, and assigns the importer. Run manually from the Actions tab.
+# import comments). Scans open, unassigned PRs, finds the import bot's comment,
+# and assigns the importer. Run manually from the Actions tab.
 
 on:
   workflow_dispatch:
@@ -19,7 +19,6 @@ jobs:
   backfill:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
       issues: write
       pull-requests: write
     steps:
@@ -28,20 +27,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // Pyrefly team GitHub handles — single source of truth in
-            // .github/owners.json.
-            const ownersFile = await github.rest.repos.getContent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              path: '.github/owners.json',
-            });
-            const OWNERS = JSON.parse(
-              Buffer.from(ownersFile.data.content, 'base64').toString('utf8'),
-            );
-
-            // facebook-github-bot posts "@<handle> has imported this pull
-            // request. ..." on import; the leading "@" is occasionally dropped.
-            const IMPORT_RE = /(?:^|@)([A-Za-z0-9-]+) has imported this pull request/m;
+            // meta-codesync[bot] posts "@<handle> has imported this pull
+            // request. ..." on import.
+            const IMPORT_RE = /@([A-Za-z0-9-]+) has imported this pull request/;
 
             const dryRun = context.payload.inputs.dry_run !== 'false';
             const { owner, repo } = context.repo;
@@ -60,15 +48,11 @@ jobs:
               // Comments come back oldest-first; the last import comment reflects
               // the most recent importer.
               const importComments = comments.filter(
-                (c) => c.user && c.user.login === 'facebook-github-bot' && IMPORT_RE.test(c.body || ''),
+                (c) => c.user && c.user.login === 'meta-codesync[bot]' && IMPORT_RE.test(c.body || ''),
               );
               if (importComments.length === 0) continue;
 
               const importer = importComments[importComments.length - 1].body.match(IMPORT_RE)[1];
-              if (!OWNERS.includes(importer.toLowerCase())) {
-                console.log(`#${pr.number}: importer ${importer} not in OWNERS, skipping`);
-                continue;
-              }
 
               if (dryRun) {
                 console.log(`[dry-run] would assign ${importer} to #${pr.number}`);
