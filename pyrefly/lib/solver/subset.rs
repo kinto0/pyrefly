@@ -713,6 +713,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Skip `__slots__` check
                 continue;
             }
+            if name == dunder::CLASS_GETITEM {
+                // Class-subscription hook, not an instance member
+                continue;
+            }
             if matches!(
                 got,
                 Type::Callable(_) | Type::Function(_) | Type::BoundMethod(_)

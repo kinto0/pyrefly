@@ -362,3 +362,29 @@ reveal_type(make)  # E: revealed type: (x: int) -> Impl
 make("bad")  # E: Argument `Literal['bad']` is not assignable to parameter `x` with type `int` in function `make`
 "#,
 );
+
+// A `functools.partial` conforms to a partial-shaped `Protocol`; its `__class_getitem__`, a class
+// hook rather than an instance member, must not block conformance.
+functools_testcase!(
+    test_partial_conforms_to_partial_protocol,
+    r#"
+from typing import Protocol, Any, Callable, TypeVar, runtime_checkable
+import functools
+import types
+T_co = TypeVar("T_co", covariant=True)
+@runtime_checkable
+class Partial(Protocol[T_co]):
+    __call__: Callable[..., T_co]
+    @property
+    def func(self) -> Callable[..., T_co]: ...
+    @property
+    def args(self) -> tuple[Any, ...]: ...
+    @property
+    def keywords(self) -> dict[str, Any]: ...
+    def __class_getitem__(cls, item: Any) -> types.GenericAlias: ...
+def f() -> int: ...
+def use(p: "functools.partial[int]") -> None:
+    x: Partial[int] = p
+q: Partial[int] = functools.partial(f)
+"#,
+);
