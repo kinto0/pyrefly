@@ -107,7 +107,7 @@ fn dump_config(
 
     let mut configs_to_files: SmallMap<ArcId<ConfigFile>, Vec<ModulePath>> = SmallMap::new();
     let handles = Handles::new(config_finder.checkpoint(files_to_check.files_iter())?);
-    let (mut handles, _, sourcedb_errors) = handles.all(&config_finder);
+    let (mut handles, _, sourcedb_errors) = handles.all(&config_finder, false);
     for error in sourcedb_errors {
         error.print();
     }

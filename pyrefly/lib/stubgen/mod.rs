@@ -115,7 +115,7 @@ class BaseModel:
         );
         let transaction = forgetter.as_mut();
 
-        let (handles, _, _) = handles_obj.all(holder.as_ref().config_finder());
+        let (handles, _, _) = handles_obj.all(holder.as_ref().config_finder(), false);
 
         let mut result = String::new();
         for handle in &handles {

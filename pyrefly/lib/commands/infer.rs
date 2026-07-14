@@ -319,7 +319,7 @@ impl InferArgs {
         let mut cancellable_transaction = holder.as_ref().cancellable_transaction();
         let transaction = forgetter.as_mut();
 
-        let (handles, _, sourcedb_errors) = handles.all(holder.as_ref().config_finder());
+        let (handles, _, sourcedb_errors) = handles.all(holder.as_ref().config_finder(), false);
         if !sourcedb_errors.is_empty() {
             for error in sourcedb_errors {
                 error.print();

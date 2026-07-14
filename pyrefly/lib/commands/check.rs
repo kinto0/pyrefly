@@ -755,9 +755,14 @@ impl Handles {
         self.path_data.len()
     }
 
+    /// When `use_fallback_search_path` is set, module names are derived using
+    /// each config's `fallback_search_path` (so files in a config-less directory
+    /// resolve to a real name instead of `__unknown__`). Only coverage opts in;
+    /// the normal check path keeps `__unknown__` for unresolvable modules.
     pub fn all(
         &self,
         config_finder: &ConfigFinder,
+        use_fallback_search_path: bool,
     ) -> (Vec<Handle>, SmallSet<ArcId<ConfigFile>>, Vec<ConfigError>) {
         let mut configs = SmallMap::new();
         for path in &self.path_data {
@@ -772,7 +777,15 @@ impl Handles {
         let reloaded_source_dbs = ConfigFile::query_source_db(&configs, false, None).0;
         let result = configs
             .iter()
-            .flat_map(|(c, files)| files.iter().map(|p| c.handle_from_module_path(p.dupe())))
+            .flat_map(|(c, files)| {
+                files.iter().map(move |p| {
+                    if use_fallback_search_path {
+                        c.handle_from_module_path_with_fallback(p.dupe(), &c.fallback_search_path)
+                    } else {
+                        c.handle_from_module_path(p.dupe())
+                    }
+                })
+            })
             .collect();
         let reloaded_configs = configs
             .into_iter()
@@ -989,7 +1002,8 @@ impl CheckArgs {
             state.as_ref().new_transaction(require_levels.default, None),
             true,
         );
-        let (loaded_handles, _, sourcedb_errors) = handles.all(state.as_ref().config_finder());
+        let (loaded_handles, _, sourcedb_errors) =
+            handles.all(state.as_ref().config_finder(), false);
 
         // Project-level output settings can come from config when CLI flags are absent.
         if (self.output.baseline.is_none()
@@ -1098,7 +1112,7 @@ impl CheckArgs {
         loop {
             let timings = Timings::new();
             let (loaded_handles, reloaded_configs, sourcedb_errors) =
-                handles.all(state.config_finder());
+                handles.all(state.config_finder(), false);
 
             // Inherit project-level output settings from config on every iteration
             // to pick up config file changes when the CLI did not override them.

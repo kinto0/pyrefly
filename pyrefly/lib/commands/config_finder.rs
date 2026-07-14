@@ -349,6 +349,7 @@ mod tests {
     use pyrefly_util::test_path::TestPath;
 
     use super::*;
+    use crate::commands::check::Handles;
     use crate::config::config::ConfigSource;
     use crate::config::environment::environment::PythonEnvironment;
 
@@ -533,6 +534,27 @@ mod tests {
                     .collect::<Vec<PathBuf>>()
             )),
         );
+    }
+
+    /// gh-4132: `Handles::all` derives module names via each config's fallback
+    /// search path only when the caller opts in (coverage does). A file in a
+    /// config-less directory then resolves to a real name; the normal check
+    /// path keeps `__unknown__` for unresolvable modules.
+    #[test]
+    fn test_handles_all_fallback_search_path_is_opt_in() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(root, vec![TestPath::file("foo.py")]);
+
+        let finder = TestConfigurer::new_standard(|_, x, _| {
+            ConfigOverrideArgs::default().override_config(x)
+        });
+
+        let (with_fallback, _, _) = Handles::new(vec![root.join("foo.py")]).all(&finder, true);
+        assert_eq!(with_fallback[0].module(), ModuleName::from_str("foo"));
+
+        let (without_fallback, _, _) = Handles::new(vec![root.join("foo.py")]).all(&finder, false);
+        assert_eq!(without_fallback[0].module(), ModuleName::unknown());
     }
 
     /// A real pyrefly.toml should always take priority over a pyproject.toml

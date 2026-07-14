@@ -1646,7 +1646,7 @@ pub fn collect_module_reports(
     let state = State::new(config_finder, thread_count);
     let holder = Forgetter::new(state, false);
     let handles = Handles::new(expanded_file_list);
-    let (handles, _, sourcedb_errors) = handles.all(holder.as_ref().config_finder());
+    let (handles, _, sourcedb_errors) = handles.all(holder.as_ref().config_finder(), true);
 
     if !sourcedb_errors.is_empty() {
         for error in sourcedb_errors {
@@ -1699,7 +1699,10 @@ pub fn collect_module_reports(
             )
             .finding()
             {
-                let py_handle = config.handle_from_module_path(py_module_path);
+                let py_handle = config.handle_from_module_path_with_fallback(
+                    py_module_path,
+                    &config.fallback_search_path,
+                );
                 map.insert(pyi_path, py_handle);
             }
         }
