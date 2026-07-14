@@ -77,6 +77,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 errors,
             )
         };
+        // `partial(f)` with nothing bound is a pure forwarder; for an overloaded target hand the
+        // overload back unchanged so ordinary overload resolution still applies at the call site (a
+        // single residual parameter list can't preserve overload branches).
+        if args.len() == 1 && kws.is_empty() && matches!(target_ty, Type::Overload(_)) {
+            return target_ty;
+        }
         // We handle a directly-typed function/callable and a generic (`Forall`-wrapped) function.
         // A generic target keeps its `tparams`: type variables the bound args don't pin stay symbolic
         // in the residual and are re-scoped into a `Forall` below, so a partial over a generic

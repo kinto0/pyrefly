@@ -225,8 +225,9 @@ def outer_c(arg: Tc) -> None:
 
 // ===== Overloaded targets =====
 
+// `partial(foo)` with nothing bound forwards the overload unchanged, so overload resolution still
+// happens at the call site: each shape resolves to its own overload and mismatches are flagged.
 functools_testcase!(
-    bug = "partial over an overloaded function resolves both call shapes to the first overload's return (int) and does not flag invalid arg combinations",
     test_partial_over_overloaded_function,
     r#"
 from typing import reveal_type, overload, Any
@@ -238,10 +239,9 @@ def foo(a: str, b: int) -> str: ...
 def foo(*a: Any, **k: Any) -> Any: ...
 p1 = functools.partial(foo)
 reveal_type(p1(1, "a"))  # E: revealed type: int
-# WANT: revealed type: str (matches the second overload)
-reveal_type(p1("a", 1))  # E: revealed type: int
-p1(1, 2)  # WANT: error - no overload matches (a: int, b: int)
-p1("a", "b")  # WANT: error - no overload matches (a: str, b: str)
+reveal_type(p1("a", 1))  # E: revealed type: str
+p1(1, 2)  # E: No matching overload found for function `foo`
+p1("a", "b")  # E: No matching overload found for function `foo`
 "#,
 );
 
@@ -297,8 +297,9 @@ def test() -> None: ...
 );
 
 // Regression: https://github.com/facebook/pyrefly/issues/3638
+// `partial(f)` binds nothing, so the overloaded `f` is forwarded unchanged and resolves at the
+// decoration site, preserving `g`'s signature.
 functools_testcase!(
-    bug = "partial(f) over an overloaded generic decorator erases g's signature to Unknown instead of preserving (x: int) -> str",
     test_partial_overloaded_decorator_erases_signature,
     r#"
 from typing import Callable, Any, overload, reveal_type
@@ -310,9 +311,8 @@ def f[C: Callable[..., Any]]() -> Callable[[C], C]: ...
 def f[C: Callable[..., Any]](x: C | None = None) -> C | Callable[[C], C]: ...
 @partial(f)
 def g(x: int) -> str: ...
-# WANT: revealed type: (x: int) -> str
-reveal_type(g)  # E: revealed type: Unknown
-g(5)  # WANT: no error (signature unchanged, g(5) is valid)
+reveal_type(g)  # E: revealed type: (x: int) -> str
+g(5)
 "#,
 );
 
