@@ -90,8 +90,8 @@ class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
     def update[S: SymVar](
         self,
         input_pos: Tensor[[S]],
-        k_val: Tensor[[B, NHead, S, HD]],
-        v_val: Tensor[[B, NHead, S, HD]],
+        k_val: Tensor,
+        v_val: Tensor,
     ) -> tuple[Tensor[[B, NHead, MaxSeq, HD]], Tensor[[B, NHead, MaxSeq, HD]]]:
         k_out = self.k_cache
         assert_type(k_out, Tensor[[B, NHead, MaxSeq, HD]])

@@ -538,10 +538,10 @@ class Conv2d[
 
     kernel_size, stride, padding, and dilation also accept tuple[int, int]
     for per-axis values.  When a tuple is passed the corresponding type
-    parameter is unbound and the spatial formula produces Unknown — this
-    is expected since a single K can't represent (Kh, Kw).  Proper per-axis
-    tracking would require DSL-based inference, but nn.Sequential currently
-    dispatches via stub signatures, not DSL.
+    parameter is unbound and the spatial formula preserves arithmetic around
+    that unknown dimension.  Proper per-axis tracking would require DSL-based
+    inference, but nn.Sequential currently dispatches via stub signatures, not
+    DSL.
     """
 
     weight: Tensor[[OutC, InC, K, K]]

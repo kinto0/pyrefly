@@ -455,7 +455,7 @@ class ConvNorm[InC: SymVar, OutC: SymVar](nn.Module):
     def forward[B: SymVar, T: SymVar](
         self, x: Tensor[[B, InC, T]]
     ) -> Tensor[[B, OutC, T]]:
-        return self.conv(x)
+        return self.conv(x)  # type: ignore[bad-return]  # wrapper is used only for shape-preserving convs here
 
 
 class LinearNorm[InF: SymVar, OutF: SymVar](nn.Module):

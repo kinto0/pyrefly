@@ -21,6 +21,7 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::callable::FunctionKind;
 use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::dimension::canonicalize;
+use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
 use pyrefly_types::shaped_array::ShapedArrayShape;
@@ -3474,6 +3475,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         // Use Explicit since the user wrote Any explicitly
                         Some(Type::Any(AnyStyle::Explicit))
                     }
+                    Type::ClassDef(cls) if cls.is_builtin("int") => Some(gradual_size()),
                     _ => {
                         match self.untype_opt_with_context(
                             expr_type.clone(),
@@ -4055,9 +4057,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             return Type::any_error();
         };
         let dim = dims.into_iter().next().unwrap();
-        let size = SizeExpr::from_type(&dim)
-            .map(|size| canonicalize(self.heap.mk_size(size)))
-            .expect("parse_dimension_list ensures all types are valid Size dimensions");
+        if matches!(dim, Type::Any(_)) {
+            // Size[Any] desugars to plain Any since it's maximally gradual
+            return dim;
+        }
+        let Some(size_expr) = SizeExpr::from_type(&dim) else {
+            unreachable!("SizeExpr::from_type failed on non-Any dimension: {:?}", dim);
+        };
+        let size = canonicalize(self.heap.mk_size(size_expr));
         self.heap.mk_type_of(size)
     }
 

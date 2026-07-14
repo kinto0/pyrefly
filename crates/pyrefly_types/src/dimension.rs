@@ -28,13 +28,17 @@ use crate::types::Type;
 /// - Concrete literals: `Tensor[2, 3]`
 /// - Symbolic expressions: `Tensor[N, N+1]`, `Tensor[N*M]`
 ///
-/// Type variables, solver variables, and unknown dimensions are represented as
-/// symbolic leaves.
+/// Type variables and solver variables are represented as symbolic leaves.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SizeExpr {
     /// Concrete dimension: Tensor[2, 3]
     /// Only positive integers are allowed
     Literal(i64),
+
+    /// The gradual integer size: bare `Size`, `Size[int]`, or `Any` in a shape
+    /// context. It is consistent with concrete sizes without becoming arbitrary
+    /// `Any`.
+    Int,
 
     /// A symbolic dimension leaf, typically a quantified type parameter or a
     /// solver variable standing for one.
@@ -115,9 +119,7 @@ impl SizeExpr {
             Type::Size(dim) => Some(dim.clone()),
             Type::Literal(lit) if let Lit::Int(i) = &lit.value => i.as_i64().map(SizeExpr::Literal),
             Type::Dim(ty) => SizeExpr::from_type(ty),
-            Type::Quantified(_) | Type::Var(_) | Type::Any(_) => {
-                Some(SizeExpr::Symbolic(Box::new(ty.clone())))
-            }
+            Type::Quantified(_) | Type::Var(_) => Some(SizeExpr::Symbolic(Box::new(ty.clone()))),
             _ => None,
         }
     }
@@ -131,10 +133,22 @@ impl SizeExpr {
     }
 }
 
+/// The gradual size type: the internal representation of bare `Size` and
+/// `Size[int]`.
+pub fn gradual_size() -> Type {
+    Type::Size(SizeExpr::Int)
+}
+
+/// Whether `ty` is the gradual size type.
+pub fn is_gradual_size(ty: &Type) -> bool {
+    matches!(ty, Type::Size(SizeExpr::Int))
+}
+
 impl Display for SizeExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Literal(n) => write!(f, "{}", n),
+            Self::Int => write!(f, "int"),
             Self::Symbolic(ty) => write!(f, "{}", ty),
             Self::Add(left, right) => write!(f, "({} + {})", left, right),
             Self::Sub(left, right) => write!(f, "({} - {})", left, right),
@@ -172,16 +186,15 @@ impl Display for SizeExpr {
 /// - Divisions are flattened (e.g., (N // M) // K = N // (M*K))
 /// - Factors are GCD-reduced (e.g., (4*N) // (6*M) = (2*N) // (3*M))
 /// - Expressions are ordered consistently
-/// - Type::Any propagates through the entire expression
+/// - Gradual sizes propagate through the entire expression
 ///
 /// This enables structural equality checking after canonicalization.
 pub fn canonicalize(ty: Type) -> Type {
     // Normalize and canonicalize based on type
     match ty {
         Type::Size(dim) => {
-            // Check for Any - if present anywhere, entire expression becomes Any
-            if let Some(style) = any_style_in_sizeexpr(&dim) {
-                return Type::Any(style);
+            if sizeexpr_is_gradual(&dim) {
+                return gradual_size();
             }
             canonicalize_sizeexpr(dim)
         }
@@ -199,33 +212,33 @@ fn canonicalize_inner(ty: Type) -> Type {
     }
 }
 
-/// Return the style of a Type::Any appearing anywhere in the expression tree.
-fn any_style_in_type(ty: &Type) -> Option<AnyStyle> {
+/// Whether a type is gradual for size purposes.
+fn type_is_gradual(ty: &Type) -> bool {
     match ty {
-        Type::Any(style) => Some(*style),
-        Type::Size(dim) => any_style_in_sizeexpr(dim),
-        _ => None,
+        Type::Size(dim) => sizeexpr_is_gradual(dim),
+        Type::Any(AnyStyle::Implicit | AnyStyle::Explicit) => true,
+        _ => false,
     }
 }
 
-fn any_style_in_sizeexpr(dim: &SizeExpr) -> Option<AnyStyle> {
+/// Whether a size expression contains a gradual leaf.
+fn sizeexpr_is_gradual(dim: &SizeExpr) -> bool {
     match dim {
-        SizeExpr::Symbolic(ty) => any_style_in_type(ty),
+        SizeExpr::Int => true,
+        SizeExpr::Symbolic(ty) => type_is_gradual(ty),
         SizeExpr::Add(left, right)
         | SizeExpr::Sub(left, right)
         | SizeExpr::Mul(left, right)
         | SizeExpr::FloorDiv(left, right)
-        | SizeExpr::Pow(left, right) => {
-            any_style_in_sizeexpr(left).or_else(|| any_style_in_sizeexpr(right))
-        }
-        SizeExpr::Literal(_) => None,
+        | SizeExpr::Pow(left, right) => sizeexpr_is_gradual(left) || sizeexpr_is_gradual(right),
+        SizeExpr::Literal(_) => false,
     }
 }
 
 /// Main canonicalization function for SizeExpr expressions
 fn canonicalize_sizeexpr(dim: SizeExpr) -> Type {
     match dim {
-        SizeExpr::Literal(_) => Type::Size(dim),
+        SizeExpr::Literal(_) | SizeExpr::Int => Type::Size(dim),
         SizeExpr::Symbolic(ty) => canonicalize_symbolic(*ty),
         SizeExpr::Add(left, right) => canonicalize_sum(left.into_type(), right.into_type()),
         SizeExpr::Sub(left, right) => {
@@ -256,7 +269,6 @@ fn canonicalize_symbolic(ty: Type) -> Type {
                 .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(Type::Literal(lit)))))
         }
         Type::Dim(inner) => canonicalize_symbolic(*inner),
-        Type::Any(style) => Type::Any(style),
         other => Type::Size(SizeExpr::Symbolic(Box::new(other))),
     }
 }
@@ -855,7 +867,7 @@ fn gcd(mut a: i64, mut b: i64) -> i64 {
 }
 
 /// Compare types for canonical ordering.
-/// Ordering: Literal < Quantified < Var < SizeExpr(Symbolic) < SizeExpr(FloorDiv) < SizeExpr(Mul) < SizeExpr(Add) < SizeExpr(Sub)
+/// Ordering: Literal < Int < Quantified < Var < SizeExpr(Symbolic) < SizeExpr(FloorDiv) < SizeExpr(Mul) < SizeExpr(Add) < SizeExpr(Sub)
 fn compare_type(a: &Type, b: &Type) -> Ordering {
     match (a, b) {
         // Literals: compare numerically
@@ -864,6 +876,10 @@ fn compare_type(a: &Type, b: &Type) -> Ordering {
         // Literals come first
         (Type::Size(SizeExpr::Literal(_)), _) => Ordering::Less,
         (_, Type::Size(SizeExpr::Literal(_))) => Ordering::Greater,
+
+        (Type::Size(SizeExpr::Int), Type::Size(SizeExpr::Int)) => Ordering::Equal,
+        (Type::Size(SizeExpr::Int), _) => Ordering::Less,
+        (_, Type::Size(SizeExpr::Int)) => Ordering::Greater,
 
         // Quantified (type parameters)
         (Type::Quantified(q1), Type::Quantified(q2)) => q1.cmp(q2),
@@ -891,11 +907,15 @@ fn compare_sizeexpr(a: &SizeExpr, b: &SizeExpr) -> Ordering {
     use SizeExpr::*;
     match (a, b) {
         (Literal(n1), Literal(n2)) => n1.cmp(n2),
+        (Int, Int) => Ordering::Equal,
         (Symbolic(t1), Symbolic(t2)) => compare_type(t1, t2),
 
-        // Type ordering: Literal < Symbolic < FloorDiv < Pow < Mul < Add < Sub
+        // Type ordering: Literal < Int < Symbolic < FloorDiv < Pow < Mul < Add < Sub
         (Literal(_), _) => Ordering::Less,
         (_, Literal(_)) => Ordering::Greater,
+
+        (Int, _) => Ordering::Less,
+        (_, Int) => Ordering::Greater,
 
         (Symbolic(_), _) => Ordering::Less,
         (_, Symbolic(_)) => Ordering::Greater,
@@ -931,7 +951,7 @@ fn compare_sizeexpr(a: &SizeExpr, b: &SizeExpr) -> Ordering {
 impl pyrefly_util::visit::Visit<Type> for SizeExpr {
     fn recurse<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
         match self {
-            SizeExpr::Literal(_) => {}
+            SizeExpr::Literal(_) | SizeExpr::Int => {}
             SizeExpr::Symbolic(ty) => f(ty),
             SizeExpr::Add(left, right)
             | SizeExpr::Sub(left, right)
@@ -948,7 +968,7 @@ impl pyrefly_util::visit::Visit<Type> for SizeExpr {
 impl pyrefly_util::visit::VisitMut<Type> for SizeExpr {
     fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
         match self {
-            SizeExpr::Literal(_) => {}
+            SizeExpr::Literal(_) | SizeExpr::Int => {}
             SizeExpr::Symbolic(ty) => f(ty),
             SizeExpr::Add(left, right)
             | SizeExpr::Sub(left, right)
@@ -1126,6 +1146,7 @@ mod tests {
     use crate::literal::Lit;
     use crate::literal::LitStyle;
     use crate::literal::Literal;
+    use crate::types::AnyStyle;
     use crate::types::Var;
 
     fn size_literal(n: i64) -> Type {
@@ -1133,18 +1154,15 @@ mod tests {
     }
 
     #[test]
-    fn canonicalize_preserves_any_style_in_symbolic_size_expr() {
+    fn canonicalize_preserves_any_in_size_expr() {
         let error_any = Type::Size(SizeExpr::Symbolic(Box::new(Type::Any(AnyStyle::Error))));
-        assert_eq!(canonicalize(error_any), Type::Any(AnyStyle::Error));
-
-        let implicit_any_expr = Type::Size(SizeExpr::add(
-            Type::Any(AnyStyle::Implicit),
-            size_literal(1),
-        ));
         assert_eq!(
-            canonicalize(implicit_any_expr),
-            Type::Any(AnyStyle::Implicit)
+            canonicalize(error_any),
+            Type::Size(SizeExpr::Symbolic(Box::new(Type::Any(AnyStyle::Error))))
         );
+
+        let gradual_expr = Type::Size(SizeExpr::add(gradual_size(), size_literal(1)));
+        assert_eq!(canonicalize(gradual_expr), gradual_size());
     }
 
     #[test]

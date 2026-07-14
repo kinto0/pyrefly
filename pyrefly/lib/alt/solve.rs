@@ -17,6 +17,7 @@ use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::type_alias::TypeAliasData;
@@ -6092,6 +6093,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     && cls.has_qname("shape_extensions", "Dim")
                 {
                     return Some(self.heap.mk_dim(cls.targs().as_slice()[0].clone()));
+                }
+                if let Type::ClassType(cls) = t.as_ref()
+                    && cls.has_qname("shape_extensions", "Size")
+                {
+                    return Some(gradual_size());
                 }
                 // Canonicalize bare shaped-array types to Type::ShapedArray(shapeless)
                 // for consistency. Subscripted arrays are already converted to

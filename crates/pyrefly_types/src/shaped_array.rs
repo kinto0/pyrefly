@@ -20,9 +20,12 @@ use crate::class::ClassType;
 use crate::dimension::ShapeError;
 use crate::dimension::SizeExpr;
 use crate::dimension::canonicalize;
+use crate::dimension::gradual_size;
+use crate::dimension::is_gradual_size;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
 use crate::tuple::Tuple;
+use crate::types::AnyStyle;
 use crate::types::Type;
 
 // ============================================================================
@@ -486,6 +489,7 @@ pub(crate) fn fmt_shape_dim(d: &Type) -> String {
 fn fmt_jaxtyping_size_expr(expr: &SizeExpr) -> String {
     match expr {
         SizeExpr::Literal(n) => n.to_string(),
+        SizeExpr::Int => "_".to_owned(),
         SizeExpr::Symbolic(ty) => fmt_jaxtyping_dim(ty),
         SizeExpr::Add(left, right) => {
             // After canonicalization, Sub(a,b) becomes Add(Literal(-b), a).
@@ -570,7 +574,10 @@ fn canonicalize_dim(dim: Type) -> Type {
 fn dim_to_carrier_element(dim: &Type) -> Type {
     match dim {
         Type::Size(SizeExpr::Literal(n)) => LitInt::new(*n).to_explicit_type(),
+        Type::Size(SizeExpr::Int) => Type::Dim(Box::new(Type::any_implicit())),
         Type::Size(SizeExpr::Symbolic(ty)) => Type::Dim(ty.clone()),
+        Type::Any(AnyStyle::Error) => Type::Dim(Box::new(Type::Any(AnyStyle::Error))),
+        Type::Any(_) => Type::Dim(Box::new(Type::any_implicit())),
         _ => Type::Dim(Box::new(dim.clone())),
     }
 }
@@ -585,7 +592,7 @@ fn is_valid_internal_dim(dim: &Type) -> bool {
 
 fn is_valid_internal_size_expr(expr: &SizeExpr) -> bool {
     match expr {
-        SizeExpr::Literal(_) => true,
+        SizeExpr::Literal(_) | SizeExpr::Int => true,
         SizeExpr::Symbolic(ty) => is_valid_internal_dim(ty),
         SizeExpr::Add(left, right)
         | SizeExpr::Sub(left, right)
@@ -620,6 +627,7 @@ fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
         Type::Quantified(_) | Type::Var(_) | Type::Any(_) => {
             Some(canonicalize_dim(carrier.clone()))
         }
+        Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
         _ => None,
     }
 }
@@ -924,6 +932,9 @@ fn broadcast_dim(a_ty: &Type, b_ty: &Type, position: usize) -> Result<Type, Shap
         // Any is compatible with anything; prefer the non-Any side
         (Type::Any(_), _) => Ok(b_ty.clone()),
         (_, Type::Any(_)) => Ok(a_ty.clone()),
+        // `Size[int]` is the gradual size type; preserve the precise side.
+        _ if is_gradual_size(&a_ty) => Ok(b_ty.clone()),
+        _ if is_gradual_size(&b_ty) => Ok(a_ty.clone()),
         // Equal dimensions (after canonicalization): compatible
         _ if a_ty == b_ty => Ok(a_ty.clone()),
         // Size(1) broadcasts to anything
@@ -1444,13 +1455,20 @@ mod tests {
     }
 
     #[test]
-    fn non_literal_internal_dimension_becomes_dim_carrier() {
-        // internal non-literal `x` -> `Dim[x]` carrier.
-        let x = Type::Any(AnyStyle::Explicit);
-        let shape = ShapedArrayShape::from_types(vec![x.clone()]);
+    fn explicit_any_internal_dimension_becomes_implicit_dim_any_carrier() {
+        let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Explicit)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
-            concrete_carrier(vec![dim(x)])
+            concrete_carrier(vec![dim(Type::any_implicit())])
+        );
+    }
+
+    #[test]
+    fn error_any_internal_dimension_preserves_error_style_in_dim_carrier() {
+        let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Error)]);
+        assert_eq!(
+            shape_to_tuple_carrier(&shape),
+            concrete_carrier(vec![dim(Type::Any(AnyStyle::Error))])
         );
     }
 

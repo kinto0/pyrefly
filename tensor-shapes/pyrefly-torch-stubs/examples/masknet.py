@@ -279,21 +279,22 @@ class MaskNetBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
         return self._output_dim
 
     def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:
+        working_embs: Tensor = input_embs
         # LCE compression: [B, F, D] -> [B, compression_num, D]
         if self.lce is not None:
             # lce compresses F to compression_num (int from config — Unknown)
-            input_embs = self.lce(input_embs.transpose(1, 2)).transpose(1, 2)
+            working_embs = self.lce(working_embs.transpose(1, 2)).transpose(1, 2)
 
         # Per-field LayerNorm to produce V_hidden — cat with list from unbind loses shapes
-        feat_list = input_embs.unbind(dim=1)
-        assert_type(feat_list, tuple[Tensor[[B, D]], ...])
+        feat_list = working_embs.unbind(dim=1)
+        assert_type(feat_list, tuple[Tensor, ...])
         V_hidden: Tensor = torch.cat(
             [self.emb_norm[i](feat) for i, feat in enumerate(feat_list)], dim=1
         )
         assert_type(V_hidden, Tensor)
 
         # flatten: D*F (non-LCE) or unknown (LCE) — union type from if/else branch
-        V_emb = input_embs.flatten(start_dim=1)
+        V_emb = working_embs.flatten(start_dim=1)
 
         # mask_net is nn.Module — forward returns Any
         result: Tensor[[B, OutD]] = self.mask_net(V_emb, V_hidden)  # type: ignore[assignment]

@@ -149,7 +149,7 @@ fn on_size_expr(
     on_var: &mut impl FnMut(&Name, Variance, bool, PreInferenceVariance),
 ) {
     match dim {
-        SizeExpr::Literal(_) => {}
+        SizeExpr::Literal(_) | SizeExpr::Int => {}
         SizeExpr::Symbolic(ty) => {
             on_type(Variance::Invariant, inj, ty, on_edge, on_var);
         }

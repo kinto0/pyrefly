@@ -547,7 +547,7 @@ def f[N: SymVar](
     reveal_type(bare_dim)  # E: revealed type: Dim[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_size_tuple)  # E: revealed type: Array[[N], int]
-    reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
+    reveal_type(any_dim)  # E: revealed type: Array[[Unknown], int]
     p: Array[tuple[Literal[2], Literal[3]], int] = compact
     c: Array[[2, 3], int] = pep484
     st: Array[SizeTuple[2, 3], int] = compact
@@ -1065,7 +1065,7 @@ testcase!(
     test_shaped_array_tuple_carrier_broadcast_keeps_shape_coherent,
     shaped_array_env(),
     r#"
-from typing import Literal, reveal_type
+from typing import Any, Literal, reveal_type
 from shape_extensions import shaped_array
 
 @shaped_array(shape="Shape")
@@ -1073,13 +1073,24 @@ class Array[Shape, DType]:
     shape: Shape
     def dtype(self) -> DType: ...
 
-def f(x: Array[[2, 3], int], y: Array[[1, 3], int]) -> None:
+def f(
+    x: Array[[2, 3], int],
+    y: Array[[1, 3], int],
+    any_dim: Array[[Any, 3], int],
+    gradual_dim: Array[[int, 3], int],
+) -> None:
     z = x + y
     # Broadcasting `(2, 3)` with `(1, 3)` yields `(2, 3)`, and the raw carrier is
     # rewritten so `.shape` stays coherent. DType is preserved from the carrier.
     reveal_type(z)  # E: revealed type: Array[[2, 3], int]
     reveal_type(z.shape)  # E: revealed type: tuple[Literal[2], Literal[3]]
     reveal_type(z.dtype())  # E: revealed type: int
+
+    z_any = x + any_dim
+    reveal_type(z_any)  # E: revealed type: Array[[2, 3], int]
+
+    z_gradual = x + gradual_dim
+    reveal_type(z_gradual)  # E: revealed type: Array[[2, 3], int]
 "#,
 );
 
@@ -1344,6 +1355,61 @@ def dims[N: SymVar](concrete: Dim[3], symbolic: Dim[N + 1]) -> None:
 );
 
 testcase!(
+    test_tensor_shapes_gradual_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SizeTuple, shaped_array
+from typing import Any, assert_type, overload, reveal_type
+
+@shaped_array(shape="Shape")
+class Array[Shape: SizeTuple]: ...
+
+def take_int(x: int) -> None: ...
+def take_gradual(x: Size) -> None: ...
+def take_gradual_int(x: Size[int]) -> None: ...
+def take_size3(x: Size[3]) -> None: ...
+def take_size4(x: Size[4]) -> None: ...
+
+@overload
+def choose_size(x: Size) -> int: ...
+@overload
+def choose_size(x: Size[3]) -> str: ...
+def choose_size(x: object) -> int | str: ...
+
+def f(bare: Size, gint: Size[int], s3: Size[3], s4: Size[4], i: int, a: Any) -> None:
+    take_gradual(s3)
+    take_gradual_int(s3)
+    take_size3(bare)
+    take_size3(gint)
+    take_gradual(i)
+    take_gradual_int(i)
+    take_gradual(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `Size[int]`
+    take_gradual(MyInt())  # E: Argument `MyInt` is not assignable to parameter `x` with type `Size[int]`
+    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    take_int(bare)
+    take_size4(s3)  # E: Size mismatch: expected Size[4], got Size[3]
+    take_size3(s4)  # E: Size mismatch: expected Size[3], got Size[4]
+    # Overload pruning materializes `Any`; this proves materialization is consistent
+    # with the gradual `Size` type.
+    assert_type(choose_size(a), int)
+
+class MyInt(int): ...
+
+def shape_any(x: Array[[Any, 3]]) -> None:
+    pass
+
+def shape_int(x: Array[[int, 3]]) -> None:
+    pass
+
+def size_any(x: Size[Any]) -> None:
+    pass
+
+def size_bool(x: Size[bool]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables, got `type[bool]`
+    pass
+"#,
+);
+
+testcase!(
     test_tensor_shapes_keeps_ordinary_literal_arithmetic_int,
     shaped_array_env(),
     r#"
@@ -1461,7 +1527,7 @@ LegacyN = SymVar("LegacyN")
 OrdinaryT = TypeVar("OrdinaryT")
 OrdinaryDefault = TypeVar("OrdinaryDefault", default=LegacyN)  # E: `LegacyN` is a `SymVar` and cannot be used as an ordinary type
 BadSymDefault = SymVar("BadSymDefault", default=OrdinaryT)  # E: `OrdinaryT` must be a `SymVar` to be used as a shape dimension
-BadIntDefault = SymVar("BadIntDefault", default=int)  # E: Tensor shape dimensions must be integer literals or type variables, got `type[int]`
+IntDefault = SymVar("IntDefault", default=int)
 
 class LegacyBox(Generic[LegacyN]): ...
 class Box[T]: ...
@@ -1496,7 +1562,7 @@ CallAlias = TypeAliasType("CallAlias", LegacyN | int, type_params=(LegacyN,))  #
 def default_bad[T, N: SymVar = T](x: Dim[N]) -> None:  # E: `T` must be a `SymVar` to be used as a shape dimension
     pass
 
-def default_bad_int[N: SymVar = int](x: Dim[N]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables, got `type[int]`
+def default_int[N: SymVar = int](x: Dim[N]) -> None:
     pass
 "#,
 );

@@ -29,7 +29,6 @@ use crate::callable::FunctionKind;
 use crate::callable::ParamOverlay;
 use crate::callable_residual::CallableResidualKind;
 use crate::class::Class;
-use crate::dimension::SizeExpr;
 use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
@@ -707,10 +706,7 @@ impl<'a> TypeDisplayContext<'a> {
                 // Display as the class name (e.g., MaxPool2d)
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)
             }
-            Type::Size(dim) => match dim {
-                SizeExpr::Symbolic(ty) if ty.is_any() => output.write_str("Size"),
-                _ => output.write_str(&format!("Size[{dim}]")),
-            },
+            Type::Size(dim) => output.write_str(&format!("Size[{dim}]")),
             Type::Dim(inner) => {
                 // Display Dim[Unknown] as just "Dim" for cleaner output
                 // (Unknown represents implicit Any from gradual typing)
@@ -1712,10 +1708,7 @@ pub mod tests {
             .to_string(),
             "Size[(N * M)]"
         );
-        assert_eq!(
-            Type::Size(SizeExpr::Symbolic(Box::new(Type::any_explicit()))).to_string(),
-            "Size"
-        );
+        assert_eq!(Type::Size(SizeExpr::Int).to_string(), "Size[int]");
     }
 
     #[test]

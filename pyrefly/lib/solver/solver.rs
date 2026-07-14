@@ -27,6 +27,7 @@ use pyrefly_types::callable_residual::OverloadBranchProjection;
 use pyrefly_types::callable_residual::OverloadResidualIdentity;
 use pyrefly_types::dimension::ShapeError;
 use pyrefly_types::dimension::canonicalize;
+use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
@@ -3127,6 +3128,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             self.gas.restore();
             return res;
         } else if matches!(got, Type::Materialization) {
+            if is_gradual_size(want) {
+                self.gas.restore();
+                return Ok(());
+            }
             let res = self.is_subset_eq(
                 &self
                     .solver
@@ -3134,9 +3139,15 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     .mk_class_type(self.type_order.stdlib().object().clone()),
                 want,
             );
+            self.gas.restore();
             return res;
         } else if matches!(want, Type::Materialization) {
+            if is_gradual_size(got) {
+                self.gas.restore();
+                return Ok(());
+            }
             let res = self.is_subset_eq(got, &self.solver.heap.mk_never());
+            self.gas.restore();
             return res;
         }
         let res = self.is_subset_eq_var(got, want);

@@ -339,18 +339,13 @@ class WaveRNN[
         device = specgram.device
         dtype = specgram.dtype
 
-        specgram_padded = F.pad(specgram, (self._pad, self._pad))
-        assert_type(specgram_padded, Tensor)  # F.pad on Any-dim input
+        specgram_padded: Tensor[[B, NF, Any]] = F.pad(  # type: ignore[assignment]
+            specgram, (self._pad, self._pad)
+        )
+        assert_type(specgram_padded, Tensor[[B, NF, Any]])
 
-        specgram_up_raw, aux_raw = self.upsample(specgram_padded)
-        # Input is bare (from F.pad) → B binds to Unknown, but NF/NO preserved
-        assert_type(specgram_up_raw, Tensor[[Any, NF, Any]])
-        assert_type(aux_raw, Tensor[[Any, NO, Any]])
-        # Annotation fallback: recover B from method type param
-        # Receipt: bare F.pad input loses B binding; NF/NO from class params
-        specgram_up: Tensor[[B, NF, Any]] = specgram_up_raw
+        specgram_up, aux = self.upsample(specgram_padded)
         assert_type(specgram_up, Tensor[[B, NF, Any]])
-        aux: Tensor[[B, NO, Any]] = aux_raw
         assert_type(aux, Tensor[[B, NO, Any]])
         if lengths is not None:
             lengths = lengths * self.upsample.total_scale

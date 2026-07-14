@@ -18,6 +18,7 @@ use pyrefly_types::callable::Callable;
 use pyrefly_types::dimension::ShapeError;
 use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::dimension::contains_var_in_type;
+use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
 use pyrefly_types::shaped_array::ShapedArrayShape;
@@ -1738,26 +1739,33 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     return self.is_subset_eq(got_symbolic, &want_expanded);
                 }
 
-                // Check if the expanded "want" side contains unbound Vars in nested positions
-                if contains_var_in_type(&want_expanded) {
+                // Canonicalize and compare
+                let want_contains_var = contains_var_in_type(&want_expanded);
+                let got_canonical = got_expanded.canonicalize();
+                let want_canonical = want_expanded.canonicalize();
+                if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
+                    return Ok(());
+                }
+                // Check if the expanded "want" side contains unbound Vars in nested positions.
+                // Do this after the gradual-size fast path, since any expression containing
+                // `Size[int]` canonicalizes to gradual `Size` regardless of other leaves.
+                if want_contains_var {
                     return Err(SubsetError::ShapedArrayShape(
                         ShapeError::nested_type_var_not_inferred(),
                     ));
                 }
-
-                // Canonicalize and compare
-                let got_str = got_expanded.to_string();
-                let want_str = want_expanded.to_string();
-                let got_canonical = got_expanded.canonicalize();
-                let want_canonical = want_expanded.canonicalize();
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
+                    let mut got_expanded = Type::Size(s1.clone());
+                    let mut want_expanded = Type::Size(s2.clone());
+                    self.solver.expand_with_bounds(&mut got_expanded);
+                    self.solver.expand_with_bounds(&mut want_expanded);
                     Err(SubsetError::ShapedArrayShape(
                         ShapeError::structural_mismatch(
-                            got_str,
+                            got_expanded.to_string(),
                             got_canonical.to_string(),
-                            want_str,
+                            want_expanded.to_string(),
                             want_canonical.to_string(),
                         ),
                     ))
@@ -2062,6 +2070,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // Any exact Size expression represents an integer dimension value.
             (Type::Size(_), Type::ClassType(cls))
                 if cls.is_builtin("int") || cls.is_builtin("float") =>
+            {
+                Ok(())
+            }
+            (Type::ClassType(cls), want @ Type::Size(_))
+                if cls.is_builtin("int") && is_gradual_size(want) =>
             {
                 Ok(())
             }
