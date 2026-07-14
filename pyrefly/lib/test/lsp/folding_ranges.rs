@@ -872,6 +872,37 @@ z = 3
 }
 
 #[test]
+fn folding_ranges_ignore_region_markers_in_strings() {
+    // `#region`/`#endregion` inside a triple-quoted string are string contents,
+    // not comment markers, so they must not produce region folding ranges.
+    let code = r#"#region Real
+x = """
+#region Fake
+#endregion
+"""
+y = 1
+#endregion
+"#;
+
+    let report =
+        get_batched_lsp_operations_report_no_cursor(&[("main", code)], get_folding_ranges_report);
+
+    assert_eq!(
+        r#"# main.py
+
+[
+  {
+    "start_line": 0,
+    "end_line": 7,
+    "kind": "region"
+  }
+]"#
+        .trim(),
+        report.trim(),
+    );
+}
+
+#[test]
 fn folding_ranges_for_explicit_regions() {
     let code = r#"#region Outer
 x = 1

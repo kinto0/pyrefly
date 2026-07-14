@@ -46,6 +46,9 @@ pub fn folding_ranges(module: &Module, body: &[Stmt]) -> Vec<(TextRange, FoldKin
 
     struct FoldingRangeCollector<'a> {
         ranges: Vec<(TextRange, FoldKind)>,
+        /// Ranges of string literals, used to reject `#region` markers that are
+        /// actually inside a triple-quoted string rather than a comment.
+        string_ranges: Vec<TextRange>,
         module: &'a Module,
     }
 
@@ -111,6 +114,13 @@ pub fn folding_ranges(module: &Module, body: &[Stmt]) -> Vec<(TextRange, FoldKin
         }
 
         fn visit_expr(&mut self, expr: &Expr) {
+            match expr {
+                Expr::StringLiteral(s) => self.string_ranges.push(s.range),
+                Expr::FString(f) => self.string_ranges.push(f.range),
+                Expr::BytesLiteral(b) => self.string_ranges.push(b.range),
+                _ => {}
+            }
+
             let range = match expr {
                 Expr::Call(call) => Some(call.arguments.range),
                 Expr::Dict(dict) => Some(dict.range),
@@ -132,6 +142,7 @@ pub fn folding_ranges(module: &Module, body: &[Stmt]) -> Vec<(TextRange, FoldKin
 
     let mut collector = FoldingRangeCollector {
         ranges: Vec::new(),
+        string_ranges: Vec::new(),
         module,
     };
 
@@ -154,6 +165,19 @@ pub fn folding_ranges(module: &Module, body: &[Stmt]) -> Vec<(TextRange, FoldKin
         let Some(marker) = line.trim_start().strip_prefix('#').map(str::trim_start) else {
             continue;
         };
+        let line_start = lined_buffer.line_start(LineNumber::from_zero_indexed(line_number));
+        // A line whose first non-whitespace character is `#` is either a comment
+        // or the interior of a triple-quoted string; only the former is a marker.
+        let hash_offset = line_start
+            + TextSize::try_from(line.len() - line.trim_start().len())
+                .expect("line indentation should fit in TextSize");
+        if collector
+            .string_ranges
+            .iter()
+            .any(|r| r.contains(hash_offset))
+        {
+            continue;
+        }
         let has_marker = |prefix| {
             marker.strip_prefix(prefix).is_some_and(|rest| {
                 rest.chars()
@@ -162,7 +186,7 @@ pub fn folding_ranges(module: &Module, body: &[Stmt]) -> Vec<(TextRange, FoldKin
             })
         };
         if has_marker("region") {
-            region_starts.push(lined_buffer.line_start(LineNumber::from_zero_indexed(line_number)));
+            region_starts.push(line_start);
         } else if has_marker("endregion")
             && let Some(start) = region_starts.pop()
         {
