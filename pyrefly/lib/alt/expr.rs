@@ -2655,11 +2655,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.parse_size_tuple_type(xs, errors)
                 }
                 // Dim type parsing: Dim[3], Dim[N], Dim[N+1] syntax
-                Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
-                    self.parse_single_symint_type("Dim", xs, range, errors)
+                Type::ClassDef(ref cls) if self.is_dim_class(cls) => {
+                    self.parse_dim_type(xs, range, errors)
                 }
-                Type::ClassDef(ref cls) if self.is_size_class(cls) => {
-                    self.parse_single_symint_type("Size", xs, range, errors)
+                Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
+                    self.parse_symint_type(xs, range, errors)
                 }
                 Type::ClassDef(ref cls)
                     if cls.has_toplevel_qname("shape_extensions", "ProxyMethod") =>
@@ -3028,7 +3028,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
 
         // Extract a step value from a slice step expression.
-        // Supports literal integers and Size types.
+        // Supports literal integers and SymInt types.
         let to_step = |expr: &Expr| -> Option<Type> {
             let ty = self.expr_infer(expr, errors);
             match &ty {
@@ -3335,13 +3335,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     /// Check if a class is a Dim class (shape_extensions.Dim)
-    fn is_symint_class(&self, cls: &Class) -> bool {
+    fn is_dim_class(&self, cls: &Class) -> bool {
         cls.has_toplevel_qname("shape_extensions", "Dim")
     }
 
-    /// Check if a class is a Size class (shape_extensions.Size)
-    fn is_size_class(&self, cls: &Class) -> bool {
-        cls.has_toplevel_qname("shape_extensions", "Size")
+    /// Check if a class is a SymInt class (shape_extensions.SymInt)
+    fn is_symint_class(&self, cls: &Class) -> bool {
+        cls.has_toplevel_qname("shape_extensions", "SymInt")
     }
 
     /// Check if a class is the shape arithmetic wrapper (shape_extensions.D)
@@ -3377,7 +3377,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     return self.parse_dimension_expr_with_context(&x.slice, errors, context);
                 }
                 if let Type::ClassDef(ref cls) = base
-                    && self.is_symint_class(cls)
+                    && self.is_dim_class(cls)
                 {
                     let xs = Ast::unpack_slice(&x.slice);
                     return match xs {
@@ -4059,6 +4059,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         let size = canonicalize(self.heap.mk_symint(symint));
         self.heap.mk_type_of(size)
+    }
+
+    /// Parse Dim[3], Dim[N], Dim[N+1] into a canonical `Type::SymInt(...)`.
+    fn parse_dim_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
+        self.parse_single_symint_type("Dim", args, range, errors)
+    }
+
+    /// Parse SymInt[3], SymInt[N], SymInt[N+1] into `Type::SymInt(...)`.
+    fn parse_symint_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
+        self.parse_single_symint_type("SymInt", args, range, errors)
     }
 
     /// Return the reason why we think `ty` is suspicious to use as a branching condition

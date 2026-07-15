@@ -30,6 +30,7 @@ from shape_extensions import (
     defines_assert_shape,
     Dim,
     enable_torchscript_runtime_compat,
+    SymInt,
     SymVar,
     TypeVarTuple,
 )
@@ -68,22 +69,41 @@ class TestTorchScriptRuntimeCompat(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        original_class_getitem = Dim.__dict__.get("__class_getitem__")
+        original_dim_class_getitem = Dim.__dict__.get("__class_getitem__")
 
         def restore_dim_class_getitem():
-            if original_class_getitem is None:
+            if original_dim_class_getitem is None:
                 if "__class_getitem__" in Dim.__dict__:
                     delattr(Dim, "__class_getitem__")
             else:
-                Dim.__class_getitem__ = original_class_getitem
+                Dim.__class_getitem__ = original_dim_class_getitem
 
         self.addCleanup(restore_dim_class_getitem)
+
+        original_class_getitem = SymInt.__dict__.get("__class_getitem__")
+
+        def restore_symint_class_getitem():
+            if original_class_getitem is None:
+                if "__class_getitem__" in SymInt.__dict__:
+                    delattr(SymInt, "__class_getitem__")
+            else:
+                SymInt.__class_getitem__ = original_class_getitem
+
+        self.addCleanup(restore_symint_class_getitem)
 
     def test_dim_subscript_erases_to_int(self):
         enable_torchscript_runtime_compat()
 
         def f[N]() -> None:
             self.assertIs(Dim[N], int)
+
+        f()
+
+    def test_symint_subscript_erases_to_int(self):
+        enable_torchscript_runtime_compat()
+
+        def f[N]() -> None:
+            self.assertIs(SymInt[N], int)
 
         f()
 

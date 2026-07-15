@@ -923,14 +923,14 @@ fn broadcast_dim(a_ty: &Type, b_ty: &Type, position: usize) -> Result<Type, Shap
     let a_ty = canonicalize(a_ty.clone());
     let b_ty = canonicalize(b_ty.clone());
     match (&a_ty, &b_ty) {
-        // Any and gradual Size are compatible with anything; prefer the more precise side.
+        // Any and gradual SymInt are compatible with anything; prefer the more precise side.
         (Type::Any(_), _) => Ok(b_ty.clone()),
         (_, Type::Any(_)) => Ok(a_ty.clone()),
         _ if is_gradual_size(&a_ty) => Ok(b_ty.clone()),
         _ if is_gradual_size(&b_ty) => Ok(a_ty.clone()),
         // Equal dimensions (after canonicalization): compatible
         _ if a_ty == b_ty => Ok(a_ty.clone()),
-        // Size(1) broadcasts to anything
+        // SymInt(1) broadcasts to anything
         (Type::SymInt(SymInt::Literal(1)), _) => Ok(b_ty.clone()),
         (_, Type::SymInt(SymInt::Literal(1))) => Ok(a_ty.clone()),
         // Different non-broadcastable types: incompatible
@@ -959,7 +959,7 @@ pub enum IndexOp {
         start: Option<Type>,
         stop: Option<Type>,
         /// Step/stride for the slice. `None` means step=1 (default).
-        /// Can be a literal `Size(Literal(n))`, a symbolic `Size(Var(...))`,
+        /// Can be a literal `SymInt(Literal(n))`, a symbolic `SymInt(Var(...))`,
         /// a `Dim[S]`, or a `Quantified` type variable.
         step: Option<Type>,
     },
@@ -1173,7 +1173,7 @@ fn shapeless_shape() -> ShapedArrayShape {
 
 /// Adjust a negative slice bound by adding dim size (Python negative index semantics).
 /// E.g. -1 on dim N becomes N + (-1) = N - 1.
-/// Also handles symbolic negation: -1 * X (from unary `-` on a Dim/Size expression)
+/// Also handles symbolic negation: -1 * X (from unary `-` on a Dim/SymInt expression)
 /// becomes dim_size + (-1 * X) = dim_size - X.
 fn adjust_negative(bound: Type, dim_size: &Type) -> Type {
     let is_negative = match &bound {
@@ -1200,7 +1200,7 @@ fn sub_dim(stop: Type, start: Type) -> Type {
 
 /// Apply step (stride) to a range dimension: ceil_div(range, step).
 /// step=None or step=Literal(1) is identity. For literal range and step,
-/// computes the exact integer ceiling division. For symbolic steps (Size,
+/// computes the exact integer ceiling division. For symbolic steps (SymInt,
 /// Quantified), builds a symbolic ceil_div expression.
 fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
     let step = match step {
@@ -1228,7 +1228,7 @@ fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
             // Negative or zero step: degenerate, return unknown
             Type::any_implicit()
         }
-        // Symbolic step (Size var, Quantified): build ceil_div(range, step) symbolically
+        // Symbolic step (SymInt var, Quantified): build ceil_div(range, step) symbolically
         _ => {
             // ceil_div(range, step) = (range + step - 1) // step
             let step_minus_1 =

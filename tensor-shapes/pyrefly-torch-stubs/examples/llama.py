@@ -49,7 +49,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, Size
+    from shape_extensions import Dim, SymInt
     from torch import Tensor
 
 
@@ -274,9 +274,9 @@ class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.M
         mask: Tensor[[T, T]] | None = None,
     ) -> Tensor[[B, T, D]]:
         b, t, d = x.size()
-        assert_type(b, Size[B])
-        assert_type(t, Size[T])
-        assert_type(d, Size[D])
+        assert_type(b, SymInt[B])
+        assert_type(t, SymInt[T])
+        assert_type(d, SymInt[D])
         q = self.wq(x)
         k = self.wk(x)
         v = self.wv(x)

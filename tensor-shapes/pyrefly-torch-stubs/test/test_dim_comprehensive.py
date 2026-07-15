@@ -5,7 +5,7 @@
 
 """Comprehensive tests for Dim type: parsing, arithmetic, and subtyping.
 
-This file tests the Size/Dim type system independent of Tensor shapes.
+This file tests the SymInt/Dim type system independent of Tensor shapes.
 """
 
 from typing import Any, assert_type, Literal, TYPE_CHECKING

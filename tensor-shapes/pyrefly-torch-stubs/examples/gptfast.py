@@ -19,7 +19,7 @@ from torch.nn.attention.flex_attention import (
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, Size, SymVar
+    from shape_extensions import Dim, SymInt, SymVar
     from torch import Tensor
 
 
@@ -407,8 +407,8 @@ class Attention[D: SymVar, NHead: SymVar, NLocalHeads: SymVar](nn.Module):
         input_pos: Tensor[[T]] | None = None,
     ) -> Tensor[[B, T, D]]:
         bsz, seqlen, _ = x.size()
-        assert_type(bsz, Size[B])
-        assert_type(seqlen, Size[T])
+        assert_type(bsz, SymInt[B])
+        assert_type(seqlen, SymInt[T])
 
         kv_size = self.n_local_heads * self.head_dim
         assert_type(kv_size, Dim[NLocalHeads * (D // NHead)])

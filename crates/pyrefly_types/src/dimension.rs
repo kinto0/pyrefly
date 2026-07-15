@@ -36,7 +36,7 @@ pub enum SymInt {
     /// Only positive integers are allowed
     Literal(i64),
 
-    /// The gradual integer size: bare `Size`, `Size[int]`, or `Any` in a shape
+    /// The gradual integer size: bare `SymInt`, `SymInt[int]`, or `Any` in a shape
     /// context. It is consistent with concrete sizes without becoming arbitrary
     /// `Any`.
     Int,
@@ -136,8 +136,8 @@ impl SymInt {
     }
 }
 
-/// The gradual size type: the internal representation of bare `Size` and
-/// `Size[int]`.
+/// The gradual size type: the internal representation of bare `SymInt` and
+/// `SymInt[int]`.
 pub fn gradual_size() -> Type {
     Type::SymInt(SymInt::Int)
 }

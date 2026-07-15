@@ -1860,7 +1860,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 None => continue,
             };
 
-            // Substitute type parameters (e.g., _Dim[S] with S=1 → Size[1]).
+            // Substitute type parameters (e.g., _Dim[S] with S=1 → SymInt[1]).
             let field_ty = cls.targs().substitution().substitute_into(field.ty());
 
             // For optional dimension fields, if the dimension is unbound (Any), resolve to None;

@@ -658,7 +658,7 @@ impl VisitMut<Type> for Union {
 pub struct NNModuleType {
     /// The underlying nn.Module subclass (e.g., MaxPool2d).
     pub class: ClassType,
-    /// Captured init args (e.g., kernel_size → Size(3), stride → None).
+    /// Captured init args (e.g., kernel_size → SymInt(3), stride → None).
     /// Ordered by constructor parameter order.
     pub fields: SmallMap<Name, Type>,
 }

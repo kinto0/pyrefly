@@ -33,7 +33,7 @@ class SizeTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 class Dim[T]: ...
-class Size[T]: ...
+class SymInt[T]: ...
 class D: ...
 def assert_shape[T](x: T, shape: tuple[Any, ...]) -> T: ...
 def defines_assert_shape[F: Callable[..., Any]](fn: F) -> F: ...
@@ -214,7 +214,7 @@ class SizeTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 class SymVar: ...
-class Size[T]: ...
+class SymInt[T]: ...
 def uses_shape_dsl(ir_fn: Callable[..., Any], *, capture_init: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
 "#,
     );
@@ -520,7 +520,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Literal, reveal_type
-from shape_extensions import Dim, Elements, Size, SizeTuple, SymVar, shaped_array
+from shape_extensions import Dim, Elements, SymInt, SizeTuple, SymVar, shaped_array
 
 type _Shape = SizeTuple
 type _AnyShape = tuple[Any, ...]
@@ -546,16 +546,16 @@ def f[N: SymVar](
     reveal_type(pep484)  # E: revealed type: Array[[2, 3], int]
     reveal_type(size_tuple)  # E: revealed type: Array[[2, 3], int]
     reveal_type(mixed_size_tuple)  # E: revealed type: Array[[2, 3, N], int]
-    reveal_type(bare_dim)  # E: revealed type: Size[N]
+    reveal_type(bare_dim)  # E: revealed type: SymInt[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_size_tuple)  # E: revealed type: Array[[N], int]
     reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
     p: Array[tuple[Literal[2], Literal[3]], int] = compact
     c: Array[[2, 3], int] = pep484
     st: Array[SizeTuple[2, 3], int] = compact
-    mst: Array[tuple[Literal[2], Literal[3], Size[N]], int] = mixed_size_tuple
+    mst: Array[tuple[Literal[2], Literal[3], SymInt[N]], int] = mixed_size_tuple
     t: tuple[Literal[2], Literal[3]] = carrier
-    mt: tuple[Literal[2], Literal[3], Size[N]] = mixed_carrier
+    mt: tuple[Literal[2], Literal[3], SymInt[N]] = mixed_carrier
     u: tuple[int, ...] = unbounded
 
 def append_dim[S: SizeTuple, OUT: SymVar](
@@ -620,7 +620,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Generic, TypeVar
-from shape_extensions import Dim, Elements, Size, SizeTuple, SymVar, shaped_array
+from shape_extensions import Dim, Elements, SymInt, SizeTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]: ...
@@ -629,7 +629,7 @@ class SymBox[N: SymVar]: ...
 
 def invalid[N, Shape: SizeTuple](
     dim: Dim[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
-    size: Size[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
+    size: SymInt[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
     list_shape: Array[[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     size_tuple: Array[SizeTuple[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     unpack_prefix: Array[SizeTuple[N, *Elements[Shape]], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
@@ -643,7 +643,7 @@ LegacyN = TypeVar("LegacyN")
 
 class LegacyBox(Generic[LegacyN]):
     dim: Dim[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
-    size: Size[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
+    size: SymInt[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
     shape: Array[[LegacyN], int]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
 "#,
 );
@@ -653,12 +653,12 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import reveal_type
-from shape_extensions import Size
+from shape_extensions import SymInt
 
 # `N` is an ordinary `TypeVar` whose upper bound normalizes to the gradual
-# `Size` type. Symbolic-ness is determined by the explicit `SymVar` kind, so a
-# `Size` upper bound must NOT make the arg be parsed as a shape dimension.
-class Box[N: Size]: ...
+# `SymInt` type. Symbolic-ness is determined by the explicit `SymVar` kind, so a
+# `SymInt` upper bound must NOT make the arg be parsed as a shape dimension.
+class Box[N: SymInt]: ...
 
 def f(a: Box[5]) -> None:  # E: Expected a type form, got instance of `Literal[5]`
     reveal_type(a)  # E: revealed type: Box[Unknown]
@@ -669,10 +669,10 @@ testcase!(
     test_ordinary_typevar_not_assignable_to_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Size
+from shape_extensions import SymInt
 
-def to_size[T](x: T) -> Size:
-    return x  # E: Returned type `T` is not assignable to declared return type `Size[int]`
+def to_size[T](x: T) -> SymInt:
+    return x  # E: Returned type `T` is not assignable to declared return type `SymInt[int]`
 "#,
 );
 
@@ -680,10 +680,10 @@ testcase!(
     test_size_not_assignable_to_ordinary_typevar,
     shaped_array_env(),
     r#"
-from shape_extensions import Size
+from shape_extensions import SymInt
 
-def from_size[T](s: Size) -> T:
-    return s  # E: Returned type `Size[int]` is not assignable to declared return type `T`
+def from_size[T](s: SymInt) -> T:
+    return s  # E: Returned type `SymInt[int]` is not assignable to declared return type `T`
 "#,
 );
 
@@ -691,20 +691,20 @@ testcase!(
     test_tensor_shapes_size_annotations_parse_to_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Dim, Size, SymVar
+from shape_extensions import Dim, SymInt, SymVar
 from typing import assert_type, reveal_type
 
 def sizes[N: SymVar](
-    literal: Size[3],
-    symbolic: Size[N],
-    arithmetic: Size[N + 1],
+    literal: SymInt[3],
+    symbolic: SymInt[N],
+    arithmetic: SymInt[N + 1],
     dim: Dim[N + 1],
 ) -> None:
-    reveal_type(literal)  # E: revealed type: Size[3]
-    reveal_type(symbolic)  # E: revealed type: Size[N]
-    reveal_type(arithmetic)  # E: revealed type: Size[(1 + N)]
-    assert_type(arithmetic, Size[N + 1])
-    reveal_type(dim)  # E: revealed type: Size[(1 + N)]
+    reveal_type(literal)  # E: revealed type: SymInt[3]
+    reveal_type(symbolic)  # E: revealed type: SymInt[N]
+    reveal_type(arithmetic)  # E: revealed type: SymInt[(1 + N)]
+    assert_type(arithmetic, SymInt[N + 1])
+    reveal_type(dim)  # E: revealed type: SymInt[(1 + N)]
 "#,
 );
 
@@ -712,38 +712,38 @@ testcase!(
     test_tensor_shapes_dim_annotations_parse_to_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Dim, Size, SymVar
+from shape_extensions import Dim, SymInt, SymVar
 from typing import Any, reveal_type
 
 def bare_dim(x: Dim) -> None:
-    reveal_type(x)  # E: revealed type: Size[int]
+    reveal_type(x)  # E: revealed type: SymInt[int]
 
 def dims[N: SymVar](
     literal: Dim[3],
     symbolic: Dim[N],
     arithmetic: Dim[N + 1],
 ) -> None:
-    reveal_type(literal)  # E: revealed type: Size[3]
-    reveal_type(symbolic)  # E: revealed type: Size[N]
-    reveal_type(arithmetic)  # E: revealed type: Size[(1 + N)]
-    reveal_type(arithmetic + 1)  # E: revealed type: Size[(2 + N)]
+    reveal_type(literal)  # E: revealed type: SymInt[3]
+    reveal_type(symbolic)  # E: revealed type: SymInt[N]
+    reveal_type(arithmetic)  # E: revealed type: SymInt[(1 + N)]
+    reveal_type(arithmetic + 1)  # E: revealed type: SymInt[(2 + N)]
 
 def gradual(any_dim: Dim[Any], int_dim: Dim[int]) -> None:
-    reveal_type(int_dim)  # E: revealed type: Size[int]
+    reveal_type(int_dim)  # E: revealed type: SymInt[int]
     take_size3(any_dim)
     take_dim3(any_dim)
     take_size3(int_dim)
     take_dim3(int_dim)
 
-def take_size3(x: Size[3]) -> None: ...
+def take_size3(x: SymInt[3]) -> None: ...
 def take_dim3(x: Dim[3]) -> None: ...
-def take_size4(x: Size[4]) -> None: ...
+def take_size4(x: SymInt[4]) -> None: ...
 
-def exact(d3: Dim[3], s3: Size[3], d4: Dim[4]) -> None:
+def exact(d3: Dim[3], s3: SymInt[3], d4: Dim[4]) -> None:
     take_size3(d3)
     take_dim3(s3)
-    take_size4(d3)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `Size[4]`
-    take_dim3(d4)  # E: Argument `Size[4]` is not assignable to parameter `x` with type `Size[3]`
+    take_size4(d3)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `SymInt[4]`
+    take_dim3(d4)  # E: Argument `SymInt[4]` is not assignable to parameter `x` with type `SymInt[3]`
 "#,
 );
 
@@ -751,20 +751,20 @@ testcase!(
     test_tensor_shapes_internal_dim_carrier_flows_to_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, SizeTuple, SymVar, shaped_array
 from typing import Any, reveal_type
 
 @shaped_array(shape="Shape")
 class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]:
     shape: Shape
 
-def take_size[N: SymVar](x: Size[N]) -> None: ...
-def take_size4(x: Size[4]) -> None: ...
+def take_size[N: SymVar](x: SymInt[N]) -> None: ...
+def take_size4(x: SymInt[4]) -> None: ...
 
 def shape_carrier_uses_canonical_size[N: SymVar](symbolic: Array[[N], int]) -> None:
-    reveal_type(symbolic.shape[0])  # E: revealed type: Size[N]
+    reveal_type(symbolic.shape[0])  # E: revealed type: SymInt[N]
     take_size(symbolic.shape[0])
-    take_size4(symbolic.shape[0])  # E: Argument `Size[N]` is not assignable to parameter `x` with type `Size[4]`
+    take_size4(symbolic.shape[0])  # E: Argument `SymInt[N]` is not assignable to parameter `x` with type `SymInt[4]`
 "#,
 );
 
@@ -806,11 +806,11 @@ testcase!(
     test_tensor_shapes_nested_symbolic_size_matches_itself,
     shaped_array_env(),
     r#"
-from shape_extensions import Dim, Size, SymVar
+from shape_extensions import Dim, SymInt, SymVar
 
-def with_derived[N: SymVar](first: Dim[N], second: Size[N // 2]) -> None: ...
+def with_derived[N: SymVar](first: Dim[N], second: SymInt[N // 2]) -> None: ...
 
-def f[N: SymVar](n: Dim[N], half: Size[N // 2]) -> None:
+def f[N: SymVar](n: Dim[N], half: SymInt[N // 2]) -> None:
     with_derived(n, half)
 "#,
 );
@@ -819,44 +819,44 @@ testcase!(
     test_tensor_shapes_size_numeric_tower_and_literal_equivalence,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 from typing import Literal, reveal_type
 
 def take_int(x: int) -> None: ...
 def take_float(x: float) -> None: ...
 def take_complex(x: complex) -> None: ...
 def take_str(x: str) -> None: ...
-def take_size3(x: Size[3]) -> None: ...
+def take_size3(x: SymInt[3]) -> None: ...
 def take_literal3(x: Literal[3]) -> None: ...
 def take_literal4(x: Literal[4]) -> None: ...
 def take_huge_literal(x: Literal[100000000000000000000000000000000]) -> None: ...
 
-def use(s: Size[3]) -> None:
+def use(s: SymInt[3]) -> None:
     take_int(s)
     take_float(s)
-    take_complex(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `complex`
-    take_str(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `str`
+    take_complex(s)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `complex`
+    take_str(s)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `str`
     take_size3(3)
-    take_size3(4)  # E: Argument `Literal[4]` is not assignable to parameter `x` with type `Size[3]`
-    take_size3(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `Size[3]`
-    take_size3(-3)  # E: Argument `Literal[-3]` is not assignable to parameter `x` with type `Size[3]`
-    take_size3(1.0)  # E: Argument `float` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(4)  # E: Argument `Literal[4]` is not assignable to parameter `x` with type `SymInt[3]`
+    take_size3(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `SymInt[3]`
+    take_size3(-3)  # E: Argument `Literal[-3]` is not assignable to parameter `x` with type `SymInt[3]`
+    take_size3(1.0)  # E: Argument `float` is not assignable to parameter `x` with type `SymInt[3]`
     take_literal3(s)
-    take_literal4(s)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `Literal[4]`
+    take_literal4(s)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `Literal[4]`
     reveal_type(s * 1.5)  # E: revealed type: float
 
-def use_symbolic[N: SymVar](s: Size[N]) -> None:
+def use_symbolic[N: SymVar](s: SymInt[N]) -> None:
     take_int(s)
     take_float(s)
-    take_complex(s)  # E: Argument `Size[N]` is not assignable to parameter `x` with type `complex`
-    take_literal3(s)  # E: Argument `Size[N]` is not assignable to parameter `x` with type `Literal[3]`
+    take_complex(s)  # E: Argument `SymInt[N]` is not assignable to parameter `x` with type `complex`
+    take_literal3(s)  # E: Argument `SymInt[N]` is not assignable to parameter `x` with type `Literal[3]`
 
 def use_int(n: int) -> None:
-    take_size3(n)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(n)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
 
-def use_huge(s: Size[1]) -> None:
-    take_size3(100000000000000000000000000000000)  # E: Argument `Literal[100000000000000000000000000000000]` is not assignable to parameter `x` with type `Size[3]`
-    take_huge_literal(s - 1)  # E: Argument `Size[0]` is not assignable to parameter `x` with type `Literal[100000000000000000000000000000000]`
+def use_huge(s: SymInt[1]) -> None:
+    take_size3(100000000000000000000000000000000)  # E: Argument `Literal[100000000000000000000000000000000]` is not assignable to parameter `x` with type `SymInt[3]`
+    take_huge_literal(s - 1)  # E: Argument `SymInt[0]` is not assignable to parameter `x` with type `Literal[100000000000000000000000000000000]`
 "#,
 );
 
@@ -864,9 +864,9 @@ testcase!(
     test_tensor_shapes_size_annotations_reject_multiple_arguments,
     shaped_array_env(),
     r#"
-from shape_extensions import Size
+from shape_extensions import SymInt
 
-def bad_size(x: Size[3, 4]) -> None:  # E: Expected 1 type argument for `Size`, got 2
+def bad_size(x: SymInt[3, 4]) -> None:  # E: Expected 1 type argument for `SymInt`, got 2
     pass
 "#,
 );
@@ -1247,7 +1247,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Literal, reveal_type
-from shape_extensions import Size, shaped_array
+from shape_extensions import SymInt, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape, DType]:
@@ -1255,9 +1255,9 @@ class Array[Shape, DType]:
 
 def f(
     known: Array[[5, 5], int],
-    gradual: Array[tuple[Size[int], Size[int]], int],
+    gradual: Array[tuple[SymInt[int], SymInt[int]], int],
     one: Array[[1, 5], int],
-    gradual_then_mismatch: Array[tuple[Size[int], Literal[4]], int],
+    gradual_then_mismatch: Array[tuple[SymInt[int], Literal[4]], int],
     mismatch: Array[[5, 4], int],
 ) -> None:
     z = known + gradual
@@ -1270,9 +1270,9 @@ def f(
     z_one_reverse = gradual + one
     reveal_type(z_one_reverse.shape)  # E: revealed type: tuple[Literal[1], Literal[5]]
 
-    known + gradual_then_mismatch  # E: Cannot broadcast dimension Size[5] with dimension Size[4] at position 1
-    gradual_then_mismatch + known  # E: Cannot broadcast dimension Size[4] with dimension Size[5] at position 1
-    known + mismatch  # E: Cannot broadcast dimension Size[5] with dimension Size[4] at position 1
+    known + gradual_then_mismatch  # E: Cannot broadcast dimension SymInt[5] with dimension SymInt[4] at position 1
+    gradual_then_mismatch + known  # E: Cannot broadcast dimension SymInt[4] with dimension SymInt[5] at position 1
+    known + mismatch  # E: Cannot broadcast dimension SymInt[5] with dimension SymInt[4] at position 1
 "#,
 );
 
@@ -1414,7 +1414,7 @@ def carrier[S](x: Array[S, float]) -> None:
     reveal_type(x.shape)  # E: revealed type: S
 
 def concrete[M: SymVar](x: Array[[2, 4, M], float]) -> None:
-    reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], Literal[4], Size[M]]
+    reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], Literal[4], SymInt[M]]
 
 def unpacked_prefix[*Ts](x: Array[tuple[Literal[2], *Ts], float]) -> None:
     reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], *Ts]
@@ -1540,39 +1540,39 @@ testcase!(
     test_tensor_shapes_gradual_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SizeTuple, shaped_array
+from shape_extensions import SymInt, SizeTuple, shaped_array
 from typing import Any, assert_type, overload, reveal_type
 
 @shaped_array(shape="Shape")
 class Array[Shape: SizeTuple]: ...
 
 def take_int(x: int) -> None: ...
-def take_gradual(x: Size) -> None: ...
-def take_gradual_int(x: Size[int]) -> None: ...
-def take_size3(x: Size[3]) -> None: ...
-def take_size4(x: Size[4]) -> None: ...
+def take_gradual(x: SymInt) -> None: ...
+def take_gradual_int(x: SymInt[int]) -> None: ...
+def take_size3(x: SymInt[3]) -> None: ...
+def take_size4(x: SymInt[4]) -> None: ...
 
 @overload
-def choose_size(x: Size) -> int: ...
+def choose_size(x: SymInt) -> int: ...
 @overload
-def choose_size(x: Size[3]) -> str: ...
+def choose_size(x: SymInt[3]) -> str: ...
 def choose_size(x: object) -> int | str: ...
 
-def f(bare: Size, gint: Size[int], s3: Size[3], s4: Size[4], i: int, a: Any) -> None:
+def f(bare: SymInt, gint: SymInt[int], s3: SymInt[3], s4: SymInt[4], i: int, a: Any) -> None:
     take_gradual(s3)
     take_gradual_int(s3)
     take_size3(bare)
     take_size3(gint)
     take_gradual(i)
     take_gradual_int(i)
-    take_gradual(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `Size[int]`
-    take_gradual(MyInt())  # E: Argument `MyInt` is not assignable to parameter `x` with type `Size[int]`
-    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    take_gradual(True)  # E: Argument `Literal[True]` is not assignable to parameter `x` with type `SymInt[int]`
+    take_gradual(MyInt())  # E: Argument `MyInt` is not assignable to parameter `x` with type `SymInt[int]`
+    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
     take_int(bare)
-    take_size4(s3)  # E: Size mismatch: expected Size[4], got Size[3]
-    take_size3(s4)  # E: Size mismatch: expected Size[3], got Size[4]
+    take_size4(s3)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `SymInt[4]`
+    take_size3(s4)  # E: Argument `SymInt[4]` is not assignable to parameter `x` with type `SymInt[3]`
     # Overload pruning materializes `Any`; this proves materialization is consistent
-    # with the gradual `Size` type.
+    # with the gradual `SymInt` type.
     assert_type(choose_size(a), int)
 
 class MyInt(int): ...
@@ -1583,10 +1583,10 @@ def shape_any(x: Array[[Any, 3]]) -> None:
 def shape_int(x: Array[[int, 3]]) -> None:
     pass
 
-def size_any(x: Size[Any]) -> None:
+def size_any(x: SymInt[Any]) -> None:
     pass
 
-def size_bool(x: Size[bool]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables, got `type[bool]`
+def size_bool(x: SymInt[bool]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables, got `type[bool]`
     pass
 "#,
 );
@@ -1595,20 +1595,20 @@ testcase!(
     test_tensor_shapes_int_satisfies_fresh_symbolic_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 from typing import reveal_type
 
-def take_symbolic[N: SymVar](x: Size[N]) -> Size[N]: ...
-def same_symbolic[N: SymVar](x: Size[N], y: Size[N]) -> Size[N]: ...
-def take_size3(x: Size[3]) -> None: ...
+def take_symbolic[N: SymVar](x: SymInt[N]) -> SymInt[N]: ...
+def same_symbolic[N: SymVar](x: SymInt[N], y: SymInt[N]) -> SymInt[N]: ...
+def take_size3(x: SymInt[3]) -> None: ...
 
-def f(i: int, s3: Size[3]) -> None:
-    reveal_type(take_symbolic(i))  # E: revealed type: Size[int]
-    reveal_type(take_symbolic(3))  # E: revealed type: Size[3]
-    reveal_type(take_symbolic(s3))  # E: revealed type: Size[3]
-    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+def f(i: int, s3: SymInt[3]) -> None:
+    reveal_type(take_symbolic(i))  # E: revealed type: SymInt[int]
+    reveal_type(take_symbolic(3))  # E: revealed type: SymInt[3]
+    reveal_type(take_symbolic(s3))  # E: revealed type: SymInt[3]
+    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
     take_size3(3)
-    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `Size[3]`
+    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `SymInt[3]`
     # Two `int`s into a repeated symbolic dimension: the first pins N gradual, the
     # second matches that gradual bound (accepted).
     same_symbolic(i, i)
@@ -1619,16 +1619,16 @@ testcase!(
     test_tensor_shapes_gradual_size_satisfies_fresh_symbolic_size,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 from typing import assert_type
 
-def take_symbolic[N: SymVar](x: Size[N]) -> Size[N]: ...
+def take_symbolic[N: SymVar](x: SymInt[N]) -> SymInt[N]: ...
 
-# A gradual `Size` (bare `Size` == `Size[int]`) flowing into a fresh symbolic
-# `Size[N]` resolves to the gradual size: the unconstrained `SymVar` defaults
+# A gradual `SymInt` (bare `SymInt` == `SymInt[int]`) flowing into a fresh symbolic
+# `SymInt[N]` resolves to the gradual size: the unconstrained `SymVar` defaults
 # to gradual rather than leaking an unsolved `Var`.
-def f(s: Size) -> None:
-    assert_type(take_symbolic(s), Size)
+def f(s: SymInt) -> None:
+    assert_type(take_symbolic(s), SymInt)
 "#,
 );
 
@@ -1637,17 +1637,17 @@ testcase!(
     test_tensor_shapes_symvar_inference_is_order_dependent,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 
-def same_symbolic[N: SymVar](x: Size[N], y: Size[N]) -> Size[N]: ...
+def same_symbolic[N: SymVar](x: SymInt[N], y: SymInt[N]) -> SymInt[N]: ...
 
 # An `int` argument eagerly pins the fresh `N` to the gradual size, so the later
-# concrete `Size[3]` is accepted; the mirror-image call correctly rejects the
+# concrete `SymInt[3]` is accepted; the mirror-image call correctly rejects the
 # `int`. The two orders should agree once `int` accumulates a gradual bound
 # instead of pinning it (see the `SymVar` eager-pin note in solver/subset.rs).
-def f(i: int, s3: Size[3]) -> None:
+def f(i: int, s3: SymInt[3]) -> None:
     same_symbolic(i, s3)
-    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `Size[3]`
+    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `SymInt[3]`
 "#,
 );
 
@@ -1659,14 +1659,14 @@ testcase!(
             "numpy",
             "numpy.pyi",
             r#"
-from shape_extensions import Size, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, SizeTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape: SizeTuple, DType = int]: ...
 
-def arange[N: SymVar](stop: Size[N]) -> Array[[N], int]: ...
-def full[N: SymVar](shape: Size[N], fill_value: float) -> Array[[N], float]: ...
-def take_size3(x: Size[3]) -> None: ...
+def arange[N: SymVar](stop: SymInt[N]) -> Array[[N], int]: ...
+def full[N: SymVar](shape: SymInt[N], fill_value: float) -> Array[[N], float]: ...
+def take_size3(x: SymInt[3]) -> None: ...
 "#,
         );
         env
@@ -1677,7 +1677,7 @@ import numpy as np
 def f(targets: list[int], n_points: int) -> None:
     np.arange(len(targets))
     np.full(n_points - 1, 0.0)
-    np.take_size3(n_points)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    np.take_size3(n_points)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
 "#,
 );
 
@@ -1685,11 +1685,11 @@ testcase!(
     test_tensor_shapes_size_bound_defaults,
     shaped_array_env(),
     r#"
-from shape_extensions import Size
+from shape_extensions import SymInt
 
-class SizeDefault[N: Size = 3]: ...
-class SizeIntDefault[N: Size[int] = 3]: ...
-class SizeHuge[N: Size]: ...
+class SizeDefault[N: SymInt = 3]: ...
+class SizeIntDefault[N: SymInt[int] = 3]: ...
+class SizeHuge[N: SymInt]: ...
 
 def f() -> None:
     # `N: Size` is an ordinary `TypeVar`, so an integer literal is a value, not a
@@ -1704,20 +1704,20 @@ testcase!(
     test_tensor_shapes_gradual_size_through_size_bound_typevar,
     shaped_array_env(),
     r#"
-from shape_extensions import Size
+from shape_extensions import SymInt
 from typing import reveal_type
 
-def id_size[N: Size](x: N) -> N: ...
-def takes_size_bound[N: Size](x: N) -> None: ...
-def takes_size(x: Size) -> None: ...
-def takes_size3(x: Size[3]) -> None: ...
+def id_size[N: SymInt](x: N) -> N: ...
+def takes_size_bound[N: SymInt](x: N) -> None: ...
+def takes_size(x: SymInt) -> None: ...
+def takes_size3(x: SymInt[3]) -> None: ...
 
-def pass_size_bound_to_gradual[N: Size](x: N) -> None:
+def pass_size_bound_to_gradual[N: SymInt](x: N) -> None:
     takes_size(x)
 
-def f(s: Size, s3: Size[3]) -> None:
-    reveal_type(id_size(s))  # E: revealed type: Size[int]
-    reveal_type(id_size(s3))  # E: revealed type: Size[3]
+def f(s: SymInt, s3: SymInt[3]) -> None:
+    reveal_type(id_size(s))  # E: revealed type: SymInt[int]
+    reveal_type(id_size(s3))  # E: revealed type: SymInt[3]
     takes_size_bound(s)
     takes_size_bound(s3)
     takes_size(id_size(s3))
@@ -1729,21 +1729,21 @@ testcase!(
     test_tensor_shapes_size_int_is_canonical_when_inferred,
     shaped_array_env(),
     r#"
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 
-def take_size[N: SymVar](x: Size[N]) -> None: ...
-def take_size3(x: Size[3]) -> None: ...
+def take_size[N: SymVar](x: SymInt[N]) -> None: ...
+def take_size3(x: SymInt[3]) -> None: ...
 
-def f[M: SymVar](x: int | Size[M]) -> None:
+def f[M: SymVar](x: int | SymInt[M]) -> None:
     take_size(x)
 
 def g(x: int) -> None:
     take_size(x)
     take_size3(3)
-    take_size3(x)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(x)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
 
 class C[N: SymVar]:
-    def __init__(self, x: Size[N]) -> None: ...
+    def __init__(self, x: SymInt[N]) -> None: ...
 
 def h(x: int) -> None:
     C(x)
@@ -1768,8 +1768,8 @@ def ordinary_literals() -> None:
     reveal_type(total)  # E: revealed type: int
 
 def dim_literals[N: SymVar](x: Dim[N]) -> None:
-    reveal_type(x + 1)  # E: revealed type: Size[(1 + N)]
-    reveal_type(1 + x)  # E: revealed type: Size[(1 + N)]
+    reveal_type(x + 1)  # E: revealed type: SymInt[(1 + N)]
+    reveal_type(1 + x)  # E: revealed type: SymInt[(1 + N)]
 
 def ordinary_typevar_value[T: int](x: T) -> None:
     reveal_type(x + 1)  # E: revealed type: int
@@ -1793,7 +1793,7 @@ M = SymVar("M")
 class Box(Generic[N]): ...
 
 def f(n: Dim[N], shifted: Dim[N + 1], x: Tensor[[N, M]], shifted_x: Tensor[[N + 1, M]], y: Box[N]) -> None:
-    reveal_type(n)  # E: revealed type: Size[N]
+    reveal_type(n)  # E: revealed type: SymInt[N]
     assert_type(shifted, Dim[N + 1])
     reveal_type(x)  # E: revealed type: Tensor[[N, M]]
     assert_type(shifted_x, Tensor[[N + 1, M]])
@@ -1830,7 +1830,7 @@ def shape[N: SymVar, M: SymVar, Shape: SizeTuple](
     packed: Tensor[[*Elements[Shape], N]],
     boxed: SymBox[N],
 ) -> None:
-    reveal_type(n)  # E: revealed type: Size[N]
+    reveal_type(n)  # E: revealed type: SymInt[N]
     reveal_type(x)  # E: revealed type: Tensor[[N]]
     reveal_type(packed)  # E: revealed type: Tensor[[*Shape, N]]
     reveal_type(boxed)  # E: revealed type: SymBox[N]
@@ -1852,7 +1852,7 @@ def alias_specialization[N: SymVar, ShapeT: SizeTuple](
 ) -> None:
     reveal_type(x)  # E: revealed type: Tensor[[N]]
     reveal_type(packed)  # E: revealed type: Tensor[[*ShapeT, N]]
-    reveal_type(ordinary)  # E: revealed type: tuple[int, Size[N]]
+    reveal_type(ordinary)  # E: revealed type: tuple[int, SymInt[N]]
 "#,
 );
 
@@ -2025,7 +2025,7 @@ def explicit[N: SymVar](x: ExplicitBox[N + 1]) -> None:
     assert_type(x, ExplicitBox[N + 1])
 
 def legacy(x: LegacyBox[N + M]) -> None:
-    reveal_type(x)  # E: revealed type: LegacyBox[Size[(N + M)]]
+    reveal_type(x)  # E: revealed type: LegacyBox[SymInt[(N + M)]]
 
 def explicit_literals[S: SymVar](literal: ExplicitBox[3], symbolic: ExplicitBox[S]) -> None:
     assert_type(literal, ExplicitBox[3])
@@ -2620,7 +2620,7 @@ def two_errors_ir(x: int) -> int:  # E: @shape_dsl_function type error: undefine
         "my_lib.pyi",
         r#"
 from typing import Any, Literal, overload
-from shape_extensions import Size, SymVar, shaped_array, uses_shape_dsl
+from shape_extensions import SymInt, SymVar, shaped_array, uses_shape_dsl
 from my_shapes import identity_ir, double_ir, scalar_kernel_ir, string_guard_ir, list_kernel_ir, iterator_kernel_ir, reductions_ir, identity_symint_ir, product_symint_ir, same_symint_or_one_ir, svd_reduced_2d_ir, diag_1d_ir, einsum_kernel_ir, not_a_dsl_fn, bad_syntax_ir, kwargs_ir, calls_undefined, bad_no_ret, two_errors_ir, returns_wrong_type_ir, dims_as_scalar_union_ir, unknown_fallback_ir, helper_exact_one_ir, too_few_args_ir, too_many_args_ir
 import my_shapes
 
@@ -2664,13 +2664,13 @@ def iterator_kernel_fn(x: tuple[int, ...], y: tuple[int, ...]) -> int: ...
 def reductions_fn(x: tuple[int, ...]) -> int: ...
 
 @uses_shape_dsl(identity_symint_ir)
-def identity_symint_fn[N: SymVar](x: Size[N]) -> int: ...
+def identity_symint_fn[N: SymVar](x: SymInt[N]) -> int: ...
 
 @uses_shape_dsl(product_symint_ir)
-def product_symint_fn[N: SymVar, M: SymVar](x: Size[N], y: Size[M]) -> int: ...
+def product_symint_fn[N: SymVar, M: SymVar](x: SymInt[N], y: SymInt[M]) -> int: ...
 
 @uses_shape_dsl(same_symint_or_one_ir)
-def same_symint_or_one_fn[N: SymVar, M: SymVar](x: Size[N], y: Size[M]) -> int: ...
+def same_symint_or_one_fn[N: SymVar, M: SymVar](x: SymInt[N], y: SymInt[M]) -> int: ...
 
 @uses_shape_dsl(svd_reduced_2d_ir)
 def svd_fn[Shape, DType](
@@ -2852,14 +2852,14 @@ testcase!(
     shape_dsl_env(),
     r#"
 from typing import Literal, assert_type, reveal_type
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 from my_lib import identity_symint_fn, product_symint_fn
 
-def f[N: SymVar, M: SymVar](n: Size[N], m: Size[M]) -> None:
-    reveal_type(identity_symint_fn(n))  # E: revealed type: Size[N]
-    reveal_type(product_symint_fn(n, m))  # E: revealed type: Size[(N * M)]
-    assert_type(identity_symint_fn(n), Size[N])
-    assert_type(product_symint_fn(n, m), Size[N * M])
+def f[N: SymVar, M: SymVar](n: SymInt[N], m: SymInt[M]) -> None:
+    reveal_type(identity_symint_fn(n))  # E: revealed type: SymInt[N]
+    reveal_type(product_symint_fn(n, m))  # E: revealed type: SymInt[(N * M)]
+    assert_type(identity_symint_fn(n), SymInt[N])
+    assert_type(product_symint_fn(n, m), SymInt[N * M])
     assert_type(identity_symint_fn(3), Literal[3])
     assert_type(product_symint_fn(3, 4), Literal[12])
 "#,
@@ -2870,11 +2870,11 @@ testcase!(
     shape_dsl_env(),
     r#"
 from typing import Literal, assert_type
-from shape_extensions import Size, SymVar
+from shape_extensions import SymInt, SymVar
 from my_lib import same_symint_or_one_fn
 
-def f[N: SymVar, M: SymVar](n: Size[N], m: Size[M]) -> None:
-    assert_type(same_symint_or_one_fn(n, n), Size[N])
+def f[N: SymVar, M: SymVar](n: SymInt[N], m: SymInt[M]) -> None:
+    assert_type(same_symint_or_one_fn(n, n), SymInt[N])
     assert_type(same_symint_or_one_fn(n, m), Literal[1])
 "#,
 );

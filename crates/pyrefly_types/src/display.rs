@@ -728,7 +728,7 @@ impl<'a> TypeDisplayContext<'a> {
                 }
                 Ok(())
             }
-            Type::SymInt(dim) => output.write_str(&format!("Size[{dim}]")),
+            Type::SymInt(dim) => output.write_str(&format!("SymInt[{dim}]")),
             Type::TypeVar(t) => {
                 let type_var_qname = self.stdlib.map(|s| s.type_var().qname());
                 output.write_builtin("TypeVar", type_var_qname)?;
@@ -1703,15 +1703,15 @@ pub mod tests {
     }
 
     #[test]
-    fn test_display_size_type_marks_standalone_sizes() {
+    fn test_display_symint_type_marks_standalone_sizes() {
         let heap = TypeHeap::new();
         let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
 
-        assert_eq!(Type::SymInt(SymInt::Literal(3)).to_string(), "Size[3]");
+        assert_eq!(Type::SymInt(SymInt::Literal(3)).to_string(), "SymInt[3]");
         assert_eq!(
             Type::SymInt(SymInt::Symbolic(Box::new(n.clone()))).to_string(),
-            "Size[N]"
+            "SymInt[N]"
         );
         assert_eq!(
             Type::SymInt(SymInt::Mul(
@@ -1719,9 +1719,9 @@ pub mod tests {
                 Box::new(SymInt::Symbolic(Box::new(m))),
             ))
             .to_string(),
-            "Size[(N * M)]"
+            "SymInt[(N * M)]"
         );
-        assert_eq!(Type::SymInt(SymInt::Int).to_string(), "Size[int]");
+        assert_eq!(Type::SymInt(SymInt::Int).to_string(), "SymInt[int]");
     }
 
     #[test]

@@ -464,7 +464,7 @@ impl TypeConverter<'_> {
             // --- KwCall → convert the return type ---
             PyreflyType::KwCall(kw) => self.convert(&kw.return_ty),
 
-            // --- Size → the stdlib `int` class (size values represent integer dimensions) ---
+            // --- SymInt → the stdlib `int` class (symbolic integers represent dimensions) ---
             // Emitted as the real class, not `builtin("int")`: the protocol
             // restricts `BuiltInType.name` to a fixed sentinel set that excludes
             // `int`, so a bare builtin surfaces as Unknown on the consumer.

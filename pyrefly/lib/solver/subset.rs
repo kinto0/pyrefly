@@ -209,7 +209,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             self.is_subset_eq(size, &literal_size)
         };
         // Keep the outer argument diagnostic for the original literal instead
-        // of exposing the recursive structural `Size` comparison.
+        // of exposing the recursive structural `SymInt` comparison.
         result.map_err(|_| SubsetError::Other)
     }
 
@@ -1742,7 +1742,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (Type::Intersect(l), u) => any(l.0.iter(), |l| self.is_subset_eq(l, u)),
             (Type::Union(l_union), u) => all(l_union.members.iter(), |l| self.is_subset_eq(l, u)),
-            // Size <: Size - expand bound Vars, canonicalize, and compare for structural equality
+            // SymInt <: SymInt - expand bound Vars, canonicalize, and compare for structural equality
             (Type::SymInt(s1), Type::SymInt(s2)) => {
                 // Expand any bound Vars in both expressions
                 let mut got_expanded = Type::SymInt(s1.clone());
@@ -1784,7 +1784,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Check if the expanded "want" side contains unbound Vars in nested positions.
                 // Do this after the gradual-size fast path, since any expression containing
-                // `Size[int]` canonicalizes to gradual `Size` regardless of other leaves.
+                // `SymInt[int]` canonicalizes to gradual `SymInt` regardless of other leaves.
                 if contains_var_in_type(&want_expanded) {
                     return Err(SubsetError::ShapedArrayShape(
                         ShapeError::nested_type_var_not_inferred(),
@@ -1829,7 +1829,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     ))
                 }
             }
-            // Quantified <: Size - expand Size, canonicalize, and compare
+            // Quantified <: SymInt - expand SymInt, canonicalize, and compare
             (Type::Quantified(q), Type::SymInt(s)) if q.kind() == QuantifiedKind::SymVar => {
                 let mut want_expanded = Type::SymInt(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);

@@ -110,7 +110,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             return None;
         }
 
-        // Extract the dimension type from Size or an integer literal paired with one.
+        // Extract the dimension type from SymInt or an integer literal paired with one.
         let to_dim_type = |ty: &Type| -> Option<Type> {
             match ty {
                 Type::Literal(f) if let Lit::Int(n) = &f.value => {

@@ -452,7 +452,7 @@ fn type_kind_name(ty: &Type) -> &'static str {
         Type::ShapedArray(_) => "shaped_array",
         Type::NNModule(_) => "nn_module",
         Type::DataFrame(_) => "data_frame",
-        Type::SymInt(_) => "size",
+        Type::SymInt(_) => "symint",
         Type::TypeForm(_) => "type_form",
     }
 }
@@ -663,7 +663,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
             named_type_shape_kind(qname_to_string(module.class.qname()), args)
         }
         Type::DataFrame(schema) => type_shape_kind(context, &schema.underlying_type()),
-        Type::SymInt(_) => named_type_shape_kind("Size", Vec::new()),
+        Type::SymInt(_) => named_type_shape_kind("SymInt", Vec::new()),
         Type::TypeForm(inner) => {
             named_type_shape_kind("typing.TypeForm", vec![type_to_shape(context, inner)])
         }

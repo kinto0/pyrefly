@@ -116,8 +116,8 @@ class Dim[T]:
     pass
 
 
-class Size[T]:
-    """Symbolic integer type for size values.
+class SymInt[T]:
+    """Symbolic integer type for dimension values.
 
     At runtime this is a no-op generic class. The type checker uses the
     .pyi stub for shape inference.
@@ -140,6 +140,7 @@ def enable_torchscript_runtime_compat() -> None:
     """
 
     Dim.__class_getitem__ = classmethod(_return_int)
+    SymInt.__class_getitem__ = classmethod(_return_int)
 
 
 @dataclass(frozen=True)

@@ -1990,7 +1990,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let is_size_bound = |ty: &Type| {
                 matches!(ty, Type::SymInt(_))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Dim"))
-                    || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Size"))
+                    || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "SymInt"))
             };
             let default = if self.solver().tensor_shapes
                 && matches!(&restriction, Restriction::Bound(bound) if is_size_bound(bound))
@@ -6088,8 +6088,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     return Some(self.bare_size_tuple_carrier());
                 }
                 // Bare `shape_extensions.Dim` is the gradual size type, the same as
-                // `Size[int]`.
-                // Subscripted Dim[X] is already converted to `Type::SymInt` in parse_single_symint_type,
+                // `SymInt[int]`.
+                // Subscripted Dim[X] is already converted to `Type::SymInt` in parse_dim_type,
                 // so only the bare case (promoted to ClassType with default targs) reaches here.
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "Dim")
@@ -6097,7 +6097,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     return Some(gradual_size());
                 }
                 if let Type::ClassType(cls) = t.as_ref()
-                    && cls.has_qname("shape_extensions", "Size")
+                    && cls.has_qname("shape_extensions", "SymInt")
                 {
                     return Some(gradual_size());
                 }

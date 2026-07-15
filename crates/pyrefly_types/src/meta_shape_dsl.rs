@@ -107,7 +107,7 @@ impl Val {
     }
 
     /// Convert to a `Type::SymInt` for use in dimension arithmetic within the DSL evaluator.
-    /// `Int(n)` becomes `SymInt(Literal(n))`; `Dim(ty)` passes through as-is.
+    /// `Int(n)` becomes `Type::SymInt(SymInt::Literal(n))`; `Dim(ty)` passes through as-is.
     /// This is for *internal* symbolic computation, not for producing user-facing types
     /// (see `val_to_scalar_type` for that).
     pub fn as_size(&self) -> Type {
@@ -2303,9 +2303,9 @@ fn extract_dsl_val(actual_arg_type: &Type, expected_param_type: &DslType) -> Opt
                     .iter()
                     .all(|v| matches!(v, DslType::Int | DslType::SymInt)) =>
             {
-                // dim_list handles Tuple(Concrete([Literal, Size, ...])) for
+                // dim_list handles Tuple(Concrete([Literal, Type::SymInt, ...])) for
                 // both literal ints and symbolic dims.  Convert concrete
-                // Size(Literal(n)) → Val::Int(n) so == comparisons against
+                // Type::SymInt(SymInt::Literal(n)) → Val::Int(n) so == comparisons against
                 // literal ints work naturally in the interpreter.
                 let dims = extract::dim_list(actual_arg_type)?;
                 Some(Val::List(dims.into_iter().map(dim_val).collect()))
@@ -2598,9 +2598,9 @@ fn eval_dsl_expr(
             let shape = val.as_shape();
             match shape.as_tuple() {
                 Tuple::Concrete(dims) => {
-                    // Use dim_val to convert concrete Size(Literal(n)) to Val::Int(n)
-                    // so comparisons against literal ints (e.g., `d != 1` in squeeze)
-                    // work naturally.
+                    // Use dim_val to convert concrete
+                    // Type::SymInt(SymInt::Literal(n)) to Val::Int(n) so comparisons
+                    // against literal ints (e.g., `d != 1` in squeeze) work naturally.
                     let vals: Vec<Val> = dims.iter().map(|d| dim_val(d.clone())).collect();
                     Ok(Val::List(vals))
                 }
@@ -2677,7 +2677,8 @@ fn val_as_bool(val: &Val, op_name: &str) -> Result<bool, ShapeError> {
     }
 }
 
-/// Normalize a canonical `Type` to `Val`. If it's a concrete `Size(Literal(n))`,
+/// Normalize a canonical `Type` to `Val`. If it's a concrete
+/// `Type::SymInt(SymInt::Literal(n))`,
 /// produce `Val::Int(n)` so equality checks against literal ints work naturally.
 /// Otherwise produce `Val::Dim(ty)`.
 fn dim_val(ty: Type) -> Val {
@@ -3253,7 +3254,7 @@ fn inject_shape(shape: ShapedArrayShape, ret_type: &Type) -> Type {
 /// Convert a DSL scalar `Val` to a `Type` for output from a shape function:
 /// - `Val::Int(n)` → `Literal[n]`
 /// - `Val::Dim(SymInt::Literal(n))` → `Literal[n]` (concrete dims become literals)
-/// - `Val::Dim(symbolic)` → canonical `Size[...]`
+/// - `Val::Dim(symbolic)` → canonical `SymInt[...]`
 fn val_to_scalar_type(val: &Val) -> Type {
     match val {
         Val::Int(n) => Lit::Int(LitInt::new(*n)).to_implicit_type(),
@@ -3364,7 +3365,7 @@ fn val_to_type(
         },
 
         // SymInt synthesizes a type from the traced `Val`: `val_to_scalar_type`
-        // returns canonical `Size` for symbolic dims and `Literal[n]` for ints.
+        // returns canonical `SymInt` for symbolic dims and `Literal[n]` for ints.
         // The trace value is load-bearing for shape inference — downstream
         // tensor shape types are built from these dimension representations.
         DslType::SymInt => val_to_scalar_type(&val),
