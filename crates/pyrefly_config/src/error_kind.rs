@@ -464,6 +464,7 @@ impl ErrorKind {
             }
             ErrorKind::ImplicitAnyAttribute
             | ErrorKind::ImplicitAnyEmptyContainer
+            | ErrorKind::ImplicitAnyLambda
             | ErrorKind::ImplicitAnyParameter
             | ErrorKind::ImplicitAnyTypeArgument
             | ErrorKind::ImplicitAnyVariable => Some(ErrorKind::ImplicitAny),

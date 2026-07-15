@@ -2484,13 +2484,14 @@ output-format = "omit-errors"
         let errors = config.root.errors.as_ref().unwrap();
         assert_eq!(errors.severity(ErrorKind::ImplicitAny), Severity::Error);
         // Setting `implicit-any` cascades to every sub-kind via parent_kind,
-        // so strict mode covers parameters, attributes, type arguments, and
-        // empty containers without listing them individually.
+        // so strict mode covers them without listing them individually.
         for kind in [
             ErrorKind::ImplicitAnyParameter,
             ErrorKind::ImplicitAnyAttribute,
             ErrorKind::ImplicitAnyTypeArgument,
             ErrorKind::ImplicitAnyEmptyContainer,
+            ErrorKind::ImplicitAnyLambda,
+            ErrorKind::ImplicitAnyVariable,
         ] {
             assert_eq!(
                 errors.severity(kind),
