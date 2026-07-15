@@ -62,7 +62,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import Dim, Size
     from torch import Tensor
 
 
@@ -409,9 +409,9 @@ class ViTBlock[D: SymVar, NHead: SymVar, MlpDim: SymVar, IS: SymVar, WS: SymVar]
         assert_type(normed, Tensor[[B, IS, IS, D]])
         # MLPBlock expects (B, N, D) — reshape (B, IS, IS, D) → (B, IS*IS, D)
         b, ht, wt, d = h.size()
-        assert_type(b, Dim[B])
-        assert_type(ht, Dim[IS])
-        assert_type(wt, Dim[IS])
+        assert_type(b, Size[B])
+        assert_type(ht, Size[IS])
+        assert_type(wt, Size[IS])
         normed_flat = normed.reshape(b, ht * wt, d)
         assert_type(normed_flat, Tensor[[B, IS * IS, D]])
         mlp_out_flat = self.mlp(normed_flat)
@@ -571,8 +571,8 @@ class CrossAttention[D: SymVar, IntDim: SymVar, NHead: SymVar](nn.Module):
         self, q: Tensor[[B, NQ, D]], k: Tensor[[B, NK, D]], v: Tensor[[B, NK, D]]
     ) -> Tensor[[B, NQ, D]]:
         b, nq, _ = q.size()
-        assert_type(b, Dim[B])
-        assert_type(nq, Dim[NQ])
+        assert_type(b, Size[B])
+        assert_type(nq, Size[NQ])
         # Project
         q_proj = self.q_proj(q)
         assert_type(q_proj, Tensor[[B, NQ, IntDim]])
@@ -584,7 +584,7 @@ class CrossAttention[D: SymVar, IntDim: SymVar, NHead: SymVar](nn.Module):
         q_heads = q_proj.reshape(b, nq, self.num_heads, self.head_dim).transpose(1, 2)
         assert_type(q_heads, Tensor[[B, NHead, NQ, IntDim // NHead]])
         nk = k.size(1)
-        assert_type(nk, Dim[NK])
+        assert_type(nk, Size[NK])
         k_heads = k_proj.reshape(b, nk, self.num_heads, self.head_dim).transpose(1, 2)
         assert_type(k_heads, Tensor[[B, NHead, NK, IntDim // NHead]])
         v_heads = v_proj.reshape(b, nk, self.num_heads, self.head_dim).transpose(1, 2)

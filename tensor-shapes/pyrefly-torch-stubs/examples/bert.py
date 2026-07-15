@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import Dim, Size, SymVar
     from torch import Tensor
 
 
@@ -152,8 +152,8 @@ class MultiHeadedAttention[DModel: SymVar, H: SymVar](nn.Module):
     ) -> Tensor[[B, T, DModel]]:
         batch_size = query.size(0)
         seq_len = query.size(1)
-        assert_type(batch_size, Dim[B])
-        assert_type(seq_len, Dim[T])
+        assert_type(batch_size, Size[B])
+        assert_type(seq_len, Size[T])
 
         # 1) Do all the linear projections in batch from d_model => h x d_k
         query_p = (

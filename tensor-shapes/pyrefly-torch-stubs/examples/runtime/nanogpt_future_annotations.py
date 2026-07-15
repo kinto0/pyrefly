@@ -27,7 +27,7 @@ from shape_extensions import Elements, SizeTuple
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import Dim, Size, SymVar
     from torch import Tensor
 
 
@@ -106,9 +106,9 @@ class CausalSelfAttention[NEmbedding: SymVar, NHead: SymVar, BlockSize: SymVar](
         b, t, c = (
             x.size()
         )  # batch size, sequence length, embedding dimensionality (n_embd)
-        assert_type(b, Dim[B])
-        assert_type(t, Dim[T])
-        assert_type(c, Dim[NEmbedding])
+        assert_type(b, Size[B])
+        assert_type(t, Size[T])
+        assert_type(c, Size[NEmbedding])
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         assert_type(x, Tensor[[B, T, NEmbedding]])
@@ -345,8 +345,8 @@ class GPT[
     ]:
         device = idx.device
         b, t = idx.size()
-        assert_type(b, Dim[B])
-        assert_type(t, Dim[T])
+        assert_type(b, Size[B])
+        assert_type(t, Size[T])
         assert t <= self.config.block_size, (
             f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         )

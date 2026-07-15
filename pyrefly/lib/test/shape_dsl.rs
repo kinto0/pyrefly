@@ -213,6 +213,8 @@ shaped_array: Any
 class SizeTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
+class SymVar: ...
+class Size[T]: ...
 def uses_shape_dsl(ir_fn: Callable[..., Any], *, capture_init: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
 "#,
     );
@@ -2336,7 +2338,8 @@ from typing import Any
 from shape_extensions.dsl import ShapedArray, shape_dsl_function
 import shape_extensions.dsl
 
-class symint: ...
+class symint:
+    def __mul__(self, other: symint) -> symint: ...
 class Error(Exception): ...
 Unknown: Any = ...
 
@@ -2387,6 +2390,20 @@ def iterator_kernel_ir(x: list[int], y: list[int]) -> int:
 @shape_dsl_function
 def reductions_ir(x: list[int | symint]) -> int | symint:
     return shape_extensions.dsl.prod(x) + shape_extensions.dsl.sum(x)
+
+@shape_dsl_function
+def identity_symint_ir(x: symint) -> symint:
+    return x
+
+@shape_dsl_function
+def product_symint_ir(x: symint, y: symint) -> symint:
+    return x * y
+
+@shape_dsl_function
+def same_symint_or_one_ir(x: symint, y: symint) -> int | symint:
+    if x == y:
+        return x
+    return 1
 
 @shape_dsl_function
 def int_min(a: int | symint, b: int | symint) -> int | symint:
@@ -2496,8 +2513,8 @@ def two_errors_ir(x: int) -> int:  # E: @shape_dsl_function type error: undefine
         "my_lib.pyi",
         r#"
 from typing import Any, Literal, overload
-from shape_extensions import shaped_array, uses_shape_dsl
-from my_shapes import identity_ir, double_ir, scalar_kernel_ir, string_guard_ir, list_kernel_ir, iterator_kernel_ir, reductions_ir, svd_reduced_2d_ir, diag_1d_ir, einsum_kernel_ir, not_a_dsl_fn, bad_syntax_ir, kwargs_ir, calls_undefined, bad_no_ret, two_errors_ir, returns_wrong_type_ir, dims_as_scalar_union_ir, unknown_fallback_ir, helper_exact_one_ir, too_few_args_ir, too_many_args_ir
+from shape_extensions import Size, SymVar, shaped_array, uses_shape_dsl
+from my_shapes import identity_ir, double_ir, scalar_kernel_ir, string_guard_ir, list_kernel_ir, iterator_kernel_ir, reductions_ir, identity_symint_ir, product_symint_ir, same_symint_or_one_ir, svd_reduced_2d_ir, diag_1d_ir, einsum_kernel_ir, not_a_dsl_fn, bad_syntax_ir, kwargs_ir, calls_undefined, bad_no_ret, two_errors_ir, returns_wrong_type_ir, dims_as_scalar_union_ir, unknown_fallback_ir, helper_exact_one_ir, too_few_args_ir, too_many_args_ir
 import my_shapes
 
 non_literal: Any
@@ -2538,6 +2555,15 @@ def iterator_kernel_fn(x: tuple[int, ...], y: tuple[int, ...]) -> int: ...
 
 @uses_shape_dsl(reductions_ir)
 def reductions_fn(x: tuple[int, ...]) -> int: ...
+
+@uses_shape_dsl(identity_symint_ir)
+def identity_symint_fn[N: SymVar](x: Size[N]) -> int: ...
+
+@uses_shape_dsl(product_symint_ir)
+def product_symint_fn[N: SymVar, M: SymVar](x: Size[N], y: Size[M]) -> int: ...
+
+@uses_shape_dsl(same_symint_or_one_ir)
+def same_symint_or_one_fn[N: SymVar, M: SymVar](x: Size[N], y: Size[M]) -> int: ...
 
 @uses_shape_dsl(svd_reduced_2d_ir)
 def svd_fn[Shape, DType](
@@ -2711,6 +2737,38 @@ from typing import Literal, assert_type
 from my_lib import reductions_fn
 
 assert_type(reductions_fn((2, 3, 4)), Literal[33])
+"#,
+);
+
+testcase!(
+    test_shape_dsl_symint_return_uses_canonical_size,
+    shape_dsl_env(),
+    r#"
+from typing import Literal, assert_type, reveal_type
+from shape_extensions import Size, SymVar
+from my_lib import identity_symint_fn, product_symint_fn
+
+def f[N: SymVar, M: SymVar](n: Size[N], m: Size[M]) -> None:
+    reveal_type(identity_symint_fn(n))  # E: revealed type: Size[N]
+    reveal_type(product_symint_fn(n, m))  # E: revealed type: Size[(N * M)]
+    assert_type(identity_symint_fn(n), Size[N])
+    assert_type(product_symint_fn(n, m), Size[N * M])
+    assert_type(identity_symint_fn(3), Literal[3])
+    assert_type(product_symint_fn(3, 4), Literal[12])
+"#,
+);
+
+testcase!(
+    test_shape_dsl_symint_equality,
+    shape_dsl_env(),
+    r#"
+from typing import Literal, assert_type
+from shape_extensions import Size, SymVar
+from my_lib import same_symint_or_one_fn
+
+def f[N: SymVar, M: SymVar](n: Size[N], m: Size[M]) -> None:
+    assert_type(same_symint_or_one_fn(n, n), Size[N])
+    assert_type(same_symint_or_one_fn(n, m), Literal[1])
 "#,
 );
 

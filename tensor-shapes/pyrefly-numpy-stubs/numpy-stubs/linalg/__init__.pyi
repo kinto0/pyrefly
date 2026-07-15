@@ -29,26 +29,19 @@ def norm[N: SymVar, M: SymVar, DType](
 def eigh[N: SymVar, DType](
     a: ndarray[[N, N], DType],
 ) -> tuple[ndarray[[N], DType], ndarray[[N, N], DType]]: ...
-@overload
-def svd[N: SymVar, DType](
-    a: ndarray[[N, N], DType],
-    # NumPy defaults to full SVD; this MVP accepts only the reduced form needed
-    # by PCA-style demos.
-    full_matrices: Literal[False],
-    compute_uv: Literal[True] = True,
-    hermitian: Literal[False] = False,
-) -> tuple[
-    ndarray[[N, N], DType],
-    ndarray[[N], DType],
-    ndarray[[N, N], DType],
-]: ...
 @uses_shape_dsl(svd_reduced_2d_ir)
-@overload
-def svd(
-    a: ndarray,
+def svd[Shape, DType](
+    a: ndarray[Shape, DType],
     # NumPy defaults to full SVD; this MVP accepts only the reduced form needed
     # by PCA-style demos.
     full_matrices: Literal[False],
     compute_uv: Literal[True] = True,
     hermitian: Literal[False] = False,
-) -> tuple[ndarray, ndarray, ndarray]: ...
+    # The `ndarray[Shape, DType]` returns below are only a coarse fallback: the
+    # precise reduced-SVD shapes are supplied by `@uses_shape_dsl(svd_reduced_2d_ir)`
+    # above, which yields U=[M, K], S=[K] (1-D), and Vh=[K, N] with K = min(M, N).
+) -> tuple[
+    ndarray[Shape, DType],
+    ndarray[Shape, DType],
+    ndarray[Shape, DType],
+]: ...

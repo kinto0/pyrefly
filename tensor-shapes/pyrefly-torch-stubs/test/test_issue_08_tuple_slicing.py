@@ -9,7 +9,7 @@ from shape_extensions import SymVar
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import Size
     from torch import Tensor
 
 
@@ -18,19 +18,19 @@ def test_tuple_slicing[B: SymVar, T: SymVar, NHeads: SymVar, HeadDim: SymVar](
 ) -> None:
     # Full size() works correctly
     full_size = x.size()
-    assert_type(full_size, tuple[Dim[B], Dim[T], Dim[NHeads], Dim[HeadDim]])
+    assert_type(full_size, tuple[Size[B], Size[T], Size[NHeads], Size[HeadDim]])
 
     # Sliced size now preserves positional type information
     sliced_size = x.size()[:-1]
-    assert_type(sliced_size, tuple[Dim[B], Dim[T], Dim[NHeads]])
+    assert_type(sliced_size, tuple[Size[B], Size[T], Size[NHeads]])
 
     # Explicit size(dim) calls also work
     s0 = x.size(0)
     s1 = x.size(1)
     s2 = x.size(2)
-    assert_type(s0, Dim[B])
-    assert_type(s1, Dim[T])
-    assert_type(s2, Dim[NHeads])
+    assert_type(s0, Size[B])
+    assert_type(s1, Size[T])
+    assert_type(s2, Size[NHeads])
 
 
 def test_reshape_with_slice[B: SymVar, T: SymVar, NHeads: SymVar, HeadDim: SymVar](

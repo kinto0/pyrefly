@@ -11,7 +11,7 @@ import torch
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import Dim, Size
     from torch import Tensor
 
 
@@ -42,8 +42,8 @@ def numel_returns_bad_explicit_symint[N: SymVar, M: SymVar](
     x: Tensor[[N, M]],
 ) -> Dim[N + M]:
     s = x.numel()
-    assert_type(s, Dim[N * M])
-    # E: Returned type `Dim[Size[(N * M)]]` is not assignable
+    assert_type(s, Size[N * M])
+    # E: Returned type `Size[(N * M)]` is not assignable
     #    to declared return type `Dim[Size[(N + M)]]`
     return s
 
@@ -62,8 +62,8 @@ def numel_returns_bad_implicit_symint[N: SymVar, M: SymVar, K: SymVar](
     x: Tensor[[N, M]],
 ) -> Dim[K]:
     s = x.numel()
-    assert_type(s, Dim[N * M])
-    # E: Returned type `Dim[Size[(N * M)]]` is not assignable
+    assert_type(s, Size[N * M])
+    # E: Returned type `Size[(N * M)]` is not assignable
     #    to declared return type `Dim[K]`
     return s
 

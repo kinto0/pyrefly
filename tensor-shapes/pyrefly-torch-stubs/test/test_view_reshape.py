@@ -11,7 +11,7 @@ import torch
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import Size
     from torch import Tensor
 
 
@@ -39,14 +39,14 @@ def test_view_symbolic[N: SymVar, M: SymVar](
     Takes a tensor with shape [N, M] where N is divisible by 2,
     reshapes it to [2, N//2, M]
 
-    The .size() method returns Dim[N] and Dim[M], which can be used
+    The .size() method returns Size[N] and Size[M], which can be used
     in arithmetic operations and passed to .view() for shape transformation.
     """
-    # Get both dimensions from input - these return Dim[N] and Dim[M]
+    # Get both dimensions from input - these return Size[N] and Size[M]
     n = x.size(0)
     m = x.size(1)
-    assert_type(n // 2, Dim[N // 2])
-    assert_type(m, Dim[M])
+    assert_type(n // 2, Size[N // 2])
+    assert_type(m, Size[M])
     # Reshape: split N into 2 and N//2, keep M
     # The meta-shape system tracks the symbolic dimensions
     return x.view(2, n // 2, m)

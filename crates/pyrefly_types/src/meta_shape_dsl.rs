@@ -2922,10 +2922,10 @@ fn val_eq(a: &Val, b: &Val) -> bool {
         (Val::Int(x), Val::Int(y)) => x == y,
         (Val::Str(x), Val::Str(y)) => x == y,
         (Val::Bool(x), Val::Bool(y)) => x == y,
-        (Val::None, Val::None) => true,
         // Structurally equal symbolic dims compare equal (e.g. `int_min(N, N) == N`),
         // matching how a literal dim compares equal to the same integer.
         (Val::Dim(x), Val::Dim(y)) => x == y,
+        (Val::None, Val::None) => true,
         (Val::Int(x), Val::Dim(y)) | (Val::Dim(y), Val::Int(x)) => {
             *y == Type::Size(SizeExpr::Literal(*x))
         }
@@ -3252,20 +3252,19 @@ fn inject_shape(shape: ShapedArrayShape, ret_type: &Type) -> Type {
     }
 }
 
-/// Convert a DSL `Val` to a user-facing `Type` for output from a shape function.
-/// Unlike `Val::as_size` (which produces `Type::Size` for internal arithmetic),
-/// this produces the types that appear in type-checker diagnostics:
+/// Convert a DSL scalar `Val` to a `Type` for output from a shape function:
 /// - `Val::Int(n)` → `Literal[n]`
 /// - `Val::Dim(SizeExpr::Literal(n))` → `Literal[n]` (concrete dims become literals)
-/// - `Val::Dim(symbolic)` → `Dim[symbolic]`
+/// - `Val::Dim(symbolic)` → canonical `Size[...]`
 fn val_to_scalar_type(val: &Val) -> Type {
     match val {
         Val::Int(n) => Lit::Int(LitInt::new(*n)).to_implicit_type(),
         Val::Dim(ty) => {
-            if let Some(n) = ty.as_shape_literal() {
-                Lit::Int(LitInt::new(n)).to_implicit_type()
-            } else {
-                Type::Dim(Box::new(ty.clone()))
+            let dim =
+                SizeExpr::from_type(ty).unwrap_or_else(|| SizeExpr::Symbolic(Box::new(ty.clone())));
+            match dim {
+                SizeExpr::Literal(n) => Lit::Int(LitInt::new(n)).to_implicit_type(),
+                dim => canonicalize(Type::Size(dim)),
             }
         }
         _ => unreachable!(
@@ -3367,7 +3366,7 @@ fn val_to_type(
         },
 
         // SymInt synthesizes a type from the traced `Val`: `val_to_scalar_type`
-        // returns `Type::Dim` for `Val::Dim` and `Literal[n]` for `Val::Int`.
+        // returns canonical `Size` for symbolic dims and `Literal[n]` for ints.
         // The trace value is load-bearing for shape inference — downstream
         // tensor shape types are built from these dimension representations.
         DslType::SymInt => val_to_scalar_type(&val),
@@ -3914,9 +3913,18 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
+    use crate::quantified::AnchorIndex;
+    use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedIdentity;
+    use crate::quantified::QuantifiedKind;
+    use crate::quantified::QuantifiedOrigin;
     use crate::tuple::Tuple;
+    use crate::type_var::PreInferenceVariance;
+    use crate::type_var::Restriction;
+    use crate::types::AnyStyle;
     use crate::types::TArgs;
     use crate::types::Union;
+    use crate::types::Var;
 
     fn parse_dsl_functions(source: &str) -> Vec<ShapeDslFunction> {
         let (module, _, _) = Ast::parse(source, PySourceType::Stub);
@@ -3946,6 +3954,86 @@ mod tests {
             module,
             None,
         )
+    }
+
+    fn fake_symvar(name: &str) -> Type {
+        let index = name.bytes().fold(0, |acc: u32, byte| {
+            acc.wrapping_mul(16777619) ^ u32::from(byte)
+        });
+        Type::Quantified(Box::new(Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("__test__"),
+                AnchorIndex::new(TextRange::default(), index),
+                QuantifiedOrigin::Pep695,
+            ),
+            Name::new(name),
+            QuantifiedKind::SymVar,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )))
+    }
+
+    #[test]
+    fn test_val_to_scalar_type_uses_canonical_size_for_symbolic_dims() {
+        let gradual = Type::Size(SizeExpr::Symbolic(Box::new(Type::Size(SizeExpr::Int))));
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(gradual)),
+            Type::Size(SizeExpr::Int)
+        );
+
+        let legacy = Type::Dim(Box::new(Type::Size(SizeExpr::Symbolic(Box::new(
+            Type::Size(SizeExpr::Int),
+        )))));
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(legacy)),
+            Type::Size(SizeExpr::Int)
+        );
+
+        let quantified = fake_symvar("N");
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(quantified)),
+            Type::Size(SizeExpr::Symbolic(Box::new(fake_symvar("N"))))
+        );
+
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(Type::Var(Var::ZERO))),
+            Type::Size(SizeExpr::Symbolic(Box::new(Type::Var(Var::ZERO))))
+        );
+
+        let any = Type::Any(AnyStyle::Error);
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(any.clone())),
+            Type::Size(SizeExpr::Symbolic(Box::new(any)))
+        );
+    }
+
+    #[test]
+    fn test_val_to_scalar_type_preserves_symbolic_size_arithmetic() {
+        let n = SizeExpr::Symbolic(Box::new(fake_symvar("N")));
+        let m = SizeExpr::Symbolic(Box::new(fake_symvar("M")));
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(Type::Size(SizeExpr::Mul(
+                Box::new(n.clone()),
+                Box::new(m.clone()),
+            )))),
+            Type::Size(SizeExpr::Mul(Box::new(m), Box::new(n)))
+        );
+    }
+
+    #[test]
+    fn test_val_to_scalar_type_preserves_concrete_dim_literals() {
+        let literal = Lit::Int(LitInt::new(3)).to_implicit_type();
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(Type::Size(SizeExpr::Literal(3)))),
+            literal
+        );
+        assert_eq!(
+            val_to_scalar_type(&Val::Dim(Type::Dim(Box::new(Type::Size(
+                SizeExpr::Literal(3),
+            ))))),
+            literal
+        );
     }
 
     #[test]

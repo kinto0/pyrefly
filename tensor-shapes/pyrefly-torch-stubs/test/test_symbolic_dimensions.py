@@ -13,7 +13,7 @@ import torch
 import torch.fft
 import torch.linalg
 import torch.nn.functional as F
-from shape_extensions import Dim, SymVar
+from shape_extensions import Size, SymVar
 from torch import Tensor
 
 # ==== Week 2: Symbolic Dimension Tests ====
@@ -253,10 +253,10 @@ def test_nested_expressions():
 
 # ==== Future: Size/Numel with Symbolic (requires Literal subscript parsing) ====
 
-# These would demonstrate Dim[N] and Literal[N*M] return types
+# These would demonstrate Size[N] and Literal[N*M] return types
 # Commented out until parser supports TypeVar inside Literal subscript
 
-# def get_size_symbolic[N: SymVar, M: SymVar](x: Tensor[[N, M]]) -> tuple[Dim[N], Dim[M]]:
+# def get_size_symbolic[N: SymVar, M: SymVar](x: Tensor[[N, M]]) -> tuple[Size[N], Size[M]]:
 #     """Size returns tuple of symbolic dimensions as Literal types"""
 #     return x.size()
 
@@ -1056,7 +1056,7 @@ def test_expand[N: SymVar](x: Tensor[[N, 1]]):
     """Expand to target size"""
     # expand() with runtime values - checking what it actually returns
     n = x.size(0)
-    assert_type(n, Dim[N])
+    assert_type(n, Size[N])
     y = x.expand(n, 5)
     # Expands [N, 1] → [N, 5] (keeps dim 0, broadcasts dim 1)
     assert_type(y, Tensor[[N, 5]])

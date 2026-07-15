@@ -9,7 +9,7 @@ from shape_extensions import SymVar
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import Size
     from torch import Tensor
 
 
@@ -18,10 +18,10 @@ def test_starred_unpack[B: SymVar, T: SymVar, NHeads: SymVar, HeadDim: SymVar](
 ) -> None:
     # First check that tuple slicing works
     sizes = x.size()
-    assert_type(sizes, tuple[Dim[B], Dim[T], Dim[NHeads], Dim[HeadDim]])
+    assert_type(sizes, tuple[Size[B], Size[T], Size[NHeads], Size[HeadDim]])
 
     sliced = x.size()[:-1]
-    assert_type(sliced, tuple[Dim[B], Dim[T], Dim[NHeads]])
+    assert_type(sliced, tuple[Size[B], Size[T], Size[NHeads]])
 
     # Starred unpacking now preserves element types
     result = x.float().reshape(*sliced, -1, 2)

@@ -55,7 +55,7 @@ import torch.nn as nn
 import torch.quantization
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import Dim, Size, SymVar
     from torch import Tensor
 
 
@@ -163,7 +163,7 @@ class DLRM[DenseDim: SymVar, D: SymVar](nn.Module):
         → extract upper triangle (6 elements) → concat with dense → (B, D+6)
         """
         b = dense.size(0)
-        assert_type(b, Dim[B])
+        assert_type(b, Size[B])
         # Stack: (B, 4, D)
         T = torch.stack((dense, sparse1, sparse2, sparse3), dim=1)
         assert_type(T, Tensor[[B, 4, D]])
@@ -196,7 +196,7 @@ class DLRM[DenseDim: SymVar, D: SymVar](nn.Module):
         assert_type(x, Tensor[[B, D]])
         # Embedding lookups (EmbeddingBag returns unrefined Tensor)
         b = dense_x.size(0)
-        assert_type(b, Dim[B])
+        assert_type(b, Size[B])
         e1: Tensor[[B, D]] = self.emb1(idx1, off1)
         e2: Tensor[[B, D]] = self.emb2(idx2, off2)
         e3: Tensor[[B, D]] = self.emb3(idx3, off3)
