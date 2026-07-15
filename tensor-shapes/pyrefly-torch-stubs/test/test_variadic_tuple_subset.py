@@ -23,7 +23,7 @@ from typing import assert_type, Callable, TYPE_CHECKING
 
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -52,7 +52,7 @@ class TwoReluCalls[D: SymVar](nn.Module):
         self.fc1 = nn.Linear(d, 256)
         self.fc2 = nn.Linear(256, 256)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], 256]]:
         h = F.relu(self.fc1(x))
@@ -66,7 +66,7 @@ class NestedVariadic[D: SymVar](nn.Module):
         super().__init__()
         self.fc = nn.Linear(d, 256)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], 256]]:
         return F.dropout(F.relu(self.fc(x)), p=0.5, training=True)

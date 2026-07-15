@@ -32,7 +32,7 @@ from typing import assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import SizeTuple, SymVar
+from shape_extensions import SymIntTuple, SymVar
 from torch import distributions as pyd
 
 if TYPE_CHECKING:
@@ -62,19 +62,19 @@ class TanhTransform(pyd.transforms.Transform):
         self.clamp = clamp
 
     @staticmethod
-    def atanh[S: SizeTuple](x: Tensor[S]) -> Tensor[S]:
+    def atanh[S: SymIntTuple](x: Tensor[S]) -> Tensor[S]:
         return 0.5 * (x.log1p() - (-x).log1p())
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TanhTransform)
 
-    def _call[S: SizeTuple](self, x: Tensor[S]) -> Tensor[S]:
+    def _call[S: SymIntTuple](self, x: Tensor[S]) -> Tensor[S]:
         return x.tanh()
 
-    def _inverse[S: SizeTuple](self, y: Tensor[S]) -> Tensor[S]:
+    def _inverse[S: SymIntTuple](self, y: Tensor[S]) -> Tensor[S]:
         return self.atanh(y if self.clamp is None else y.clamp(*self.clamp))
 
-    def log_abs_det_jacobian[S: SizeTuple](
+    def log_abs_det_jacobian[S: SymIntTuple](
         self, x: Tensor[S], y: Tensor[S]
     ) -> Tensor[S]:
         return 2.0 * (math.log(2.0) - x - F.softplus(-2.0 * x))
@@ -119,13 +119,13 @@ class BetaDist(pyd.transformed_distribution.TransformedDistribution):
         def __eq__(self, other: object) -> bool:
             return isinstance(other, BetaDist._BetaDistTransform)
 
-        def _inverse[S: SizeTuple](self, y: Tensor[S]) -> Tensor[S]:
+        def _inverse[S: SymIntTuple](self, y: Tensor[S]) -> Tensor[S]:
             return (y.clamp(-0.99, 0.99) + 1.0) / 2.0
 
-        def _call[S: SizeTuple](self, x: Tensor[S]) -> Tensor[S]:
+        def _call[S: SymIntTuple](self, x: Tensor[S]) -> Tensor[S]:
             return (2.0 * x) - 1.0
 
-        def log_abs_det_jacobian[S: SizeTuple](
+        def log_abs_det_jacobian[S: SymIntTuple](
             self, x: Tensor[S], y: Tensor[S]
         ) -> Tensor[S]:
             # Constant Jacobian — scalar broadcasts to match input shape

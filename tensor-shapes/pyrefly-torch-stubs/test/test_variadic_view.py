@@ -13,7 +13,7 @@ from typing import assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -52,7 +52,7 @@ def test_view_on_variadic_linear():
 # --- reshape on explicitly variadic function param ---
 
 
-def reshape_variadic[Bs: SizeTuple, C: SymVar](
+def reshape_variadic[Bs: SymIntTuple, C: SymVar](
     x: Tensor[[*Elements[Bs], C]], c: SymInt[C]
 ) -> Tensor[[*Elements[Bs], C]]:
     """reshape on a variadic tensor should not crash."""

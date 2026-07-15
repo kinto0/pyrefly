@@ -17,7 +17,7 @@ from typing import Any, Generic, Optional, TypedDict, TypeVar
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SizeTuple, SymInt, SymVar
+from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.attention.flex_attention import (
@@ -42,7 +42,7 @@ B = SymVar("B")
 T = SymVar("T")
 S = SymVar("S")
 SeqLen = SymVar("SeqLen")
-Bs = TypeVar("Bs", bound=SizeTuple)
+Bs = TypeVar("Bs", bound=SymIntTuple)
 
 
 class RopeScalingDict(TypedDict, total=False):

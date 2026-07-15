@@ -43,7 +43,7 @@ from typing import assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -66,7 +66,7 @@ class Prenet[NMel: SymVar](nn.Module):
         self.fc1 = nn.Linear(n_mel, 256)
         self.fc2 = nn.Linear(256, 256)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], NMel]]
     ) -> Tensor[[*Elements[Bs], 256]]:
         h = F.dropout(F.relu(self.fc1(x)), p=0.5, training=True)

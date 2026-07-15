@@ -14,11 +14,11 @@ where:
 
 from typing import assert_type, cast
 
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 from torch import Tensor
 
 
-def accepts_prefix_middle_suffix[P: SymVar, Qs: SizeTuple, R: SymVar, S: SymVar](
+def accepts_prefix_middle_suffix[P: SymVar, Qs: SymIntTuple, R: SymVar, S: SymVar](
     x: Tensor[[P, *Elements[Qs], R, S]],
 ) -> Tensor[[P, *Elements[Qs], R, S]]:
     """Function that expects prefix P, middle *Qs, and suffix R, S."""
@@ -28,7 +28,7 @@ def accepts_prefix_middle_suffix[P: SymVar, Qs: SizeTuple, R: SymVar, S: SymVar]
 def test_general_unpacked_matching[
     A: SymVar,
     B: SymVar,
-    Cs: SizeTuple,
+    Cs: SymIntTuple,
     D: SymVar,
     E: SymVar,
     F: SymVar,
@@ -51,7 +51,7 @@ def test_general_unpacked_matching[
 def test_general_unpacked_matching_arith[
     A: SymVar,
     B: SymVar,
-    Cs: SizeTuple,
+    Cs: SymIntTuple,
     D: SymVar,
     E: SymVar,
 ]() -> None:

@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 import torch.optim
-from shape_extensions import Elements, SizeTuple, SymInt, SymVar
+from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
 from torch import Tensor
 from torch.nn import functional as F
 
@@ -37,7 +37,7 @@ NHead = SymVar("NHead")
 NLayer = SymVar("NLayer")
 B = SymVar("B")
 T = SymVar("T")
-Bs = TypeVar("Bs", bound=SizeTuple)
+Bs = TypeVar("Bs", bound=SymIntTuple)
 
 
 class LayerNorm(nn.Module, Generic[M]):

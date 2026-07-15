@@ -1848,7 +1848,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Get or create a tuple-carrier TypeVar or SymVar for a jaxtyping variadic shape name.
     ///
     /// A variadic jaxtyping shape (`*name`) whose enclosing shaped-array class uses a
-    /// `TypeVar`/`SymVar` (SizeTuple) shape parameter needs a carrier bounded by
+    /// `TypeVar`/`SymVar` (SymIntTuple) shape parameter needs a carrier bounded by
     /// `tuple[int, ...]`, rather than the `TypeVarTuple` produced for `*Shape` classes.
     pub fn get_or_create_jaxtyping_shape_carrier(
         &self,

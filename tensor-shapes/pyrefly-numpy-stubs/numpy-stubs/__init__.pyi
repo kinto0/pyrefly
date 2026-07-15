@@ -7,11 +7,11 @@ from typing import Any, Literal, overload
 
 import shape_extensions
 from numpy._shapes import binary_ufunc_ir, diag_1d_ir, matmul_2d_ir, reduce_ir
-from shape_extensions import SizeTuple, SymInt, SymVar, uses_shape_dsl
+from shape_extensions import SymInt, SymIntTuple, SymVar, uses_shape_dsl
 
 from . import linalg as linalg, random as random
 
-type _Shape = SizeTuple
+type _Shape = SymIntTuple
 type _AnyShape = tuple[Any, ...]
 type _Axis = int | tuple[int, ...] | None
 

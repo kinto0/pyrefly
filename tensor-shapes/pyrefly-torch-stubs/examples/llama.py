@@ -46,7 +46,7 @@ from typing import Any, assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -187,7 +187,7 @@ class RMSNorm[D: SymVar](nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], D]]:
         normed = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)

@@ -44,7 +44,7 @@ from typing import Any, assert_type, cast, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import shaped_array, SizeTuple, SymVar
+from shape_extensions import shaped_array, SymIntTuple, SymVar
 from torch.distributions import Normal, TransformedDistribution
 from torch.distributions.transforms import Transform
 
@@ -72,13 +72,13 @@ class TanhTransform(Transform):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, TanhTransform)
 
-    def _call[S: SizeTuple](self, x: Tensor[S]) -> Tensor[S]:
+    def _call[S: SymIntTuple](self, x: Tensor[S]) -> Tensor[S]:
         return x.tanh()
 
-    def _inverse[S: SizeTuple](self, y: Tensor[S]) -> Tensor[S]:
+    def _inverse[S: SymIntTuple](self, y: Tensor[S]) -> Tensor[S]:
         return y.clamp(-0.99999997, 0.99999997).atanh()
 
-    def log_abs_det_jacobian[S: SizeTuple](
+    def log_abs_det_jacobian[S: SymIntTuple](
         self, x: Tensor[S], y: Tensor[S]
     ) -> Tensor[S]:
         # Numerically stable: log(1 - tanh(x)^2) = 2*(log(2) - x - softplus(-2x))
@@ -86,7 +86,7 @@ class TanhTransform(Transform):
 
 
 @shaped_array(shape="EventShape")
-class SquashedNormal[EventShape: SizeTuple](TransformedDistribution[EventShape]):
+class SquashedNormal[EventShape: SymIntTuple](TransformedDistribution[EventShape]):
     """Normal distribution followed by tanh squashing.
 
     Original: torchbenchmark/util/distribution.py SquashedNormal class.
@@ -221,7 +221,7 @@ class Actor[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module):
 
     def forward[B: SymVar](
         self, obs: Tensor[[B, C, 84, 84]], detach_encoder: bool = False
-    ) -> SquashedNormal[SizeTuple[B, ActDim]]:
+    ) -> SquashedNormal[SymIntTuple[B, ActDim]]:
         feat = self.encoder(obs)
         assert_type(feat, Tensor[[B, FeatDim]])
         if detach_encoder:
@@ -237,7 +237,7 @@ class Actor[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module):
         log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (log_std + 1)
         std = log_std.exp()
         assert_type(std, Tensor[[B, ActDim]])
-        return cast(SquashedNormal[SizeTuple[B, ActDim]], SquashedNormal(mu, std))
+        return cast(SquashedNormal[SymIntTuple[B, ActDim]], SquashedNormal(mu, std))
 
 
 # ============================================================================
@@ -371,7 +371,7 @@ class DRQAgent[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module)
 
     def act[B: SymVar](
         self, obs: Tensor[[B, C, 84, 84]]
-    ) -> SquashedNormal[SizeTuple[B, ActDim]]:
+    ) -> SquashedNormal[SymIntTuple[B, ActDim]]:
         """Select action: returns SquashedNormal distribution from actor."""
         return self.actor(obs)
 
@@ -542,7 +542,7 @@ def test_actor():
     actor = Actor(9, 50, 6, 1024)
     obs: Tensor[[4, 9, 84, 84]] = torch.randn(4, 9, 84, 84)
     dist = actor(obs)
-    assert_type(dist, SquashedNormal[SizeTuple[4, 6]])
+    assert_type(dist, SquashedNormal[SymIntTuple[4, 6]])
 
 
 def test_critic():
@@ -570,7 +570,7 @@ def test_drq_agent():
     agent = DRQAgent(9, 50, 6, 1024)
     obs: Tensor[[4, 9, 84, 84]] = torch.randn(4, 9, 84, 84)
     dist = agent.act(obs)
-    assert_type(dist, SquashedNormal[SizeTuple[4, 6]])
+    assert_type(dist, SquashedNormal[SymIntTuple[4, 6]])
     action: Tensor[[4, 6]] = torch.randn(4, 6)
     q1, q2 = agent.criticize(obs, action)
     assert_type(q1, Tensor[[4, 1]])

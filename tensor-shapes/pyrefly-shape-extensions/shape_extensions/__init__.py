@@ -68,10 +68,10 @@ def _patch_torch_if_available() -> None:
 _patch_torch_if_available()
 
 
-class SizeTuple:
+class SymIntTuple:
     """Integer tuple carrier for shape-like type parameters.
 
-    At runtime this is a no-op marker class. Pyrefly treats `SizeTuple` in type
+    At runtime this is a no-op marker class. Pyrefly treats `SymIntTuple` in type
     positions as the shape carrier corresponding to `tuple[int, ...]`.
     """
 
@@ -80,10 +80,10 @@ class SizeTuple:
 
 
 class Elements:
-    """Inverse of ``tuple[Unpack[S]]``: extracts the element sequence from a SizeTuple carrier.
+    """Inverse of ``tuple[Unpack[S]]``: extracts the element sequence from a SymIntTuple carrier.
 
     In the Python typing spec, ``tuple[Unpack[Ts]]`` wraps a ``TypeVarTuple`` into a
-    concrete tuple type. ``Elements[S]`` is the conceptual inverse: given a ``SizeTuple``
+    concrete tuple type. ``Elements[S]`` is the conceptual inverse: given a ``SymIntTuple``
     carrier ``S``, ``*Elements[S]`` splices its element sequence into a shape position,
     e.g. ``Array[[*Elements[S], OUT], DType]``.
 

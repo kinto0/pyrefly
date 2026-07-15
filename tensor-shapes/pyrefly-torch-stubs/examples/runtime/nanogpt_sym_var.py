@@ -27,7 +27,7 @@ import torch.optim
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Elements, SizeTuple, SymInt, SymVar
+    from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
     from torch import Tensor
 
 # Module-level type variable declarations
@@ -39,7 +39,7 @@ NHead = SymVar("NHead")
 NLayer = SymVar("NLayer")
 B = SymVar("B")
 T = SymVar("T")
-Bs = TypeVar("Bs", bound=SizeTuple)
+Bs = TypeVar("Bs", bound=SymIntTuple)
 
 
 class LayerNorm(nn.Module, Generic[M]):

@@ -16,7 +16,7 @@ from typing import assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SizeTuple
+from shape_extensions import Elements, SymIntTuple
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt, SymVar
@@ -40,7 +40,7 @@ class LayerNorm[Features: SymVar](nn.Module):
         self.b_2 = nn.Parameter(torch.zeros(features))
         self.eps = eps
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], Features]]
     ) -> Tensor[[*Elements[Bs], Features]]:
         mean = x.mean(-1, keepdim=True)

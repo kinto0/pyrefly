@@ -271,7 +271,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     /// Build a jaxtyping-syntax `ShapedArrayType` and synchronize the tuple carrier.
     ///
-    /// For shaped arrays whose shape parameter is a `TypeVar` (SizeTuple carrier),
+    /// For shaped arrays whose shape parameter is a `TypeVar` (SymIntTuple carrier),
     /// the carrier type argument on `base_class` is updated to reflect `shape` so
     /// that shape-aware operations (e.g. `.shape` access, generic return reprojection)
     /// remain coherent with the jaxtyping annotation.

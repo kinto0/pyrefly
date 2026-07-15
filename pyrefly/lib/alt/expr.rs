@@ -2651,8 +2651,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::ClassDef(ref cls) if self.is_shaped_array_class(cls) => {
                     Type::type_of(self.parse_registered_shaped_array_type(cls, xs, range, errors))
                 }
-                Type::ClassDef(ref cls) if self.is_size_tuple_class(cls) => {
-                    self.parse_size_tuple_type(xs, errors)
+                Type::ClassDef(ref cls) if self.is_symint_tuple_class(cls) => {
+                    self.parse_symint_tuple_type(xs, errors)
                 }
                 Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
                     self.parse_symint_type(xs, range, errors)
@@ -3748,13 +3748,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                     if param.kind() == QuantifiedKind::TypeVar
                         && let Expr::List(ExprList { elts, .. }) = arg
-                        && Self::is_size_tuple_carrier_bound(
+                        && Self::is_symint_tuple_carrier_bound(
                             &param.upper_bound(self.stdlib, self.heap),
                             &int_type,
                         )
                     {
                         return self
-                            .parse_size_tuple_shape_args(elts, errors)
+                            .parse_symint_tuple_shape_args(elts, errors)
                             .map(|shape| shape_to_tuple_carrier_arg(&shape))
                             .unwrap_or_else(Type::any_error);
                     }
@@ -3764,13 +3764,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .collect()
     }
 
-    /// Returns whether `ty` is the normalized upper bound for a bare `SizeTuple`
+    /// Returns whether `ty` is the normalized upper bound for a bare `SymIntTuple`
     /// carrier `TypeVar`.
     ///
-    /// When the user writes `[S: SizeTuple]`, Pyrefly normalizes `SizeTuple` to a
+    /// When the user writes `[S: SymIntTuple]`, Pyrefly normalizes `SymIntTuple` to a
     /// `tuple[int, ...]` type. Other tuple bounds are ordinary type bounds and
     /// must not enable compact shape-list parsing.
-    fn is_size_tuple_carrier_bound(ty: &Type, int_type: &Type) -> bool {
+    fn is_symint_tuple_carrier_bound(ty: &Type, int_type: &Type) -> bool {
         match ty {
             Type::Tuple(Tuple::Unbounded(inner)) => inner.as_ref() == int_type,
             _ => false,
@@ -3780,8 +3780,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Returns whether `ty` can legally be the argument inside `Elements[...]`.
     ///
     /// Valid carriers are concrete tuple types, type aliases (which normalize to
-    /// tuples), and `TypeVar`s whose upper bound is a `SizeTuple` (i.e., a tuple type).
-    fn is_size_tuple_elements_carrier(&self, ty: &Type) -> bool {
+    /// tuples), and `TypeVar`s whose upper bound is a `SymIntTuple` (i.e., a tuple type).
+    fn is_symint_tuple_elements_carrier(&self, ty: &Type) -> bool {
         let upper_bound = match ty {
             Type::Tuple(_) | Type::UntypedAlias(_) => return true,
             Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
@@ -3789,7 +3789,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             _ => return false,
         };
         let int_type = self.stdlib.int().clone().to_type();
-        Self::is_size_tuple_carrier_bound(&upper_bound, &int_type)
+        Self::is_symint_tuple_carrier_bound(&upper_bound, &int_type)
     }
 
     fn is_shape_elements_class(&self, cls: &Class) -> bool {
@@ -3800,11 +3800,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ///
     /// `Elements` is the conceptual inverse of `tuple[Unpack[Ts]]`: whereas
     /// `tuple[Unpack[Ts]]` wraps a `TypeVarTuple` into a concrete tuple type,
-    /// `Elements[S]` extracts the element sequence from a `SizeTuple` carrier `S`.
+    /// `Elements[S]` extracts the element sequence from a `SymIntTuple` carrier `S`.
     /// This fills a gap in the typing spec — there is no standard way to decompose
     /// a variadic carrier without a `TypeVarTuple` — letting callers write
     /// `Array[[*Elements[S], OUT], DType]` instead of needing a `TypeVarTuple`.
-    fn parse_size_tuple_elements_projection(
+    fn parse_symint_tuple_elements_projection(
         &self,
         value: &Expr,
         errors: &ErrorCollector,
@@ -3823,7 +3823,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         match Ast::unpack_slice(&subscript.slice) {
             [arg] => {
                 let carrier = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
-                if self.is_size_tuple_elements_carrier(&carrier) {
+                if self.is_symint_tuple_elements_carrier(&carrier) {
                     Ok(Some(carrier))
                 } else {
                     self.error(
@@ -3831,7 +3831,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         arg.range(),
                         ErrorKind::InvalidAnnotation,
                         format!(
-                            "`Elements[...]` requires a `SizeTuple` carrier, got `{}`",
+                            "`Elements[...]` requires a `SymIntTuple` carrier, got `{}`",
                             self.for_display(carrier)
                         ),
                     );
@@ -3866,7 +3866,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn parse_size_tuple_shape_args(
+    fn parse_symint_tuple_shape_args(
         &self,
         args: &[Expr],
         errors: &ErrorCollector,
@@ -3885,14 +3885,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     second.range(),
                     ErrorKind::InvalidAnnotation,
-                    "`SizeTuple` can have at most one unpacked shape carrier".to_owned(),
+                    "`SymIntTuple` can have at most one unpacked shape carrier".to_owned(),
                 );
                 return None;
             }
 
             let prefix = self.parse_dimension_list(&args[..star_idx], errors)?;
             let suffix = self.parse_dimension_list(&args[star_idx + 1..], errors)?;
-            let middle_ty = match self.parse_size_tuple_elements_projection(value, errors) {
+            let middle_ty = match self.parse_symint_tuple_elements_projection(value, errors) {
                 Ok(Some(middle_ty)) => middle_ty,
                 Ok(None) => {
                     let got = self.expr_untype(value, TypeFormContext::TypeArgument, errors);
@@ -3901,7 +3901,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         value.range(),
                         ErrorKind::InvalidAnnotation,
                         format!(
-                            "Unpacked type in `SizeTuple` must use `Elements[...]`, got `{}`",
+                            "Unpacked type in `SymIntTuple` must use `Elements[...]`, got `{}`",
                             self.for_display(got)
                         ),
                     );
@@ -3953,7 +3953,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .enumerate()
             .map(|(i, arg)| match arg {
                 Expr::List(ExprList { elts, .. }) if i == shape_idx => {
-                    match self.parse_size_tuple_shape_args(elts, errors) {
+                    match self.parse_symint_tuple_shape_args(elts, errors) {
                         Some(shape) => shape_to_tuple_carrier(&shape),
                         None => Type::any_error(),
                     }
@@ -3961,9 +3961,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 _ => {
                     if i == shape_idx
                         && let Type::ClassDef(cls) = self.expr_infer(arg, &self.error_swallower())
-                        && self.is_size_tuple_class(&cls)
+                        && self.is_symint_tuple_class(&cls)
                     {
-                        self.bare_size_tuple_carrier()
+                        self.bare_symint_tuple_carrier()
                     } else {
                         let ty = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
                         if validate_shape_slot
@@ -3990,8 +3990,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_type()
     }
 
-    fn parse_size_tuple_type(&self, args: &[Expr], errors: &ErrorCollector) -> Type {
-        let Some(shape) = self.parse_size_tuple_shape_args(args, errors) else {
+    fn parse_symint_tuple_type(&self, args: &[Expr], errors: &ErrorCollector) -> Type {
+        let Some(shape) = self.parse_symint_tuple_shape_args(args, errors) else {
             return self.heap.mk_type_of(Type::any_error());
         };
         self.heap.mk_type_of(shape_to_tuple_carrier(&shape))

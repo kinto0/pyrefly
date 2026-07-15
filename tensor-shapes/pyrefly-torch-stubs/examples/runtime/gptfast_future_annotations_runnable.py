@@ -18,7 +18,7 @@ from typing import Any, Optional, TYPE_CHECKING, TypedDict
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SizeTuple
+from shape_extensions import Elements, SymIntTuple
 from torch.nn import functional as F
 from torch.nn.attention.flex_attention import (
     _mask_mod_signature,
@@ -360,7 +360,7 @@ class RMSNorm[D: SymVar](nn.Module):
     def _norm(self, x):
         return x * torch.rsqrt(torch.mean(x * x, dim=-1, keepdim=True) + self.eps)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], D]]:
         output = self._norm(x.float()).type_as(x)

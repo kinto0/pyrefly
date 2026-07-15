@@ -59,7 +59,7 @@ from typing import Any, assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -770,7 +770,7 @@ class PositionalEmbeddingRandom[D: SymVar](nn.Module):
             torch.randn(2, num_pos_feats), persistent=False
         )
 
-    def _pe_encoding[Batch: SizeTuple](
+    def _pe_encoding[Batch: SymIntTuple](
         self, coords: Tensor[[*Elements[Batch], 2]]
     ) -> Tensor[[*Elements[Batch], 2 * D]]:
         """Encode coordinates to positional features.

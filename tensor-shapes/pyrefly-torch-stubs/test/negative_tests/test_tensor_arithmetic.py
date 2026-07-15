@@ -7,7 +7,7 @@
 
 from typing import Any, assert_type, TYPE_CHECKING
 
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -241,21 +241,21 @@ def broadcast_scalar_with_shapeless(x: Tensor[[]], y: Tensor) -> None:
 # ============================================================================
 
 
-def broadcast_concrete_suffix_match[Ts: SizeTuple](
+def broadcast_concrete_suffix_match[Ts: SymIntTuple](
     x: Tensor[[3]], y: Tensor[[*Elements[Ts], 3]]
 ) -> None:
     """Concrete consumed by suffix → preserves prefix + middle"""
     assert_type(x + y, Tensor[[*Elements[Ts], 3]])
 
 
-def broadcast_scalar_with_unpacked[Ts: SizeTuple](
+def broadcast_scalar_with_unpacked[Ts: SymIntTuple](
     x: Tensor[[]], y: Tensor[[*Elements[Ts], 3]]
 ) -> None:
     """Scalar + unpacked = unpacked (scalar broadcasts to anything)"""
     assert_type(x + y, Tensor[[*Elements[Ts], 3]])
 
 
-def broadcast_concrete_exceeds_suffix[Ts: SizeTuple](
+def broadcast_concrete_exceeds_suffix[Ts: SymIntTuple](
     x: Tensor[[5, 10, 20]], y: Tensor[[*Elements[Ts], 20]]
 ) -> Tensor[[5, 10, 20]]:
     """Leftover concrete dims cannot align with the TypeVarTuple middle."""
@@ -269,21 +269,21 @@ def broadcast_concrete_exceeds_suffix[Ts: SizeTuple](
 # ============================================================================
 
 
-def broadcast_same_tvt[Ts: SizeTuple](
+def broadcast_same_tvt[Ts: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Ts], 3]]
 ) -> None:
     """Same TypeVarTuple, same suffix → cancel middles, result preserves shape"""
     assert_type(x + y, Tensor[[*Elements[Ts], 3]])
 
 
-def broadcast_same_tvt_prefix[Ts: SizeTuple](
+def broadcast_same_tvt_prefix[Ts: SymIntTuple](
     x: Tensor[[5, *Elements[Ts]]], y: Tensor[[1, *Elements[Ts]]]
 ) -> None:
     """Same TypeVarTuple, broadcast prefixes (1 broadcasts to 5)"""
     assert_type(x + y, Tensor[[5, *Elements[Ts]]])
 
 
-def broadcast_same_tvt_prefix_extension[Ts: SizeTuple](
+def broadcast_same_tvt_prefix_extension[Ts: SymIntTuple](
     x: Tensor[[5, 6, *Elements[Ts]]], y: Tensor[[6, *Elements[Ts]]]
 ) -> None:
     """Same TypeVarTuple, left prefix extends right (right padded with implicit 1)"""
@@ -295,7 +295,7 @@ def broadcast_same_tvt_prefix_extension[Ts: SizeTuple](
 # ============================================================================
 
 
-def broadcast_different_tvt[Ts: SizeTuple, Us: SizeTuple](
+def broadcast_different_tvt[Ts: SymIntTuple, Us: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Us], 3]]
 ) -> Tensor[[*Elements[Ts], 3]]:
     """Different TypeVarTuples degrade to shapeless batch dims."""
@@ -304,8 +304,8 @@ def broadcast_different_tvt[Ts: SizeTuple, Us: SizeTuple](
     return x + y
 
 
-def broadcast_different_tvt_any_batch[Ts: SizeTuple, Us: SizeTuple](
+def broadcast_different_tvt_any_batch[Ts: SymIntTuple, Us: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Us], 3]]
-) -> Tensor[[*Elements[SizeTuple], 3]]:
+) -> Tensor[[*Elements[SymIntTuple], 3]]:
     """Different TypeVarTuples are accepted with unbounded batch dims."""
     return x + y

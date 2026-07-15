@@ -34,7 +34,7 @@ from torch.nn.attention.flex_attention import (
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Elements, SizeTuple, SymInt, SymVar
+    from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
     from torch import Tensor
 
 # Module-level type variable declarations
@@ -53,7 +53,7 @@ B = SymVar("B")
 T = SymVar("T")
 S = SymVar("S")
 SeqLen = SymVar("SeqLen")
-Bs = TypeVar("Bs", bound=SizeTuple)
+Bs = TypeVar("Bs", bound=SymIntTuple)
 
 
 class RopeScalingDict(TypedDict, total=False):

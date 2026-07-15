@@ -8,14 +8,14 @@
 shape_extensions.SymVar is treated identically to typing.TypeVar in pyrefly.
 This test verifies that:
 1. SymVar("N") works for shape annotations
-2. SizeTuple carriers work for variadic shapes
+2. SymIntTuple carriers work for variadic shapes
 3. Generic works with shape_extensions.SymVar for class-level type parameters
 4. Shape arithmetic (N+1, N*2) works in annotations
 """
 
 from typing import assert_type, Generic, TYPE_CHECKING
 
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -96,52 +96,52 @@ def test_class_generic():
 
 
 # ============================================================================
-# SizeTuple carrier in function signatures
+# SymIntTuple carrier in function signatures
 # ============================================================================
 
 
-def test_sizetuple_identity[Ns: SizeTuple](x: Tensor[Ns]) -> Tensor[Ns]:
-    """SizeTuple carrier preserves shape"""
+def test_syminttuple_identity[Ns: SymIntTuple](x: Tensor[Ns]) -> Tensor[Ns]:
+    """SymIntTuple carrier preserves shape"""
     return x
 
 
-def test_sizetuple_inference():
-    """SizeTuple carrier binds to concrete dims via inference"""
+def test_syminttuple_inference():
+    """SymIntTuple carrier binds to concrete dims via inference"""
     import torch
 
     t: Tensor[[10, 20]] = torch.randn(10, 20)
-    result = test_sizetuple_identity(t)
+    result = test_syminttuple_identity(t)
     assert_type(result, Tensor[[10, 20]])
 
 
-def test_sizetuple_with_fixed_dim[Ns: SizeTuple, N: SymVar](
+def test_syminttuple_with_fixed_dim[Ns: SymIntTuple, N: SymVar](
     x: Tensor[[*Elements[Ns], N]],
 ) -> Tensor[[*Elements[Ns], N]]:
-    """SizeTuple carrier mixed with TypeVar"""
+    """SymIntTuple carrier mixed with TypeVar"""
     return x
 
 
-def test_sizetuple_with_arithmetic[Ns: SizeTuple, N: SymVar](
+def test_syminttuple_with_arithmetic[Ns: SymIntTuple, N: SymVar](
     x: Tensor[[*Elements[Ns], N]],
 ) -> Tensor[[*Elements[Ns], N + 1]]:
-    """SizeTuple carrier with TypeVar arithmetic"""
+    """SymIntTuple carrier with TypeVar arithmetic"""
     return x  # type: ignore[bad-return]
 
 
 # ============================================================================
-# SizeTuple carrier with Generic for class-level shape parameters
+# SymIntTuple carrier with Generic for class-level shape parameters
 # ============================================================================
 
 
 class VariadicLayer:
-    """Layer with a generic SizeTuple carrier method"""
+    """Layer with a generic SymIntTuple carrier method"""
 
-    def forward[Shape: SizeTuple](self, x: Tensor[Shape]) -> Tensor[Shape]:
+    def forward[Shape: SymIntTuple](self, x: Tensor[Shape]) -> Tensor[Shape]:
         return x
 
 
-def test_class_sizetuple_carrier():
-    """Generic class with SizeTuple carrier — shape preserved"""
+def test_class_syminttuple_carrier():
+    """Generic class with SymIntTuple carrier — shape preserved"""
     layer = VariadicLayer()
     import torch
 

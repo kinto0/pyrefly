@@ -29,7 +29,7 @@ from typing import Any, Callable, _SpecialForm
 
 shaped_array: Any
 SymVar: _SpecialForm
-class SizeTuple:
+class SymIntTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 class SymInt[T]: ...
@@ -61,10 +61,10 @@ fn shaped_array_env_with_shaped_torch() -> TestEnv {
         "torch",
         "torch.pyi",
         r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
-class Tensor[Shape: SizeTuple]: ...
+class Tensor[Shape: SymIntTuple]: ...
 "#,
     );
     env
@@ -141,7 +141,7 @@ fn shaped_array_env_with_numpy() -> TestEnv {
 from typing import Any, Callable
 
 shaped_array: Any
-class SizeTuple:
+class SymIntTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 def uses_shape_dsl(ir_fn: Callable[..., Any], *, capture_init: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
@@ -166,7 +166,7 @@ class ShapedArray:
         r#"
 from shape_extensions import uses_shape_dsl
 from shape_extensions import shaped_array
-from shape_extensions import SizeTuple
+from shape_extensions import SymIntTuple
 from shape_extensions.dsl import ShapedArray, shape_dsl_function
 from typing import Any
 
@@ -177,25 +177,25 @@ def add_leading_axis_ir(x: ShapedArray) -> ShapedArray:
     return ShapedArray(shape=[1] + x.shape)
 
 @shaped_array(shape="Shape")
-class ndarray[Shape: SizeTuple, DType]:
+class ndarray[Shape: SymIntTuple, DType]:
     shape: Shape
     def copy(self) -> ndarray[Shape, DType]: ...
     def item(self) -> DType: ...
 
 @uses_shape_dsl(add_leading_axis_ir)
-def add_leading_axis[Shape: SizeTuple, DType](x: ndarray[Shape, DType]) -> ndarray[Shape, DType]: ...
+def add_leading_axis[Shape: SymIntTuple, DType](x: ndarray[Shape, DType]) -> ndarray[Shape, DType]: ...
 
 @shaped_array(shape="Shape")
-class tcarray[Shape: SizeTuple = AnyShape, DType = int]:
+class tcarray[Shape: SymIntTuple = AnyShape, DType = int]:
     shape: Shape
     def dtype(self) -> DType: ...
     @uses_shape_dsl(add_leading_axis_ir)
     def add_leading_axis(self) -> tcarray[Shape, DType]: ...
 
 @uses_shape_dsl(add_leading_axis_ir)
-def tc_add_leading_axis[Shape: SizeTuple, DType](x: tcarray[Shape, DType]) -> tcarray[Shape, DType]: ...
+def tc_add_leading_axis[Shape: SymIntTuple, DType](x: tcarray[Shape, DType]) -> tcarray[Shape, DType]: ...
 
-def tc_identity[Shape: SizeTuple, DType](x: tcarray[Shape, DType]) -> tcarray[Shape, DType]: ...
+def tc_identity[Shape: SymIntTuple, DType](x: tcarray[Shape, DType]) -> tcarray[Shape, DType]: ...
 "#,
     );
     env
@@ -210,7 +210,7 @@ fn shape_dsl_base_env() -> TestEnv {
 from typing import Any, Callable
 
 shaped_array: Any
-class SizeTuple:
+class SymIntTuple:
     def __class_getitem__(cls, params: Any) -> Any: ...
 class Elements[T]: ...
 class SymVar: ...
@@ -243,10 +243,10 @@ fn shape_dsl_tensor_env() -> TestEnv {
         "torch",
         "torch.pyi",
         r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
-class Tensor[Shape: SizeTuple]:
+class Tensor[Shape: SymIntTuple]:
     shape: Shape
 "#,
     );
@@ -265,17 +265,17 @@ fn test_shaped_array_imports_are_metadata() {
         "main",
         r#"
 import shape_extensions as se
-from shape_extensions import SizeTuple, shaped_array
+from shape_extensions import SymIntTuple, shaped_array
 from shape_extensions import shaped_array as shaped_array_alias
 
 @shaped_array(shape="Shape")
-class ImportedArray[Shape: SizeTuple]: ...
+class ImportedArray[Shape: SymIntTuple]: ...
 
 @shaped_array_alias(shape="Shape")
-class ImportAliasArray[Shape: SizeTuple]: ...
+class ImportAliasArray[Shape: SymIntTuple]: ...
 
 @se.shaped_array(shape="Shape")
-class ModuleAliasArray[DType, Shape: SizeTuple]: ...
+class ModuleAliasArray[DType, Shape: SymIntTuple]: ...
 
 class PlainArray[*Shape]: ...
 "#,
@@ -516,13 +516,13 @@ def f(
 );
 
 testcase!(
-    test_shaped_array_sizetuple_bound,
+    test_shaped_array_syminttuple_bound,
     shaped_array_env(),
     r#"
 from typing import Any, Literal, reveal_type
-from shape_extensions import SymInt, Elements, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, Elements, SymIntTuple, SymVar, shaped_array
 
-type _Shape = SizeTuple
+type _Shape = SymIntTuple
 type _AnyShape = tuple[Any, ...]
 
 @shaped_array(shape="Shape")
@@ -532,41 +532,41 @@ class Array[Shape: _Shape = _AnyShape, DType = Any]:
 def f[N: SymVar](
     compact: Array[[2, 3], int],
     pep484: Array[tuple[Literal[2], Literal[3]], int],
-    size_tuple: Array[SizeTuple[2, 3], int],
-    mixed_size_tuple: Array[SizeTuple[2, 3, N], int],
+    symint_tuple: Array[SymIntTuple[2, 3], int],
+    mixed_symint_tuple: Array[SymIntTuple[2, 3, N], int],
     bare_dim: SymInt[N],
     bare_list: Array[[N], int],
-    bare_size_tuple: Array[SizeTuple[N], int],
+    bare_symint_tuple: Array[SymIntTuple[N], int],
     any_dim: Array[[Any], int],
-    carrier: SizeTuple[2, 3],
-    mixed_carrier: SizeTuple[2, 3, N],
-    unbounded: SizeTuple,
+    carrier: SymIntTuple[2, 3],
+    mixed_carrier: SymIntTuple[2, 3, N],
+    unbounded: SymIntTuple,
 ) -> None:
     reveal_type(compact)  # E: revealed type: Array[[2, 3], int]
     reveal_type(pep484)  # E: revealed type: Array[[2, 3], int]
-    reveal_type(size_tuple)  # E: revealed type: Array[[2, 3], int]
-    reveal_type(mixed_size_tuple)  # E: revealed type: Array[[2, 3, N], int]
+    reveal_type(symint_tuple)  # E: revealed type: Array[[2, 3], int]
+    reveal_type(mixed_symint_tuple)  # E: revealed type: Array[[2, 3, N], int]
     reveal_type(bare_dim)  # E: revealed type: SymInt[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
-    reveal_type(bare_size_tuple)  # E: revealed type: Array[[N], int]
+    reveal_type(bare_symint_tuple)  # E: revealed type: Array[[N], int]
     reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
     p: Array[tuple[Literal[2], Literal[3]], int] = compact
     c: Array[[2, 3], int] = pep484
-    st: Array[SizeTuple[2, 3], int] = compact
-    mst: Array[tuple[Literal[2], Literal[3], SymInt[N]], int] = mixed_size_tuple
+    st: Array[SymIntTuple[2, 3], int] = compact
+    mst: Array[tuple[Literal[2], Literal[3], SymInt[N]], int] = mixed_symint_tuple
     t: tuple[Literal[2], Literal[3]] = carrier
     mt: tuple[Literal[2], Literal[3], SymInt[N]] = mixed_carrier
     u: tuple[int, ...] = unbounded
 
-def append_dim[S: SizeTuple, OUT: SymVar](
-    explicit: Array[SizeTuple[*Elements[S], OUT], int],
+def append_dim[S: SymIntTuple, OUT: SymVar](
+    explicit: Array[SymIntTuple[*Elements[S], OUT], int],
     compact: Array[[*Elements[S], OUT], int],
 ) -> Array[[*Elements[S], OUT], int]:
     reveal_type(explicit)  # E: revealed type: Array[[*S, OUT], int]
     reveal_type(compact)  # E: revealed type: Array[[*S, OUT], int]
     return explicit
 
-def prepend_and_append[S: SizeTuple, OUT: SymVar](
+def prepend_and_append[S: SymIntTuple, OUT: SymVar](
     source: Array[S, int],
     result: Array[[1, *Elements[S], OUT], int],
 ) -> Array[[1, *Elements[S], OUT], int]:
@@ -578,14 +578,14 @@ def concrete_unpack[M: SymVar, N: SymVar](
 ) -> None:
     reveal_type(prepend_and_append(source, result))  # E: revealed type: Array[[1, 4, M, N], int]
 
-def nested_unpack[S0: SizeTuple, M: SymVar, N: SymVar](
+def nested_unpack[S0: SymIntTuple, M: SymVar, N: SymVar](
     source: Array[[4, *Elements[S0], M], int],
     result: Array[[1, 4, *Elements[S0], M, N], int],
 ) -> None:
     reveal_type(prepend_and_append(source, result))  # E: revealed type: Array[[1, 4, *S0, M, N], int]
 
 def gradual_middle(
-    result: Array[[1, *Elements[SizeTuple], 3], int],
+    result: Array[[1, *Elements[SymIntTuple], 3], int],
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[1, *tuple[int, ...], 3], int]
 "#,
@@ -596,12 +596,12 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, reveal_type
-from shape_extensions import Elements, SizeTuple, SymVar, shaped_array
+from shape_extensions import Elements, SymIntTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]: ...
+class Array[Shape: SymIntTuple = tuple[Any, ...], DType = Any]: ...
 
-def append_dim[S: SizeTuple, OUT: SymVar](
+def append_dim[S: SymIntTuple, OUT: SymVar](
     source: Array[S, int],
     result: Array[[*Elements[S], OUT], int],
 ) -> Array[[*Elements[S], OUT], int]:
@@ -620,19 +620,19 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Generic, TypeVar
-from shape_extensions import SymInt, Elements, SymInt, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, Elements, SymInt, SymIntTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]: ...
+class Array[Shape: SymIntTuple = tuple[Any, ...], DType = Any]: ...
 
 class SymBox[N: SymVar]: ...
 
-def invalid[N, Shape: SizeTuple](
+def invalid[N, Shape: SymIntTuple](
     dim: SymInt[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
     size: SymInt[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
     list_shape: Array[[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
-    size_tuple: Array[SizeTuple[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
-    unpack_prefix: Array[SizeTuple[N, *Elements[Shape]], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
+    symint_tuple: Array[SymIntTuple[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
+    unpack_prefix: Array[SymIntTuple[N, *Elements[Shape]], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     class_arg: SymBox[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
 ) -> None:
     pass
@@ -751,11 +751,11 @@ testcase!(
     test_tensor_shapes_internal_dim_carrier_flows_to_size,
     shaped_array_env(),
     r#"
-from shape_extensions import SymInt, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, SymIntTuple, SymVar, shaped_array
 from typing import Any, reveal_type
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]:
+class Array[Shape: SymIntTuple = tuple[Any, ...], DType = Any]:
     shape: Shape
 
 def take_size[N: SymVar](x: SymInt[N]) -> None: ...
@@ -984,12 +984,12 @@ from shape_extensions import shaped_array
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-def f(bad: Array[[2, *tuple[int, ...]], int]) -> None: ...  # E: Unpacked type in `SizeTuple` must use `Elements[...]`, got `tuple[int, ...]`
+def f(bad: Array[[2, *tuple[int, ...]], int]) -> None: ...  # E: Unpacked type in `SymIntTuple` must use `Elements[...]`, got `tuple[int, ...]`
 "#,
 );
 
 testcase!(
-    test_shaped_array_compact_list_elements_rejects_non_sizetuple_carrier,
+    test_shaped_array_compact_list_elements_rejects_non_syminttuple_carrier,
     shaped_array_env(),
     r#"
 from shape_extensions import Elements, shaped_array
@@ -997,20 +997,20 @@ from shape_extensions import Elements, shaped_array
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-def f(bad: Array[[2, *Elements[int]], int]) -> None: ...  # E: `Elements[...]` requires a `SizeTuple` carrier, got `int`
+def f(bad: Array[[2, *Elements[int]], int]) -> None: ...  # E: `Elements[...]` requires a `SymIntTuple` carrier, got `int`
 "#,
 );
 
 testcase!(
-    test_shaped_array_compact_list_requires_elements_for_sizetuple_unpack,
+    test_shaped_array_compact_list_requires_elements_for_syminttuple_unpack,
     shaped_array_env(),
     r#"
-from shape_extensions import SizeTuple, shaped_array
+from shape_extensions import SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-def f[S: SizeTuple](bad: Array[[2, *S], int]) -> None: ...  # E: Unpacked type in `SizeTuple` must use `Elements[...]`, got `S`
+def f[S: SymIntTuple](bad: Array[[2, *S], int]) -> None: ...  # E: Unpacked type in `SymIntTuple` must use `Elements[...]`, got `S`
 "#,
 );
 
@@ -1018,12 +1018,12 @@ testcase!(
     test_shaped_array_compact_list_rejects_multiple_unpacked_carriers,
     shaped_array_env(),
     r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-def f[S: SizeTuple, T: SizeTuple](bad: Array[[*Elements[S], *Elements[T]], int]) -> None: ...  # E: `SizeTuple` can have at most one unpacked shape carrier
+def f[S: SymIntTuple, T: SymIntTuple](bad: Array[[*Elements[S], *Elements[T]], int]) -> None: ...  # E: `SymIntTuple` can have at most one unpacked shape carrier
 "#,
 );
 
@@ -1031,12 +1031,12 @@ testcase!(
     test_shaped_array_elements_rejects_multiple_args,
     shaped_array_env(),
     r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-def f[S: SizeTuple, T: SizeTuple](bad: Array[[*Elements[S, T]], int]) -> None: ...  # E: Expected 1 type argument for `Elements`, got 2
+def f[S: SymIntTuple, T: SymIntTuple](bad: Array[[*Elements[S, T]], int]) -> None: ...  # E: Expected 1 type argument for `Elements`, got 2
 "#,
 );
 
@@ -1045,12 +1045,12 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import TypeVar
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape, DType]: ...
 
-S = TypeVar("S", bound=SizeTuple)
+S = TypeVar("S", bound=SymIntTuple)
 
 def f(x: Array[[*Elements[S], 3], int]) -> None: ...
 "#,
@@ -1060,11 +1060,11 @@ testcase!(
     test_shaped_array_annotation_parsing,
     shaped_array_env(),
     r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 from typing import reveal_type
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple, DType]:
+class Array[Shape: SymIntTuple, DType]:
     def __init__(self) -> None: ...
     def dtype(self) -> DType: ...
 
@@ -1072,18 +1072,18 @@ class Cpu: ...
 class Gpu: ...
 
 @shaped_array(shape="Shape")
-class ArrayWithDevice[Shape: SizeTuple, DType, Device: (Gpu, Cpu)]:
+class ArrayWithDevice[Shape: SymIntTuple, DType, Device: (Gpu, Cpu)]:
     def dtype(self) -> DType: ...
     def device(self) -> Device: ...
 
 @shaped_array(shape="Shape")
-class DTypeFirstArray[DType, Shape: SizeTuple]:
+class DTypeFirstArray[DType, Shape: SymIntTuple]:
     def dtype(self) -> DType: ...
 
 def f(
     x: Array[[2, 3], int],
     y: Array[[], int],
-    z: Array[[2, *Elements[SizeTuple]], int],
+    z: Array[[2, *Elements[SymIntTuple]], int],
     w: ArrayWithDevice[[2, 3], str, Cpu],
     w_scalar: ArrayWithDevice[[], str, Gpu],
     dtype_first: DTypeFirstArray[str, [2, 3]],
@@ -1118,11 +1118,11 @@ testcase!(
     test_shaped_array_indexing_and_bare_values,
     shaped_array_env(),
     r#"
-from shape_extensions import SizeTuple, shaped_array
+from shape_extensions import SymIntTuple, shaped_array
 from typing import reveal_type
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple, DType]:
+class Array[Shape: SymIntTuple, DType]:
     def __init__(self) -> None: ...
     def dtype(self) -> DType: ...
 
@@ -1498,7 +1498,7 @@ testcase!(
     test_tensor_shapes_keeps_integer_type_arguments_ordinary,
     shaped_array_env(),
     r#"
-from shape_extensions import SymInt, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, SymIntTuple, SymVar, shaped_array
 from typing import TypeVar, reveal_type
 
 T = TypeVar("T")
@@ -1508,10 +1508,10 @@ class Box[T]: ...
 class DefaultBox[T = 3]: ...  # E: Expected a type form, got instance of `Literal[3]`
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple, DType, Device]: ...
+class Array[Shape: SymIntTuple, DType, Device]: ...
 
 @shaped_array(shape="Shape")
-class DTypeFirstArray[DType, Shape: SizeTuple]: ...
+class DTypeFirstArray[DType, Shape: SymIntTuple]: ...
 
 class Cpu: ...
 class Gpu: ...
@@ -1540,11 +1540,11 @@ testcase!(
     test_tensor_shapes_gradual_size,
     shaped_array_env(),
     r#"
-from shape_extensions import SymInt, SizeTuple, shaped_array
+from shape_extensions import SymInt, SymIntTuple, shaped_array
 from typing import Any, assert_type, overload, reveal_type
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple]: ...
+class Array[Shape: SymIntTuple]: ...
 
 def take_int(x: int) -> None: ...
 def take_gradual(x: SymInt) -> None: ...
@@ -1659,10 +1659,10 @@ testcase!(
             "numpy",
             "numpy.pyi",
             r#"
-from shape_extensions import SymInt, SizeTuple, SymVar, shaped_array
+from shape_extensions import SymInt, SymIntTuple, SymVar, shaped_array
 
 @shaped_array(shape="Shape")
-class Array[Shape: SizeTuple, DType = int]: ...
+class Array[Shape: SymIntTuple, DType = int]: ...
 
 def arange[N: SymVar](stop: SymInt[N]) -> Array[[N], int]: ...
 def full[N: SymVar](shape: SymInt[N], fill_value: float) -> Array[[N], float]: ...
@@ -1805,7 +1805,7 @@ testcase!(
     test_symvar_type_parameter_bound,
     shaped_array_env_with_shaped_torch(),
     r#"
-from shape_extensions import SymInt, Elements, SizeTuple, SymVar
+from shape_extensions import SymInt, Elements, SymIntTuple, SymVar
 from shape_extensions import SymVar as SV
 import shape_extensions
 import shape_extensions as se
@@ -1823,10 +1823,10 @@ def identity_module[N: shape_extensions.SymVar](x: SymInt[N]) -> SymInt[N]:
 def identity_module_alias[N: se.SymVar](x: SymInt[N]) -> SymInt[N]:
     return x
 
-def shape[N: SymVar, M: SymVar, Shape: SizeTuple](
+def shape[N: SymVar, M: SymVar, Shape: SymIntTuple](
     n: SymInt[N],
     x: Tensor[[N]],
-    size: SizeTuple[N, M],
+    size: SymIntTuple[N, M],
     packed: Tensor[[*Elements[Shape], N]],
     boxed: SymBox[N],
 ) -> None:
@@ -1842,10 +1842,10 @@ def default_expr_ok[N: SymVar, M: SymVar = N + 1](x: SymInt[M]) -> None:
     pass
 
 type Shape[N: SymVar] = Tensor[[N]]
-type Packed[Shape: SizeTuple, N: SymVar] = Tensor[[*Elements[Shape], N]]
+type Packed[Shape: SymIntTuple, N: SymVar] = Tensor[[*Elements[Shape], N]]
 type OrdinaryAlias[T, N: SymVar] = tuple[T, SymInt[N]]
 
-def alias_specialization[N: SymVar, ShapeT: SizeTuple](
+def alias_specialization[N: SymVar, ShapeT: SymIntTuple](
     x: Shape[N],
     packed: Packed[ShapeT, N],
     ordinary: OrdinaryAlias[int, N],
@@ -1913,7 +1913,7 @@ testcase!(
     test_ordinary_typevar_shape_arithmetic_is_rejected,
     shaped_array_env_with_shaped_torch(),
     r#"
-from shape_extensions import D, SymInt, SizeTuple
+from shape_extensions import D, SymInt, SymIntTuple
 from torch import Tensor
 from typing import Generic, TypeVar
 
@@ -1926,7 +1926,7 @@ def invalid[N](
     dim: SymInt[N + 1],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     tensor: Tensor[[N + 1]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     reversed_tensor: Tensor[[1 + N]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
-    tuple_shape: Tensor[SizeTuple[N + 1]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
+    tuple_shape: Tensor[SymIntTuple[N + 1]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     negated: Tensor[[-N]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     bracket_launder: Tensor[[D[N] + 1]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     call_launder: Tensor[[D(N) // 2]],  # E: `N` must be a `SymVar` to be used in shape arithmetic
@@ -2045,21 +2045,21 @@ class FieldBox[N]:
 );
 
 testcase!(
-    test_sizetuple_elements_carrier_class_args_are_not_scalar_symvars,
+    test_syminttuple_elements_carrier_class_args_are_not_scalar_symvars,
     shaped_array_env_with_shaped_torch(),
     r#"
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 from typing import assert_type
 
-class TupleBox[Shape: SizeTuple]: ...
+class TupleBox[Shape: SymIntTuple]: ...
 class PlainBox[N]: ...
 
-def carrier[Bs: SizeTuple, N: SymVar](
+def carrier[Bs: SymIntTuple, N: SymVar](
     x: TupleBox[[*Elements[Bs], N + 1]],
-    y: TupleBox[SizeTuple[*Elements[Bs], N + 1]],
+    y: TupleBox[SymIntTuple[*Elements[Bs], N + 1]],
 ) -> None:
     assert_type(x, TupleBox[[*Elements[Bs], N + 1]])
-    assert_type(y, TupleBox[SizeTuple[*Elements[Bs], N + 1]])
+    assert_type(y, TupleBox[SymIntTuple[*Elements[Bs], N + 1]])
 
 def scalar[N](x: PlainBox[N + 1]) -> None:  # E: `+` is not supported between `N` and `Literal[1]`  # E: Expected a type form, got instance of `int`
     pass
@@ -2078,15 +2078,15 @@ def f[N](x: TupleBoundBox[[N + 1]]) -> None:  # E: `ParamSpec` cannot be used fo
 );
 
 testcase!(
-    test_typevartuple_and_sizetuple_class_args_parse_separately,
+    test_typevartuple_and_syminttuple_class_args_parse_separately,
     shaped_array_env_with_shaped_torch(),
     r#"
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 from typing import assert_type
 
-class Mixed[*Ts, Shape: SizeTuple, N: SymVar]: ...
+class Mixed[*Ts, Shape: SymIntTuple, N: SymVar]: ...
 
-def f[*Ts, Shape: SizeTuple, N: SymVar](
+def f[*Ts, Shape: SymIntTuple, N: SymVar](
     x: Mixed[*Ts, [*Elements[Shape], N + 1], N + 2],
 ) -> None:
     assert_type(x, Mixed[*Ts, [*Elements[Shape], N + 1], N + 2])
@@ -2199,19 +2199,19 @@ assert_shape(0, (2, 3))  # E: First argument to `assert_shape` must be a shaped 
 );
 
 testcase!(
-    test_tuple_carrier_shape_context_preserves_starred_sizetuple,
+    test_tuple_carrier_shape_context_preserves_starred_syminttuple,
     shaped_array_env(),
     r#"
-from shape_extensions import Elements, SizeTuple, shaped_array
+from shape_extensions import Elements, SymIntTuple, shaped_array
 from typing import reveal_type
 
 @shaped_array(shape="Shape")
-class Tensor[Shape: SizeTuple]: ...
+class Tensor[Shape: SymIntTuple]: ...
 
-class Foo[Shape: SizeTuple]:
-    x: Tensor[SizeTuple[*Elements[Shape]]]
+class Foo[Shape: SymIntTuple]:
+    x: Tensor[SymIntTuple[*Elements[Shape]]]
 
-def f[Shape: SizeTuple](x: Foo[Shape]) -> None:
+def f[Shape: SymIntTuple](x: Foo[Shape]) -> None:
     reveal_type(x)  # E: revealed type: Foo[Shape]
 "#,
 );
@@ -2369,7 +2369,7 @@ def f(x: np.ndarray[[2, 3], float]) -> None:
 );
 
 testcase!(
-    test_jaxtyping_sizetuple_carrier_shapes,
+    test_jaxtyping_syminttuple_carrier_shapes,
     {
         let mut env = shaped_array_env();
         add_jaxtyping(&mut env);
@@ -2391,7 +2391,7 @@ from jaxtyping import Float
 from tclib import Array
 from typing import Literal, reveal_type
 
-# Jaxtyping shape annotations work on a TypeVar (SizeTuple) shape carrier, not just
+# Jaxtyping shape annotations work on a TypeVar (SymIntTuple) shape carrier, not just
 # on torch's TypeVarTuple `*Shape`. The concrete case exercises the tuple-carrier
 # sync path and the `*name` case exercises the synthesized shape-carrier TypeVar.
 def concrete(x: Float[Array, "3 4"]) -> None:
@@ -3222,7 +3222,7 @@ testcase!(
             "shape_ops",
             "shape_ops.pyi",
 r#"
-from shape_extensions import SizeTuple, uses_shape_dsl
+from shape_extensions import SymIntTuple, uses_shape_dsl
 from shape_extensions.dsl import ShapedArray, shape_dsl_function
 from torch import Tensor
 
@@ -3236,7 +3236,7 @@ def replace_leading_dim_ir(x: ShapedArray, dim: int | symint) -> ShapedArray:
     return ShapedArray(shape=dims)
 
 @uses_shape_dsl(replace_leading_dim_ir)
-def replace_leading_dim[Shape: SizeTuple](x: Tensor[Shape], dim: int) -> Tensor[Shape]: ...
+def replace_leading_dim[Shape: SymIntTuple](x: Tensor[Shape], dim: int) -> Tensor[Shape]: ...
 "#,
         );
         env

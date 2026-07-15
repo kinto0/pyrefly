@@ -5981,11 +5981,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    pub(crate) fn is_size_tuple_class(&self, cls: &Class) -> bool {
-        cls.has_toplevel_qname("shape_extensions", "SizeTuple")
+    pub(crate) fn is_symint_tuple_class(&self, cls: &Class) -> bool {
+        cls.has_toplevel_qname("shape_extensions", "SymIntTuple")
     }
 
-    pub(crate) fn bare_size_tuple_carrier(&self) -> Type {
+    pub(crate) fn bare_symint_tuple_carrier(&self) -> Type {
         self.heap.mk_tuple(Tuple::Unbounded(Box::new(
             self.heap.mk_class_type(self.stdlib.int().clone()),
         )))
@@ -6082,9 +6082,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Type::Type(t) => {
                 if let Type::ClassType(cls) = t.as_ref()
-                    && self.is_size_tuple_class(cls.class_object())
+                    && self.is_symint_tuple_class(cls.class_object())
                 {
-                    return Some(self.bare_size_tuple_carrier());
+                    return Some(self.bare_symint_tuple_carrier());
                 }
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "SymInt")

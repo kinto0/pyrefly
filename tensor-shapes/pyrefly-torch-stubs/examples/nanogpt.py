@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 import torch.optim
-from shape_extensions import Elements, SizeTuple
+from shape_extensions import Elements, SymIntTuple
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ class LayerNorm[M: SymVar](nn.Module):
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
         assert_type(self.bias, Tensor[[M]] | None)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, input: Tensor[[*Elements[Bs], M]]
     ) -> Tensor[[*Elements[Bs], M]]:
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)

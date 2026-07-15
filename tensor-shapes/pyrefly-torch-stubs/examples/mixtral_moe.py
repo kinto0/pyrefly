@@ -35,7 +35,7 @@ from typing import Any, assert_type, cast, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SizeTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymVar
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
@@ -55,12 +55,12 @@ class RMSNorm[D: SymVar](nn.Module):
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    def _norm[Bs: SizeTuple](
+    def _norm[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], D]]:
         return x * torch.rsqrt(torch.mean(x * x, dim=-1, keepdim=True) + self.eps)
 
-    def forward[Bs: SizeTuple](
+    def forward[Bs: SymIntTuple](
         self, x: Tensor[[*Elements[Bs], D]]
     ) -> Tensor[[*Elements[Bs], D]]:
         output = self._norm(x.float()).type_as(x)
@@ -231,7 +231,7 @@ def precompute_freqs_cis(seq_len: int, n_elem: int, base: float = 10000) -> Tens
     return cache.to(dtype=torch.bfloat16)
 
 
-def apply_rotary_emb[S: SizeTuple](x: Tensor[S], freqs_cis: Tensor) -> Tensor[S]:
+def apply_rotary_emb[S: SymIntTuple](x: Tensor[S], freqs_cis: Tensor) -> Tensor[S]:
     xshaped = x.float().reshape(*x.shape[:-1], -1, 2)  # type: ignore[bad-argument-type]
     freqs_cis = freqs_cis.view(1, xshaped.size(1), 1, xshaped.size(3), 2)
     x_out2 = torch.stack(
