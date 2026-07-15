@@ -1592,6 +1592,62 @@ def size_bool(x: SymInt[bool]) -> None:  # E: Tensor shape dimensions must be in
 );
 
 testcase!(
+    test_tensor_shapes_int_and_symint_int_equivalence,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt
+from typing import Literal, assert_type, overload, reveal_type
+
+def take_int(x: int) -> None: ...
+def take_symint_int(x: SymInt[int]) -> None: ...
+def take_symint3(x: SymInt[3]) -> None: ...
+
+def returns_int_from_symint(x: SymInt[int]) -> int:
+    return x
+
+def returns_symint_from_int(x: int) -> SymInt[int]:
+    return x
+
+@overload
+def choose_symint(x: SymInt[3]) -> Literal["exact"]: ...
+@overload
+def choose_symint(x: SymInt[int]) -> Literal["gradual"]: ...
+def choose_symint(x: int) -> str: ...
+
+@overload
+def choose_gradual_first(x: SymInt[int]) -> Literal["gradual"]: ...
+@overload
+def choose_gradual_first(x: SymInt[3]) -> Literal["exact"]: ...
+def choose_gradual_first(x: int) -> str: ...
+
+def use(cond: bool, i: int, s: SymInt[int], s3: SymInt[3], s4: SymInt[4], lit3: Literal[3]) -> None:
+    int_from_symint: int = s
+    symint_from_int: SymInt[int] = i
+    take_int(s)
+    take_symint_int(i)
+    assert_type(i, SymInt[int])
+    assert_type(s, int)
+    assert_type(choose_symint(s3), Literal["exact"])
+    # `Literal[3]` intentionally participates in the same exact-shape
+    # equivalence class as `SymInt[3]`.
+    assert_type(choose_symint(lit3), Literal["exact"])
+    assert_type(choose_symint(i), Literal["gradual"])
+    assert_type(choose_symint(s4), Literal["gradual"])
+    assert_type(choose_gradual_first(s), Literal["gradual"])
+
+    symint3_from_literal: SymInt[3] = lit3
+    take_symint3(lit3)
+    assert_type(lit3, SymInt[3])
+
+    symint3_from_int: SymInt[3] = i  # E: `int` is not assignable to `SymInt[3]`
+    take_symint3(i)  # E: Argument `int` is not assignable to parameter `x` with type `SymInt[3]`
+
+    inferred_union = i if cond else s
+    reveal_type(inferred_union)  # E: revealed type: int
+"#,
+);
+
+testcase!(
     test_tensor_shapes_int_satisfies_fresh_symbolic_size,
     shaped_array_env(),
     r#"
