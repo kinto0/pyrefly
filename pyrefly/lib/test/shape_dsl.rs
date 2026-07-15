@@ -2612,6 +2612,22 @@ def f[N: SymIntVar, M: SymIntVar](x: Tensor[[N, M]]) -> None:
 );
 
 testcase!(
+    test_assert_shape_preserves_registered_shape_arg,
+    shaped_array_env(),
+    r#"
+from shape_extensions import D, SymIntTuple, SymIntVar, assert_shape, shaped_array
+from typing import assert_type
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def f[N: SymIntVar, M: SymIntVar](x: Array[[N, M], str]) -> None:
+    assert_type(assert_shape(x, (D[N], D[M])), Array[[N, M], str])
+    assert_shape(x, (D[M], D[N]))  # E: assert_shape((N, M), (M, N)) failed
+"#,
+);
+
+testcase!(
     test_assert_shape_user_defined_helper,
     shaped_array_env_with_shaped_torch(),
     r#"
