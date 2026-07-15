@@ -3041,7 +3041,7 @@ class C:
 testcase!(
     test_implicit_any_attribute_class_body_no_double_report,
     TestEnv::new()
-        .enable_implicit_any_variable_error()
+        .enable_unknown_variable_type_error()
         .enable_implicit_any_attribute_error(),
     r#"
 def untyped(x):

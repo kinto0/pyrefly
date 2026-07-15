@@ -3626,7 +3626,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             self.error(
                 errors,
                 expr.range(),
-                ErrorKind::ImplicitAnyVariable,
+                ErrorKind::UnknownVariableType,
                 format!("The type of `{name}` is unknown; it is inferred as an implicit `Any`"),
             );
         }

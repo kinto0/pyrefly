@@ -2491,7 +2491,6 @@ output-format = "omit-errors"
             ErrorKind::ImplicitAnyTypeArgument,
             ErrorKind::ImplicitAnyEmptyContainer,
             ErrorKind::ImplicitAnyLambda,
-            ErrorKind::ImplicitAnyVariable,
         ] {
             assert_eq!(
                 errors.severity(kind),
@@ -2499,6 +2498,10 @@ output-format = "omit-errors"
                 "strict should enable {kind:?} via the implicit-any parent"
             );
         }
+        assert_eq!(
+            errors.severity(ErrorKind::UnknownVariableType),
+            Severity::Ignore
+        );
         assert_eq!(
             errors.severity(ErrorKind::MissingOverrideDecorator),
             Severity::Error

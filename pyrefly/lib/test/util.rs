@@ -128,7 +128,7 @@ pub struct TestEnv {
     no_any_return_explicit_error: bool,
     no_any_return_implicit_error: bool,
     implicit_any_lambda_error: bool,
-    implicit_any_variable_error: bool,
+    unknown_variable_type_error: bool,
     default_require_level: Require,
     extra_file_extensions: Vec<String>,
     /// The `Require` level passed to `run()` in `to_state()`. Controls whether
@@ -170,7 +170,7 @@ impl TestEnv {
             no_any_return_explicit_error: false,
             no_any_return_implicit_error: false,
             implicit_any_lambda_error: false,
-            implicit_any_variable_error: false,
+            unknown_variable_type_error: false,
             default_require_level: Require::Exports,
             extra_file_extensions: Vec::new(),
             run_require: Require::Everything,
@@ -373,8 +373,8 @@ impl TestEnv {
         self
     }
 
-    pub fn enable_implicit_any_variable_error(mut self) -> Self {
-        self.implicit_any_variable_error = true;
+    pub fn enable_unknown_variable_type_error(mut self) -> Self {
+        self.unknown_variable_type_error = true;
         self
     }
 
@@ -531,8 +531,8 @@ impl TestEnv {
         if self.implicit_any_lambda_error {
             errors.set_error_severity(ErrorKind::ImplicitAnyLambda, Severity::Error);
         }
-        if self.implicit_any_variable_error {
-            errors.set_error_severity(ErrorKind::ImplicitAnyVariable, Severity::Error);
+        if self.unknown_variable_type_error {
+            errors.set_error_severity(ErrorKind::UnknownVariableType, Severity::Error);
         }
         config.extra_file_extensions = self.extra_file_extensions.clone();
         let mut sourcedb = MapDatabase::new(config.get_sys_info());

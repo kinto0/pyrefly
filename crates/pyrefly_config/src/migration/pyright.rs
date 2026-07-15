@@ -428,7 +428,7 @@ impl RuleOverrides {
         add(self.report_unknown_argument_type, ErrorKind::ImplicitAny);
         add(
             self.report_unknown_variable_type,
-            ErrorKind::ImplicitAnyVariable,
+            ErrorKind::UnknownVariableType,
         );
         add(
             self.report_unknown_member_type,
