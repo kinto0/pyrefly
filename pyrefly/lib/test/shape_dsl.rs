@@ -300,6 +300,34 @@ class Box(Generic[N]): ...
 }
 
 #[test]
+fn test_jaxtyping_dim_cache_distinguishes_kinds() {
+    // The per-module jaxtyping dim cache must key on `QuantifiedKind`, not just the
+    // name. The same dimension name legitimately arrives as a scalar dim (`TypeVar`)
+    // and as a variadic `*name` (`TypeVarTuple`); if the cache dropped the kind,
+    // whichever kind was requested first would be cached and returned for both,
+    // silently producing a quantified of the wrong kind.
+    let mut env = TestEnv::new();
+    env.add("main", "");
+    let (state, handle) = env.to_state();
+    let main = handle("main");
+    let (type_var, type_var_tuple) = state
+        .transaction()
+        .ad_hoc_solve(&main, "test_jaxtyping_dim_cache", |solver| {
+            let name = Name::new("batch");
+            let type_var =
+                solver.get_or_create_jaxtyping_dim(name.clone(), QuantifiedKind::TypeVar);
+            let type_var_tuple =
+                solver.get_or_create_jaxtyping_dim(name, QuantifiedKind::TypeVarTuple);
+            (type_var, type_var_tuple)
+        })
+        .expect("ad_hoc_solve should succeed for the `main` module");
+    assert_eq!(type_var.name().as_str(), "batch");
+    assert_eq!(type_var.kind, QuantifiedKind::TypeVar);
+    assert_eq!(type_var_tuple.name().as_str(), "batch");
+    assert_eq!(type_var_tuple.kind, QuantifiedKind::TypeVarTuple);
+}
+
+#[test]
 fn test_non_shape_symintvar_is_not_a_kind_marker() {
     let mut env = shaped_array_env();
     env.add(

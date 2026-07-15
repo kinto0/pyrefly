@@ -98,7 +98,7 @@ use crate::types::types::Var;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum JaxtypingQuantifiedKey {
-    Dim(Name),
+    Dim(Name, QuantifiedKind),
     ShapeCarrier(Name, QuantifiedKind),
 }
 
@@ -1810,7 +1810,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     /// Get or create a Quantified type for a jaxtyping dimension name.
-    /// Cached per module: the same name always returns the same Quantified.
+    /// Cached per module on the `(name, kind)` pair: the same name reused with a
+    /// different `QuantifiedKind` intentionally yields a distinct Quantified.
     pub fn get_or_create_jaxtyping_dim(&self, name: Name, kind: QuantifiedKind) -> Quantified {
         let mut dims = self.jaxtyping_dims.borrow_mut();
         // Jaxtyping dims have no real source location. Use the current map size as a
@@ -1818,7 +1819,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // (default) anchor. Shared with `get_or_create_jaxtyping_shape_carrier`, which
         // uses the same map, so ordinals stay unique across both.
         let ordinal = dims.len() as u32;
-        dims.entry(JaxtypingQuantifiedKey::Dim(name.clone()))
+        dims.entry(JaxtypingQuantifiedKey::Dim(name.clone(), kind))
             .or_insert_with(|| {
                 let identity = QuantifiedIdentity::new(
                     self.module().name(),
