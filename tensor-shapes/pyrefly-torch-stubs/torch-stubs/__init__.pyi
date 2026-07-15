@@ -233,6 +233,7 @@ class Tensor[Shape: _Shape = _AnyShape]:
         """Reshape tensor. Shape inference via meta-shape: torch.Tensor.reshape"""
         ...
 
+    @uses_shape_dsl(reshape_ir)
     @overload
     def reshape(self: Tensor, shape: tuple[int, ...]) -> Tensor:
         """Reshape tensor. Shape inference via meta-shape: torch.Tensor.reshape"""
@@ -244,6 +245,7 @@ class Tensor[Shape: _Shape = _AnyShape]:
         """View (alias for reshape). Shape inference via meta-shape: torch.Tensor.view"""
         ...
 
+    @uses_shape_dsl(reshape_ir)
     @overload
     def view(self: Tensor, shape: tuple[int, ...]) -> Tensor:
         """View (alias for reshape). Shape inference via meta-shape: torch.Tensor.view"""

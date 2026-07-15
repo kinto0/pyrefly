@@ -380,7 +380,7 @@ impl<'a> TypeDisplayContext<'a> {
                         output.write_qname(shaped_array.base_class.qname())?;
                         if !shaped_array.is_shapeless() {
                             output.write_str("[")?;
-                            output.write_str(&shaped_array.shape.to_string())?;
+                            output.write_str(&shaped_array.shape().to_string())?;
                             output.write_str("]")?;
                         }
                         return Ok(());
@@ -392,7 +392,7 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_str("Shaped[")?;
                 output.write_qname(shaped_array.base_class.qname())?;
                 output.write_str(", \"")?;
-                output.write_str(&shaped_array.shape.fmt_jaxtyping())?;
+                output.write_str(&shaped_array.shape().fmt_jaxtyping())?;
                 output.write_str("\"]")
             }
         }
@@ -441,7 +441,7 @@ impl<'a> TypeDisplayContext<'a> {
         if shaped_array.is_shapeless() {
             return self.fmt_helper_generic(&Type::any_tuple(), false, output);
         }
-        match shaped_array.shape.as_tuple() {
+        match shaped_array.shape().as_tuple() {
             Tuple::Concrete(dims) => {
                 output.write_str("[")?;
                 for (i, dim) in dims.iter().enumerate() {

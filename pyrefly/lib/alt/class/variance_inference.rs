@@ -224,7 +224,7 @@ fn on_type(
             let mut visit_dim = |ty: &Type| {
                 on_type(Variance::Invariant, inj, ty, on_edge, on_var);
             };
-            match tensor.shape.as_tuple() {
+            match tensor.shape().as_tuple() {
                 Tuple::Concrete(dims) => {
                     for dim in dims {
                         visit_dim(dim);

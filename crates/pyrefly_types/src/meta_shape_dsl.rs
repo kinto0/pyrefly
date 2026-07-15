@@ -51,7 +51,6 @@ use crate::literal::Lit;
 use crate::shaped_array::ShapedArrayType;
 use crate::shaped_array::SymIntTuple;
 use crate::shaped_array::SymIntTupleArgStyle;
-use crate::shaped_array::shape_to_tuple_carrier_arg;
 use crate::tuple::Tuple;
 use crate::types::Type;
 
@@ -188,7 +187,7 @@ mod extract {
                 if shaped_array.is_shapeless() {
                     None
                 } else {
-                    Some(shaped_array.shape.clone())
+                    Some(shaped_array.shape().clone())
                 }
             }
             Type::Union(union) => {
@@ -254,6 +253,7 @@ mod extract {
     /// Also handles nested tuples (e.g., from variadic binding of tuple args).
     pub fn dim_list(ty: &Type) -> Option<Vec<Type>> {
         match ty {
+            Type::SymIntTuple(shape) => dim_list(&shape.to_tuple_type()),
             Type::Tuple(Tuple::Concrete(elts)) => {
                 // First, try to extract dimensions directly
                 let result = elts.iter().map(dimension).collect::<Option<Vec<Type>>>();
@@ -3235,12 +3235,12 @@ fn inject_shape(shape: SymIntTuple, ret_type: &Type) -> Type {
         Type::ShapedArray(t) => {
             let mut base_class = t.base_class.clone();
             if let SymIntTupleArgStyle::TupleCarrier { index } = t.shape_arg_style {
-                let carrier = base_class
+                let shape_arg = base_class
                     .targs_mut()
                     .as_mut()
                     .get_mut(index)
                     .expect("shape argument index should point to a class type argument");
-                *carrier = shape_to_tuple_carrier_arg(&shape);
+                *shape_arg = shape.to_shape_arg_type();
             }
             ShapedArrayType::new(base_class, shape)
                 .with_syntax(t.syntax)
@@ -4012,6 +4012,21 @@ mod tests {
         assert_eq!(
             val_to_scalar_type(&Val::Dim(Type::SymInt(SymInt::Literal(3)))),
             literal
+        );
+    }
+
+    #[test]
+    fn test_extract_dim_list_accepts_symint_tuple() {
+        let shape = Type::SymIntTuple(Box::new(SymIntTuple::new(vec![
+            SymInt::Literal(2),
+            SymInt::Literal(3),
+        ])));
+        assert_eq!(
+            extract::dim_list(&shape),
+            Some(vec![
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+            ])
         );
     }
 

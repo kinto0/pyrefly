@@ -33,7 +33,6 @@ use pyrefly_types::shaped_array::index_shape_multi;
 use pyrefly_types::shaped_array::index_shape_slice;
 use pyrefly_types::shaped_array::index_shape_tensor;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
-use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::shaped_array::tuple_carrier_to_shape;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
@@ -3057,7 +3056,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 return Some(IndexOp::NewAxis);
             }
             if let Type::ShapedArray(ref idx_shaped_array) = idx_ty {
-                if let Some(dims) = idx_shaped_array.shape.as_concrete() {
+                if let Some(dims) = idx_shaped_array.shape().as_concrete() {
                     return Some(IndexOp::ShapedArrayIndex(dims.to_vec()));
                 }
                 return None; // shapeless index tensor → bail
@@ -3106,7 +3105,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let start = lower.as_ref().map(|e| to_dim(e));
                 let stop = upper.as_ref().map(|e| to_dim(e));
                 let step_val = step.as_ref().and_then(|e| to_step(e));
-                match index_shape_slice(&shaped_array_type.shape, start, stop, step_val) {
+                match index_shape_slice(shaped_array_type.shape(), start, stop, step_val) {
                     Ok(shape) => self
                         .shaped_array_with_shape(shaped_array_type, shape)
                         .to_type(),
@@ -3119,7 +3118,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::NoneLiteral(_) => {
                 let one = self.heap.mk_symint(SymInt::Literal(1));
                 let mut new_dims = vec![one];
-                let new_shape = match shaped_array_type.shape.as_tuple() {
+                let new_shape = match shaped_array_type.shape().as_tuple() {
                     Tuple::Concrete(dims) => {
                         new_dims.extend(dims.iter().cloned());
                         SymIntTuple::from_types(new_dims)
@@ -3170,7 +3169,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 };
 
                 match index_shape_multi(
-                    &shaped_array_type.shape,
+                    shaped_array_type.shape(),
                     &pre_ops,
                     &post_ops,
                     ellipsis_pos.is_some(),
@@ -3188,7 +3187,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     || matches!(&idx_type, Type::ClassType(cls) if cls.is_builtin("int"));
 
                 if is_int_index {
-                    match index_shape_int(&shaped_array_type.shape) {
+                    match index_shape_int(shaped_array_type.shape()) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),
@@ -3196,10 +3195,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 } else if let Type::ShapedArray(ref idx_shaped_array) = idx_type {
                     // Tensor indexing: tensor[index_tensor] replaces first dim with index shape
-                    let Some(idx_dims) = idx_shaped_array.shape.as_concrete() else {
+                    let Some(idx_dims) = idx_shaped_array.shape().as_concrete() else {
                         return self.shaped_array_shapeless(shaped_array_type).to_type();
                     };
-                    match index_shape_tensor(&shaped_array_type.shape, idx_dims) {
+                    match index_shape_tensor(shaped_array_type.shape(), idx_dims) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),
@@ -3232,10 +3231,42 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.shaped_array_shape_for_class(cls).is_some()
     }
 
+    pub(crate) fn shaped_array_shape_arg_index(&self, cls: &ClassType) -> Option<usize> {
+        let shape_param = self.shaped_array_shape_for_class_type(cls)?;
+        self.get_class_tparams(cls.class_object())
+            .iter()
+            .position(|param| param == &shape_param)
+    }
+
+    pub(crate) fn shaped_array_shape_arg(&self, cls: &ClassType) -> Option<Type> {
+        let shape_idx = self.shaped_array_shape_arg_index(cls)?;
+        let mut shape_arg = cls.targs().as_slice().get(shape_idx)?.clone();
+        self.expand_mut(&mut shape_arg);
+        Some(shape_arg)
+    }
+
+    pub(crate) fn shaped_array_shape_arg_to_shape(&self, shape_arg: &Type) -> Option<SymIntTuple> {
+        SymIntTuple::from_shape_arg_type(shape_arg)
+            .or_else(|| tuple_carrier_to_shape(shape_arg))
+            .or_else(|| {
+                let upper_bound = match shape_arg {
+                    Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
+                    Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
+                    _ => return None,
+                };
+                let int_type = self.stdlib.int().clone().to_type();
+                Self::is_symint_tuple_carrier_bound(&upper_bound, &int_type)
+                    .then(|| SymIntTuple::unpacked(Vec::new(), shape_arg.clone(), Vec::new()))
+            })
+    }
+
     pub(crate) fn shaped_array_classtype_to_shaped_array_type(
         &self,
         cls: &ClassType,
     ) -> ShapedArrayType {
+        // Derive the index and argument from a single metadata lookup rather
+        // than re-resolving through `shaped_array_shape_arg_index`/`_arg`, which
+        // would force the (expensive) class shape metadata two more times.
         let shape_param = self
             .shaped_array_shape_for_class_type(cls)
             .expect("registered shaped-array class should have shape metadata");
@@ -3244,21 +3275,27 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .iter()
             .position(|param| param == &shape_param)
             .expect("shaped-array metadata should refer to a class type parameter");
-        let shape_arg = cls
+        let mut shape_arg = cls
             .targs()
             .as_slice()
             .get(shape_idx)
-            .expect("class type should have an argument for each type parameter");
+            .expect("class type should have an argument for each type parameter")
+            .clone();
+        self.expand_mut(&mut shape_arg);
         match shape_param.kind() {
             QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
-                match tuple_carrier_to_shape(shape_arg) {
-                    Some(shape) => ShapedArrayType::new(cls.clone(), shape).with_shape_arg_style(
-                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx },
-                    ),
-                    None => ShapedArrayType::shapeless(cls.clone()).with_shape_arg_style(
-                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx },
-                    ),
-                }
+                let shape = self
+                    .shaped_array_shape_arg_to_shape(&shape_arg)
+                    .unwrap_or_else(SymIntTuple::shapeless);
+                let mut base_class = cls.clone();
+                let shape_arg = base_class
+                    .targs_mut()
+                    .as_mut()
+                    .get_mut(shape_idx)
+                    .expect("class type should have an argument for each type parameter");
+                *shape_arg = shape.to_shape_arg_type();
+                ShapedArrayType::new(base_class, shape)
+                    .with_shape_arg_style(SymIntTupleArgStyle::TupleCarrier { index: shape_idx })
             }
             QuantifiedKind::TypeVarTuple => unreachable!(
                 "shaped-array metadata validation rejects TypeVarTuple shape parameters"
@@ -3270,15 +3307,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     /// Build a shaped-array type that carries a new projected `shape`, keeping
-    /// the raw tuple carrier stored in `base_class` synchronized with it.
+    /// the registered shape argument stored in `base_class` synchronized with it.
     ///
-    /// Tuple-carrier (`TypeVar`-mode) shaped arrays expose `.shape` by reading the
-    /// raw carrier argument stored on `base_class`, *not* the projected `shape`
-    /// field. Any shape-changing operation (indexing, broadcasting, meta-shape
-    /// transforms) must therefore rewrite that carrier; otherwise `.shape` would
-    /// stale-read the pre-operation shape. This helper is the single place that
-    /// keeps the two representations coherent. It preserves `tensor.syntax` and,
-    /// crucially, all non-shape class arguments (notably `DType`).
+    /// The `shape` field is temporary duplicated state while shaped arrays
+    /// migrate toward first-class `SymIntTuple` shape arguments. Shape-changing
+    /// operations should route through this helper so the duplicate state stays
+    /// coherent. It preserves `tensor.syntax` and all non-shape class arguments
+    /// (notably `DType`).
     pub(crate) fn shaped_array_with_shape(
         &self,
         tensor: &ShapedArrayType,
@@ -3288,17 +3323,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(shape_param) => match shape_param.kind() {
                 QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                     let shape_idx = self
-                        .get_class_tparams(tensor.base_class.class_object())
-                        .iter()
-                        .position(|param| param == &shape_param)
+                        .shaped_array_shape_arg_index(&tensor.base_class)
                         .expect("shaped-array metadata should refer to a class type parameter");
                     let mut base_class = tensor.base_class.clone();
-                    let carrier = base_class
+                    let shape_arg = base_class
                         .targs_mut()
                         .as_mut()
                         .get_mut(shape_idx)
                         .expect("class type should have an argument for each type parameter");
-                    *carrier = shape_to_tuple_carrier_arg(&shape);
+                    *shape_arg = shape.to_shape_arg_type();
                     ShapedArrayType {
                         base_class,
                         shape,
@@ -3781,7 +3814,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     {
                         return self
                             .parse_symint_tuple_shape_args(elts, errors)
-                            .map(|shape| shape_to_tuple_carrier_arg(&shape))
+                            .map(|shape| shape.to_shape_arg_type())
                             .unwrap_or_else(Type::any_error);
                     }
                 }
@@ -4013,7 +4046,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     match self.parse_symint_tuple_shape_args(elts, errors) {
                         Some(shape) => {
                             let carrier = shape_to_tuple_carrier(&shape);
-                            shape_arg_carrier = Some(carrier.clone());
+                            shape_arg_carrier = Some(shape.to_shape_arg_type());
                             shape_validation_arg(&carrier)
                         }
                         None => Type::any_error(),
@@ -4025,7 +4058,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         && self.is_symint_tuple_class(&cls)
                     {
                         let carrier = self.bare_symint_tuple_carrier();
-                        shape_arg_carrier = Some(carrier.clone());
+                        shape_arg_carrier = Some(self.heap.mk_symint_tuple(SymIntTuple::shapeless()));
                         shape_validation_arg(&carrier)
                     } else {
                         match self.expr_untype(arg, TypeFormContext::TypeArgument, errors) {
@@ -4035,7 +4068,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 } else {
                                     shape_to_tuple_carrier(&shape)
                                 };
-                                shape_arg_carrier = Some(carrier.clone());
+                                shape_arg_carrier = Some(shape.to_shape_arg_type());
                                 shape_validation_arg(&carrier)
                             }
                             ty => {
@@ -4052,8 +4085,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                     );
                                     Type::any_error()
                                 } else if i == shape_idx && matches!(ty, Type::Tuple(_)) {
-                                    if tuple_carrier_to_shape(&ty).is_some() {
-                                        shape_arg_carrier = Some(ty.clone());
+                                    if let Some(shape) = tuple_carrier_to_shape(&ty) {
+                                        shape_arg_carrier = Some(shape.to_shape_arg_type());
                                         shape_validation_arg(&ty)
                                     } else {
                                         self.error(

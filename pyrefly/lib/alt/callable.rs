@@ -1785,16 +1785,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 
     /// After a call's return type is resolved, re-project the shape of registered
-    /// tuple-carrier shaped arrays from their (now-substituted) base-class carrier
-    /// argument.
+    /// shaped arrays from their (now-substituted) base-class shape argument.
     ///
     /// Generic returns like `Array[S, float]` are stored shapeless at annotation
-    /// time because the raw carrier `S` carries no per-dimension information. Once
-    /// `S` is bound to a concrete carrier (e.g. `tuple[Literal[2], Literal[3]]`)
-    /// by call inference, the base-class argument projects to a real shape, so we
-    /// re-read it here.
+    /// time because the shape argument `S` carries no per-dimension information.
+    /// Once `S` is bound to a concrete shape by call inference, the base-class
+    /// argument projects to a real shape, so we re-read it here.
     ///
-    /// Scoped to TypeVar-mode (single tuple-carrier) shape parameters; TypeVarTuple
+    /// Scoped to TypeVar-mode shape parameters; TypeVarTuple
     /// shapes are parsed into the shape field directly and need no reprojection.
     fn reproject_tuple_carrier_shape(&self, ty: Type) -> Type {
         ty.transform(&mut |ty| {
@@ -1909,7 +1907,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(Ok(ty)) => ty.transform(&mut |ty| {
                 if let Type::ShapedArray(shaped_array) = ty {
                     *ty = self
-                        .shaped_array_with_shape(shaped_array, shaped_array.shape.clone())
+                        .shaped_array_with_shape(shaped_array, shaped_array.shape().clone())
                         .to_type();
                 }
             }),

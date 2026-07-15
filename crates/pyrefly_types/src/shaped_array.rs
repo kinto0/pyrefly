@@ -176,9 +176,13 @@ impl ShapedArrayType {
         Type::ShapedArray(Box::new(self))
     }
 
+    pub fn shape(&self) -> &SymIntTuple {
+        &self.shape
+    }
+
     /// Returns rank if shape is concrete, None for variadic/shapeless
     pub fn rank(&self) -> Option<usize> {
-        match self.shape.as_tuple() {
+        match self.shape().as_tuple() {
             Tuple::Concrete(dims) => Some(dims.len()),
             Tuple::Unbounded(_) | Tuple::Unpacked(_) => None,
         }
@@ -187,7 +191,7 @@ impl ShapedArrayType {
     /// Returns true if the shaped array has no shape information.
     /// (represented as `tuple[Any, ...]`)
     pub fn is_shapeless(&self) -> bool {
-        is_shapeless(&self.shape)
+        is_shapeless(self.shape())
     }
 }
 
@@ -198,7 +202,7 @@ impl Display for ShapedArrayType {
                 if self.is_shapeless() {
                     write!(f, "{}", self.base_class.name())
                 } else {
-                    write!(f, "{}[{}]", self.base_class.name(), self.shape)
+                    write!(f, "{}[{}]", self.base_class.name(), self.shape())
                 }
             }
             ShapedArraySyntax::Jaxtyping => {
@@ -206,7 +210,7 @@ impl Display for ShapedArrayType {
                     f,
                     "Shaped[{}, \"{}\"]",
                     self.base_class.name(),
-                    self.shape.fmt_jaxtyping()
+                    self.shape().fmt_jaxtyping()
                 )
             }
         }
@@ -296,11 +300,57 @@ impl SymIntTuple {
         tuple
     }
 
+    pub fn to_shape_arg_type(&self) -> Type {
+        Type::SymIntTuple(Box::new(self.clone()))
+    }
+
+    pub fn from_shape_arg_type(arg: &Type) -> Option<Self> {
+        match arg {
+            Type::SymIntTuple(shape) => Some(Self::from_tuple(shape.as_tuple().clone())),
+            _ => None,
+        }
+    }
+
     /// Create variadic shape with unpacked TypeVarTuple: Tensor[2, *Shape, 4]
     pub fn unpacked(prefix: Vec<Type>, middle: Type, suffix: Vec<Type>) -> Self {
         // Canonicalize all dimensions
-        let prefix: Vec<Type> = prefix.into_iter().map(canonicalize_dim).collect();
-        let suffix: Vec<Type> = suffix.into_iter().map(canonicalize_dim).collect();
+        let mut prefix: Vec<Type> = prefix.into_iter().map(canonicalize_dim).collect();
+        let mut suffix: Vec<Type> = suffix.into_iter().map(canonicalize_dim).collect();
+
+        if let Type::SymIntTuple(shape) = &middle {
+            match shape.as_tuple() {
+                Tuple::Concrete(dims) => {
+                    prefix.extend(dims.iter().cloned());
+                    prefix.extend(suffix);
+                    return Self::from_types(prefix);
+                }
+                Tuple::Unbounded(elt) => {
+                    return Self::unpacked(
+                        prefix,
+                        Type::Tuple(Tuple::Unbounded(elt.clone())),
+                        suffix,
+                    );
+                }
+                Tuple::Unpacked(unpacked) => {
+                    let (inner_prefix, inner_middle, inner_suffix) = &**unpacked;
+                    prefix.extend(inner_prefix.iter().cloned());
+                    let mut combined_suffix = inner_suffix.clone();
+                    combined_suffix.append(&mut suffix);
+                    return Self::unpacked(prefix, inner_middle.clone(), combined_suffix);
+                }
+            }
+        }
+
+        if let Type::Tuple(Tuple::Concrete(dims)) = &middle
+            && let Some(dims) = dims
+                .iter()
+                .map(carrier_element_to_dim)
+                .collect::<Option<Vec<_>>>()
+        {
+            prefix.extend(dims);
+            prefix.extend(suffix);
+            return Self::from_types(prefix);
+        }
 
         if prefix.is_empty()
             && suffix.is_empty()
@@ -1624,6 +1674,46 @@ mod tests {
         let carrier = Type::Var(Var::ZERO);
         let shape = SymIntTuple::unpacked(Vec::new(), carrier.clone(), Vec::new());
         assert_eq!(shape_to_tuple_carrier_arg(&shape), carrier);
+    }
+
+    #[test]
+    fn shape_arg_type_is_first_class_symint_tuple() {
+        let shape = SymIntTuple::from_types(vec![size(2), size(3)]);
+        let shape_arg = shape.to_shape_arg_type();
+        assert_eq!(shape_arg, Type::SymIntTuple(Box::new(shape.clone())));
+        assert_eq!(SymIntTuple::from_shape_arg_type(&shape_arg), Some(shape));
+    }
+
+    #[test]
+    fn unpacked_first_class_symint_tuple_middle_flattens() {
+        let middle = SymIntTuple::from_types(vec![size(3), size(4)]).to_shape_arg_type();
+        assert_eq!(
+            SymIntTuple::unpacked(vec![size(2)], middle, vec![size(5)]),
+            SymIntTuple::from_types(vec![size(2), size(3), size(4), size(5)])
+        );
+    }
+
+    #[test]
+    fn nested_shape_arg_type_canonicalizes() {
+        let inner = SymIntTuple::from_types(vec![size(2), size(3)]);
+        let nested = Type::SymIntTuple(Box::new(SymIntTuple(Tuple::Unpacked(Box::new((
+            Vec::new(),
+            inner.to_shape_arg_type(),
+            Vec::new(),
+        ))))));
+        assert_eq!(SymIntTuple::from_shape_arg_type(&nested), Some(inner));
+    }
+
+    #[test]
+    fn finite_tuple_unpack_flattens() {
+        let middle = Type::Tuple(Tuple::Concrete(vec![
+            size(2),
+            LitInt::new(3).to_explicit_type(),
+        ]));
+        assert_eq!(
+            SymIntTuple::unpacked(vec![size(1)], middle, vec![size(4)]),
+            SymIntTuple::from_types(vec![size(1), size(2), size(3), size(4)])
+        );
     }
 
     #[test]

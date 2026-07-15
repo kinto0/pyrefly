@@ -252,6 +252,35 @@ class TupleCarrierArray[Shape, DType]: ...
 }
 
 #[test]
+fn test_shaped_array_class_targ_shape_is_first_class_syminttuple() {
+    let mut env = shaped_array_env();
+    env.add(
+        "main",
+        r#"
+from shape_extensions import SymIntTuple, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+x: Array[[2, 3], int]
+"#,
+    );
+    let (state, handle) = env.to_state();
+    let main = handle("main");
+    let solutions = state.transaction().get_solutions(&main).unwrap();
+    match &**solutions.get(&KeyExport(Name::new("x"))) {
+        Type::ShapedArray(array) => {
+            let shape_arg = &array.base_class.targs().as_slice()[0];
+            assert!(
+                matches!(shape_arg, Type::SymIntTuple(_)),
+                "expected normalized shape argument to be `SymIntTuple`, got `{shape_arg}`"
+            );
+        }
+        ty => panic!("expected `x` to solve to a shaped array, got `{ty}`"),
+    }
+}
+
+#[test]
 fn test_legacy_symintvar_binding_has_symintvar_kind() {
     let mut env = shaped_array_env();
     env.add(
@@ -559,6 +588,42 @@ def concrete_elements_middle(
     result: Array[[1, *Elements[SymIntTuple[2, 3]], 4], int],
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4], int]
+"#,
+);
+
+testcase!(
+    test_shaped_array_syminttuple_shape_arg_return_reprojection,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymIntTuple, shaped_array
+from typing import reveal_type
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]:
+    def clone(self) -> Array[Shape, DType]: ...
+
+def f(x: Array[[2, 3], int]) -> None:
+    y = x.clone()
+    reveal_type(y)  # E: revealed type: Array[[2, 3], int]
+    reveal_type(y[0])  # E: revealed type: Array[[3], int]
+"#,
+);
+
+testcase!(
+    test_shaped_array_syminttuple_non_shape_arg_does_not_reproject,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymIntTuple, shaped_array
+from typing import reveal_type
+
+@shaped_array(shape="Shape")
+class Array[Meta: SymIntTuple, Shape: SymIntTuple, DType]:
+    shape: Shape
+    def clone(self) -> Array[Meta, Shape, DType]: ...
+
+def f[Shape: SymIntTuple](x: Array[SymIntTuple[1], Shape, int]) -> None:
+    y = x.clone()
+    reveal_type(y)  # E: revealed type: Array[SymIntTuple[1], Shape, int]
 "#,
 );
 
@@ -1426,22 +1491,22 @@ class DTypeFirstArray[DType, Shape]:
     def dtype(self) -> DType: ...
 
 def f(x: Array[[2, 3, 4], int], dtype_first: DTypeFirstArray[int, [2, 3, 4]]) -> None:
-    # Integer index drops the leading dim, and `.shape` (read from the raw
-    # carrier) stays coherent with the projected shape.
+    # Integer index drops the leading dim, and `.shape` stays coherent with the
+    # normal class shape field.
     reveal_type(x[0])  # E: revealed type: Array[[3, 4], int]
-    reveal_type(x[0].shape)  # E: revealed type: tuple[Literal[3], Literal[4]]
+    reveal_type(x[0].shape)  # E: revealed type: SymIntTuple[3, 4]
     reveal_type(x[0].dtype())  # E: revealed type: int
 
     # Mixed tuple index (slice + int) and `None`/newaxis stay coherent too.
     reveal_type(x[:, 0])  # E: revealed type: Array[[2, 4], int]
-    reveal_type(x[:, 0].shape)  # E: revealed type: tuple[Literal[2], Literal[4]]
+    reveal_type(x[:, 0].shape)  # E: revealed type: SymIntTuple[2, 4]
     reveal_type(x[None])  # E: revealed type: Array[[1, 2, 3, 4], int]
-    reveal_type(x[None].shape)  # E: revealed type: tuple[Literal[1], Literal[2], Literal[3], Literal[4]]
+    reveal_type(x[None].shape)  # E: revealed type: SymIntTuple[1, 2, 3, 4]
 
-    # The carrier rewrite follows the registered shape parameter, even when it
-    # is not the first type argument.
+    # The shape update follows the registered shape parameter, even when it is
+    # not the first type argument.
     reveal_type(dtype_first[0])  # E: revealed type: DTypeFirstArray[int, [3, 4]]
-    reveal_type(dtype_first[0].shape)  # E: revealed type: tuple[Literal[3], Literal[4]]
+    reveal_type(dtype_first[0].shape)  # E: revealed type: SymIntTuple[3, 4]
     reveal_type(dtype_first[0].dtype())  # E: revealed type: int
 
 def scalar(s: Array[[], int]) -> None:
@@ -1465,9 +1530,9 @@ class Array[Shape, DType]:
 # operation -- the carrier is rewritten to the shapeless form.
 def g[S](x: Array[S, int]) -> None:
     reveal_type(x[0])  # E: revealed type: Array
-    reveal_type(x[0].shape)  # E: revealed type: tuple[Unknown, ...]
+    reveal_type(x[0].shape)  # E: revealed type: SymIntTuple
     reveal_type(x[:])  # E: revealed type: Array
-    reveal_type(x[:].shape)  # E: revealed type: tuple[Unknown, ...]
+    reveal_type(x[:].shape)  # E: revealed type: SymIntTuple
 "#,
 );
 
@@ -1475,7 +1540,7 @@ testcase!(
     test_shaped_array_tuple_carrier_broadcast_keeps_shape_coherent,
     shaped_array_env(),
     r#"
-from typing import Any, Literal, reveal_type
+from typing import Any, reveal_type
 from shape_extensions import shaped_array
 
 @shaped_array(shape="Shape")
@@ -1490,10 +1555,10 @@ def f(
     gradual_dim: Array[[int, 3], int],
 ) -> None:
     z = x + y
-    # Broadcasting `(2, 3)` with `(1, 3)` yields `(2, 3)`, and the raw carrier is
-    # rewritten so `.shape` stays coherent. DType is preserved from the carrier.
+    # Broadcasting `(2, 3)` with `(1, 3)` yields `(2, 3)`, and the shape
+    # parameter is rewritten so `.shape` stays coherent. DType is preserved.
     reveal_type(z)  # E: revealed type: Array[[2, 3], int]
-    reveal_type(z.shape)  # E: revealed type: tuple[Literal[2], Literal[3]]
+    reveal_type(z.shape)  # E: revealed type: SymIntTuple[2, 3]
     reveal_type(z.dtype())  # E: revealed type: int
 
     z_any = x + any_dim
@@ -1523,14 +1588,14 @@ def f(
     mismatch: Array[[5, 4], int],
 ) -> None:
     z = known + gradual
-    reveal_type(z.shape)  # E: revealed type: tuple[Literal[5], Literal[5]]
+    reveal_type(z.shape)  # E: revealed type: SymIntTuple[5, 5]
     z_reverse = gradual + known
-    reveal_type(z_reverse.shape)  # E: revealed type: tuple[Literal[5], Literal[5]]
+    reveal_type(z_reverse.shape)  # E: revealed type: SymIntTuple[5, 5]
 
     z_one = one + gradual
-    reveal_type(z_one.shape)  # E: revealed type: tuple[Literal[1], Literal[5]]
+    reveal_type(z_one.shape)  # E: revealed type: SymIntTuple[1, 5]
     z_one_reverse = gradual + one
-    reveal_type(z_one_reverse.shape)  # E: revealed type: tuple[Literal[1], Literal[5]]
+    reveal_type(z_one_reverse.shape)  # E: revealed type: SymIntTuple[1, 5]
 
     known + gradual_then_mismatch  # E: Cannot broadcast dimension SymInt[5] with dimension SymInt[4] at position 1
     gradual_then_mismatch + known  # E: Cannot broadcast dimension SymInt[4] with dimension SymInt[5] at position 1
@@ -2737,7 +2802,7 @@ def f(x: np.ndarray[[2, 3], float]) -> None:
     reveal_type(x)  # E: revealed type: ndarray[[2, 3], float]
     reveal_type(x.copy())  # E: revealed type: ndarray[[2, 3], float]
     reveal_type(x.item())  # E: revealed type: float
-    reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], Literal[3]]
+    reveal_type(x.shape)  # E: revealed type: SymIntTuple[2, 3]
     reveal_type(x[0])  # E: revealed type: ndarray[[3], float]
     reveal_type(np.add_leading_axis(x))  # E: revealed type: ndarray[[1, 2, 3], float]
 "#,
@@ -2786,11 +2851,11 @@ from typing import Literal, reveal_type
 
 def f(x: np.tcarray[[2, 3], int]) -> None:
     y = np.tc_add_leading_axis(x)
-    # The meta-shape DSL adds a leading axis. The result's raw tuple carrier is
+    # The meta-shape DSL adds a leading axis. The result's shape parameter is
     # re-synced to the computed shape, so both the displayed shape and `.shape`
-    # stay coherent; DType is preserved.
+    # stay coherent.
     reveal_type(y)  # E: revealed type: tcarray[[1, 2, 3]]
-    reveal_type(y.shape)  # E: revealed type: tuple[Literal[1], Literal[2], Literal[3]]
+    reveal_type(y.shape)  # E: revealed type: SymIntTuple[1, 2, 3]
     reveal_type(y.dtype())  # E: revealed type: int
 "#,
 );

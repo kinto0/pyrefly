@@ -166,7 +166,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             ErrorKind::AssertType,
                             format!(
                                 "assert_shape({}, {}) failed",
-                                format_assert_shape_shape(&shaped_array.shape),
+                                format_assert_shape_shape(shaped_array.shape()),
                                 format_assert_shape_shape(&shape)
                             ),
                         );

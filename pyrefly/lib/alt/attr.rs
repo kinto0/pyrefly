@@ -1576,13 +1576,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             },
             AttributeBase1::ShapedArrayInstance(tensor) => {
                 if attr_name.as_str() == "shape" {
+                    if let Some(attr) = self.get_shaped_array_attribute(tensor, attr_name) {
+                        acc.found_class_attribute(attr, base);
+                        return;
+                    }
                     let shape = if matches!(
                         tensor.shape_arg_style,
                         SymIntTupleArgStyle::TupleCarrier { .. }
                     ) {
-                        shape_to_tuple_carrier_arg(&tensor.shape)
+                        shape_to_tuple_carrier_arg(tensor.shape())
                     } else {
-                        shape_to_tuple_carrier(&tensor.shape)
+                        shape_to_tuple_carrier(tensor.shape())
                     };
                     acc.found_type(shape, base);
                     return;
@@ -2242,18 +2246,31 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         cls: &ClassType,
     ) -> Option<ShapedArrayType> {
-        if !cls
-            .targs()
-            .as_slice()
-            .iter()
-            .any(|arg| matches!(arg, Type::Tuple(_)))
-        {
+        // Cheap syntactic pre-filter, kept before any metadata lookup to preserve
+        // laziness: a shaped-array class always carries its shape as a tuple
+        // carrier, a first-class `SymIntTuple`, or an as-yet-unbound shape variable.
+        // Bailing here for any other class (notably scalar returns like `int`)
+        // avoids forcing that class's metadata on every call-return reprojection.
+        if !cls.targs().as_slice().iter().any(|arg| {
+            matches!(
+                arg,
+                Type::Tuple(_) | Type::SymIntTuple(_) | Type::Quantified(_) | Type::TypeVar(_)
+            )
+        }) {
             return None;
         }
         let shape_param = self.shaped_array_shape_for_class_type(cls)?;
         if !shape_param.is_type_var() {
             return None;
         }
+        // Decline reprojection when the shape argument does not project to a shape.
+        // `shaped_array_classtype_to_shaped_array_type` below shapeless-falls-back
+        // on an unconvertible arg (it is called from already-validated paths), but
+        // here we want to leave the class un-reprojected in that case. The builder
+        // recomputes this projection; that duplicate lookup is bounded by the cheap
+        // syntactic pre-filter above, so it only runs for plausible shaped arrays.
+        let shape_arg = self.shaped_array_shape_arg(cls)?;
+        self.shaped_array_shape_arg_to_shape(&shape_arg)?;
         Some(self.shaped_array_classtype_to_shaped_array_type(cls))
     }
 

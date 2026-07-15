@@ -54,7 +54,6 @@ use pyrefly_types::shaped_array::ShapedArraySyntax;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::shaped_array::SymIntTupleArgStyle;
-use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::types::TParams;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::Expr;
@@ -271,9 +270,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     /// Build a jaxtyping-syntax `ShapedArrayType` and synchronize the tuple carrier.
     ///
-    /// For shaped arrays whose shape parameter is a `TypeVar` (SymIntTuple carrier),
-    /// the carrier type argument on `base_class` is updated to reflect `shape` so
-    /// that shape-aware operations (e.g. `.shape` access, generic return reprojection)
+    /// For shaped arrays whose shape parameter is a `TypeVar` or `SymIntVar`, the
+    /// carrier type argument on `base_class` is updated to reflect `shape` so that
+    /// shape-aware operations (e.g. `.shape` access, generic return reprojection)
     /// remain coherent with the jaxtyping annotation.
     fn jaxtyping_shaped_array_type(&self, mut base_class: ClassType, shape: SymIntTuple) -> Type {
         let shape_arg_style = match self.shaped_array_shape_for_class_type(&base_class) {
@@ -287,11 +286,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .expect("shaped-array metadata should refer to a class type parameter");
                 match shape_param.kind() {
                     QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
-                        let carrier = base_class.targs_mut().as_mut().get_mut(shape_idx).expect(
+                        let shape_arg = base_class.targs_mut().as_mut().get_mut(shape_idx).expect(
                             // Pyrefly always constructs ClassType with one targ per tparam.
                             "class type should have an argument for each type parameter",
                         );
-                        *carrier = shape_to_tuple_carrier_arg(&shape);
+                        *shape_arg = shape.to_shape_arg_type();
                         SymIntTupleArgStyle::TupleCarrier { index: shape_idx }
                     }
                     QuantifiedKind::TypeVarTuple => unreachable!(

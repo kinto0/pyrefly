@@ -27,7 +27,6 @@ use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::shaped_array::is_tuple_carrier_shape_middle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
-use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::shaped_array::tuple_carrier_to_shape;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
@@ -2805,7 +2804,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
         // Check base class compatibility, but ignore the registered shape
         // parameter: the shape is tracked and checked separately in
-        // `ShapedArrayType::shape`.
+        // `ShapedArrayType::shape()`.
         let got_base = self.shape_erased_base_class(got, shape_param)?;
         let want_base = self.shape_erased_base_class(want, want_param)?;
         let same_class = got_base.class_object() == want_base.class_object();
@@ -2830,14 +2829,20 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
 
         // Check the shape compatibility
-        if tuple_carrier_to_shape(got_arg).is_none() || tuple_carrier_to_shape(want_arg).is_none() {
+        if SymIntTuple::from_shape_arg_type(got_arg)
+            .or_else(|| tuple_carrier_to_shape(got_arg))
+            .is_none()
+            || SymIntTuple::from_shape_arg_type(want_arg)
+                .or_else(|| tuple_carrier_to_shape(want_arg))
+                .is_none()
+        {
             // Closed tuple carriers that cannot project to a valid shape should
             // not become compatible just because their projected shape is
             // gradual - do an ordinary subset check in that case.
             self.is_subset_eq(got_arg, want_arg)
         } else {
             // Check dimensions' compatibility.
-            self.bind_tensor_dimensions(&got.shape, &want.shape)
+            self.bind_tensor_dimensions(got.shape(), want.shape())
         }
     }
 
@@ -2875,9 +2880,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     ) -> Result<ClassType, SubsetError> {
         let (shape_param, _) = self.shape_param_and_arg(shaped_array)?;
         let shape_arg = match shape_param.kind() {
-            QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(&shaped_array.shape),
+            QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(shaped_array.shape()),
             QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
-                shape_to_tuple_carrier_arg(&shaped_array.shape)
+                shaped_array.shape().to_shape_arg_type()
             }
             QuantifiedKind::ParamSpec => {
                 return Err(SubsetError::InternalError(
