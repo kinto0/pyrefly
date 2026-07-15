@@ -1134,6 +1134,40 @@ def f(
 );
 
 testcase!(
+    test_shaped_array_broadcast_gradual_size_keeps_precise_dimension,
+    shaped_array_env(),
+    r#"
+from typing import Literal, reveal_type
+from shape_extensions import Size, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]:
+    shape: Shape
+
+def f(
+    known: Array[[5, 5], int],
+    gradual: Array[tuple[Size[int], Size[int]], int],
+    one: Array[[1, 5], int],
+    gradual_then_mismatch: Array[tuple[Size[int], Literal[4]], int],
+    mismatch: Array[[5, 4], int],
+) -> None:
+    z = known + gradual
+    reveal_type(z.shape)  # E: revealed type: tuple[Literal[5], Literal[5]]
+    z_reverse = gradual + known
+    reveal_type(z_reverse.shape)  # E: revealed type: tuple[Literal[5], Literal[5]]
+
+    z_one = one + gradual
+    reveal_type(z_one.shape)  # E: revealed type: tuple[Literal[1], Literal[5]]
+    z_one_reverse = gradual + one
+    reveal_type(z_one_reverse.shape)  # E: revealed type: tuple[Literal[1], Literal[5]]
+
+    known + gradual_then_mismatch  # E: Cannot broadcast dimension Size[5] with dimension Size[4] at position 1
+    gradual_then_mismatch + known  # E: Cannot broadcast dimension Size[4] with dimension Size[5] at position 1
+    known + mismatch  # E: Cannot broadcast dimension Size[5] with dimension Size[4] at position 1
+"#,
+);
+
+testcase!(
     test_shaped_array_tuple_carrier_binds_generic,
     shaped_array_env(),
     r#"

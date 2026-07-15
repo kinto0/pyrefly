@@ -929,10 +929,9 @@ fn broadcast_dim(a_ty: &Type, b_ty: &Type, position: usize) -> Result<Type, Shap
     let a_ty = canonicalize(a_ty.clone());
     let b_ty = canonicalize(b_ty.clone());
     match (&a_ty, &b_ty) {
-        // Any is compatible with anything; prefer the non-Any side
+        // Any and gradual Size are compatible with anything; prefer the more precise side.
         (Type::Any(_), _) => Ok(b_ty.clone()),
         (_, Type::Any(_)) => Ok(a_ty.clone()),
-        // `Size[int]` is the gradual size type; preserve the precise side.
         _ if is_gradual_size(&a_ty) => Ok(b_ty.clone()),
         _ if is_gradual_size(&b_ty) => Ok(a_ty.clone()),
         // Equal dimensions (after canonicalization): compatible
