@@ -30,6 +30,7 @@ from shape_extensions import (
     defines_assert_shape,
     enable_torchscript_runtime_compat,
     SymInt,
+    SymIntTuple,
     SymIntVar,
     TypeVarTuple,
 )
@@ -91,6 +92,17 @@ class TestTorchScriptRuntimeCompat(unittest.TestCase):
         enable_torchscript_runtime_compat()
 
         self.assertIs(torch.Tensor[[3, 4]], torch.Tensor)
+
+
+class TestSymIntTupleRuntime(unittest.TestCase):
+    def test_call_constructs_tuple(self):
+        value = SymIntTuple([1, 2])
+
+        self.assertEqual(value, (1, 2))
+        self.assertIs(type(value), tuple)
+
+    def test_subscript_erases_to_runtime_helper(self):
+        self.assertIs(SymIntTuple[1, 2], SymIntTuple)
 
 
 class TestTypeVarArithmetic(unittest.TestCase):

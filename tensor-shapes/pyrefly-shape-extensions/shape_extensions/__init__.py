@@ -69,11 +69,15 @@ _patch_torch_if_available()
 
 
 class SymIntTuple:
-    """Integer tuple carrier for shape-like type parameters.
+    """Tuple-valued shape annotation surface.
 
-    At runtime this is a no-op marker class. Pyrefly treats `SymIntTuple` in type
-    positions as the shape carrier corresponding to `tuple[int, ...]`.
+    In type positions, Pyrefly treats `SymIntTuple` as the shape carrier for
+    `tuple[int, ...]`. At runtime, calling it coerces any iterable to a plain
+    tuple.
     """
+
+    def __new__(cls, iterable=()):
+        return tuple(iterable)
 
     def __class_getitem__(cls, params):
         return cls
