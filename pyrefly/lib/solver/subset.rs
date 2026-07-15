@@ -18,7 +18,9 @@ use pyrefly_types::callable::Callable;
 use pyrefly_types::dimension::ShapeError;
 use pyrefly_types::dimension::SizeExpr;
 use pyrefly_types::dimension::contains_var_in_type;
+use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
+use pyrefly_types::dimension::type_is_gradual;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
 use pyrefly_types::shaped_array::ShapedArrayShape;
@@ -1748,6 +1750,21 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.solver.expand_with_bounds(&mut got_expanded);
                 self.solver.expand_with_bounds(&mut want_expanded);
 
+                // Gradual-size fast path. `type_is_gradual` is a by-reference
+                // equivalent of `is_gradual_size(&canonicalize(..))` for `Size`
+                // types, so we can short-circuit without allocating canonical
+                // copies on the common success path.
+                //
+                // Short-circuiting here before solving a fresh symbolic `want`
+                // (e.g. `Size[N]` for an unconstrained `SymVar` N) is safe and
+                // does not leak an unsolved `Var`: an unconstrained `SymVar`
+                // defaults to the gradual size `Size[int]`, so a gradual `got`
+                // (like bare `Size`) flowing into `Size[N]` still resolves to
+                // `Size[int]`. We therefore need not bind N before accepting.
+                if type_is_gradual(&got_expanded) || type_is_gradual(&want_expanded) {
+                    return Ok(());
+                }
+
                 if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
                     && !matches!(want_symbolic.as_ref(), Type::Size(_))
                 {
@@ -1759,21 +1776,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     return self.is_subset_eq(got_symbolic, &want_expanded);
                 }
 
-                // Canonicalize and compare
-                let want_contains_var = contains_var_in_type(&want_expanded);
-                let got_canonical = got_expanded.canonicalize();
-                let want_canonical = want_expanded.canonicalize();
-                if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
-                    return Ok(());
-                }
                 // Check if the expanded "want" side contains unbound Vars in nested positions.
                 // Do this after the gradual-size fast path, since any expression containing
                 // `Size[int]` canonicalizes to gradual `Size` regardless of other leaves.
-                if want_contains_var {
+                if contains_var_in_type(&want_expanded) {
                     return Err(SubsetError::ShapedArrayShape(
                         ShapeError::nested_type_var_not_inferred(),
                     ));
                 }
+                let got_canonical = got_expanded.canonicalize();
+                let want_canonical = want_expanded.canonicalize();
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
@@ -1793,7 +1805,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             // Size <: Quantified - expand, canonicalize Size, and compare
             // A SizeExpr like (A + A) // 2 might simplify to A (a Quantified)
-            (Type::Size(s), Type::Quantified(q)) if q.is_type_var() => {
+            (Type::Size(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymVar => {
                 let mut got_expanded = Type::Size(s.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
                 if let Type::Size(SizeExpr::Symbolic(got_symbolic)) = &got_expanded
@@ -1805,6 +1817,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 let want_canonical =
                     Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
                         .canonicalize();
+                if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
+                    return Ok(());
+                }
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
@@ -1819,7 +1834,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 }
             }
             // Quantified <: Size - expand Size, canonicalize, and compare
-            (Type::Quantified(q), Type::Size(s)) if q.is_type_var() => {
+            (Type::Quantified(q), Type::Size(s)) if q.kind() == QuantifiedKind::SymVar => {
                 let mut want_expanded = Type::Size(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);
                 if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
@@ -1831,6 +1846,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
                         .canonicalize();
                 let want_canonical = want_expanded.canonicalize();
+                if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
+                    return Ok(());
+                }
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
@@ -2101,6 +2119,41 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if cls.is_builtin("int") && is_gradual_size(want) =>
             {
                 Ok(())
+            }
+            (Type::ClassType(cls), Type::Size(SizeExpr::Symbolic(inner)))
+                if cls.is_builtin("int")
+                    && matches!(inner.as_ref(), Type::Var(_) | Type::Quantified(_)) =>
+            {
+                let mut inner_expanded = (**inner).clone();
+                self.solver.expand_with_bounds(&mut inner_expanded);
+                // `inner` is invariantly a `SymVar` dimension variable (or its
+                // bound): `SizeExpr::Symbolic(Quantified)` is only constructed for
+                // the `SymVar` kind (see `SizeExpr::from_type`), so this arm needs
+                // no `QuantifiedKind` gate, unlike the sibling `Size`/`Quantified`
+                // arms above. Once expanded, an `int` argument is compatible when
+                // the dimension resolved to a concrete `int` or a gradual size; a
+                // still-fresh var is pinned gradual (see below); anything else is a
+                // genuine mismatch.
+                match &inner_expanded {
+                    Type::ClassType(inner_cls) if inner_cls.is_builtin("int") => Ok(()),
+                    expanded if is_gradual_size(expanded) => Ok(()),
+                    // An `int` argument eagerly pins a still-fresh `SymVar` to
+                    // the gradual size. This is order-dependent when the `SymVar`
+                    // is repeated (e.g. `f[N: SymVar](x: Size[N], y: Size[N])`):
+                    // `f(i, s3)` pins N gradual from the `int` first, so a later
+                    // concrete `Size[3]` is accepted, whereas `f(s3, i)` pins
+                    // N=3 first and correctly rejects the `int`. This eager pin
+                    // mirrors how Pyrefly's ordinary `TypeVar` inference behaved
+                    // circa end of 2025, before it switched to bounds
+                    // accumulation. The fix is likewise to accumulate a gradual
+                    // lower bound on N instead of pinning it, so a concrete
+                    // sibling occurrence can still constrain N regardless of
+                    // argument order.
+                    Type::Var(_) | Type::Quantified(_) | Type::Any(_) => {
+                        self.is_subset_eq(&gradual_size(), inner)
+                    }
+                    _ => Err(SubsetError::Other),
+                }
             }
             (Type::Kwargs(_), _) => {
                 // We know kwargs will always be a dict w/ str keys

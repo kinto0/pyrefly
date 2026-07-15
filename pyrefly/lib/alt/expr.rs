@@ -3770,7 +3770,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .enumerate()
             .map(|(idx, arg)| {
                 if let Some(param) = param_for_arg(idx) {
-                    if param.kind() == QuantifiedKind::SymVar && !matches!(arg, Expr::Starred(_)) {
+                    if !matches!(arg, Expr::Starred(_)) && param.kind() == QuantifiedKind::SymVar {
                         return self
                             .parse_dimension_expr(arg, errors)
                             .unwrap_or_else(Type::any_error);

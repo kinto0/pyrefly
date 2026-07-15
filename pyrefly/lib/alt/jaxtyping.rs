@@ -461,7 +461,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
 
                 // Named dimension: "batch", "channels", etc.
-                let q = self.get_or_create_jaxtyping_dim(Name::new(token), QuantifiedKind::TypeVar);
+                let q = self.get_or_create_jaxtyping_dim(Name::new(token), QuantifiedKind::SymVar);
                 Type::Quantified(Box::new(q))
             })
             .collect()
@@ -494,7 +494,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             if let Ok(n) = s.parse::<i64>() {
                 self.heap.mk_size(SizeExpr::literal(n))
             } else {
-                let q = self.get_or_create_jaxtyping_dim(Name::new(s), QuantifiedKind::TypeVar);
+                let q = self.get_or_create_jaxtyping_dim(Name::new(s), QuantifiedKind::SymVar);
                 Type::Quantified(Box::new(q))
             }
         };

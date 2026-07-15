@@ -1987,12 +1987,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         let mut default_ty = None;
         if let Some(default_expr) = &tp.default {
-            let is_dim_bound = |ty: &Type| {
+            let is_size_bound = |ty: &Type| {
                 matches!(ty, Type::Dim(_))
+                    || matches!(ty, Type::Size(_))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Dim"))
+                    || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Size"))
             };
             let default = if self.solver().tensor_shapes
-                && matches!(&restriction, Restriction::Bound(bound) if is_dim_bound(bound))
+                && matches!(&restriction, Restriction::Bound(bound) if is_size_bound(bound))
                 && let Expr::NumberLiteral(ruff_python_ast::ExprNumberLiteral { value, .. }) =
                     default_expr
                 && let ruff_python_ast::Number::Int(i) = value

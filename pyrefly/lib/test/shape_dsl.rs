@@ -647,6 +647,45 @@ class LegacyBox(Generic[LegacyN]):
 );
 
 testcase!(
+    test_size_bounded_typevar_is_not_symbolic_dimension,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import Size
+
+# `N` is an ordinary `TypeVar` whose upper bound normalizes to the gradual
+# `Size` type. Symbolic-ness is determined by the explicit `SymVar` kind, so a
+# `Size` upper bound must NOT make the arg be parsed as a shape dimension.
+class Box[N: Size]: ...
+
+def f(a: Box[5]) -> None:  # E: Expected a type form, got instance of `Literal[5]`
+    reveal_type(a)  # E: revealed type: Box[Unknown]
+"#,
+);
+
+testcase!(
+    test_ordinary_typevar_not_assignable_to_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size
+
+def to_size[T](x: T) -> Size:
+    return x  # E: Returned type `T` is not assignable to declared return type `Size[int]`
+"#,
+);
+
+testcase!(
+    test_size_not_assignable_to_ordinary_typevar,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size
+
+def from_size[T](s: Size) -> T:
+    return s  # E: Returned type `Size[int]` is not assignable to declared return type `T`
+"#,
+);
+
+testcase!(
     test_tensor_shapes_size_annotations_parse_to_size,
     shaped_array_env(),
     r#"
@@ -1406,6 +1445,166 @@ def size_any(x: Size[Any]) -> None:
 
 def size_bool(x: Size[bool]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables, got `type[bool]`
     pass
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_int_satisfies_fresh_symbolic_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SymVar
+from typing import reveal_type
+
+def take_symbolic[N: SymVar](x: Size[N]) -> Size[N]: ...
+def same_symbolic[N: SymVar](x: Size[N], y: Size[N]) -> Size[N]: ...
+def take_size3(x: Size[3]) -> None: ...
+
+def f(i: int, s3: Size[3]) -> None:
+    reveal_type(take_symbolic(i))  # E: revealed type: Size[int]
+    reveal_type(take_symbolic(3))  # E: revealed type: Size[3]
+    reveal_type(take_symbolic(s3))  # E: revealed type: Size[3]
+    take_size3(i)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+    take_size3(3)
+    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `Size[3]`
+    # Two `int`s into a repeated symbolic dimension: the first pins N gradual, the
+    # second matches that gradual bound (accepted).
+    same_symbolic(i, i)
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_gradual_size_satisfies_fresh_symbolic_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SymVar
+from typing import assert_type
+
+def take_symbolic[N: SymVar](x: Size[N]) -> Size[N]: ...
+
+# A gradual `Size` (bare `Size` == `Size[int]`) flowing into a fresh symbolic
+# `Size[N]` resolves to the gradual size: the unconstrained `SymVar` defaults
+# to gradual rather than leaking an unsolved `Var`.
+def f(s: Size) -> None:
+    assert_type(take_symbolic(s), Size)
+"#,
+);
+
+testcase!(
+    bug = "int eagerly pins a repeated SymVar to gradual, so argument order flips accept/reject",
+    test_tensor_shapes_symvar_inference_is_order_dependent,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SymVar
+
+def same_symbolic[N: SymVar](x: Size[N], y: Size[N]) -> Size[N]: ...
+
+# An `int` argument eagerly pins the fresh `N` to the gradual size, so the later
+# concrete `Size[3]` is accepted; the mirror-image call correctly rejects the
+# `int`. The two orders should agree once `int` accumulates a gradual bound
+# instead of pinning it (see the `SymVar` eager-pin note in solver/subset.rs).
+def f(i: int, s3: Size[3]) -> None:
+    same_symbolic(i, s3)
+    same_symbolic(s3, i)  # E: Argument `int` is not assignable to parameter `y` with type `Size[3]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_numpy_shaped_api_accepts_int_lengths,
+    {
+        let mut env = shaped_array_env();
+        env.add_with_path(
+            "numpy",
+            "numpy.pyi",
+            r#"
+from shape_extensions import Size, SizeTuple, SymVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SizeTuple, DType = int]: ...
+
+def arange[N: SymVar](stop: Size[N]) -> Array[[N], int]: ...
+def full[N: SymVar](shape: Size[N], fill_value: float) -> Array[[N], float]: ...
+def take_size3(x: Size[3]) -> None: ...
+"#,
+        );
+        env
+    },
+    r#"
+import numpy as np
+
+def f(targets: list[int], n_points: int) -> None:
+    np.arange(len(targets))
+    np.full(n_points - 1, 0.0)
+    np.take_size3(n_points)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_size_bound_defaults,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size
+
+class SizeDefault[N: Size = 3]: ...
+class SizeIntDefault[N: Size[int] = 3]: ...
+class SizeHuge[N: Size]: ...
+
+def f() -> None:
+    # `N: Size` is an ordinary `TypeVar`, so an integer literal is a value, not a
+    # type form; it is no longer parsed as a symbolic shape dimension.
+    size: SizeDefault[3] = SizeDefault()  # E: Expected a type form, got instance of `Literal[3]`
+    size_int: SizeIntDefault[3] = SizeIntDefault()  # E: Expected a type form, got instance of `Literal[3]`
+    huge: SizeHuge[100000000000000000000000000000000] = SizeHuge()  # E: Expected a type form, got instance of `Literal[100000000000000000000000000000000]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_gradual_size_through_size_bound_typevar,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size
+from typing import reveal_type
+
+def id_size[N: Size](x: N) -> N: ...
+def takes_size_bound[N: Size](x: N) -> None: ...
+def takes_size(x: Size) -> None: ...
+def takes_size3(x: Size[3]) -> None: ...
+
+def pass_size_bound_to_gradual[N: Size](x: N) -> None:
+    takes_size(x)
+
+def f(s: Size, s3: Size[3]) -> None:
+    reveal_type(id_size(s))  # E: revealed type: Size[int]
+    reveal_type(id_size(s3))  # E: revealed type: Size[3]
+    takes_size_bound(s)
+    takes_size_bound(s3)
+    takes_size(id_size(s3))
+    takes_size3(id_size(s3))
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_size_int_is_canonical_when_inferred,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SymVar
+
+def take_size[N: SymVar](x: Size[N]) -> None: ...
+def take_size3(x: Size[3]) -> None: ...
+
+def f[M: SymVar](x: int | Size[M]) -> None:
+    take_size(x)
+
+def g(x: int) -> None:
+    take_size(x)
+    take_size3(3)
+    take_size3(x)  # E: Argument `int` is not assignable to parameter `x` with type `Size[3]`
+
+class C[N: SymVar]:
+    def __init__(self, x: Size[N]) -> None: ...
+
+def h(x: int) -> None:
+    C(x)
+    C(int(x))  # E: Unnecessary `int()` call; argument is already of type `int`
 "#,
 );
 

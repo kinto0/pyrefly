@@ -19,6 +19,7 @@ use std::fmt::Display;
 
 use crate::equality::TypeEq;
 use crate::literal::Lit;
+use crate::quantified::QuantifiedKind;
 use crate::types::AnyStyle;
 use crate::types::Type;
 
@@ -119,7 +120,10 @@ impl SizeExpr {
             Type::Size(dim) => Some(dim.clone()),
             Type::Literal(lit) if let Lit::Int(i) = &lit.value => i.as_i64().map(SizeExpr::Literal),
             Type::Dim(ty) => SizeExpr::from_type(ty),
-            Type::Quantified(_) | Type::Var(_) => Some(SizeExpr::Symbolic(Box::new(ty.clone()))),
+            Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => {
+                Some(SizeExpr::Symbolic(Box::new(ty.clone())))
+            }
+            Type::Var(_) => Some(SizeExpr::Symbolic(Box::new(ty.clone()))),
             _ => None,
         }
     }
@@ -213,7 +217,11 @@ fn canonicalize_inner(ty: Type) -> Type {
 }
 
 /// Whether a type is gradual for size purposes.
-fn type_is_gradual(ty: &Type) -> bool {
+///
+/// For a `Size` type this is equivalent to `is_gradual_size(&canonicalize(ty))`
+/// but avoids allocating a canonicalized copy, so it is cheap to call on a hot
+/// path before deciding whether canonicalization is needed at all.
+pub fn type_is_gradual(ty: &Type) -> bool {
     match ty {
         Type::Size(dim) => sizeexpr_is_gradual(dim),
         Type::Any(AnyStyle::Implicit | AnyStyle::Explicit) => true,
@@ -225,13 +233,28 @@ fn type_is_gradual(ty: &Type) -> bool {
 fn sizeexpr_is_gradual(dim: &SizeExpr) -> bool {
     match dim {
         SizeExpr::Int => true,
-        SizeExpr::Symbolic(ty) => type_is_gradual(ty),
+        SizeExpr::Symbolic(ty) => symbolic_is_gradual(ty),
         SizeExpr::Add(left, right)
         | SizeExpr::Sub(left, right)
         | SizeExpr::Mul(left, right)
         | SizeExpr::FloorDiv(left, right)
         | SizeExpr::Pow(left, right) => sizeexpr_is_gradual(left) || sizeexpr_is_gradual(right),
         SizeExpr::Literal(_) => false,
+    }
+}
+
+/// Whether canonicalizing a `Symbolic` leaf yields the gradual size. A builtin
+/// `int` leaf (or a `Dim` wrapping one) canonicalizes to the gradual size via
+/// `canonicalize_symbolic`, so it must be reported as gradual here even though it
+/// is not itself a `Size`. Every other leaf falls back to `type_is_gradual`,
+/// which already matches how `canonicalize` short-circuits gradual (`Any`) and
+/// nested `Size` leaves. This keeps `type_is_gradual` equivalent to
+/// `is_gradual_size(&canonicalize(..))` without allocating a canonical copy.
+fn symbolic_is_gradual(ty: &Type) -> bool {
+    match ty {
+        Type::ClassType(cls) if cls.is_builtin("int") => true,
+        Type::Dim(inner) => symbolic_is_gradual(inner),
+        _ => type_is_gradual(ty),
     }
 }
 
@@ -269,6 +292,7 @@ fn canonicalize_symbolic(ty: Type) -> Type {
                 .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(Type::Literal(lit)))))
         }
         Type::Dim(inner) => canonicalize_symbolic(*inner),
+        Type::ClassType(cls) if cls.is_builtin("int") => gradual_size(),
         other => Type::Size(SizeExpr::Symbolic(Box::new(other))),
     }
 }
@@ -1193,6 +1217,46 @@ mod tests {
             canonicalize(symbolic_overflow),
             Type::Size(SizeExpr::Symbolic(Box::new(overflow_lit)))
         );
+    }
+
+    #[test]
+    fn type_is_gradual_matches_canonicalized_gradual_check() {
+        use crate::class::ClassType;
+        use crate::display::tests::fake_class;
+        use crate::types::TArgs;
+
+        let int_class = Type::ClassType(ClassType::new(
+            fake_class("int", "builtins", 0),
+            TArgs::default(),
+        ));
+        let str_class = Type::ClassType(ClassType::new(
+            fake_class("str", "builtins", 0),
+            TArgs::default(),
+        ));
+
+        // Each case must satisfy `type_is_gradual(x) == is_gradual_size(&canonicalize(x))`.
+        let cases = vec![
+            // A symbolic `int` leaf canonicalizes to the gradual size (regression case).
+            Type::Size(SizeExpr::Symbolic(Box::new(int_class.clone()))),
+            // Arithmetic over a symbolic `int` leaf is gradual too.
+            Type::Size(SizeExpr::add(
+                Type::Size(SizeExpr::Symbolic(Box::new(int_class))),
+                size_literal(1),
+            )),
+            // The bare gradual size.
+            gradual_size(),
+            // A concrete literal is not gradual.
+            size_literal(5),
+            // A non-`int` symbolic leaf is not gradual.
+            Type::Size(SizeExpr::Symbolic(Box::new(str_class))),
+        ];
+        for case in cases {
+            assert_eq!(
+                type_is_gradual(&case),
+                is_gradual_size(&canonicalize(case.clone())),
+                "mismatch for {case:?}"
+            );
+        }
     }
 
     #[test]
