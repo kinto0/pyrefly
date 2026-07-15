@@ -5,6 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::path::PathBuf;
+
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::type_var::Restriction;
@@ -20,26 +22,20 @@ use crate::testcase;
 use crate::types::types::Type;
 
 fn shaped_array_env() -> TestEnv {
-    let mut env = TestEnv::new();
-    env.add_with_path(
-        "shape_extensions",
-        "shape_extensions.pyi",
-        r#"
-from typing import Any, Callable, _SpecialForm
-
-shaped_array: Any
-SymIntVar: _SpecialForm
-class SymIntTuple:
-    def __class_getitem__(cls, params: Any) -> Any: ...
-class Elements[T]: ...
-class SymInt[T]: ...
-class SymInt[T]: ...
-class D: ...
-def assert_shape[T](x: T, shape: tuple[Any, ...]) -> T: ...
-def defines_assert_shape[F: Callable[..., Any]](fn: F) -> F: ...
-"#,
+    let path = PathBuf::from(
+        std::env::var("SHAPE_EXTENSIONS_TEST_PATH")
+            .expect("SHAPE_EXTENSIONS_TEST_PATH must be set"),
     );
-    env
+    assert!(
+        path.join("shape_extensions").is_dir(),
+        "SHAPE_EXTENSIONS_TEST_PATH must point to a search path containing `shape_extensions`, got `{}`",
+        path.display()
+    );
+    let path = path
+        .to_str()
+        .expect("SHAPE_EXTENSIONS_TEST_PATH must be valid UTF-8")
+        .to_owned();
+    TestEnv::new_with_site_package_paths(&[&path])
 }
 
 fn shaped_array_env_with_plain_torch() -> TestEnv {
@@ -133,33 +129,7 @@ fn shaped_array_env_with_shaped_torch_and_jaxtyping() -> TestEnv {
 }
 
 fn shaped_array_env_with_numpy() -> TestEnv {
-    let mut env = TestEnv::new();
-    env.add_with_path(
-        "shape_extensions",
-        "shape_extensions/__init__.pyi",
-        r#"
-from typing import Any, Callable
-
-shaped_array: Any
-class SymIntTuple:
-    def __class_getitem__(cls, params: Any) -> Any: ...
-class Elements[T]: ...
-def uses_shape_dsl(ir_fn: Callable[..., Any], *, capture_init: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
-"#,
-    );
-    env.add_with_path(
-        "shape_extensions.dsl",
-        "shape_extensions/dsl.pyi",
-        r#"
-from typing import Any, Callable
-
-def shape_dsl_function(fn: Callable[..., Any]) -> Callable[..., Any]: ...
-
-class ShapedArray:
-    shape: list[int]
-    def __init__(self, *, shape: list[int]) -> None: ...
-"#,
-    );
+    let mut env = shaped_array_env();
     env.add_with_path(
         "numpy",
         "numpy/__init__.pyi",
@@ -202,39 +172,7 @@ def tc_identity[Shape: SymIntTuple, DType](x: tcarray[Shape, DType]) -> tcarray[
 }
 
 fn shape_dsl_base_env() -> TestEnv {
-    let mut env = TestEnv::new();
-    env.add_with_path(
-        "shape_extensions",
-        "shape_extensions/__init__.pyi",
-        r#"
-from typing import Any, Callable
-
-shaped_array: Any
-class SymIntTuple:
-    def __class_getitem__(cls, params: Any) -> Any: ...
-class Elements[T]: ...
-class SymIntVar: ...
-class SymInt[T]: ...
-def uses_shape_dsl(ir_fn: Callable[..., Any], *, capture_init: list[str] | None = None) -> Callable[[Callable[..., Any]], Callable[..., Any]]: ...
-"#,
-    );
-    env.add_with_path(
-        "shape_extensions.dsl",
-        "shape_extensions/dsl.pyi",
-        r#"
-from typing import Any, Callable
-
-def shape_dsl_function(fn: Callable[..., Any]) -> Callable[..., Any]: ...
-def prod(x: Any) -> Any: ...
-def sum(x: Any) -> Any: ...
-def parse_einsum_equation(x: Any) -> Any: ...
-
-class ShapedArray:
-    shape: list[int]
-    def __init__(self, *, shape: list[int]) -> None: ...
-"#,
-    );
-    env
+    shaped_array_env()
 }
 
 fn shape_dsl_tensor_env() -> TestEnv {
@@ -408,22 +346,22 @@ kwargs: Any = {}
 @shaped_array  # E: `@shaped_array` requires a `shape` keyword argument
 class BareDecorator[Shape]: ...
 
-@shaped_array()  # E: `@shaped_array` requires a `shape` keyword argument
+@shaped_array()  # E: `@shaped_array` requires a `shape` keyword argument  # E: Missing argument `shape` in function `shape_extensions.shaped_array`
 class MissingShape[Shape]: ...
 
-@shaped_array("Shape")  # E: `@shaped_array` expects `shape` as a keyword argument
+@shaped_array("Shape")  # E: `@shaped_array` expects `shape` as a keyword argument  # E: Expected argument `shape` to be passed by name in function `shape_extensions.shaped_array`
 class PositionalShape[Shape]: ...
 
-@shaped_array(dtype="Shape")  # E: Unexpected keyword argument `dtype` for `@shaped_array`; expected `shape`
+@shaped_array(dtype="Shape")  # E: Unexpected keyword argument `dtype` for `@shaped_array`; expected `shape`  # E: Missing argument `shape` in function `shape_extensions.shaped_array`  # E: Unexpected keyword argument `dtype` in function `shape_extensions.shaped_array`
 class WrongShapeKeyword[Shape]: ...
 
 @shaped_array(shape="Shape", **kwargs)  # E: Unpacking is not supported in `@shaped_array`
 class KwargsShape[Shape]: ...
 
-@shaped_array(shape="Shape", shape="Shape")  # E: Parse error: Duplicate keyword argument "shape"
+@shaped_array(shape="Shape", shape="Shape")  # E: Parse error: Duplicate keyword argument "shape"  # E: Multiple values for argument `shape` in function `shape_extensions.shaped_array`
 class DuplicateShapeKeyword[Shape]: ...
 
-@shaped_array(shape=123)  # E: `@shaped_array` `shape` argument must be a string literal
+@shaped_array(shape=123)  # E: `@shaped_array` `shape` argument must be a string literal  # E: Argument `Literal[123]` is not assignable to parameter `shape` with type `str` in function `shape_extensions.shaped_array`
 class NonStringShape[Shape]: ...
 
 @shaped_array(shape="Shape")  # E: Shape parameter `Shape` must be a scoped (PEP-695-style) type parameter of class `NoTypeParams`
@@ -2405,19 +2343,13 @@ from typing import TypeVar
 def ok[N: SymIntVar](x: object) -> None:
     pass
 
-x: SymIntVar = 1  # E: Expected a type form, got instance of `_SpecialForm`
-y: SymIntVar[int] = 1  # E: Expected a type form, got instance of `object`
-T = TypeVar("T", bound=SymIntVar)  # E: `SymIntVar` cannot be used as a TypeVar bound # E: Expected a type form, got instance of `_SpecialForm`
-U = TypeVar("U", SymIntVar, int)  # E: `SymIntVar` cannot be used as a TypeVar constraint # E: Expected a type form, got instance of `_SpecialForm`
-V = TypeVar("V", default=SymIntVar)  # E: `SymIntVar` cannot be used as a TypeVar default # E: Expected a type form, got instance of `_SpecialForm`
+x: SymIntVar = 1  # E: `Literal[1]` is not assignable to `SymIntVar`
+y: SymIntVar[int] = 1  # E: Expected 0 type arguments for `SymIntVar`, got 1  # E: `Literal[1]` is not assignable to `SymIntVar`
+T = TypeVar("T", bound=SymIntVar)  # E: `SymIntVar` cannot be used as a TypeVar bound
+U = TypeVar("U", SymIntVar, int)  # E: `SymIntVar` cannot be used as a TypeVar constraint
+V = TypeVar("V", default=SymIntVar)  # E: `SymIntVar` cannot be used as a TypeVar default
 
 def bad_constraint[T: (SymIntVar, int)](x: T) -> None:  # E: `SymIntVar` cannot be used as a TypeVar constraint
-    pass
-
-def invalid_param(x: SymIntVar) -> None:  # E: Expected a type form, got instance of `_SpecialForm`
-    pass
-
-def invalid_return() -> SymIntVar:  # E: Expected a type form, got instance of `_SpecialForm`
     pass
 "#,
 );
@@ -2911,7 +2843,7 @@ def iterator_kernel_ir(x: list[int], y: list[int]) -> int:
 
 @shape_dsl_function
 def reductions_ir(x: list[int | symint]) -> int | symint:
-    return shape_extensions.dsl.prod(x) + shape_extensions.dsl.sum(x)
+    return shape_extensions.dsl.prod(x) + shape_extensions.dsl.sum(x)  # E: in function `shape_extensions.dsl.prod`  # E: in function `shape_extensions.dsl.sum`
 
 @shape_dsl_function
 def identity_symint_ir(x: symint) -> symint:
