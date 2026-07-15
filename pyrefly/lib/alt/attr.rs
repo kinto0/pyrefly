@@ -12,8 +12,8 @@ use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::literal::LitEnum;
-use pyrefly_types::shaped_array::ShapedArrayShapeArgStyle;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::special_form::SpecialForm;
@@ -1578,7 +1578,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 if attr_name.as_str() == "shape" {
                     let shape = if matches!(
                         tensor.shape_arg_style,
-                        ShapedArrayShapeArgStyle::TupleCarrier { .. }
+                        SymIntTupleArgStyle::TupleCarrier { .. }
                     ) {
                         shape_to_tuple_carrier_arg(&tensor.shape)
                     } else {

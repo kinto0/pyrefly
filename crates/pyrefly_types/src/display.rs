@@ -34,9 +34,9 @@ use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
 use crate::quantified::QuantifiedIdentity;
-use crate::shaped_array::ShapedArrayShapeArgStyle;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::SymIntTupleArgStyle;
 use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
@@ -375,8 +375,8 @@ impl<'a> TypeDisplayContext<'a> {
         match shaped_array.syntax {
             ShapedArraySyntax::Native => {
                 let shape_idx = match shaped_array.shape_arg_style {
-                    ShapedArrayShapeArgStyle::TupleCarrier { index } => index,
-                    ShapedArrayShapeArgStyle::Unknown => {
+                    SymIntTupleArgStyle::TupleCarrier { index } => index,
+                    SymIntTupleArgStyle::Unknown => {
                         output.write_qname(shaped_array.base_class.qname())?;
                         if !shaped_array.is_shapeless() {
                             output.write_str("[")?;
@@ -1579,8 +1579,8 @@ pub mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
-    use crate::shaped_array::ShapedArrayShape;
     use crate::shaped_array::ShapedArrayType;
+    use crate::shaped_array::SymIntTuple;
     use crate::tuple::Tuple;
     use crate::type_alias::TypeAlias;
     use crate::type_alias::TypeAliasData;
@@ -1680,11 +1680,9 @@ pub mod tests {
     #[test]
     fn test_display_shaped_array_type_uses_base_class_name() {
         let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
-        let shaped = ShapedArrayType::new(
-            array.clone(),
-            ShapedArrayShape::new(vec![SymInt::Literal(2)]),
-        )
-        .to_type();
+        let shaped =
+            ShapedArrayType::new(array.clone(), SymIntTuple::new(vec![SymInt::Literal(2)]))
+                .to_type();
         let shapeless = ShapedArrayType::shapeless(array).to_type();
 
         assert_eq!(shaped.to_string(), "Array[2]");
@@ -1718,7 +1716,7 @@ pub mod tests {
         let heap = TypeHeap::new();
         let n = fake_tparam(0, "N", QuantifiedKind::SymIntVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::SymIntVar).to_type(&heap);
-        let shape = ShapedArrayShape::new(vec![
+        let shape = SymIntTuple::new(vec![
             SymInt::Literal(3),
             SymInt::Symbolic(Box::new(n.clone())),
             SymInt::Mul(
@@ -1743,11 +1741,11 @@ pub mod tests {
             TArgs::new(shape_param, vec![Type::any_tuple()]),
         );
         let n = fake_tparam(1, "N", QuantifiedKind::SymIntVar).to_type(&heap);
-        let shape = ShapedArrayShape::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
+        let shape = SymIntTuple::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
 
         assert_eq!(
             ShapedArrayType::new(array, shape)
-                .with_shape_arg_style(ShapedArrayShapeArgStyle::TupleCarrier { index: 0 })
+                .with_shape_arg_style(SymIntTupleArgStyle::TupleCarrier { index: 0 })
                 .to_type()
                 .to_string(),
             "Array[[3, N]]"

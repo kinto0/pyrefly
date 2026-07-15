@@ -25,9 +25,9 @@ use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::symint_type_is_provably_negative;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
-use pyrefly_types::shaped_array::ShapedArrayShape;
-use pyrefly_types::shaped_array::ShapedArrayShapeArgStyle;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTuple;
+use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::shaped_array::index_shape_int;
 use pyrefly_types::shaped_array::index_shape_multi;
 use pyrefly_types::shaped_array::index_shape_slice;
@@ -3011,7 +3011,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 };
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
-                // The final canonicalization happens in ShapedArrayShape::from_types.
+                // The final canonicalization happens in SymIntTuple::from_types.
                 return Type::SymInt(SymInt::mul(Type::SymInt(SymInt::Literal(-1)), inner_dim));
             }
             let ty = self.expr_infer(expr, errors);
@@ -3115,9 +3115,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let new_shape = match shaped_array_type.shape.as_tuple() {
                     Tuple::Concrete(dims) => {
                         new_dims.extend(dims.iter().cloned());
-                        ShapedArrayShape::from_types(new_dims)
+                        SymIntTuple::from_types(new_dims)
                     }
-                    Tuple::Unbounded(middle) => ShapedArrayShape::unpacked(
+                    Tuple::Unbounded(middle) => SymIntTuple::unpacked(
                         new_dims,
                         Type::Tuple(Tuple::Unbounded(middle.clone())),
                         Vec::new(),
@@ -3125,7 +3125,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     Tuple::Unpacked(f) => {
                         let (prefix, middle, suffix) = &**f;
                         new_dims.extend(prefix.iter().cloned());
-                        ShapedArrayShape::unpacked(new_dims, middle.clone(), suffix.clone())
+                        SymIntTuple::unpacked(new_dims, middle.clone(), suffix.clone())
                     }
                 };
                 self.shaped_array_with_shape(shaped_array_type, new_shape)
@@ -3246,10 +3246,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                 match tuple_carrier_to_shape(shape_arg) {
                     Some(shape) => ShapedArrayType::new(cls.clone(), shape).with_shape_arg_style(
-                        ShapedArrayShapeArgStyle::TupleCarrier { index: shape_idx },
+                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx },
                     ),
                     None => ShapedArrayType::shapeless(cls.clone()).with_shape_arg_style(
-                        ShapedArrayShapeArgStyle::TupleCarrier { index: shape_idx },
+                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx },
                     ),
                 }
             }
@@ -3275,7 +3275,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub(crate) fn shaped_array_with_shape(
         &self,
         tensor: &ShapedArrayType,
-        shape: ShapedArrayShape,
+        shape: SymIntTuple,
     ) -> ShapedArrayType {
         match self.shaped_array_shape_for_class_type(&tensor.base_class) {
             Some(shape_param) => match shape_param.kind() {
@@ -3602,11 +3602,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         expr: &Expr,
         errors: &ErrorCollector,
-    ) -> Option<ShapedArrayShape> {
+    ) -> Option<SymIntTuple> {
         match expr {
             Expr::Tuple(ExprTuple { elts, .. }) => self
                 .parse_dimension_list(elts, errors)
-                .map(ShapedArrayShape::from_types),
+                .map(SymIntTuple::from_types),
             _ => {
                 self.error(
                     errors,
@@ -3889,7 +3889,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         args: &[Expr],
         errors: &ErrorCollector,
-    ) -> Option<ShapedArrayShape> {
+    ) -> Option<SymIntTuple> {
         let star = args
             .iter()
             .enumerate()
@@ -3928,11 +3928,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 Err(()) => return None,
             };
-            return Some(ShapedArrayShape::unpacked(prefix, middle_ty, suffix));
+            return Some(SymIntTuple::unpacked(prefix, middle_ty, suffix));
         }
 
         self.parse_dimension_list(args, errors)
-            .map(ShapedArrayShape::from_types)
+            .map(SymIntTuple::from_types)
     }
 
     /// Parse a registered shaped-array annotation.

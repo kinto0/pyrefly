@@ -48,9 +48,9 @@ use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
-use crate::shaped_array::ShapedArrayShape;
-use crate::shaped_array::ShapedArrayShapeArgStyle;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::SymIntTuple;
+use crate::shaped_array::SymIntTupleArgStyle;
 use crate::shaped_array::shape_to_tuple_carrier_arg;
 use crate::tuple::Tuple;
 use crate::types::Type;
@@ -71,7 +71,7 @@ enum Val {
     /// Single tensor dimension: a symbolic `Type` (`SymInt`, `Quantified`, etc.).
     Dim(Type),
     /// Full tensor shape with concrete rank.
-    Shape(ShapedArrayShape),
+    Shape(SymIntTuple),
     /// Homogeneous list. Elements are all the same variant (Int, Dim, Shape, …).
     List(Vec<Val>),
     /// Variadic shape: prefix dims + variadic middle + suffix dims.
@@ -127,9 +127,9 @@ impl Val {
         }
     }
 
-    /// Extract as `&ShapedArrayShape`. Panics if not `Shape` — the DSL type checker
+    /// Extract as `&SymIntTuple`. Panics if not `Shape` — the DSL type checker
     /// guarantees this won't happen for well-typed DSL code.
-    pub fn as_shape(&self) -> &ShapedArrayShape {
+    pub fn as_shape(&self) -> &SymIntTuple {
         match self {
             Val::Shape(s) => s,
             _ => panic!("IR bug: expected Shape, got {}", self.variant_name()),
@@ -174,15 +174,15 @@ impl Val {
 mod extract {
     use crate::dimension::SymInt;
     use crate::literal::Lit;
-    use crate::shaped_array::ShapedArrayShape;
+    use crate::shaped_array::SymIntTuple;
     use crate::tuple::Tuple;
     use crate::types::Type;
 
-    /// Extract a ShapedArrayShape from a Type.
+    /// Extract a SymIntTuple from a Type.
     /// Returns None for non-shaped-arrays and shapeless arrays.
     /// Allows both Concrete and Unpacked shapes through so DSL ops that
     /// support variadic shapes (e.g., slicing) can operate on them.
-    pub fn shaped_array_shape(ty: &Type) -> Option<ShapedArrayShape> {
+    pub fn shaped_array_shape(ty: &Type) -> Option<SymIntTuple> {
         match ty {
             Type::ShapedArray(shaped_array) => {
                 if shaped_array.is_shapeless() {
@@ -289,7 +289,7 @@ mod extract {
     /// Extract list or tuple of shaped-array shapes.
     /// Handles tuple[Array[...], ...].
     /// Returns None for list types (can't determine element count) or unbounded tuples.
-    pub fn shaped_array_list(ty: &Type) -> Option<Vec<ShapedArrayShape>> {
+    pub fn shaped_array_list(ty: &Type) -> Option<Vec<SymIntTuple>> {
         use crate::tuple::Tuple;
 
         match ty {
@@ -2630,7 +2630,7 @@ fn eval_dsl_expr(
                 } => {
                     let prefix_types = prefix.iter().map(|v| v.as_size()).collect();
                     let suffix_types = suffix.iter().map(|v| v.as_size()).collect();
-                    Ok(Val::Shape(ShapedArrayShape::unpacked(
+                    Ok(Val::Shape(SymIntTuple::unpacked(
                         prefix_types,
                         middle,
                         suffix_types,
@@ -2638,7 +2638,7 @@ fn eval_dsl_expr(
                 }
                 _ => {
                     let dims = val.as_size_list();
-                    Ok(Val::Shape(ShapedArrayShape::from_types(dims)))
+                    Ok(Val::Shape(SymIntTuple::from_types(dims)))
                 }
             }
         }
@@ -3228,13 +3228,13 @@ fn eval_dsl_body(
     }
 }
 
-/// Inject a computed `ShapedArrayShape` into a fixture `Type`, preserving the base class.
+/// Inject a computed `SymIntTuple` into a fixture `Type`, preserving the base class.
 /// Falls back to `ret_type` unchanged if it isn't a shaped-array type.
-fn inject_shape(shape: ShapedArrayShape, ret_type: &Type) -> Type {
+fn inject_shape(shape: SymIntTuple, ret_type: &Type) -> Type {
     match ret_type {
         Type::ShapedArray(t) => {
             let mut base_class = t.base_class.clone();
-            if let ShapedArrayShapeArgStyle::TupleCarrier { index } = t.shape_arg_style {
+            if let SymIntTupleArgStyle::TupleCarrier { index } = t.shape_arg_style {
                 let carrier = base_class
                     .targs_mut()
                     .as_mut()
@@ -3275,10 +3275,7 @@ fn val_to_scalar_type(val: &Val) -> Type {
 
 /// Inject a list of computed shapes into the fixture return type's tuple structure.
 /// Returns `None` if shapes is empty or the fixture type doesn't match.
-fn inject_shapes_into_tuple(
-    shapes: Vec<ShapedArrayShape>,
-    expected_return_type: &Type,
-) -> Option<Type> {
+fn inject_shapes_into_tuple(shapes: Vec<SymIntTuple>, expected_return_type: &Type) -> Option<Type> {
     if shapes.is_empty() {
         return None;
     }
@@ -3325,8 +3322,7 @@ fn val_to_type(
             // allows list[ShapedArray] for a declared ShapedArray return, so
             // this path is guarded by check_body's static validation.
             Val::List(items) => {
-                let shapes: Vec<ShapedArrayShape> =
-                    items.iter().map(|v| v.as_shape().clone()).collect();
+                let shapes: Vec<SymIntTuple> = items.iter().map(|v| v.as_shape().clone()).collect();
                 if shapes.len() == 1 {
                     return inject_shape(shapes.into_iter().next().unwrap(), expected_return_type);
                 }
@@ -3415,8 +3411,7 @@ fn val_to_type(
         DslType::List(inner) => match inner.as_ref() {
             DslType::ShapedArray => {
                 let items = val.as_list();
-                let shapes: Vec<ShapedArrayShape> =
-                    items.iter().map(|v| v.as_shape().clone()).collect();
+                let shapes: Vec<SymIntTuple> = items.iter().map(|v| v.as_shape().clone()).collect();
                 if is_unbounded {
                     // Unbounded: build Tuple::Unbounded with computed element shape
                     if let (Some(first), Type::Tuple(Tuple::Unbounded(elem))) =
@@ -3441,8 +3436,7 @@ fn val_to_type(
             let items = val.as_list();
             let all_shaped_array = elems.iter().all(|e| matches!(e, DslType::ShapedArray));
             if all_shaped_array {
-                let shapes: Vec<ShapedArrayShape> =
-                    items.iter().map(|v| v.as_shape().clone()).collect();
+                let shapes: Vec<SymIntTuple> = items.iter().map(|v| v.as_shape().clone()).collect();
                 inject_shapes_into_tuple(shapes, expected_return_type)
                     .unwrap_or_else(|| expected_return_type.clone())
             } else {
@@ -4027,7 +4021,7 @@ mod tests {
             fake_class("Tensor", "torch"),
             TArgs::default(),
         ));
-        let shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
+        let shape = SymIntTuple::new(vec![SymInt::Literal(2)]);
 
         assert!(extract::shaped_array_shape(&torch_tensor).is_none());
         assert!(
@@ -4040,8 +4034,8 @@ mod tests {
     #[test]
     fn test_shape_dsl_extracts_registered_shaped_array_tuple() {
         let array = ClassType::new(fake_class("Array", "arrays"), TArgs::default());
-        let first_shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
-        let second_shape = ShapedArrayShape::new(vec![SymInt::Literal(3)]);
+        let first_shape = SymIntTuple::new(vec![SymInt::Literal(2)]);
+        let second_shape = SymIntTuple::new(vec![SymInt::Literal(3)]);
         let first = ShapedArrayType::new(array.clone(), first_shape.clone()).to_type();
         let second = ShapedArrayType::new(array.clone(), second_shape.clone()).to_type();
 
@@ -4065,8 +4059,8 @@ mod tests {
     #[test]
     fn test_shape_dsl_extracts_same_shape_union() {
         let array = ClassType::new(fake_class("Array", "arrays"), TArgs::default());
-        let shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
-        let other_shape = ShapedArrayShape::new(vec![SymInt::Literal(3)]);
+        let shape = SymIntTuple::new(vec![SymInt::Literal(2)]);
+        let other_shape = SymIntTuple::new(vec![SymInt::Literal(3)]);
         let union = Type::Union(Box::new(Union {
             members: vec![
                 ShapedArrayType::new(array.clone(), shape.clone()).to_type(),

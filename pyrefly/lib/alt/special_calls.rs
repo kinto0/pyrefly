@@ -12,8 +12,8 @@
  */
 
 use pyrefly_types::callable::FuncMetadata;
-use pyrefly_types::shaped_array::ShapedArrayShape;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::Expr;
@@ -716,7 +716,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     }
 }
 
-fn format_assert_shape_shape(shape: &ShapedArrayShape) -> String {
+fn format_assert_shape_shape(shape: &SymIntTuple) -> String {
     match shape.as_concrete() {
         Some([]) => "()".to_owned(),
         Some([dim]) => format!("({dim},)"),

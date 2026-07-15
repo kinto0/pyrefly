@@ -50,10 +50,10 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::class::ClassType;
 use pyrefly_types::dimension::SymInt;
 use pyrefly_types::quantified::QuantifiedKind;
-use pyrefly_types::shaped_array::ShapedArrayShape;
-use pyrefly_types::shaped_array::ShapedArrayShapeArgStyle;
 use pyrefly_types::shaped_array::ShapedArraySyntax;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTuple;
+use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::types::TParams;
 use pyrefly_util::visit::Visit;
@@ -275,11 +275,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// the carrier type argument on `base_class` is updated to reflect `shape` so
     /// that shape-aware operations (e.g. `.shape` access, generic return reprojection)
     /// remain coherent with the jaxtyping annotation.
-    fn jaxtyping_shaped_array_type(
-        &self,
-        mut base_class: ClassType,
-        shape: ShapedArrayShape,
-    ) -> Type {
+    fn jaxtyping_shaped_array_type(&self, mut base_class: ClassType, shape: SymIntTuple) -> Type {
         let shape_arg_style = match self.shaped_array_shape_for_class_type(&base_class) {
             Some(shape_param) => {
                 let shape_idx = self
@@ -296,7 +292,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             "class type should have an argument for each type parameter",
                         );
                         *carrier = shape_to_tuple_carrier_arg(&shape);
-                        ShapedArrayShapeArgStyle::TupleCarrier { index: shape_idx }
+                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx }
                     }
                     QuantifiedKind::TypeVarTuple => unreachable!(
                         "shaped-array metadata validation rejects TypeVarTuple shape parameters"
@@ -306,7 +302,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     ),
                 }
             }
-            None => ShapedArrayShapeArgStyle::Unknown,
+            None => SymIntTupleArgStyle::Unknown,
         };
         ShapedArrayType::new(base_class, shape)
             .with_syntax(ShapedArraySyntax::Jaxtyping)
@@ -353,7 +349,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let tokens: Vec<&str> = shape_str.split_whitespace().collect();
         if tokens.is_empty() {
             // Empty shape string means scalar tensor (rank 0), like Tensor[()]
-            let shaped_array_shape = ShapedArrayShape::from_types(vec![]);
+            let shaped_array_shape = SymIntTuple::from_types(vec![]);
             return self.jaxtyping_shaped_array_type(base_class, shaped_array_shape);
         }
 
@@ -411,12 +407,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::Quantified(Box::new(q))
             };
 
-            let shaped_array_shape = ShapedArrayShape::unpacked(prefix, middle, suffix);
+            let shaped_array_shape = SymIntTuple::unpacked(prefix, middle, suffix);
             self.jaxtyping_shaped_array_type(base_class, shaped_array_shape)
         } else {
             // Concrete shape: all tokens are non-variadic dims
             let dims = self.parse_jaxtyping_dim_tokens(&tokens);
-            let shaped_array_shape = ShapedArrayShape::from_types(dims);
+            let shaped_array_shape = SymIntTuple::from_types(dims);
             self.jaxtyping_shaped_array_type(base_class, shaped_array_shape)
         }
     }

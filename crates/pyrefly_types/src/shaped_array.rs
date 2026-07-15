@@ -82,42 +82,42 @@ impl crate::equality::TypeEq for ShapedArraySyntax {
 /// How the shape appears in the underlying class type arguments.
 ///
 /// This is a display concern, not part of type identity. The projected
-/// `ShapedArrayShape` is the semantic shape; this hint only lets diagnostics
+/// `SymIntTuple` is the semantic shape; this hint only lets diagnostics
 /// render shaped arrays like the class surface users wrote.
 #[derive(Debug, Clone, Copy, Default)]
 #[derive(Visit, VisitMut)]
-pub enum ShapedArrayShapeArgStyle {
+pub enum SymIntTupleArgStyle {
     #[default]
     Unknown,
     /// The class argument at `index` carries the whole shape tuple.
     TupleCarrier { index: usize },
 }
 
-impl PartialEq for ShapedArrayShapeArgStyle {
+impl PartialEq for SymIntTupleArgStyle {
     fn eq(&self, _other: &Self) -> bool {
         true
     }
 }
 
-impl Eq for ShapedArrayShapeArgStyle {}
+impl Eq for SymIntTupleArgStyle {}
 
-impl Hash for ShapedArrayShapeArgStyle {
+impl Hash for SymIntTupleArgStyle {
     fn hash<H: Hasher>(&self, _state: &mut H) {}
 }
 
-impl PartialOrd for ShapedArrayShapeArgStyle {
+impl PartialOrd for SymIntTupleArgStyle {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for ShapedArrayShapeArgStyle {
+impl Ord for SymIntTupleArgStyle {
     fn cmp(&self, _other: &Self) -> Ordering {
         Ordering::Equal
     }
 }
 
-impl crate::equality::TypeEq for ShapedArrayShapeArgStyle {
+impl crate::equality::TypeEq for SymIntTupleArgStyle {
     fn type_eq(&self, _other: &Self, _ctx: &mut crate::equality::TypeEqCtx) -> bool {
         true
     }
@@ -132,21 +132,21 @@ pub struct ShapedArrayType {
     /// Base shaped-array class (e.g., torch.Tensor)
     pub base_class: ClassType,
     /// Shape dimensions. Shapeless arrays use `tuple[Any, ...]`.
-    pub shape: ShapedArrayShape,
+    pub shape: SymIntTuple,
     /// Whether this type was constructed from native or jaxtyping syntax.
     pub syntax: ShapedArraySyntax,
     /// How to render the shape among the class type arguments.
-    pub shape_arg_style: ShapedArrayShapeArgStyle,
+    pub shape_arg_style: SymIntTupleArgStyle,
 }
 
 impl ShapedArrayType {
     /// Create a shaped-array type with shape information (defaults to Native syntax).
-    pub fn new(base_class: ClassType, shape: ShapedArrayShape) -> Self {
+    pub fn new(base_class: ClassType, shape: SymIntTuple) -> Self {
         Self {
             base_class,
             shape,
             syntax: ShapedArraySyntax::Native,
-            shape_arg_style: ShapedArrayShapeArgStyle::Unknown,
+            shape_arg_style: SymIntTupleArgStyle::Unknown,
         }
     }
 
@@ -155,9 +155,9 @@ impl ShapedArrayType {
     pub fn shapeless(base_class: ClassType) -> Self {
         Self {
             base_class,
-            shape: ShapedArrayShape::shapeless(),
+            shape: SymIntTuple::shapeless(),
             syntax: ShapedArraySyntax::Native,
-            shape_arg_style: ShapedArrayShapeArgStyle::Unknown,
+            shape_arg_style: SymIntTupleArgStyle::Unknown,
         }
     }
 
@@ -167,7 +167,7 @@ impl ShapedArrayType {
         self
     }
 
-    pub fn with_shape_arg_style(mut self, shape_arg_style: ShapedArrayShapeArgStyle) -> Self {
+    pub fn with_shape_arg_style(mut self, shape_arg_style: SymIntTupleArgStyle) -> Self {
         self.shape_arg_style = shape_arg_style;
         self
     }
@@ -220,9 +220,9 @@ impl Display for ShapedArrayType {
 /// are only used for the gradual shape `tuple[Any, ...]`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut, TypeEq)]
-pub struct ShapedArrayShape(Tuple);
+pub struct SymIntTuple(Tuple);
 
-impl ShapedArrayShape {
+impl SymIntTuple {
     pub fn new(dims: Vec<SymInt>) -> Self {
         Self(Tuple::Concrete(
             dims.into_iter()
@@ -516,7 +516,7 @@ fn fmt_jaxtyping_symint(expr: &SymInt) -> String {
     }
 }
 
-impl Display for ShapedArrayShape {
+impl Display for SymIntTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
             Tuple::Concrete(dims) => {
@@ -626,8 +626,8 @@ fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
     }
 }
 
-/// Convert a `ShapedArrayShape` into the equivalent tuple-carrier `Type`.
-pub fn shape_to_tuple_carrier(shape: &ShapedArrayShape) -> Type {
+/// Convert a `SymIntTuple` into the equivalent tuple-carrier `Type`.
+pub fn shape_to_tuple_carrier(shape: &SymIntTuple) -> Type {
     match shape.as_tuple() {
         Tuple::Concrete(dims) => Type::Tuple(Tuple::Concrete(
             dims.iter().map(dim_to_carrier_element).collect(),
@@ -658,7 +658,7 @@ pub fn is_tuple_carrier_shape_middle(ty: &Type) -> bool {
 /// A tuple-carrier `TypeVar` represents the whole shape tuple, so `ndarray[S,
 /// DType]` projects to `Unpacked([], S, [])` but must round-trip back to `S`,
 /// not `tuple[*S]`.
-pub fn shape_to_tuple_carrier_arg(shape: &ShapedArrayShape) -> Type {
+pub fn shape_to_tuple_carrier_arg(shape: &SymIntTuple) -> Type {
     match shape.as_tuple() {
         Tuple::Unpacked(unpacked) => {
             let (prefix, middle, suffix) = &**unpacked;
@@ -672,7 +672,7 @@ pub fn shape_to_tuple_carrier_arg(shape: &ShapedArrayShape) -> Type {
     }
 }
 
-/// Convert a tuple-carrier `Type` into a `ShapedArrayShape`.
+/// Convert a tuple-carrier `Type` into a `SymIntTuple`.
 ///
 /// Returns `None` when the carrier is not a tuple or contains an element that is
 /// not a valid dimension.
@@ -680,14 +680,14 @@ pub fn shape_to_tuple_carrier_arg(shape: &ShapedArrayShape) -> Type {
 /// `tuple[T, ...]` (including `tuple[int, ...]` and `tuple[Any, ...]`)
 /// intentionally canonicalizes to the shapeless / unknown-rank shape: an
 /// unbounded carrier conveys no recoverable per-dimension information.
-pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<ShapedArrayShape> {
+pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
     match carrier {
         Type::Tuple(Tuple::Concrete(elts)) => {
             let dims = elts
                 .iter()
                 .map(carrier_element_to_dim)
                 .collect::<Option<Vec<_>>>()?;
-            Some(ShapedArrayShape::from_types(dims))
+            Some(SymIntTuple::from_types(dims))
         }
         Type::Tuple(Tuple::Unpacked(unpacked)) => {
             let (prefix, middle, suffix) = &**unpacked;
@@ -699,10 +699,10 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<ShapedArrayShape> {
                 .iter()
                 .map(carrier_element_to_dim)
                 .collect::<Option<Vec<_>>>()?;
-            Some(ShapedArrayShape::unpacked(prefix, middle.clone(), suffix))
+            Some(SymIntTuple::unpacked(prefix, middle.clone(), suffix))
         }
         Type::Tuple(Tuple::Unbounded(_)) => Some(shapeless_shape()),
-        _ if is_tuple_carrier_shape_middle(carrier) => Some(ShapedArrayShape::unpacked(
+        _ if is_tuple_carrier_shape_middle(carrier) => Some(SymIntTuple::unpacked(
             Vec::new(),
             carrier.clone(),
             Vec::new(),
@@ -712,7 +712,7 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<ShapedArrayShape> {
 }
 
 /// Check if a shape is shapeless: tuple[Any, ...]
-fn is_shapeless(shape: &ShapedArrayShape) -> bool {
+fn is_shapeless(shape: &SymIntTuple) -> bool {
     shape.as_tuple().is_any_tuple()
 }
 
@@ -730,10 +730,7 @@ fn is_shapeless(shape: &ShapedArrayShape) -> bool {
 ///    - unpacked + unpacked → if same TypeVarTuple with no extra suffix, broadcast prefixes;
 ///      if either is unbounded, shapeless; otherwise error
 /// 3. Assemble result from step 2 output + broadcast suffix.
-pub fn broadcast_shapes(
-    a: &ShapedArrayShape,
-    b: &ShapedArrayShape,
-) -> Result<ShapedArrayShape, ShapeError> {
+pub fn broadcast_shapes(a: &SymIntTuple, b: &SymIntTuple) -> Result<SymIntTuple, ShapeError> {
     match (a.as_tuple(), b.as_tuple()) {
         (Tuple::Concrete(a_dims), Tuple::Concrete(b_dims)) => broadcast_concrete(a_dims, b_dims),
         (Tuple::Concrete(concrete), Tuple::Unbounded(_))
@@ -745,7 +742,7 @@ pub fn broadcast_shapes(
             let (prefix, middle, suffix) = &**u;
             broadcast_concrete_with_unpacked(concrete, prefix, middle, suffix)
         }
-        (Tuple::Unbounded(_), Tuple::Unbounded(_)) => Ok(ShapedArrayShape::shapeless()),
+        (Tuple::Unbounded(_), Tuple::Unbounded(_)) => Ok(SymIntTuple::shapeless()),
         (Tuple::Unpacked(au), Tuple::Unbounded(_)) => {
             let (ap, am, a_suf) = &**au;
             broadcast_unpacked_with_unpacked(ap, am, a_suf, &[], &Type::any_tuple(), &[])
@@ -779,7 +776,7 @@ fn broadcast_concrete_with_unpacked(
     prefix: &[Type],
     middle: &Type,
     suffix: &[Type],
-) -> Result<ShapedArrayShape, ShapeError> {
+) -> Result<SymIntTuple, ShapeError> {
     let matched = concrete.len().min(suffix.len());
 
     // Build result suffix: unmatched suffix dims on the left pass through,
@@ -796,14 +793,14 @@ fn broadcast_concrete_with_unpacked(
 
     if remaining.is_empty() {
         // All concrete dims consumed → preserve prefix + middle
-        Ok(ShapedArrayShape::unpacked(
+        Ok(SymIntTuple::unpacked(
             prefix.to_vec(),
             middle.clone(),
             result_suffix,
         ))
     } else if is_unbounded_middle(middle) {
         // Can't align remaining concrete with unbounded middle
-        Ok(ShapedArrayShape::unpacked(
+        Ok(SymIntTuple::unpacked(
             vec![],
             Type::any_tuple(),
             result_suffix,
@@ -829,7 +826,7 @@ fn broadcast_unpacked_with_unpacked(
     bp: &[Type],
     bm: &Type,
     b_suf: &[Type],
-) -> Result<ShapedArrayShape, ShapeError> {
+) -> Result<SymIntTuple, ShapeError> {
     let matched = a_suf.len().min(b_suf.len());
 
     // Broadcast matched suffix pairs (right-aligned)
@@ -854,14 +851,10 @@ fn broadcast_unpacked_with_unpacked(
             .as_concrete()
             .expect("broadcast_concrete returns a concrete shape")
             .to_vec();
-        Ok(ShapedArrayShape::unpacked(
-            prefix,
-            am.clone(),
-            result_suffix,
-        ))
+        Ok(SymIntTuple::unpacked(prefix, am.clone(), result_suffix))
     } else if is_unbounded_middle(am) || is_unbounded_middle(bm) {
         // At least one unbounded middle → can't determine alignment
-        Ok(ShapedArrayShape::unpacked(
+        Ok(SymIntTuple::unpacked(
             vec![],
             Type::any_tuple(),
             result_suffix,
@@ -871,7 +864,7 @@ fn broadcast_unpacked_with_unpacked(
         // batch dims rather than producing a hard error. At runtime the middles
         // are often identical (e.g. two Linear.forward calls on the same batch)
         // but the checker can't prove it.
-        Ok(ShapedArrayShape::unpacked(
+        Ok(SymIntTuple::unpacked(
             vec![],
             Type::any_tuple(),
             result_suffix,
@@ -880,8 +873,8 @@ fn broadcast_unpacked_with_unpacked(
 }
 
 /// Broadcast two concrete dimension lists following NumPy/PyTorch rules.
-/// Returns a Concrete ShapedArrayShape.
-fn broadcast_concrete(a_dims: &[Type], b_dims: &[Type]) -> Result<ShapedArrayShape, ShapeError> {
+/// Returns a Concrete SymIntTuple.
+fn broadcast_concrete(a_dims: &[Type], b_dims: &[Type]) -> Result<SymIntTuple, ShapeError> {
     let max_rank = a_dims.len().max(b_dims.len());
     let mut result_dims = Vec::with_capacity(max_rank);
 
@@ -914,7 +907,7 @@ fn broadcast_concrete(a_dims: &[Type], b_dims: &[Type]) -> Result<ShapedArraySha
 
     // Reverse to get left-to-right order
     result_dims.reverse();
-    Ok(ShapedArrayShape::from_types(result_dims))
+    Ok(SymIntTuple::from_types(result_dims))
 }
 
 /// Broadcast a single pair of dimensions.
@@ -975,17 +968,17 @@ pub enum IndexOp {
 
 /// Apply a single integer index — removes first dimension.
 /// E.g. `Tensor[10, 20][i]` -> `Tensor[20]`
-pub fn index_shape_int(shape: &ShapedArrayShape) -> Result<ShapedArrayShape, ShapeError> {
+pub fn index_shape_int(shape: &SymIntTuple) -> Result<SymIntTuple, ShapeError> {
     match shape.as_tuple() {
         Tuple::Concrete(dims) => {
             if dims.is_empty() {
                 return Err(ShapeError::ScalarIndex);
             }
-            Ok(ShapedArrayShape::from_types(dims[1..].to_vec()))
+            Ok(SymIntTuple::from_types(dims[1..].to_vec()))
         }
         Tuple::Unpacked(unpacked) if !unpacked.0.is_empty() => {
             let (prefix, middle, suffix) = &**unpacked;
-            Ok(ShapedArrayShape::unpacked(
+            Ok(SymIntTuple::unpacked(
                 prefix[1..].to_vec(),
                 middle.clone(),
                 suffix.clone(),
@@ -1000,11 +993,11 @@ pub fn index_shape_int(shape: &ShapedArrayShape) -> Result<ShapedArrayShape, Sha
 /// E.g. `Tensor[10, 20][2:5]` -> `Tensor[3, 20]`
 /// With step: `Tensor[100][::2]` -> `Tensor[50]` (ceil_div(100, 2))
 pub fn index_shape_slice(
-    shape: &ShapedArrayShape,
+    shape: &SymIntTuple,
     start: Option<Type>,
     stop: Option<Type>,
     step: Option<Type>,
-) -> Result<ShapedArrayShape, ShapeError> {
+) -> Result<SymIntTuple, ShapeError> {
     match shape.as_tuple() {
         Tuple::Concrete(dims) => {
             if dims.is_empty() {
@@ -1019,7 +1012,7 @@ pub fn index_shape_slice(
             let new_first_dim = apply_step(range_dim, step);
             let mut new_dims = vec![new_first_dim];
             new_dims.extend_from_slice(&dims[1..]);
-            Ok(ShapedArrayShape::from_types(new_dims))
+            Ok(SymIntTuple::from_types(new_dims))
         }
         Tuple::Unpacked(unpacked) if !unpacked.0.is_empty() => {
             let (prefix, middle, suffix) = &**unpacked;
@@ -1032,7 +1025,7 @@ pub fn index_shape_slice(
             let new_first_dim = apply_step(range_dim, step);
             let mut new_prefix = vec![new_first_dim];
             new_prefix.extend_from_slice(&prefix[1..]);
-            Ok(ShapedArrayShape::unpacked(
+            Ok(SymIntTuple::unpacked(
                 new_prefix,
                 middle.clone(),
                 suffix.clone(),
@@ -1046,9 +1039,9 @@ pub fn index_shape_slice(
 /// Apply tensor-as-index — replaces first dim with index tensor's dims.
 /// E.g. `Tensor[B, D1, D2][Tensor[T]]` -> `Tensor[T, D1, D2]`
 pub fn index_shape_tensor(
-    shape: &ShapedArrayShape,
+    shape: &SymIntTuple,
     idx_dims: &[Type],
-) -> Result<ShapedArrayShape, ShapeError> {
+) -> Result<SymIntTuple, ShapeError> {
     match shape.as_tuple() {
         Tuple::Concrete(dims) => {
             if dims.is_empty() {
@@ -1056,13 +1049,13 @@ pub fn index_shape_tensor(
             }
             let mut new_dims = idx_dims.to_vec();
             new_dims.extend_from_slice(&dims[1..]);
-            Ok(ShapedArrayShape::from_types(new_dims))
+            Ok(SymIntTuple::from_types(new_dims))
         }
         Tuple::Unpacked(unpacked) if !unpacked.0.is_empty() => {
             let (prefix, middle, suffix) = &**unpacked;
             let mut new_prefix = idx_dims.to_vec();
             new_prefix.extend_from_slice(&prefix[1..]);
-            Ok(ShapedArrayShape::unpacked(
+            Ok(SymIntTuple::unpacked(
                 new_prefix,
                 middle.clone(),
                 suffix.clone(),
@@ -1086,11 +1079,11 @@ fn ops_dims_consumed(ops: &[IndexOp]) -> usize {
 /// `post_ops` are applied from the end (only when `has_ellipsis` is true).
 /// Dims between pre and post (the ellipsis range) are preserved.
 pub fn index_shape_multi(
-    shape: &ShapedArrayShape,
+    shape: &SymIntTuple,
     pre_ops: &[IndexOp],
     post_ops: &[IndexOp],
     has_ellipsis: bool,
-) -> Result<ShapedArrayShape, ShapeError> {
+) -> Result<SymIntTuple, ShapeError> {
     match shape.as_tuple() {
         Tuple::Concrete(shape_dims) => {
             let pre_consumed = ops_dims_consumed(pre_ops);
@@ -1122,7 +1115,7 @@ pub fn index_shape_multi(
             }
             new_dims.extend(post_result);
 
-            Ok(ShapedArrayShape::from_types(new_dims))
+            Ok(SymIntTuple::from_types(new_dims))
         }
         Tuple::Unbounded(middle) => {
             let pre_consumed = ops_dims_consumed(pre_ops);
@@ -1134,7 +1127,7 @@ pub fn index_shape_multi(
             let (pre_result, _) = apply_ops_to_dims(pre_ops, &[])?;
             let (post_result, _) = apply_ops_to_dims(post_ops, &[])?;
             let middle = Type::Tuple(Tuple::Unbounded(middle.clone()));
-            Ok(ShapedArrayShape::unpacked(pre_result, middle, post_result))
+            Ok(SymIntTuple::unpacked(pre_result, middle, post_result))
         }
         Tuple::Unpacked(unpacked) => {
             let (prefix, middle, suffix) = &**unpacked;
@@ -1157,7 +1150,7 @@ pub fn index_shape_multi(
             let mut result_suffix = remaining_suffix.to_vec();
             result_suffix.extend(post_result);
 
-            Ok(ShapedArrayShape::unpacked(
+            Ok(SymIntTuple::unpacked(
                 result_prefix,
                 middle.clone(),
                 result_suffix,
@@ -1167,8 +1160,8 @@ pub fn index_shape_multi(
 }
 
 /// Create a shapeless shape (compatible with any shape).
-fn shapeless_shape() -> ShapedArrayShape {
-    ShapedArrayShape::shapeless()
+fn shapeless_shape() -> SymIntTuple {
+    SymIntTuple::shapeless()
 }
 
 /// Adjust a negative slice bound by adding dim size (Python negative index semantics).
@@ -1348,7 +1341,7 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
-    use crate::shaped_array::ShapedArrayShape;
+    use crate::shaped_array::SymIntTuple;
     use crate::shaped_array::shape_to_tuple_carrier;
     use crate::shaped_array::shape_to_tuple_carrier_arg;
     use crate::shaped_array::tuple_carrier_to_shape;
@@ -1394,7 +1387,7 @@ mod tests {
 
     #[test]
     fn concrete_shape_to_tuple_carrier() {
-        let shape = ShapedArrayShape::from_types(vec![size(3), size(4), size(5)]);
+        let shape = SymIntTuple::from_types(vec![size(3), size(4), size(5)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![literal(3), literal(4), literal(5)])
@@ -1406,17 +1399,13 @@ mod tests {
         let carrier = concrete_carrier(vec![literal(3), literal(4), literal(5)]);
         assert_eq!(
             tuple_carrier_to_shape(&carrier),
-            Some(ShapedArrayShape::from_types(vec![
-                size(3),
-                size(4),
-                size(5)
-            ]))
+            Some(SymIntTuple::from_types(vec![size(3), size(4), size(5)]))
         );
     }
 
     #[test]
     fn concrete_round_trip_both_directions() {
-        let shape = ShapedArrayShape::from_types(vec![size(2), size(3)]);
+        let shape = SymIntTuple::from_types(vec![size(2), size(3)]);
         let carrier = shape_to_tuple_carrier(&shape);
         assert_eq!(tuple_carrier_to_shape(&carrier), Some(shape.clone()));
 
@@ -1427,7 +1416,7 @@ mod tests {
 
     #[test]
     fn explicit_any_internal_dimension_stays_any_carrier() {
-        let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Explicit)]);
+        let shape = SymIntTuple::from_types(vec![Type::Any(AnyStyle::Explicit)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![Type::Any(AnyStyle::Explicit)])
@@ -1436,7 +1425,7 @@ mod tests {
 
     #[test]
     fn error_any_internal_dimension_preserves_error_style_in_carrier() {
-        let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Error)]);
+        let shape = SymIntTuple::from_types(vec![Type::Any(AnyStyle::Error)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![Type::Any(AnyStyle::Error)])
@@ -1446,7 +1435,7 @@ mod tests {
     #[test]
     fn symbolic_internal_dimension_round_trips_through_size_carrier() {
         let var = Type::Var(Var::ZERO);
-        let shape = ShapedArrayShape::from_types(vec![var.clone()]);
+        let shape = SymIntTuple::from_types(vec![var.clone()]);
         let carrier = concrete_carrier(vec![Type::SymInt(SymInt::Symbolic(Box::new(var)))]);
 
         assert_eq!(shape_to_tuple_carrier(&shape), carrier);
@@ -1476,7 +1465,7 @@ mod tests {
 
         assert_eq!(
             tuple_carrier_to_shape(&concrete_carrier(dims.clone())),
-            Some(ShapedArrayShape::from_types(dims))
+            Some(SymIntTuple::from_types(dims))
         );
     }
 
@@ -1498,7 +1487,7 @@ mod tests {
 
         assert_eq!(
             tuple_carrier_to_shape(&concrete_carrier(vec![symint.clone()])),
-            Some(ShapedArrayShape::from_types(vec![symint.clone()]))
+            Some(SymIntTuple::from_types(vec![symint.clone()]))
         );
     }
 
@@ -1516,13 +1505,13 @@ mod tests {
             Restriction::Unrestricted,
             PreInferenceVariance::Invariant,
         )));
-        let shape = ShapedArrayShape::unpacked(Vec::new(), carrier.clone(), Vec::new());
+        let shape = SymIntTuple::unpacked(Vec::new(), carrier.clone(), Vec::new());
 
         assert_eq!(tuple_carrier_to_shape(&carrier), Some(shape.clone()));
         assert_eq!(shape_to_tuple_carrier_arg(&shape), carrier);
 
         let carrier = Type::Var(Var::ZERO);
-        let shape = ShapedArrayShape::unpacked(Vec::new(), carrier.clone(), Vec::new());
+        let shape = SymIntTuple::unpacked(Vec::new(), carrier.clone(), Vec::new());
         assert_eq!(shape_to_tuple_carrier_arg(&shape), carrier);
     }
 
@@ -1530,7 +1519,7 @@ mod tests {
     fn unpacked_carrier_round_trip() {
         // tuple[Literal[2], *Ts, Literal[3]] <-> Unpacked([2], Ts, [3]).
         let middle = Type::Any(AnyStyle::Implicit);
-        let shape = ShapedArrayShape::unpacked(vec![size(2)], middle.clone(), vec![size(3)]);
+        let shape = SymIntTuple::unpacked(vec![size(2)], middle.clone(), vec![size(3)]);
         let carrier = shape_to_tuple_carrier(&shape);
         assert_eq!(
             carrier,
@@ -1552,7 +1541,7 @@ mod tests {
         let int_unbounded = Type::Tuple(Tuple::Unbounded(Box::new(Type::ClassType(
             fake_class_type("builtins", "int"),
         ))));
-        let shapeless = ShapedArrayShape::shapeless();
+        let shapeless = SymIntTuple::shapeless();
         assert_eq!(
             tuple_carrier_to_shape(&any_unbounded),
             Some(shapeless.clone())

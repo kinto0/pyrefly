@@ -23,8 +23,8 @@ use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::dimension::type_is_gradual;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
-use pyrefly_types::shaped_array::ShapedArrayShape;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::shaped_array::is_tuple_carrier_shape_middle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
@@ -1786,18 +1786,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Do this after the gradual-size fast path, since any expression containing
                 // `SymInt[int]` canonicalizes to gradual `SymInt` regardless of other leaves.
                 if contains_var_in_type(&want_expanded) {
-                    return Err(SubsetError::ShapedArrayShape(
+                    return Err(SubsetError::SymIntTuple(
                         ShapeError::nested_type_var_not_inferred(),
                     ));
                 }
-                Err(SubsetError::ShapedArrayShape(
-                    ShapeError::structural_mismatch(
-                        got_expanded.to_string(),
-                        got_canonical.to_string(),
-                        want_expanded.to_string(),
-                        want_canonical.to_string(),
-                    ),
-                ))
+                Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                    got_expanded.to_string(),
+                    got_canonical.to_string(),
+                    want_expanded.to_string(),
+                    want_canonical.to_string(),
+                )))
             }
             // SymInt <: Quantified - expand, canonicalize SymInt, and compare.
             // A SymInt like (A + A) // 2 might simplify to A (a Quantified).
@@ -1819,14 +1817,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
-                    Err(SubsetError::ShapedArrayShape(
-                        ShapeError::structural_mismatch(
-                            Type::SymInt(s.clone()).to_string(),
-                            got_canonical.to_string(),
-                            Type::Quantified(q.clone()).to_string(),
-                            want_canonical.to_string(),
-                        ),
-                    ))
+                    Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                        Type::SymInt(s.clone()).to_string(),
+                        got_canonical.to_string(),
+                        Type::Quantified(q.clone()).to_string(),
+                        want_canonical.to_string(),
+                    )))
                 }
             }
             // Quantified <: SymInt - expand SymInt, canonicalize, and compare
@@ -1848,14 +1844,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
-                    Err(SubsetError::ShapedArrayShape(
-                        ShapeError::structural_mismatch(
-                            Type::Quantified(q.clone()).to_string(),
-                            got_canonical.to_string(),
-                            Type::SymInt(s.clone()).to_string(),
-                            want_canonical.to_string(),
-                        ),
-                    ))
+                    Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                        Type::Quantified(q.clone()).to_string(),
+                        got_canonical.to_string(),
+                        Type::SymInt(s.clone()).to_string(),
+                        want_canonical.to_string(),
+                    )))
                 }
             }
             (_, Type::Quantified(_)) => Err(SubsetError::Other),
@@ -2847,8 +2841,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     /// Delegates to is_subset_eq for each dimension pair.
     fn bind_tensor_dimensions(
         &mut self,
-        got_shape: &ShapedArrayShape,
-        want_shape: &ShapedArrayShape,
+        got_shape: &SymIntTuple,
+        want_shape: &SymIntTuple,
     ) -> Result<(), SubsetError> {
         // The subset logic only has two real cases: a fixed-rank shape or a shape
         // with a variadic middle. Normalize direct `tuple[T, ...]` shapes to the
@@ -2859,7 +2853,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             Unpacked(Vec<Type>, Type, Vec<Type>),
         }
 
-        fn shape_view(shape: &ShapedArrayShape) -> ShapeView<'_> {
+        fn shape_view(shape: &SymIntTuple) -> ShapeView<'_> {
             match shape.as_tuple() {
                 Tuple::Concrete(dims) => ShapeView::Concrete(dims),
                 Tuple::Unbounded(middle) => ShapeView::Unpacked(
@@ -2875,14 +2869,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
 
         fn pack_middle_slice(dims: &[Type]) -> Type {
-            shape_to_tuple_carrier(&ShapedArrayShape::from_types(dims.to_vec()))
+            shape_to_tuple_carrier(&SymIntTuple::from_types(dims.to_vec()))
         }
 
         match (shape_view(got_shape), shape_view(want_shape)) {
             // Both concrete: check rank equality and iterate through dimension pairs
             (ShapeView::Concrete(got_dims), ShapeView::Concrete(want_dims)) => {
                 if got_dims.len() != want_dims.len() {
-                    return Err(SubsetError::ShapedArrayShape(ShapeError::rank_mismatch(
+                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
                         got_dims.len(),
                         want_dims.len(),
                     )));
@@ -2902,7 +2896,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Check bounds: got must have at least as many dims as prefix + suffix
                 let min_required = want_prefix.len() + want_suffix.len();
                 if got_dims.len() < min_required {
-                    return Err(SubsetError::ShapedArrayShape(ShapeError::rank_mismatch(
+                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
                         got_dims.len(),
                         min_required,
                     )));
@@ -2978,14 +2972,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Reject cross-structural cases: extras must all be on one side.
                 if has_got_extras && has_want_extras {
-                    return Err(SubsetError::ShapedArrayShape(
-                        ShapeError::StructuralMismatch {
-                            got: format!("{}", got_shape),
-                            got_canonical: format!("{}", got_shape),
-                            want: format!("{}", want_shape),
-                            want_canonical: format!("{}", want_shape),
-                        },
-                    ));
+                    return Err(SubsetError::SymIntTuple(ShapeError::StructuralMismatch {
+                        got: format!("{}", got_shape),
+                        got_canonical: format!("{}", got_shape),
+                        want: format!("{}", want_shape),
+                        want_canonical: format!("{}", want_shape),
+                    }));
                 }
 
                 // Fold extras into the middle on whichever side has them.
@@ -2994,7 +2986,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     if prefix.is_empty() && suffix.is_empty() {
                         middle.clone()
                     } else {
-                        shape_to_tuple_carrier(&ShapedArrayShape::unpacked(
+                        shape_to_tuple_carrier(&SymIntTuple::unpacked(
                             prefix.to_vec(),
                             middle.clone(),
                             suffix.to_vec(),
@@ -3024,7 +3016,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Check bounds: want must have at least as many dims as prefix + suffix
                 let min_required = got_prefix.len() + got_suffix.len();
                 if want_dims.len() < min_required {
-                    return Err(SubsetError::ShapedArrayShape(ShapeError::rank_mismatch(
+                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
                         min_required,
                         want_dims.len(),
                     )));
