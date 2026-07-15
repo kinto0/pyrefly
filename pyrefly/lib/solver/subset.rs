@@ -2842,7 +2842,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             self.is_subset_eq(got_arg, want_arg)
         } else {
             // Check dimensions' compatibility.
-            self.bind_tensor_dimensions(got.shape(), want.shape())
+            self.bind_tensor_dimensions(&got.shape(), &want.shape())
         }
     }
 
@@ -2880,7 +2880,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     ) -> Result<ClassType, SubsetError> {
         let (shape_param, _) = self.shape_param_and_arg(shaped_array)?;
         let shape_arg = match shape_param.kind() {
-            QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(shaped_array.shape()),
+            QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(&shaped_array.shape()),
             QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                 shaped_array.shape().to_shape_arg_type()
             }

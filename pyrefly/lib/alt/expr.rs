@@ -3105,7 +3105,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let start = lower.as_ref().map(|e| to_dim(e));
                 let stop = upper.as_ref().map(|e| to_dim(e));
                 let step_val = step.as_ref().and_then(|e| to_step(e));
-                match index_shape_slice(shaped_array_type.shape(), start, stop, step_val) {
+                match index_shape_slice(&shaped_array_type.shape(), start, stop, step_val) {
                     Ok(shape) => self
                         .shaped_array_with_shape(shaped_array_type, shape)
                         .to_type(),
@@ -3169,7 +3169,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 };
 
                 match index_shape_multi(
-                    shaped_array_type.shape(),
+                    &shaped_array_type.shape(),
                     &pre_ops,
                     &post_ops,
                     ellipsis_pos.is_some(),
@@ -3187,7 +3187,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     || matches!(&idx_type, Type::ClassType(cls) if cls.is_builtin("int"));
 
                 if is_int_index {
-                    match index_shape_int(shaped_array_type.shape()) {
+                    match index_shape_int(&shaped_array_type.shape()) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),
@@ -3195,10 +3195,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 } else if let Type::ShapedArray(ref idx_shaped_array) = idx_type {
                     // Tensor indexing: tensor[index_tensor] replaces first dim with index shape
-                    let Some(idx_dims) = idx_shaped_array.shape().as_concrete() else {
+                    let idx_shape = idx_shaped_array.shape();
+                    let Some(idx_dims) = idx_shape.as_concrete() else {
                         return self.shaped_array_shapeless(shaped_array_type).to_type();
                     };
-                    match index_shape_tensor(shaped_array_type.shape(), idx_dims) {
+                    match index_shape_tensor(&shaped_array_type.shape(), idx_dims) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),
@@ -3325,19 +3326,15 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     let shape_idx = self
                         .shaped_array_shape_arg_index(&tensor.base_class)
                         .expect("shaped-array metadata should refer to a class type parameter");
-                    let mut base_class = tensor.base_class.clone();
-                    let shape_arg = base_class
-                        .targs_mut()
-                        .as_mut()
-                        .get_mut(shape_idx)
-                        .expect("class type should have an argument for each type parameter");
-                    *shape_arg = shape.to_shape_arg_type();
-                    ShapedArrayType {
-                        base_class,
-                        shape,
-                        syntax: tensor.syntax,
-                        shape_arg_style: tensor.shape_arg_style,
-                    }
+                    let mut tensor = tensor.clone();
+                    // A registered shaped-array class stores its shape in the
+                    // carrier argument at `shape_idx`, so `TupleCarrier` is the
+                    // coherent style regardless of the input's prior style (e.g. a
+                    // stale `Unknown`): we normalize it to match where the shape
+                    // now actually lives.
+                    tensor.shape_arg_style = SymIntTupleArgStyle::TupleCarrier { index: shape_idx };
+                    tensor.set_shape(shape);
+                    tensor
                 }
                 QuantifiedKind::TypeVarTuple => unreachable!(
                     "shaped-array metadata validation rejects TypeVarTuple shape parameters"

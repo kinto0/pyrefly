@@ -1081,7 +1081,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         range: TextRange,
         errors: &ErrorCollector,
     ) -> Type {
-        match broadcast_shapes(left.shape(), right.shape()) {
+        match broadcast_shapes(&left.shape(), &right.shape()) {
             Ok(result_shape) => self.shaped_array_with_shape(left, result_shape).to_type(),
             Err(err) => {
                 self.error(

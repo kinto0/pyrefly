@@ -48,9 +48,7 @@ use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
-use crate::shaped_array::ShapedArrayType;
 use crate::shaped_array::SymIntTuple;
-use crate::shaped_array::SymIntTupleArgStyle;
 use crate::tuple::Tuple;
 use crate::types::Type;
 
@@ -3233,19 +3231,9 @@ fn eval_dsl_body(
 fn inject_shape(shape: SymIntTuple, ret_type: &Type) -> Type {
     match ret_type {
         Type::ShapedArray(t) => {
-            let mut base_class = t.base_class.clone();
-            if let SymIntTupleArgStyle::TupleCarrier { index } = t.shape_arg_style {
-                let shape_arg = base_class
-                    .targs_mut()
-                    .as_mut()
-                    .get_mut(index)
-                    .expect("shape argument index should point to a class type argument");
-                *shape_arg = shape.to_shape_arg_type();
-            }
-            ShapedArrayType::new(base_class, shape)
-                .with_syntax(t.syntax)
-                .with_shape_arg_style(t.shape_arg_style)
-                .to_type()
+            let mut t = (**t).clone();
+            t.set_shape(shape);
+            t.to_type()
         }
         _ => ret_type.clone(),
     }
@@ -3911,6 +3899,7 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::shaped_array::ShapedArrayType;
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;

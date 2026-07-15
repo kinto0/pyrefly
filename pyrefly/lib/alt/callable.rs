@@ -1907,7 +1907,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Some(Ok(ty)) => ty.transform(&mut |ty| {
                 if let Type::ShapedArray(shaped_array) = ty {
                     *ty = self
-                        .shaped_array_with_shape(shaped_array, shaped_array.shape().clone())
+                        .shaped_array_with_shape(shaped_array, shaped_array.shape())
                         .to_type();
                 }
             }),

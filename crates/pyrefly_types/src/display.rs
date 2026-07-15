@@ -36,6 +36,7 @@ use crate::quantified::Quantified;
 use crate::quantified::QuantifiedIdentity;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::SymIntTuple;
 use crate::shaped_array::SymIntTupleArgStyle;
 use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
@@ -378,9 +379,10 @@ impl<'a> TypeDisplayContext<'a> {
                     SymIntTupleArgStyle::TupleCarrier { index } => index,
                     SymIntTupleArgStyle::Unknown => {
                         output.write_qname(shaped_array.base_class.qname())?;
-                        if !shaped_array.is_shapeless() {
+                        let shape = shaped_array.shape();
+                        if !shape.as_tuple().is_any_tuple() {
                             output.write_str("[")?;
-                            output.write_str(&shaped_array.shape().to_string())?;
+                            output.write_str(&shape.to_string())?;
                             output.write_str("]")?;
                         }
                         return Ok(());
@@ -410,11 +412,14 @@ impl<'a> TypeDisplayContext<'a> {
             .expect("shape argument index should point to a class type argument");
 
         output.write_qname(shaped_array.base_class.qname())?;
-        let display_count = targs.display_count().max(if shaped_array.is_shapeless() {
-            0
-        } else {
-            shape_idx + 1
-        });
+        let shape = shaped_array.shape();
+        let display_count = targs
+            .display_count()
+            .max(if shape.as_tuple().is_any_tuple() {
+                0
+            } else {
+                shape_idx + 1
+            });
         if display_count == 0 {
             return Ok(());
         }
@@ -425,7 +430,7 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_str(", ")?;
             }
             if i == shape_idx {
-                self.fmt_shape_as_tuple_carrier(shaped_array, output)?;
+                self.fmt_shape_as_tuple_carrier(&shape, output)?;
             } else {
                 self.fmt_targ(param, arg, output)?;
             }
@@ -435,13 +440,13 @@ impl<'a> TypeDisplayContext<'a> {
 
     fn fmt_shape_as_tuple_carrier(
         &self,
-        shaped_array: &ShapedArrayType,
+        shape: &SymIntTuple,
         output: &mut impl TypeOutput,
     ) -> fmt::Result {
-        if shaped_array.is_shapeless() {
+        if shape.as_tuple().is_any_tuple() {
             return self.fmt_helper_generic(&Type::any_tuple(), false, output);
         }
-        match shaped_array.shape().as_tuple() {
+        match shape.as_tuple() {
             Tuple::Concrete(dims) => {
                 output.write_str("[")?;
                 for (i, dim) in dims.iter().enumerate() {
@@ -1745,12 +1750,12 @@ pub mod tests {
     fn test_display_tuple_carrier_shape_keeps_size_wrapper_out_of_shapes() {
         let heap = TypeHeap::new();
         let shape_param = fake_tparams(vec![fake_tparam(0, "Shape", QuantifiedKind::TypeVar)]);
-        let array = ClassType::new(
-            fake_class("Array", "arrays", 0),
-            TArgs::new(shape_param, vec![Type::any_tuple()]),
-        );
         let n = fake_tparam(1, "N", QuantifiedKind::SymIntVar).to_type(&heap);
         let shape = SymIntTuple::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
+        let array = ClassType::new(
+            fake_class("Array", "arrays", 0),
+            TArgs::new(shape_param, vec![shape.to_shape_arg_type()]),
+        );
 
         assert_eq!(
             ShapedArrayType::new(array, shape)

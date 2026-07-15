@@ -1584,9 +1584,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         tensor.shape_arg_style,
                         SymIntTupleArgStyle::TupleCarrier { .. }
                     ) {
-                        shape_to_tuple_carrier_arg(tensor.shape())
+                        shape_to_tuple_carrier_arg(&tensor.shape())
                     } else {
-                        shape_to_tuple_carrier(tensor.shape())
+                        shape_to_tuple_carrier(&tensor.shape())
                     };
                     acc.found_type(shape, base);
                     return;

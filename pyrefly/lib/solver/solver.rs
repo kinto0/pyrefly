@@ -1161,7 +1161,7 @@ impl Solver {
                     tensor.shape().as_tuple().clone(),
                     &self.heap,
                 ));
-                tensor.shape = shape;
+                tensor.set_shape(shape);
             }
             // When a param spec is resolved, collapse any Concatenate and Callable types that use it
             if let Type::Concatenate(ts, inner) = x
