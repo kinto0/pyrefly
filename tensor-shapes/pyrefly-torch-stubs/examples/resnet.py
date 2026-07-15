@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 # A no-arg factory that produces a shape-preserving activation module.
@@ -30,7 +30,7 @@ ShapePreservingActivation = (
 # ============================================================================
 
 
-class ResNetBlock[C: SymVar](nn.Module):
+class ResNetBlock[C: SymIntVar](nn.Module):
     """Shape-preserving residual block: (B, C, H, W) -> (B, C, H, W)."""
 
     def __init__(self, c: SymInt[C], act_fn: ShapePreservingActivation) -> None:
@@ -44,7 +44,7 @@ class ResNetBlock[C: SymVar](nn.Module):
         )
         self.act_fn = act_fn()
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         z = self.net(x)
@@ -54,7 +54,7 @@ class ResNetBlock[C: SymVar](nn.Module):
         return out
 
 
-class ResNetDownsampleBlock[C_in: SymVar, C_out: SymVar](nn.Module):
+class ResNetDownsampleBlock[C_in: SymIntVar, C_out: SymIntVar](nn.Module):
     """Downsampling residual block: (B, C_in, H, W) -> (B, C_out, H', W')."""
 
     def __init__(
@@ -74,7 +74,7 @@ class ResNetDownsampleBlock[C_in: SymVar, C_out: SymVar](nn.Module):
         self.downsample = nn.Conv2d(c_in, c_out, kernel_size=1, stride=2)
         self.act_fn = act_fn()
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C_in, H, W]]
     ) -> Tensor[[B, C_out, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]:
         z = self.net(x)
@@ -86,7 +86,7 @@ class ResNetDownsampleBlock[C_in: SymVar, C_out: SymVar](nn.Module):
         return out
 
 
-class ResNetGroup[C: SymVar](nn.Module):
+class ResNetGroup[C: SymIntVar](nn.Module):
     """A group of shape-preserving ResNet blocks at channel C."""
 
     def __init__(
@@ -98,7 +98,7 @@ class ResNetGroup[C: SymVar](nn.Module):
         super().__init__()
         self.blocks = nn.ModuleList([ResNetBlock(c, act_fn) for _ in range(num_blocks)])
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         for block in self.blocks:
@@ -111,7 +111,7 @@ class ResNetGroup[C: SymVar](nn.Module):
 # ============================================================================
 
 
-class ResNetModel[NumClasses: SymVar](nn.Module):
+class ResNetModel[NumClasses: SymIntVar](nn.Module):
     """ResNet with recursive downsample chain (Pattern C — exponential).
 
     Architecture:
@@ -175,7 +175,7 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _apply_stage[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _apply_stage[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: int
     ) -> Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]:
         idx = len(self.downs) - depth
@@ -185,18 +185,30 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
         return group(y)
 
     @overload
-    def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]: ...
 
     @overload
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[
         [B, C * 2**Depth, (H - 1) // 2**Depth + 1, (W - 1) // 2**Depth + 1]
     ]: ...
 
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]
@@ -215,7 +227,9 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
             return y
         return self._chain(y, depth - 1)
 
-    def forward[B: SymVar](self, x: Tensor[[B, 3, 32, 32]]) -> Tensor[[B, NumClasses]]:
+    def forward[B: SymIntVar](
+        self, x: Tensor[[B, 3, 32, 32]]
+    ) -> Tensor[[B, NumClasses]]:
         x1 = self.input_net(x)
         assert_type(x1, Tensor[[B, 16, 32, 32]])
         x2 = self.initial_group(x1)

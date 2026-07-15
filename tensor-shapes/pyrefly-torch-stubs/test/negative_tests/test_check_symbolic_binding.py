@@ -8,14 +8,16 @@
 from typing import Any, assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
     from torch import Tensor
 
 
-def accepts_symbolic_returns_symbolic[N: SymVar](x: Tensor[[N, 3]]) -> Tensor[[N, 3]]:
+def accepts_symbolic_returns_symbolic[N: SymIntVar](
+    x: Tensor[[N, 3]],
+) -> Tensor[[N, 3]]:
     """Identity function with symbolic dimension - preserves shape"""
     return x
 
@@ -38,7 +40,7 @@ def test_symbolic_identity_wrong() -> Tensor[[4, 3]]:
     return result
 
 
-def numel_returns_bad_explicit_symint[N: SymVar, M: SymVar](
+def numel_returns_bad_explicit_symint[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]],
 ) -> SymInt[N + M]:
     s = x.numel()
@@ -48,7 +50,7 @@ def numel_returns_bad_explicit_symint[N: SymVar, M: SymVar](
     return s
 
 
-def view_returns_bad_explicit_tensor[N: SymVar, M: SymVar](
+def view_returns_bad_explicit_tensor[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]],
 ) -> Tensor[[N + M]]:
     v = x.view(-1)
@@ -58,7 +60,7 @@ def view_returns_bad_explicit_tensor[N: SymVar, M: SymVar](
     return v
 
 
-def numel_returns_bad_implicit_symint[N: SymVar, M: SymVar, K: SymVar](
+def numel_returns_bad_implicit_symint[N: SymIntVar, M: SymIntVar, K: SymIntVar](
     x: Tensor[[N, M]],
 ) -> SymInt[K]:
     s = x.numel()
@@ -68,7 +70,7 @@ def numel_returns_bad_implicit_symint[N: SymVar, M: SymVar, K: SymVar](
     return s
 
 
-def view_returns_bad_implicit_tensor[N: SymVar, M: SymVar, K: SymVar](
+def view_returns_bad_implicit_tensor[N: SymIntVar, M: SymIntVar, K: SymIntVar](
     x: Tensor[[N, M]],
 ) -> Tensor[[K]]:
     v = x.view(-1)

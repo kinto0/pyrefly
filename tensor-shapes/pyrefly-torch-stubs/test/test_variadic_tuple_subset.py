@@ -23,7 +23,7 @@ from typing import assert_type, Callable, TYPE_CHECKING
 
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SymIntTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -46,7 +46,7 @@ def test_basic_variadic[*Cs](x: tuple[*Cs]) -> None:
 
 
 # Tensor: variadic batch dims through multiple shape-preserving calls
-class TwoReluCalls[D: SymVar](nn.Module):
+class TwoReluCalls[D: SymIntVar](nn.Module):
     def __init__(self, d: SymInt[D]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(d, 256)
@@ -61,7 +61,7 @@ class TwoReluCalls[D: SymVar](nn.Module):
 
 
 # Nested variadic-preserving calls (matches tacotron2 Prenet pattern)
-class NestedVariadic[D: SymVar](nn.Module):
+class NestedVariadic[D: SymIntVar](nn.Module):
     def __init__(self, d: SymInt[D]) -> None:
         super().__init__()
         self.fc = nn.Linear(d, 256)

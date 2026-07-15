@@ -1255,11 +1255,11 @@ impl<'a> BindingsBuilder<'a> {
         self.as_special_export_inner(e, &mut visited_names, &mut visited_keys)
     }
 
-    pub fn as_direct_shape_symvar(&self, e: &Expr) -> bool {
+    pub fn as_direct_shape_symintvar(&self, e: &Expr) -> bool {
         let shape_extensions = ModuleName::from_str("shape_extensions");
         match e {
             Expr::Name(name) => {
-                if name.id == "SymVar" && self.module_info.name() == shape_extensions {
+                if name.id == "SymIntVar" && self.module_info.name() == shape_extensions {
                     return true;
                 }
                 matches!(
@@ -1267,12 +1267,12 @@ impl<'a> BindingsBuilder<'a> {
                     Some((
                         _,
                         FlowStyle::Import(module, upstream_name)
-                    )) if module == shape_extensions && upstream_name == "SymVar"
+                    )) if module == shape_extensions && upstream_name == "SymIntVar"
                 )
             }
             Expr::Attribute(ExprAttribute {
                 value, attr: name, ..
-            }) if name == "SymVar" => {
+            }) if name == "SymIntVar" => {
                 let Expr::Name(base_name) = &**value else {
                     return false;
                 };
@@ -1998,29 +1998,29 @@ impl<'a> BindingsBuilder<'a> {
                     let mut kind = QuantifiedKind::TypeVar;
                     if let Some(bound_expr) = &mut tv.bound {
                         if let Expr::Tuple(tuple) = &mut **bound_expr {
-                            let mut invalid_symvar_constraint = false;
+                            let mut invalid_symintvar_constraint = false;
                             let mut constraint_exprs = Vec::new();
                             for constraint in &mut tuple.elts {
-                                if self.as_direct_shape_symvar(constraint) {
+                                if self.as_direct_shape_symintvar(constraint) {
                                     self.error(
                                         constraint.range(),
                                         ErrorKind::InvalidTypeVar,
-                                        "`SymVar` cannot be used as a TypeVar constraint"
+                                        "`SymIntVar` cannot be used as a TypeVar constraint"
                                             .to_owned(),
                                     );
-                                    invalid_symvar_constraint = true;
+                                    invalid_symintvar_constraint = true;
                                     self.ensure_expr(constraint, &mut usage);
                                 } else {
                                     self.ensure_type_with_usage(constraint, &mut None, &mut usage);
                                     constraint_exprs.push(constraint.clone());
                                 }
                             }
-                            if !invalid_symvar_constraint {
+                            if !invalid_symintvar_constraint {
                                 constraints = Some((constraint_exprs, bound_expr.range()))
                             }
-                        } else if self.as_direct_shape_symvar(bound_expr) {
+                        } else if self.as_direct_shape_symintvar(bound_expr) {
                             self.ensure_expr(bound_expr, &mut usage);
-                            kind = QuantifiedKind::SymVar;
+                            kind = QuantifiedKind::SymIntVar;
                         } else {
                             self.ensure_type_with_usage(bound_expr, &mut None, &mut usage);
                             bound = Some((**bound_expr).clone());

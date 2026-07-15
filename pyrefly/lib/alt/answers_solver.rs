@@ -1826,7 +1826,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     QuantifiedOrigin::SyntheticCallableResidual,
                 );
                 match kind {
-                    QuantifiedKind::TypeVar | QuantifiedKind::SymVar => Quantified::new(
+                    QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Quantified::new(
                         identity,
                         name,
                         kind,
@@ -1845,10 +1845,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .clone()
     }
 
-    /// Get or create a tuple-carrier TypeVar or SymVar for a jaxtyping variadic shape name.
+    /// Get or create a tuple-carrier TypeVar or SymIntVar for a jaxtyping variadic shape name.
     ///
     /// A variadic jaxtyping shape (`*name`) whose enclosing shaped-array class uses a
-    /// `TypeVar`/`SymVar` (SymIntTuple) shape parameter needs a carrier bounded by
+    /// `TypeVar`/`SymIntVar` (SymIntTuple) shape parameter needs a carrier bounded by
     /// `tuple[int, ...]`, rather than the `TypeVarTuple` produced for `*Shape` classes.
     pub fn get_or_create_jaxtyping_shape_carrier(
         &self,
@@ -1866,7 +1866,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     QuantifiedOrigin::SyntheticCallableResidual,
                 );
                 match kind {
-                    QuantifiedKind::TypeVar | QuantifiedKind::SymVar => Quantified::new(
+                    QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Quantified::new(
                         identity,
                         name,
                         kind,
@@ -1877,7 +1877,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         PreInferenceVariance::Invariant,
                     ),
                     QuantifiedKind::TypeVarTuple | QuantifiedKind::ParamSpec => {
-                        unreachable!("jaxtyping shape carriers must be TypeVar or SymVar")
+                        unreachable!("jaxtyping shape carriers must be TypeVar or SymIntVar")
                     }
                 }
             })

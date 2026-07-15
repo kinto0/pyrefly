@@ -29,16 +29,16 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
 @dataclass
 class FinalMLPConfig[
-    M1Out: SymVar = 256,
-    M2Out: SymVar = 256,
-    NH: SymVar = 1,
-    K: SymVar = 16,
+    M1Out: SymIntVar = 256,
+    M2Out: SymIntVar = 256,
+    NH: SymIntVar = 1,
+    K: SymIntVar = 16,
 ]:
     mlp1_hidden_units: list[int] = field(default_factory=lambda: [512, 256])
     mlp1_output_dim: SymInt[M1Out] = 256  # type: ignore[bad-assignment]
@@ -55,7 +55,7 @@ class FinalMLPConfig[
     num_output_features: SymInt[K] = 16  # type: ignore[bad-assignment]
 
 
-class MLP[InD: SymVar, OutD: SymVar](nn.Module):
+class MLP[InD: SymIntVar, OutD: SymIntVar](nn.Module):
     """Multi-layer perceptron with shape-preserving layers built from Sequential(*list).
 
     Internal shapes are bare because Sequential(*list_var) erases module types.
@@ -88,7 +88,7 @@ class MLP[InD: SymVar, OutD: SymVar](nn.Module):
         self.layers = nn.ModuleList(layer_blocks)
         self.output_dim = output_dim
 
-    def forward[B: SymVar](self, x: Tensor[[B, InD]]) -> Tensor[[B, OutD]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, InD]]) -> Tensor[[B, OutD]]:
         for layer in self.layers:
             x = layer(x)
         # typed interface: Sequential(*list) + ModuleList[nn.Module] loop erases shapes
@@ -97,9 +97,12 @@ class MLP[InD: SymVar, OutD: SymVar](nn.Module):
         return result
 
 
-class InteractionAggregation[XD: SymVar, YD: SymVar, OutD: SymVar, NH: SymVar](
-    nn.Module
-):
+class InteractionAggregation[
+    XD: SymIntVar,
+    YD: SymIntVar,
+    OutD: SymIntVar,
+    NH: SymIntVar,
+](nn.Module):
     """Bilinear interaction aggregation for fusing two stream outputs.
 
     Computes: w_x(x) + w_y(y) + sum_h(head_x_h @ W_xy_h @ head_y_h)
@@ -129,7 +132,7 @@ class InteractionAggregation[XD: SymVar, YD: SymVar, OutD: SymVar, NH: SymVar](
         )
         self.bilinear_out = nn.Linear(num_heads, output_dim)
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self, x: Tensor[[B, XD]], y: Tensor[[B, YD]]
     ) -> Tensor[[B, OutD]]:
         out = self.w_x(x) + self.w_y(y)
@@ -163,12 +166,12 @@ class InteractionAggregation[XD: SymVar, YD: SymVar, OutD: SymVar, NH: SymVar](
 
 
 class FinalMLPLayer[
-    F: SymVar,
-    D: SymVar,
-    K: SymVar,
-    M1Out: SymVar,
-    M2Out: SymVar,
-    NH: SymVar,
+    F: SymIntVar,
+    D: SymIntVar,
+    K: SymIntVar,
+    M1Out: SymIntVar,
+    M2Out: SymIntVar,
+    NH: SymIntVar,
 ](nn.Module):
     """Single FinalMLP interaction layer: [B, F, D] -> [B, K, D].
 
@@ -218,7 +221,7 @@ class FinalMLPLayer[
         self.projector = nn.LazyLinear(num_output_features * output_emb_dim)
         self.layer_norm = nn.LayerNorm(output_emb_dim)
 
-    def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, K, D]]:
+    def forward[B: SymIntVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, K, D]]:
         flat = input_embs.flatten(start_dim=1)
         assert_type(flat, Tensor[[B, D * F]])
         mlp1_out = self.mlp1(flat)
@@ -237,12 +240,12 @@ class FinalMLPLayer[
 
 
 class FinalMLPBackbone[
-    F: SymVar,
-    D: SymVar,
-    M1Out: SymVar,
-    M2Out: SymVar,
-    NH: SymVar,
-    K: SymVar,
+    F: SymIntVar,
+    D: SymIntVar,
+    M1Out: SymIntVar,
+    M2Out: SymIntVar,
+    NH: SymIntVar,
+    K: SymIntVar,
 ](nn.Module):
     """Multi-layer FinalMLP backbone: stacks FinalMLPLayers for iterative interaction.
 
@@ -278,7 +281,9 @@ class FinalMLPBackbone[
     def output_dim(self) -> int:
         return self._output_dim
 
-    def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, K * D]]:
+    def forward[B: SymIntVar](
+        self, input_embs: Tensor[[B, F, D]]
+    ) -> Tensor[[B, K * D]]:
         x = self.first_layer(input_embs)
         assert_type(x, Tensor[[B, K, D]])
         for layer in self.rest_layers:

@@ -1694,8 +1694,8 @@ pub mod tests {
     #[test]
     fn test_display_symint_type_marks_standalone_sizes() {
         let heap = TypeHeap::new();
-        let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
-        let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
+        let n = fake_tparam(0, "N", QuantifiedKind::SymIntVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::SymIntVar).to_type(&heap);
 
         assert_eq!(Type::SymInt(SymInt::Literal(3)).to_string(), "SymInt[3]");
         assert_eq!(
@@ -1716,8 +1716,8 @@ pub mod tests {
     #[test]
     fn test_display_shaped_array_keeps_size_wrapper_out_of_shapes() {
         let heap = TypeHeap::new();
-        let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
-        let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
+        let n = fake_tparam(0, "N", QuantifiedKind::SymIntVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::SymIntVar).to_type(&heap);
         let shape = ShapedArrayShape::new(vec![
             SymInt::Literal(3),
             SymInt::Symbolic(Box::new(n.clone())),
@@ -1742,7 +1742,7 @@ pub mod tests {
             fake_class("Array", "arrays", 0),
             TArgs::new(shape_param, vec![Type::any_tuple()]),
         );
-        let n = fake_tparam(1, "N", QuantifiedKind::SymVar).to_type(&heap);
+        let n = fake_tparam(1, "N", QuantifiedKind::SymIntVar).to_type(&heap);
         let shape = ShapedArrayShape::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
 
         assert_eq!(

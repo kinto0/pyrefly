@@ -206,7 +206,7 @@ impl PartialOrd for Quantified {
 #[derive(Visit, VisitMut, TypeEq)]
 pub enum QuantifiedKind {
     TypeVar,
-    SymVar,
+    SymIntVar,
     ParamSpec,
     TypeVarTuple,
 }
@@ -214,7 +214,7 @@ pub enum QuantifiedKind {
 impl QuantifiedKind {
     fn empty_value(self) -> Type {
         match self {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => Type::any_implicit(),
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Type::any_implicit(),
             QuantifiedKind::ParamSpec => Type::Ellipsis,
             QuantifiedKind::TypeVarTuple => Type::any_tuple(),
         }
@@ -222,7 +222,7 @@ impl QuantifiedKind {
 
     fn class_type(self, stdlib: &Stdlib) -> &ClassType {
         match self {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => stdlib.type_var(),
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => stdlib.type_var(),
             QuantifiedKind::ParamSpec => stdlib.param_spec(),
             QuantifiedKind::TypeVarTuple => stdlib.type_var_tuple(),
         }
@@ -396,7 +396,10 @@ impl Quantified {
     }
 
     pub fn is_type_var(&self) -> bool {
-        matches!(self.kind, QuantifiedKind::TypeVar | QuantifiedKind::SymVar)
+        matches!(
+            self.kind,
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar
+        )
     }
 
     pub fn is_param_spec(&self) -> bool {

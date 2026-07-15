@@ -10,14 +10,14 @@ Compare @ operator vs torch.matmul
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
 # Does torch.matmul work?
-def test_matmul_function[N: SymVar, M: SymVar, K: SymVar](
+def test_matmul_function[N: SymIntVar, M: SymIntVar, K: SymIntVar](
     a: Tensor[[N, M]], b: Tensor[[M, K]]
 ):
     """Test torch.matmul with symbolic dimensions"""
@@ -29,7 +29,7 @@ test_matmul_function(torch.randn(5, 10), torch.randn(10, 7))
 
 
 # Does @ work?
-def test_at_operator[N: SymVar, M: SymVar, K: SymVar](
+def test_at_operator[N: SymIntVar, M: SymIntVar, K: SymIntVar](
     a: Tensor[[N, M]], b: Tensor[[M, K]]
 ):
     """Test @ operator with symbolic dimensions"""

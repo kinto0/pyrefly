@@ -6,14 +6,14 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
     from torch import Tensor
 
 
-def test_complex_expression[HeadDim: SymVar](
+def test_complex_expression[HeadDim: SymIntVar](
     n_elem: SymInt[HeadDim], base: int = 10000
 ) -> None:
     # This is the exact pattern from precompute_freqs_cis
@@ -24,7 +24,7 @@ def test_complex_expression[HeadDim: SymVar](
     assert_type(freqs, Tensor[[HeadDim // 2]])
 
 
-def test_intermediate_steps[HeadDim: SymVar](n_elem: SymInt[HeadDim]) -> None:
+def test_intermediate_steps[HeadDim: SymIntVar](n_elem: SymInt[HeadDim]) -> None:
     # Break down the complex expression to find where type info is lost
     step1 = torch.arange(0, n_elem, 2)
     assert_type(step1, Tensor[[HeadDim // 2]])

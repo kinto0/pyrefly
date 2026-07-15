@@ -11,7 +11,7 @@ Previously only worked with literal tuples.
 
 from typing import assert_type, TYPE_CHECKING
 
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     import torch.nn.functional as F
@@ -19,14 +19,14 @@ if TYPE_CHECKING:
     from torch import Tensor
 
 
-def test_adaptive_pool_symbolic_batch[B: SymVar](x: Tensor[[B, 64, 56, 56]]):
+def test_adaptive_pool_symbolic_batch[B: SymIntVar](x: Tensor[[B, 64, 56, 56]]):
     """Adaptive pool with symbolic batch dimension and literal output size"""
     y = F.adaptive_avg_pool2d(x, (7, 7))
     # Batch dimension B is preserved, output spatial dims are 7x7
     assert_type(y, Tensor[[B, 64, 7, 7]])
 
 
-def test_adaptive_pool_symbolic_output[B: SymVar, S: SymVar](
+def test_adaptive_pool_symbolic_output[B: SymIntVar, S: SymIntVar](
     x: Tensor[[B, 64, 56, 56]], s: SymInt[S]
 ):
     """Adaptive pool with symbolic output size dimensions"""
@@ -38,7 +38,7 @@ def test_adaptive_pool_symbolic_output[B: SymVar, S: SymVar](
     assert_type(y, Tensor[[B, 64, S, S]])
 
 
-def test_adaptive_pool_mixed[B: SymVar, H: SymVar](
+def test_adaptive_pool_mixed[B: SymIntVar, H: SymIntVar](
     x: Tensor[[B, 64, 56, 56]], h: SymInt[H]
 ):
     """Adaptive pool with mixed literal and symbolic output size"""

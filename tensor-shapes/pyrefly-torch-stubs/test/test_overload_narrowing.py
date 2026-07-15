@@ -11,7 +11,7 @@ from typing import assert_type, overload, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -52,13 +52,13 @@ def test_foo():
 class GenericDenseLayer(nn.Module):
     """DenseNet layer: adds 32 channels via concatenation."""
 
-    def forward[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C + 32, H, W]]: ...  # type: ignore[return-type]
 
 
 @overload
-def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+def dense_chain[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
     depth: SymInt[1],
@@ -66,14 +66,14 @@ def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
 
 
 @overload
-def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+def dense_chain[I: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
     depth: SymInt[I],
 ) -> Tensor[[B, C + I * 32, H, W]]: ...
 
 
-def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+def dense_chain[I: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
     depth: SymInt[I],

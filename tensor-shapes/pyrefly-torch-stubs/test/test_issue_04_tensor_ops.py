@@ -6,14 +6,14 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
     from torch import Tensor
 
 
-def test_view[B: SymVar, T: SymVar, D: SymVar, NHead: SymVar](
+def test_view[B: SymIntVar, T: SymIntVar, D: SymIntVar, NHead: SymIntVar](
     x: Tensor[[B, T, D]],
     bsz: SymInt[B],
     seqlen: SymInt[T],
@@ -25,7 +25,7 @@ def test_view[B: SymVar, T: SymVar, D: SymVar, NHead: SymVar](
     assert_type(result, Tensor[[B, T, NHead, (D // NHead)]])
 
 
-def test_transpose[B: SymVar, T: SymVar, NHead: SymVar, HeadDim: SymVar](
+def test_transpose[B: SymIntVar, T: SymIntVar, NHead: SymIntVar, HeadDim: SymIntVar](
     q: Tensor[[B, T, NHead, HeadDim]],
 ) -> None:
     # Test transpose operation
@@ -33,7 +33,13 @@ def test_transpose[B: SymVar, T: SymVar, NHead: SymVar, HeadDim: SymVar](
     assert_type(result, Tensor[[B, NHead, T, HeadDim]])
 
 
-def test_split[B: SymVar, T: SymVar, D: SymVar, NLocalHeads: SymVar, NHead: SymVar](
+def test_split[
+    B: SymIntVar,
+    T: SymIntVar,
+    D: SymIntVar,
+    NLocalHeads: SymIntVar,
+    NHead: SymIntVar,
+](
     x: Tensor[[B, T, (NHead + 2 * NLocalHeads) * (D // NHead)]],
     dim: SymInt[D],
     kv_size: SymInt[NLocalHeads * (D // NHead)],
@@ -44,7 +50,7 @@ def test_split[B: SymVar, T: SymVar, D: SymVar, NLocalHeads: SymVar, NHead: SymV
     assert_type(k, Tensor[[B, T, (NLocalHeads * (D // NHead))]])
 
 
-def test_flatten[B: SymVar, T: SymVar, NHeads: SymVar, HeadDim: SymVar](
+def test_flatten[B: SymIntVar, T: SymIntVar, NHeads: SymIntVar, HeadDim: SymIntVar](
     x: Tensor[[B, T, NHeads, HeadDim // 2, 2]],
 ) -> None:
     # Test flatten operation
@@ -54,7 +60,7 @@ def test_flatten[B: SymVar, T: SymVar, NHeads: SymVar, HeadDim: SymVar](
     assert_type(result, Tensor[[B, T, NHeads, ((HeadDim // 2) * 2)]])
 
 
-def test_stack[SeqLen: SymVar, HeadDim: SymVar](
+def test_stack[SeqLen: SymIntVar, HeadDim: SymIntVar](
     real: Tensor[[SeqLen, HeadDim // 2]],
     imag: Tensor[[SeqLen, HeadDim // 2]],
 ) -> None:

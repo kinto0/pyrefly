@@ -20,7 +20,7 @@ from typing import (
     TypeVar,
 )
 
-from shape_extensions import Elements, SymIntTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import ProxyMethod, SymInt as _SymInt, uses_shape_dsl
@@ -114,7 +114,7 @@ def Buffer[Shape: SymIntTuple](
     ...
 
 # Linear layer
-class Linear[IN: SymVar, OUT: SymVar](Module):
+class Linear[IN: SymIntVar, OUT: SymIntVar](Module):
     """Applies a linear transformation to the incoming data: y = xA^T + b"""
 
     weight: Tensor[[OUT, IN]]
@@ -145,7 +145,7 @@ class GELU(Module):
     def forward[Shape: SymIntTuple](self, input: Tensor[Shape]) -> Tensor[Shape]: ...
 
 # Embedding
-class Embedding[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
+class Embedding[NUM_EMB: SymIntVar, EMB_DIM: SymIntVar](Module):
     """A simple lookup table that stores embeddings of a fixed dictionary and size"""
 
     weight: Tensor[[NUM_EMB, EMB_DIM]]
@@ -167,11 +167,11 @@ class Embedding[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
 
     # 1D input: [T] -> [T, EMB_DIM]
     @overload
-    def forward[T: SymVar](self, input: Tensor[[T]]) -> Tensor[[T, EMB_DIM]]: ...
+    def forward[T: SymIntVar](self, input: Tensor[[T]]) -> Tensor[[T, EMB_DIM]]: ...
 
     # 2D input: [B, T] -> [B, T, EMB_DIM]
     @overload
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, input: Tensor[[B, T]]
     ) -> Tensor[[B, T, EMB_DIM]]: ...
 
@@ -490,12 +490,12 @@ class Identity(Module):
 # ==============================================================================
 
 class Conv1d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """1D convolution. Tracks channel and spatial dimensions.
 
@@ -519,17 +519,17 @@ class Conv1d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, L: SymVar](
+    def forward[B: SymIntVar, L: SymIntVar](
         self, input: Tensor[[B, InC, L]]
     ) -> Tensor[[B, OutC, (L + 2 * P - D * (K - 1) - 1) // S + 1]]: ...
 
 class Conv2d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """2D convolution. Tracks channel and spatial dimensions.
 
@@ -561,7 +561,7 @@ class Conv2d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, input: Tensor[[B, InC, H, W]]
     ) -> Tensor[
         [
@@ -573,12 +573,12 @@ class Conv2d[
     ]: ...
 
 class Conv3d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """3D convolution. Tracks channel and spatial dimensions.
 
@@ -602,7 +602,7 @@ class Conv3d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, D_: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, D_: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, input: Tensor[[B, InC, D_, H, W]]
     ) -> Tensor[
         [
@@ -615,13 +615,13 @@ class Conv3d[
     ]: ...
 
 class ConvTranspose1d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    OP: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    OP: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """1D transposed convolution. Tracks channel and spatial dimensions.
 
@@ -646,18 +646,18 @@ class ConvTranspose1d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, L: SymVar](
+    def forward[B: SymIntVar, L: SymIntVar](
         self, input: Tensor[[B, InC, L]]
     ) -> Tensor[[B, OutC, (L - 1) * S - 2 * P + D * (K - 1) + OP + 1]]: ...
 
 class ConvTranspose2d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    OP: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    OP: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """2D transposed convolution. Tracks channel and spatial dimensions.
 
@@ -682,7 +682,7 @@ class ConvTranspose2d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, input: Tensor[[B, InC, H, W]]
     ) -> Tensor[
         [
@@ -694,13 +694,13 @@ class ConvTranspose2d[
     ]: ...
 
 class ConvTranspose3d[
-    InC: SymVar,
-    OutC: SymVar,
-    K: SymVar,
-    S: SymVar = 1,
-    P: SymVar = 0,
-    OP: SymVar = 0,
-    D: SymVar = 1,
+    InC: SymIntVar,
+    OutC: SymIntVar,
+    K: SymIntVar,
+    S: SymIntVar = 1,
+    P: SymIntVar = 0,
+    OP: SymIntVar = 0,
+    D: SymIntVar = 1,
 ](Module):
     """3D transposed convolution. Tracks channel and spatial dimensions.
 
@@ -725,7 +725,7 @@ class ConvTranspose3d[
         device: Any = None,
         dtype: Any = None,
     ) -> None: ...
-    def forward[B: SymVar, D_: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, D_: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, input: Tensor[[B, InC, D_, H, W]]
     ) -> Tensor[
         [
@@ -839,55 +839,55 @@ class AvgPool3d(Module):
     )
     def forward(self, input: Tensor) -> Tensor: ...
 
-class AdaptiveAvgPool1d[OL: SymVar](Module):
+class AdaptiveAvgPool1d[OL: SymIntVar](Module):
     """1D adaptive average pooling"""
     def __init__(self, output_size: _SymInt[OL]) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any]]
     ) -> Tensor[[B, C, OL]]: ...
 
-class AdaptiveAvgPool2d[OH: SymVar, OW: SymVar](Module):
+class AdaptiveAvgPool2d[OH: SymIntVar, OW: SymIntVar](Module):
     """2D adaptive average pooling"""
     def __init__(self, output_size: tuple[_SymInt[OH], _SymInt[OW]]) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any, Any]]
     ) -> Tensor[[B, C, OH, OW]]: ...
 
-class AdaptiveAvgPool3d[OD: SymVar, OH: SymVar, OW: SymVar](Module):
+class AdaptiveAvgPool3d[OD: SymIntVar, OH: SymIntVar, OW: SymIntVar](Module):
     """3D adaptive average pooling"""
     def __init__(
         self, output_size: tuple[_SymInt[OD], _SymInt[OH], _SymInt[OW]]
     ) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any, Any, Any]]
     ) -> Tensor[[B, C, OD, OH, OW]]: ...
 
-class AdaptiveMaxPool1d[OL: SymVar](Module):
+class AdaptiveMaxPool1d[OL: SymIntVar](Module):
     """1D adaptive max pooling"""
     def __init__(
         self, output_size: _SymInt[OL], return_indices: bool = False
     ) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any]]
     ) -> Tensor[[B, C, OL]]: ...
 
-class AdaptiveMaxPool2d[OH: SymVar, OW: SymVar](Module):
+class AdaptiveMaxPool2d[OH: SymIntVar, OW: SymIntVar](Module):
     """2D adaptive max pooling"""
     def __init__(
         self, output_size: tuple[_SymInt[OH], _SymInt[OW]], return_indices: bool = False
     ) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any, Any]]
     ) -> Tensor[[B, C, OH, OW]]: ...
 
-class AdaptiveMaxPool3d[OD: SymVar, OH: SymVar, OW: SymVar](Module):
+class AdaptiveMaxPool3d[OD: SymIntVar, OH: SymIntVar, OW: SymIntVar](Module):
     """3D adaptive max pooling"""
     def __init__(
         self,
         output_size: tuple[_SymInt[OD], _SymInt[OH], _SymInt[OW]],
         return_indices: bool = False,
     ) -> None: ...
-    def forward[B: SymVar, C: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar](
         self, input: Tensor[[B, C, Any, Any, Any]]
     ) -> Tensor[[B, C, OD, OH, OW]]: ...
 
@@ -1170,7 +1170,7 @@ class ParameterList[T](Module):
     def __iter__(self) -> Iterator[T]: ...
     def __len__(self) -> int: ...
 
-class LazyLinear[OUT: SymVar](Module):
+class LazyLinear[OUT: SymIntVar](Module):
     """Linear layer with lazy in_features initialization.
 
     out_features is known at construction; in_features is inferred at first forward.
@@ -1226,7 +1226,7 @@ class ReplicationPad2d(Module):
     def forward(self, input: Tensor) -> Tensor: ...
 
 # Embedding variants
-class EmbeddingBag[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
+class EmbeddingBag[NUM_EMB: SymIntVar, EMB_DIM: SymIntVar](Module):
     """Computes sums or means of 'bags' of embeddings.
 
     Unlike Embedding, EmbeddingBag aggregates over variable-length groups
@@ -1253,7 +1253,7 @@ class EmbeddingBag[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
 
     # EmbeddingBag forward: batch dim B comes from offsets (default, include_last_offset=False).
     # Embedding dim EMB_DIM is always preserved from init.
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self,
         input: Tensor,
         offsets: Tensor[[B]] | None = None,

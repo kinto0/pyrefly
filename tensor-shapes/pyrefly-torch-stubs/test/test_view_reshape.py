@@ -8,7 +8,7 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -31,7 +31,7 @@ def test_reshape_literals():
     assert_type(y, Tensor[[2, 5, 20]])
 
 
-def test_view_symbolic[N: SymVar, M: SymVar](
+def test_view_symbolic[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]],
 ) -> Tensor[[2, N // 2, M]]:
     """Test .view() with symbolic dimensions

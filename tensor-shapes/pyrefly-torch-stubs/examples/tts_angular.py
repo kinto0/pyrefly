@@ -54,7 +54,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -63,7 +63,9 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class LSTMWithProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Module):
+class LSTMWithProjection[InSize: SymIntVar, Hidden: SymIntVar, Proj: SymIntVar](
+    nn.Module
+):
     """LSTM followed by linear projection.
 
     (B, T, InSize) → LSTM → (B, T, Hidden) → Linear → (B, T, Proj)
@@ -79,7 +81,7 @@ class LSTMWithProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Module
         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
         self.linear = nn.Linear(hidden_size, proj_size, bias=False)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, InSize]]
     ) -> Tensor[[B, T, Proj]]:
         self.lstm.flatten_parameters()
@@ -93,7 +95,9 @@ class LSTMWithProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Module
 # ============================================================================
 
 
-class LSTMWithoutProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Module):
+class LSTMWithoutProjection[InSize: SymIntVar, Hidden: SymIntVar, Proj: SymIntVar](
+    nn.Module
+):
     """Multi-layer LSTM that extracts last layer's hidden state, then projects.
 
     Original: tts_angular/model.py LSTMWithoutProjection class.
@@ -119,7 +123,7 @@ class LSTMWithoutProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Mod
         self.linear = nn.Linear(lstm_dim, proj_dim)
         self.relu = nn.ReLU()
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, InSize]]
     ) -> Tensor[[B, Proj]]:
         self.lstm.flatten_parameters()
@@ -136,7 +140,7 @@ class LSTMWithoutProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Mod
 # ============================================================================
 
 
-class SpeakerEncoder[InDim: SymVar, ProjDim: SymVar](nn.Module):
+class SpeakerEncoder[InDim: SymIntVar, ProjDim: SymIntVar](nn.Module):
     """Speaker verification encoder.
 
     Two modes (original: tts_angular/model.py SpeakerEncoder):
@@ -178,7 +182,7 @@ class SpeakerEncoder[InDim: SymVar, ProjDim: SymVar](nn.Module):
                 input_dim, lstm_dim, proj_dim, num_lstm_layers
             )
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, InDim]]
     ) -> Tensor[[B, ProjDim]]:
         if self.use_lstm_with_projection:
@@ -287,7 +291,7 @@ class AngleProtoLoss(nn.Module):
 # ============================================================================
 
 
-def compute_embedding[ProjDim: SymVar](
+def compute_embedding[ProjDim: SymIntVar](
     encoder: SpeakerEncoder[Any, ProjDim],
     utterance: Tensor,
     num_eval: int = 10,
@@ -333,7 +337,7 @@ def compute_embedding[ProjDim: SymVar](
     return embeddings.mean(dim=0)  # (ProjDim,)
 
 
-def batch_compute_embedding[ProjDim: SymVar](
+def batch_compute_embedding[ProjDim: SymIntVar](
     encoder: SpeakerEncoder[Any, ProjDim],
     utterances: list[Tensor],
     num_eval: int = 10,

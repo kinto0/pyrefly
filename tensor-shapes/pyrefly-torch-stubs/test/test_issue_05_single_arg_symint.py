@@ -6,14 +6,14 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
     from torch import Tensor
 
 
-def test_single_arg_symint[N: SymVar](n: SymInt[N]) -> None:
+def test_single_arg_symint[N: SymIntVar](n: SymInt[N]) -> None:
     # Two-argument form - this should definitely work
     t1 = torch.arange(0, n)
     assert_type(t1, Tensor[[N]])
@@ -24,7 +24,7 @@ def test_single_arg_symint[N: SymVar](n: SymInt[N]) -> None:
     assert_type(t2, Tensor[[N]])
 
 
-def test_workaround[N: SymVar](n: SymInt[N]) -> None:
+def test_workaround[N: SymIntVar](n: SymInt[N]) -> None:
     # Workaround: always use two-argument form
     t = torch.arange(0, n)
     assert_type(t, Tensor[[N]])

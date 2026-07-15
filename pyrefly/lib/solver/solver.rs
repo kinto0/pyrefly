@@ -151,7 +151,7 @@ mod tests {
                 QuantifiedOrigin::SyntheticCallableResidual,
             ),
             Name::new(match kind {
-                QuantifiedKind::SymVar => "S",
+                QuantifiedKind::SymIntVar => "S",
                 QuantifiedKind::TypeVar => "T",
                 QuantifiedKind::ParamSpec | QuantifiedKind::TypeVarTuple => {
                     unreachable!("test only creates scalar quantifieds")
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn expand_with_bounds_preserves_quantified_symint_leaves() {
-        let cases = [QuantifiedKind::SymVar, QuantifiedKind::TypeVar];
+        let cases = [QuantifiedKind::SymIntVar, QuantifiedKind::TypeVar];
         for (index, kind) in cases.into_iter().enumerate() {
             let quantified = quantified(kind, index as u32);
             let quantified_ty = Type::Quantified(Box::new(quantified));
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn expand_with_bounds_canonicalizes_symint_inside_tuple_splice() {
-        let quantified_ty = Type::Quantified(Box::new(quantified(QuantifiedKind::SymVar, 0)));
+        let quantified_ty = Type::Quantified(Box::new(quantified(QuantifiedKind::SymIntVar, 0)));
         let raw_compound = Type::SymInt(SymInt::add(quantified_ty.clone(), quantified_ty));
         let expected_compound = canonicalize(raw_compound.clone());
         assert_ne!(raw_compound, expected_compound);

@@ -11,7 +11,7 @@ including bare SymInt, SymInt[Any], or passed to functions with type parameters.
 
 from typing import Any, assert_type, TYPE_CHECKING
 
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -22,7 +22,7 @@ symint_explicit_any: SymInt[Any] = 4
 assert_type(symint_explicit_any, SymInt[Any])
 
 
-def accept_and_return_symint[N: SymVar](s: SymInt[N]) -> SymInt[N]:
+def accept_and_return_symint[N: SymIntVar](s: SymInt[N]) -> SymInt[N]:
     return s
 
 

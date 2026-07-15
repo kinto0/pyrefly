@@ -127,8 +127,8 @@ pub enum TypeOrExpr<'a> {
 
 /// Where a dimension expression appears, which controls whether a plain
 /// `TypeVar` is accepted. Shape arithmetic (e.g. `N + 1`) needs the
-/// symbolic-integer semantics of a `SymVar`, so an operand of an arithmetic
-/// expression must be a `SymVar`; a dimension used on its own accepts any type
+/// symbolic-integer semantics of a `SymIntVar`, so an operand of an arithmetic
+/// expression must be a `SymIntVar`; a dimension used on its own accepts any type
 /// variable kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DimensionExprContext {
@@ -136,7 +136,7 @@ enum DimensionExprContext {
     /// variable kind is allowed.
     Bare,
     /// An operand of shape arithmetic, e.g. the `N` in `Tensor[N + 1]`. Only a
-    /// `SymVar` is allowed; a plain `TypeVar` is rejected.
+    /// `SymIntVar` is allowed; a plain `TypeVar` is rejected.
     Arithmetic,
 }
 
@@ -3243,7 +3243,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .get(shape_idx)
             .expect("class type should have an argument for each type parameter");
         match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                 match tuple_carrier_to_shape(shape_arg) {
                     Some(shape) => ShapedArrayType::new(cls.clone(), shape).with_shape_arg_style(
                         ShapedArrayShapeArgStyle::TupleCarrier { index: shape_idx },
@@ -3279,7 +3279,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> ShapedArrayType {
         match self.shaped_array_shape_for_class_type(&tensor.base_class) {
             Some(shape_param) => match shape_param.kind() {
-                QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+                QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                     let shape_idx = self
                         .get_class_tparams(tensor.base_class.class_object())
                         .iter()
@@ -3463,7 +3463,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             errors,
                             UntypeContext::SymbolicInt(context.error_context()),
                         ) {
-                            Some(Type::Quantified(q)) if q.kind() == QuantifiedKind::SymVar => {
+                            Some(Type::Quantified(q)) if q.kind() == QuantifiedKind::SymIntVar => {
                                 Some(Type::Quantified(q))
                             }
                             Some(ty @ Type::TypeVar(_)) => Some(ty),
@@ -3759,7 +3759,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .enumerate()
             .map(|(idx, arg)| {
                 if let Some(param) = param_for_arg(idx) {
-                    if !matches!(arg, Expr::Starred(_)) && param.kind() == QuantifiedKind::SymVar {
+                    if !matches!(arg, Expr::Starred(_)) && param.kind() == QuantifiedKind::SymIntVar
+                    {
                         return self
                             .parse_dimension_expr(arg, errors)
                             .unwrap_or_else(Type::any_error);
@@ -3957,7 +3958,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .position(|param| param == &shape_param)
             .expect("shaped-array metadata should refer to a class type parameter");
         match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {}
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {}
             QuantifiedKind::TypeVarTuple => unreachable!(
                 "shaped-array metadata validation rejects TypeVarTuple shape parameters"
             ),

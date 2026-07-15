@@ -35,7 +35,7 @@ from typing import Any, assert_type, cast, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SymIntTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymIntVar
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ def find_multiple(n: int, k: int) -> int:
     return n + k - (n % k)
 
 
-class RMSNorm[D: SymVar](nn.Module):
+class RMSNorm[D: SymIntVar](nn.Module):
     def __init__(self, dim: SymInt[D], eps: float = 1e-5):
         super().__init__()
         self.eps = eps
@@ -70,7 +70,9 @@ class RMSNorm[D: SymVar](nn.Module):
         return result
 
 
-class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
+class KVCache[B: SymIntVar, NHead: SymIntVar, MaxSeq: SymIntVar, HD: SymIntVar](
+    nn.Module
+):
     def __init__(
         self,
         max_batch_size: SymInt[B],
@@ -87,7 +89,7 @@ class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
             torch.zeros(max_batch_size, n_heads, max_seq_length, head_dim, dtype=dtype)
         )
 
-    def update[S: SymVar](
+    def update[S: SymIntVar](
         self,
         input_pos: Tensor[[S]],
         k_val: Tensor,
@@ -102,7 +104,9 @@ class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
         return k_out, v_out
 
 
-class ConditionalFeedForward[NExp: SymVar, Inter: SymVar, D: SymVar](nn.Module):
+class ConditionalFeedForward[NExp: SymIntVar, Inter: SymIntVar, D: SymIntVar](
+    nn.Module
+):
     def __init__(
         self,
         num_experts: SymInt[NExp],
@@ -114,7 +118,7 @@ class ConditionalFeedForward[NExp: SymVar, Inter: SymVar, D: SymVar](nn.Module):
         self.w2 = nn.Parameter(torch.empty(num_experts, dim, intermediate_size))
         self.w3 = nn.Parameter(torch.empty(num_experts, intermediate_size, dim))
 
-    def forward[T: SymVar, A: SymVar](
+    def forward[T: SymIntVar, A: SymIntVar](
         self, x: Tensor[[T, D]], expert_indices: Tensor[[T, A]]
     ) -> Tensor[[T, A, D]]:
         w1_weights = self.w1[expert_indices]
@@ -132,7 +136,9 @@ class ConditionalFeedForward[NExp: SymVar, Inter: SymVar, D: SymVar](nn.Module):
         return expert_outs
 
 
-class MOEFeedForward[D: SymVar, NExp: SymVar, A: SymVar, Inter: SymVar](nn.Module):
+class MOEFeedForward[D: SymIntVar, NExp: SymIntVar, A: SymIntVar, Inter: SymIntVar](
+    nn.Module
+):
     def __init__(
         self,
         dim: SymInt[D],
@@ -146,7 +152,7 @@ class MOEFeedForward[D: SymVar, NExp: SymVar, A: SymVar, Inter: SymVar](nn.Modul
         self.dim = dim
         self.num_activated_experts = num_activated_experts
 
-    def forward[T: SymVar](self, x: Tensor[[T, D]]) -> Tensor[[T, D]]:
+    def forward[T: SymIntVar](self, x: Tensor[[T, D]]) -> Tensor[[T, D]]:
         scores = self.gate(x)
         assert_type(scores, Tensor[[T, NExp]])
         expert_weights = F.softmax(scores, dim=-1)
@@ -245,7 +251,9 @@ def apply_rotary_emb[S: SymIntTuple](x: Tensor[S], freqs_cis: Tensor) -> Tensor[
     return x_out2.type_as(x)  # type: ignore[bad-return]  # shape preserved — rotary doesn't change dims
 
 
-class Attention[D: SymVar, NHead: SymVar, NLocalHead: SymVar, HD: SymVar](nn.Module):
+class Attention[D: SymIntVar, NHead: SymIntVar, NLocalHead: SymIntVar, HD: SymIntVar](
+    nn.Module
+):
     def __init__(
         self,
         dim: SymInt[D],
@@ -272,7 +280,7 @@ class Attention[D: SymVar, NHead: SymVar, NLocalHead: SymVar, HD: SymVar](nn.Mod
             wv = state_dict.pop(prefix + "wv.weight")
             state_dict[prefix + "wqkv.weight"] = torch.cat([wq, wk, wv])
 
-    def forward[B: SymVar, SeqLen: SymVar](
+    def forward[B: SymIntVar, SeqLen: SymIntVar](
         self,
         x: Tensor[[B, SeqLen, D]],
         freqs_cis: Tensor,
@@ -336,13 +344,13 @@ class Attention[D: SymVar, NHead: SymVar, NLocalHead: SymVar, HD: SymVar](nn.Mod
 
 
 class TransformerBlock[
-    D: SymVar,
-    NHead: SymVar,
-    NLocalHead: SymVar,
-    HD: SymVar,
-    NExp: SymVar,
-    A: SymVar,
-    Inter: SymVar,
+    D: SymIntVar,
+    NHead: SymIntVar,
+    NLocalHead: SymIntVar,
+    HD: SymIntVar,
+    NExp: SymIntVar,
+    A: SymIntVar,
+    Inter: SymIntVar,
 ](nn.Module):
     def __init__(
         self,
@@ -363,7 +371,7 @@ class TransformerBlock[
         self.ffn_norm = RMSNorm(dim, eps=norm_eps)
         self.attention_norm = RMSNorm(dim, eps=norm_eps)
 
-    def forward[B: SymVar, SeqLen: SymVar](
+    def forward[B: SymIntVar, SeqLen: SymIntVar](
         self,
         x: Tensor[[B, SeqLen, D]],
         input_pos: Tensor | None,

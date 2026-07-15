@@ -41,7 +41,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 # Activation function type — all are shape-preserving: Tensor[S] -> Tensor[S]
@@ -60,7 +60,7 @@ ShapePreservingActivation = (
 # ============================================================================
 
 
-class AutoEncoder[InDim: SymVar, H1: SymVar, H2: SymVar](nn.Module):
+class AutoEncoder[InDim: SymIntVar, H1: SymIntVar, H2: SymIntVar](nn.Module):
     """Symmetric autoencoder for collaborative filtering.
 
     Architecture (3-layer):
@@ -92,7 +92,7 @@ class AutoEncoder[InDim: SymVar, H1: SymVar, H2: SymVar](nn.Module):
         self.dec1 = nn.Linear(h2, h1)
         self.dec2 = nn.Linear(h1, in_dim)
 
-    def encode[B: SymVar](self, x: Tensor[[B, InDim]]) -> Tensor[[B, H2]]:
+    def encode[B: SymIntVar](self, x: Tensor[[B, InDim]]) -> Tensor[[B, H2]]:
         h = self.act(self.enc1(x))
         assert_type(h, Tensor[[B, H1]])
         z = self.act(self.enc2(h))
@@ -101,14 +101,14 @@ class AutoEncoder[InDim: SymVar, H1: SymVar, H2: SymVar](nn.Module):
             z = self.drop(z)
         return z
 
-    def decode[B: SymVar](self, z: Tensor[[B, H2]]) -> Tensor[[B, InDim]]:
+    def decode[B: SymIntVar](self, z: Tensor[[B, H2]]) -> Tensor[[B, InDim]]:
         h = self.act(self.dec1(z))
         assert_type(h, Tensor[[B, H1]])
         out = self.act(self.dec2(h))
         assert_type(out, Tensor[[B, InDim]])
         return out
 
-    def forward[B: SymVar](self, x: Tensor[[B, InDim]]) -> Tensor[[B, InDim]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, InDim]]) -> Tensor[[B, InDim]]:
         return self.decode(self.encode(x))
 
 
@@ -117,7 +117,7 @@ class AutoEncoder[InDim: SymVar, H1: SymVar, H2: SymVar](nn.Module):
 # ============================================================================
 
 
-def MSEloss[B: SymVar, InDim: SymVar](
+def MSEloss[B: SymIntVar, InDim: SymIntVar](
     inputs: Tensor[[B, InDim]], targets: Tensor[[B, InDim]]
 ) -> Tensor:
     """Masked MSE loss — only computes error on non-zero target entries.

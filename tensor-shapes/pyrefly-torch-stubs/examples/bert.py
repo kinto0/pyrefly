@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SymIntTuple
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class LayerNorm[Features: SymVar](nn.Module):
+class LayerNorm[Features: SymIntVar](nn.Module):
     """Construct a layernorm module (See citation for details)."""
 
     a_2: Tensor[[Features]]
@@ -50,7 +50,7 @@ class LayerNorm[Features: SymVar](nn.Module):
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
 
-class SublayerConnection[Hidden: SymVar](nn.Module):
+class SublayerConnection[Hidden: SymIntVar](nn.Module):
     """
     A residual connection followed by a layer norm.
     Note for code simplicity the norm is first as opposed to last.
@@ -61,7 +61,7 @@ class SublayerConnection[Hidden: SymVar](nn.Module):
         self.norm = LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self,
         x: Tensor[[B, T, Hidden]],
         sublayer: Callable[[Tensor[[B, T, Hidden]]], Tensor[[B, T, Hidden]]],
@@ -70,7 +70,7 @@ class SublayerConnection[Hidden: SymVar](nn.Module):
         return x + self.dropout(sublayer(self.norm(x)))
 
 
-class PositionwiseFeedForward[DModel: SymVar, DFF: SymVar](nn.Module):
+class PositionwiseFeedForward[DModel: SymIntVar, DFF: SymIntVar](nn.Module):
     """Implements FFN equation."""
 
     def __init__(
@@ -82,7 +82,7 @@ class PositionwiseFeedForward[DModel: SymVar, DFF: SymVar](nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.activation = nn.GELU()
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, DModel]]
     ) -> Tensor[[B, T, DModel]]:
         h = self.w_1(x)
@@ -103,7 +103,7 @@ class PositionwiseFeedForward[DModel: SymVar, DFF: SymVar](nn.Module):
 class Attention(nn.Module):
     """Compute 'Scaled Dot Product Attention'"""
 
-    def forward[B: SymVar, H: SymVar, T: SymVar, DK: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, T: SymIntVar, DK: SymIntVar](
         self,
         query: Tensor[[B, H, T, DK]],
         key: Tensor[[B, H, T, DK]],
@@ -124,7 +124,7 @@ class Attention(nn.Module):
         return torch.matmul(p_attn, value), p_attn
 
 
-class MultiHeadedAttention[DModel: SymVar, H: SymVar](nn.Module):
+class MultiHeadedAttention[DModel: SymIntVar, H: SymIntVar](nn.Module):
     """Take in model size and number of heads."""
 
     def __init__(
@@ -145,7 +145,7 @@ class MultiHeadedAttention[DModel: SymVar, H: SymVar](nn.Module):
         self.attention = Attention()
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self,
         query: Tensor[[B, T, DModel]],
         key: Tensor[[B, T, DModel]],
@@ -197,7 +197,7 @@ class MultiHeadedAttention[DModel: SymVar, H: SymVar](nn.Module):
 # ============================================================================
 
 
-class TokenEmbedding[VocabSize: SymVar, EmbedSize: SymVar = 512](
+class TokenEmbedding[VocabSize: SymIntVar, EmbedSize: SymIntVar = 512](
     nn.Embedding[VocabSize, EmbedSize]
 ):
     def __init__(
@@ -233,7 +233,7 @@ class SegmentEmbedding(nn.Embedding):
         super().__init__(3, embed_size, padding_idx=0)
 
 
-class BERTEmbedding[VocabSize: SymVar, EmbedSize: SymVar](nn.Module):
+class BERTEmbedding[VocabSize: SymIntVar, EmbedSize: SymIntVar](nn.Module):
     """
     BERT Embedding which is consisted with under features
         1. TokenEmbedding : normal embedding matrix
@@ -256,7 +256,7 @@ class BERTEmbedding[VocabSize: SymVar, EmbedSize: SymVar](nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         self.embed_size = embed_size
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, sequence: Tensor[[B, T]], segment_label: Tensor[[B, T]]
     ) -> Tensor[[B, T, EmbedSize]]:
         x = self.token(sequence) + self.position(sequence) + self.segment(segment_label)
@@ -268,7 +268,7 @@ class BERTEmbedding[VocabSize: SymVar, EmbedSize: SymVar](nn.Module):
 # ============================================================================
 
 
-class SelfAttentionWrapper[DModel: SymVar, H: SymVar](nn.Module):
+class SelfAttentionWrapper[DModel: SymIntVar, H: SymIntVar](nn.Module):
     """Wraps MultiHeadedAttention for self-attention (Q=K=V=x).
 
     The original uses a LambdaModule (TorchScript JIT wrapper) to convert the
@@ -284,13 +284,13 @@ class SelfAttentionWrapper[DModel: SymVar, H: SymVar](nn.Module):
     def set_mask(self, mask: Tensor) -> None:
         self.mask = mask
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, DModel]]
     ) -> Tensor[[B, T, DModel]]:
         return self.attention(x, x, x, mask=self.mask)
 
 
-class TransformerBlock[Hidden: SymVar, H: SymVar](nn.Module):
+class TransformerBlock[Hidden: SymIntVar, H: SymIntVar](nn.Module):
     """
     Bidirectional Encoder = Transformer (self-attention)
     Transformer = MultiHead_Attention + Feed_Forward with sublayer connection
@@ -313,7 +313,7 @@ class TransformerBlock[Hidden: SymVar, H: SymVar](nn.Module):
         self.output_sublayer = SublayerConnection(size=hidden, dropout=dropout)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, Hidden]], mask: Tensor
     ) -> Tensor[[B, T, Hidden]]:
         self.self_attn.set_mask(mask)
@@ -329,7 +329,7 @@ class TransformerBlock[Hidden: SymVar, H: SymVar](nn.Module):
 # ============================================================================
 
 
-class BERT[VocabSize: SymVar, Hidden: SymVar = 768, H: SymVar = 12](nn.Module):
+class BERT[VocabSize: SymIntVar, Hidden: SymIntVar = 768, H: SymIntVar = 12](nn.Module):
     """
     BERT model : Bidirectional Encoder Representations from Transformers.
     """
@@ -368,7 +368,7 @@ class BERT[VocabSize: SymVar, Hidden: SymVar = 768, H: SymVar = 12](nn.Module):
             ]
         )
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T]], segment_info: Tensor[[B, T]]
     ) -> Tensor[[B, T, Hidden]]:
         # attention masking for padded token
@@ -392,7 +392,7 @@ class BERT[VocabSize: SymVar, Hidden: SymVar = 768, H: SymVar = 12](nn.Module):
 # ============================================================================
 
 
-class NextSentencePrediction[Hidden: SymVar](nn.Module):
+class NextSentencePrediction[Hidden: SymIntVar](nn.Module):
     """
     2-class classification model : is_next, is_not_next
     """
@@ -402,13 +402,13 @@ class NextSentencePrediction[Hidden: SymVar](nn.Module):
         self.linear = nn.Linear(hidden, 2)
         self.softmax = nn.LogSoftmax(dim=-1)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, Hidden]]
     ) -> Tensor[[B, 2]]:
         return self.softmax(self.linear(x[:, 0]))
 
 
-class MaskedLanguageModel[Hidden: SymVar, VocabSize: SymVar](nn.Module):
+class MaskedLanguageModel[Hidden: SymIntVar, VocabSize: SymIntVar](nn.Module):
     """
     predicting origin token from masked input sequence
     n-class classification problem, n-class = vocab_size
@@ -419,13 +419,13 @@ class MaskedLanguageModel[Hidden: SymVar, VocabSize: SymVar](nn.Module):
         self.linear = nn.Linear(hidden, vocab_size)
         self.softmax = nn.LogSoftmax(dim=-1)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T, Hidden]]
     ) -> Tensor[[B, T, VocabSize]]:
         return self.softmax(self.linear(x))
 
 
-class BERTLM[VocabSize: SymVar, Hidden: SymVar, H: SymVar](nn.Module):
+class BERTLM[VocabSize: SymIntVar, Hidden: SymIntVar, H: SymIntVar](nn.Module):
     """
     BERT Language Model
     Next Sentence Prediction Model + Masked Language Model
@@ -439,7 +439,7 @@ class BERTLM[VocabSize: SymVar, Hidden: SymVar, H: SymVar](nn.Module):
         self.next_sentence = NextSentencePrediction(bert.hidden)
         self.mask_lm = MaskedLanguageModel(bert.hidden, vocab_size)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, x: Tensor[[B, T]], segment_label: Tensor[[B, T]]
     ) -> tuple[Tensor[[B, 2]], Tensor[[B, T, VocabSize]]]:
         x_out = self.bert(x, segment_label)

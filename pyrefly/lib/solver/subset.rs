@@ -1756,8 +1756,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // copies on the common success path.
                 //
                 // Short-circuiting here before solving a fresh symbolic `want`
-                // (e.g. `SymInt[N]` for an unconstrained `SymVar` N) is safe and
-                // does not leak an unsolved `Var`: an unconstrained `SymVar`
+                // (e.g. `SymInt[N]` for an unconstrained `SymIntVar` N) is safe and
+                // does not leak an unsolved `Var`: an unconstrained `SymIntVar`
                 // defaults to the gradual size `SymInt[int]`, so a gradual `got`
                 // (like bare `SymInt`) flowing into `SymInt[N]` still resolves to
                 // `SymInt[int]`. We therefore need not bind N before accepting.
@@ -1801,7 +1801,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             // SymInt <: Quantified - expand, canonicalize SymInt, and compare.
             // A SymInt like (A + A) // 2 might simplify to A (a Quantified).
-            (Type::SymInt(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymVar => {
+            (Type::SymInt(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymIntVar => {
                 let mut got_expanded = Type::SymInt(s.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
                 if let Type::SymInt(SymInt::Symbolic(got_symbolic)) = &got_expanded
@@ -1830,7 +1830,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 }
             }
             // Quantified <: SymInt - expand SymInt, canonicalize, and compare
-            (Type::Quantified(q), Type::SymInt(s)) if q.kind() == QuantifiedKind::SymVar => {
+            (Type::Quantified(q), Type::SymInt(s)) if q.kind() == QuantifiedKind::SymIntVar => {
                 let mut want_expanded = Type::SymInt(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);
                 if let Type::SymInt(SymInt::Symbolic(want_symbolic)) = &want_expanded
@@ -2115,9 +2115,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             {
                 let mut inner_expanded = (**inner).clone();
                 self.solver.expand_with_bounds(&mut inner_expanded);
-                // `inner` is invariantly a `SymVar` dimension variable (or its
+                // `inner` is invariantly a `SymIntVar` dimension variable (or its
                 // bound): `SymInt::Symbolic(Quantified)` is only constructed for
-                // the `SymVar` kind (see `SymInt::from_type`), so this arm needs
+                // the `SymIntVar` kind (see `SymInt::from_type`), so this arm needs
                 // no `QuantifiedKind` gate, unlike the sibling `SymInt`/`Quantified`
                 // arms above. Once expanded, an `int` argument is compatible when
                 // the dimension resolved to a concrete `int` or a gradual size; a
@@ -2126,9 +2126,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 match &inner_expanded {
                     Type::ClassType(inner_cls) if inner_cls.is_builtin("int") => Ok(()),
                     expanded if is_gradual_size(expanded) => Ok(()),
-                    // An `int` argument eagerly pins a still-fresh `SymVar` to
-                    // the gradual size. This is order-dependent when the `SymVar`
-                    // is repeated (e.g. `f[N: SymVar](x: SymInt[N], y: SymInt[N])`):
+                    // An `int` argument eagerly pins a still-fresh `SymIntVar` to
+                    // the gradual size. This is order-dependent when the `SymIntVar`
+                    // is repeated (e.g. `f[N: SymIntVar](x: SymInt[N], y: SymInt[N])`):
                     // `f(i, s3)` pins N gradual from the `int` first, so a later
                     // concrete `SymInt[3]` is accepted, whereas `f(s3, i)` pins
                     // N=3 first and correctly rejects the `int`. This eager pin
@@ -2702,7 +2702,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         let (want_param, want_arg) = self.shape_param_and_arg(want)?;
         if !shape_param.is_type_var() {
             return Err(SubsetError::InternalError(
-                "ShapedArrayType registered a non-TypeVar/non-SymVar as its shape parameter"
+                "ShapedArrayType registered a non-TypeVar/non-SymIntVar as its shape parameter"
                     .to_owned(),
             ));
         }
@@ -2780,7 +2780,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         let (shape_param, _) = self.shape_param_and_arg(shaped_array)?;
         let shape_arg = match shape_param.kind() {
             QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(&shaped_array.shape),
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                 shape_to_tuple_carrier_arg(&shaped_array.shape)
             }
             QuantifiedKind::ParamSpec => {
@@ -2814,7 +2814,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     ) -> Result<ClassType, SubsetError> {
         let base_class = &shaped_array.base_class;
         let erased_shape_arg = match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => Type::any_implicit(),
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Type::any_implicit(),
             QuantifiedKind::TypeVarTuple => {
                 return Err(SubsetError::InternalError(
                     "ShapedArrayType registered a TypeVarTuple as its shape parameter".to_owned(),

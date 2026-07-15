@@ -14,7 +14,7 @@ from typing import assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class DynamicLinear[N: SymVar, M: SymVar](nn.Module):
+class DynamicLinear[N: SymIntVar, M: SymIntVar](nn.Module):
     """Linear layer with runtime dimension parameters"""
 
     weight: Tensor[[M, N]]
@@ -35,7 +35,7 @@ class DynamicLinear[N: SymVar, M: SymVar](nn.Module):
         # Now N and M are bound via Literal params, so we can create tensors
         self.weight = torch.randn(out_features, in_features)
 
-    def forward[B: SymVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
         weight_t: Tensor[[N, M]] = self.weight.transpose(0, 1)
         return torch.matmul(x, weight_t)
 
@@ -87,7 +87,7 @@ def test_multiple_instances():
 # ============================================================================
 
 
-class ModelConfig[N: SymVar, M: SymVar, K: SymVar]:
+class ModelConfig[N: SymIntVar, M: SymIntVar, K: SymIntVar]:
     """Generic configuration with dimension type parameters"""
 
     input_dim: SymInt[N]
@@ -103,7 +103,7 @@ class ModelConfig[N: SymVar, M: SymVar, K: SymVar]:
         self.output_dim = output_dim
 
 
-class ConfiguredModel[N: SymVar, M: SymVar, K: SymVar](nn.Module):
+class ConfiguredModel[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
     """Model configured via generic config object"""
 
     w1: Tensor[[M, N]]
@@ -116,7 +116,7 @@ class ConfiguredModel[N: SymVar, M: SymVar, K: SymVar](nn.Module):
         self.w1 = torch.randn(config.hidden_dim, config.input_dim)
         self.w2 = torch.randn(config.output_dim, config.hidden_dim)
 
-    def forward[B: SymVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         w1_t: Tensor[[N, M]] = self.w1.transpose(0, 1)
         h: Tensor[[B, M]] = torch.matmul(x, w1_t)
         h_relu: Tensor[[B, M]] = torch.relu(h)
@@ -175,7 +175,7 @@ def test_config_multiple_instances():
 # Previously these were LIMITATIONS, but now they work:
 #
 # 1. torch.randn() with Literal parameters works! ✅
-#    def __init__(self, in_features: SymInt[N: SymVar], out_features: SymInt[M]):
+#    def __init__(self, in_features: SymInt[N: SymIntVar], out_features: SymInt[M]):
 #        self.weight = torch.randn(out_features, in_features)
 #
 # 2. Runtime __init__ parameters CAN connect to generic type params via Literal ✅

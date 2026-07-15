@@ -14,7 +14,7 @@ from typing import assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class LinearLayer[N: SymVar, M: SymVar](nn.Module):
+class LinearLayer[N: SymIntVar, M: SymIntVar](nn.Module):
     """Reusable linear layer for testing"""
 
     weight: Tensor[[M, N]]
@@ -35,7 +35,7 @@ class LinearLayer[N: SymVar, M: SymVar](nn.Module):
         # Now M and N are bound to runtime values via Literal types
         self.weight = torch.randn(out_features, in_features)
 
-    def forward[B: SymVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
         weight_t: Tensor[[N, M]] = self.weight.transpose(0, 1)
         return torch.matmul(x, weight_t)
 
@@ -43,7 +43,7 @@ class LinearLayer[N: SymVar, M: SymVar](nn.Module):
 class ReLULayer(nn.Module):
     """Simple ReLU wrapper (truly shape-preserving - works with any dimension)"""
 
-    def forward[B: SymVar, N: SymVar](self, x: Tensor[[B, N]]) -> Tensor[[B, N]]:
+    def forward[B: SymIntVar, N: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, N]]:
         return torch.relu(x)
 
 
@@ -73,7 +73,7 @@ def test_sequential_construction():
 # ============================================================================
 
 
-class ManualSequential[N: SymVar, M: SymVar, K: SymVar](nn.Module):
+class ManualSequential[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
     """Manually implement sequential forwarding to show expected behavior"""
 
     layer1: LinearLayer[N, M]
@@ -90,7 +90,7 @@ class ManualSequential[N: SymVar, M: SymVar, K: SymVar](nn.Module):
         self.layer1 = LinearLayer(in_features, hidden_features)
         self.layer2 = LinearLayer(hidden_features, out_features)
 
-    def forward[B: SymVar](self, x: Tensor[[B, N]]):
+    def forward[B: SymIntVar](self, x: Tensor[[B, N]]):
         # This is what Sequential *should* do type-wise
         # Note: layer outputs have concrete dimensions (Tensor[[B, 10]])
         h = self.layer1(x)
@@ -112,7 +112,7 @@ def test_manual_sequential():
     assert_type(y, Tensor[[16, 10]])
 
 
-class TypedSequential[N: SymVar, M: SymVar, K: SymVar](nn.Module):
+class TypedSequential[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
     """Sequential that takes layer types instead of dimension literals"""
 
     layer1: LinearLayer[N, M]
@@ -124,7 +124,7 @@ class TypedSequential[N: SymVar, M: SymVar, K: SymVar](nn.Module):
         self.layer1 = layer1
         self.layer2 = layer2
 
-    def forward[B: SymVar](self, x: Tensor[[B, N]]):
+    def forward[B: SymIntVar](self, x: Tensor[[B, N]]):
         h = self.layer1(x)
         y = self.layer2(h)
         return y

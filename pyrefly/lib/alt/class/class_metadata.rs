@@ -557,7 +557,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     *range,
                     ErrorKind::InvalidAnnotation,
                     format!(
-                        "Shape parameter `{}` must be a `TypeVar` or `SymVar`, got `{}`",
+                        "Shape parameter `{}` must be a `TypeVar` or `SymIntVar`, got `{}`",
                         shape_name, param.kind
                     ),
                 );

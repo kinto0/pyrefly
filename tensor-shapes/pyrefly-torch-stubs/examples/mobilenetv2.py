@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -38,7 +38,9 @@ def _make_divisible(v: float, divisor: int, min_value: int | None = None) -> int
     return new_value
 
 
-class InvertedResidual[Inp: SymVar, Oup: SymVar, ER: SymVar, S: SymVar](nn.Module):
+class InvertedResidual[Inp: SymIntVar, Oup: SymIntVar, ER: SymIntVar, S: SymIntVar](
+    nn.Module
+):
     """MobileNetV2 inverted residual block.
 
     Restructured from nn.Sequential(*layers) to individual nn.Sequential
@@ -90,7 +92,7 @@ class InvertedResidual[Inp: SymVar, Oup: SymVar, ER: SymVar, S: SymVar](nn.Modul
         self.out_channels = oup
         self._is_cn: bool = stride > 1
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, Inp, H, W]]
     ) -> Tensor[[B, Oup, H, W]]:
         out: Tensor[[B, Inp * ER, H, W]]
@@ -108,7 +110,7 @@ class InvertedResidual[Inp: SymVar, Oup: SymVar, ER: SymVar, S: SymVar](nn.Modul
         return out3
 
 
-class MobileNetV2[NC: SymVar = 1000, LC: SymVar = 1280](nn.Module):
+class MobileNetV2[NC: SymIntVar = 1000, LC: SymIntVar = 1280](nn.Module):
     """MobileNet V2 main class.
 
     Bridge dim LC (last_channel) connects the untracked feature extractor
@@ -201,7 +203,7 @@ class MobileNetV2[NC: SymVar = 1000, LC: SymVar = 1280](nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)  # type: ignore[arg-type]
 
-    def _forward_impl[B: SymVar, H: SymVar, W: SymVar](
+    def _forward_impl[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[[B, NC]]:
         feat = self.features(x)
@@ -215,7 +217,7 @@ class MobileNetV2[NC: SymVar = 1000, LC: SymVar = 1280](nn.Module):
         assert_type(out, Tensor[[B, NC]])
         return out
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[[B, NC]]:
         return self._forward_impl(x)

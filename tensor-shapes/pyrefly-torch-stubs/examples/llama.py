@@ -46,7 +46,7 @@ from typing import Any, assert_type, TYPE_CHECKING
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shape_extensions import Elements, SymIntTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -60,13 +60,13 @@ if TYPE_CHECKING:
 
 @dataclass
 class LLaMAConfig[
-    VocabSize: SymVar,
-    D: SymVar,
-    NHead: SymVar,
-    NLayer: SymVar,
-    HiddenDim: SymVar,
-    MaxBatch: SymVar,
-    MaxSeq: SymVar,
+    VocabSize: SymIntVar,
+    D: SymIntVar,
+    NHead: SymIntVar,
+    NLayer: SymIntVar,
+    HiddenDim: SymIntVar,
+    MaxBatch: SymIntVar,
+    MaxSeq: SymIntVar,
 ]:
     """Configuration for LLaMA model, generic over key dimensions."""
 
@@ -91,7 +91,7 @@ def compute_hidden_dim(dim: int, multiple_of: int = 256) -> int:
 # ============================================================================
 
 
-def precompute_freqs_cis[HeadDim: SymVar, End: SymVar](
+def precompute_freqs_cis[HeadDim: SymIntVar, End: SymIntVar](
     dim: SymInt[HeadDim], end: SymInt[End], theta: float = 10000.0
 ) -> Tensor[[End, HeadDim // 2]]:
     """Precompute complex-valued frequency tensor for RoPE.
@@ -112,7 +112,7 @@ def precompute_freqs_cis[HeadDim: SymVar, End: SymVar](
     return freqs_cis
 
 
-def reshape_for_broadcast[T: SymVar, HD: SymVar](
+def reshape_for_broadcast[T: SymIntVar, HD: SymIntVar](
     freqs_cis: Tensor[[T, HD]], x: Tensor
 ) -> Tensor[[1, 1, T, HD]]:
     """Reshape frequency tensor for broadcasting with multi-head tensors.
@@ -126,7 +126,7 @@ def reshape_for_broadcast[T: SymVar, HD: SymVar](
     return freqs_cis.view(1, 1, t, hd)
 
 
-def apply_rotary_emb[B: SymVar, NHead: SymVar, T: SymVar, HeadDim: SymVar](
+def apply_rotary_emb[B: SymIntVar, NHead: SymIntVar, T: SymIntVar, HeadDim: SymIntVar](
     xq: Tensor[[B, NHead, T, HeadDim]],
     xk: Tensor[[B, NHead, T, HeadDim]],
     freqs_cis: Tensor[[T, HeadDim // 2]],
@@ -158,7 +158,7 @@ def apply_rotary_emb[B: SymVar, NHead: SymVar, T: SymVar, HeadDim: SymVar](
 # ============================================================================
 
 
-def build_causal_mask[T: SymVar](seq_len: SymInt[T]) -> Tensor[[T, T]]:
+def build_causal_mask[T: SymIntVar](seq_len: SymInt[T]) -> Tensor[[T, T]]:
     """Build causal (upper-triangular) attention mask.
 
     Original: llama/model.py, constructed in Transformer.__init__.
@@ -176,7 +176,7 @@ def build_causal_mask[T: SymVar](seq_len: SymInt[T]) -> Tensor[[T, T]]:
 # ============================================================================
 
 
-class RMSNorm[D: SymVar](nn.Module):
+class RMSNorm[D: SymIntVar](nn.Module):
     """Root Mean Square Layer Normalization.
 
     Shape-preserving: (*, D) → (*, D)
@@ -199,7 +199,7 @@ class RMSNorm[D: SymVar](nn.Module):
 # ============================================================================
 
 
-class FeedForward[D: SymVar, HiddenDim: SymVar](nn.Module):
+class FeedForward[D: SymIntVar, HiddenDim: SymIntVar](nn.Module):
     """SwiGLU feedforward network.
 
     Architecture: silu(w1(x)) * w3(x) → w2 → output
@@ -218,7 +218,9 @@ class FeedForward[D: SymVar, HiddenDim: SymVar](nn.Module):
         self.w2 = nn.Linear(config.hidden_dim, config.dim, bias=False)
         self.w3 = nn.Linear(config.dim, config.hidden_dim, bias=False)
 
-    def forward[B: SymVar, T: SymVar](self, x: Tensor[[B, T, D]]) -> Tensor[[B, T, D]]:
+    def forward[B: SymIntVar, T: SymIntVar](
+        self, x: Tensor[[B, T, D]]
+    ) -> Tensor[[B, T, D]]:
         gate = F.silu(self.w1(x))
         assert_type(gate, Tensor[[B, T, HiddenDim]])
         up = self.w3(x)
@@ -231,7 +233,9 @@ class FeedForward[D: SymVar, HiddenDim: SymVar](nn.Module):
 # ============================================================================
 
 
-class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.Module):
+class Attention[D: SymIntVar, NHead: SymIntVar, MaxBatch: SymIntVar, MaxSeq: SymIntVar](
+    nn.Module
+):
     """Multi-head self-attention with RoPE and KV cache.
 
     Shape flow:
@@ -266,7 +270,7 @@ class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.M
             (config.max_batch_size, config.max_seq_len, config.n_heads, self.head_dim)
         )
 
-    def forward[B: SymVar, T: SymVar, SP: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar, SP: SymIntVar](
         self,
         x: Tensor[[B, T, D]],
         start_pos: SymInt[SP] | None = None,
@@ -331,11 +335,11 @@ class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.M
 
 
 class TransformerBlock[
-    D: SymVar,
-    NHead: SymVar,
-    HiddenDim: SymVar,
-    MaxBatch: SymVar,
-    MaxSeq: SymVar,
+    D: SymIntVar,
+    NHead: SymIntVar,
+    HiddenDim: SymIntVar,
+    MaxBatch: SymIntVar,
+    MaxSeq: SymIntVar,
 ](nn.Module):
     """Pre-norm transformer block with RMSNorm.
 
@@ -355,7 +359,7 @@ class TransformerBlock[
         self.attention_norm = RMSNorm(config.dim, eps=config.norm_eps)
         self.ffn_norm = RMSNorm(config.dim, eps=config.norm_eps)
 
-    def forward[B: SymVar, T: SymVar, SP: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar, SP: SymIntVar](
         self,
         x: Tensor[[B, T, D]],
         start_pos: SymInt[SP] | None = None,
@@ -374,9 +378,12 @@ class TransformerBlock[
 # ============================================================================
 
 
-class Transformer[VocabSize: SymVar, D: SymVar, NHead: SymVar, HiddenDim: SymVar](
-    nn.Module
-):
+class Transformer[
+    VocabSize: SymIntVar,
+    D: SymIntVar,
+    NHead: SymIntVar,
+    HiddenDim: SymIntVar,
+](nn.Module):
     """LLaMA decoder-only transformer.
 
     tokens (B, T) → Embedding → (B, T, D)
@@ -402,7 +409,7 @@ class Transformer[VocabSize: SymVar, D: SymVar, NHead: SymVar, HiddenDim: SymVar
         self.norm = RMSNorm(config.dim, eps=config.norm_eps)
         self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
 
-    def forward[B: SymVar, T: SymVar, SP: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar, SP: SymIntVar](
         self, tokens: Tensor[[B, T]], start_pos: SymInt[SP] | None = None
     ) -> Tensor[[B, VocabSize]]:
         h = self.tok_embeddings(tokens)

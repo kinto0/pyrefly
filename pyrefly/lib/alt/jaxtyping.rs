@@ -290,7 +290,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // verifies the shape param is an actual type parameter of the class.
                     .expect("shaped-array metadata should refer to a class type parameter");
                 match shape_param.kind() {
-                    QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+                    QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                         let carrier = base_class.targs_mut().as_mut().get_mut(shape_idx).expect(
                             // Pyrefly always constructs ClassType with one targ per tparam.
                             "class type should have an argument for each type parameter",
@@ -391,7 +391,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let var_name = var_name.strip_prefix('#').unwrap_or(var_name);
                 let q = match self.shaped_array_shape_for_class_type(&base_class) {
                     Some(shape_param) => match shape_param.kind() {
-                        QuantifiedKind::TypeVar | QuantifiedKind::SymVar => self
+                        QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => self
                             .get_or_create_jaxtyping_shape_carrier(
                                 Name::new(var_name),
                                 shape_param.kind(),
@@ -461,7 +461,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
 
                 // Named dimension: "batch", "channels", etc.
-                let q = self.get_or_create_jaxtyping_dim(Name::new(token), QuantifiedKind::SymVar);
+                let q =
+                    self.get_or_create_jaxtyping_dim(Name::new(token), QuantifiedKind::SymIntVar);
                 Type::Quantified(Box::new(q))
             })
             .collect()
@@ -494,7 +495,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             if let Ok(n) = s.parse::<i64>() {
                 self.heap.mk_symint(SymInt::literal(n))
             } else {
-                let q = self.get_or_create_jaxtyping_dim(Name::new(s), QuantifiedKind::SymVar);
+                let q = self.get_or_create_jaxtyping_dim(Name::new(s), QuantifiedKind::SymIntVar);
                 Type::Quantified(Box::new(q))
             }
         };

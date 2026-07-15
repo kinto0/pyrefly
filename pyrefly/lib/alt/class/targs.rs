@@ -465,7 +465,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             errors,
                         ));
                     }
-                    QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+                    QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                         checked_targs.push(self.create_next_typevar_arg(
                             param,
                             targs_cursor.consume_for_typevar_arg(),

@@ -17,7 +17,7 @@ from typing import Any, Generic, Optional, TypedDict, TypeVar
 
 import torch
 import torch.nn as nn
-from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
+from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
 from torch import Tensor
 from torch.nn import functional as F
 from torch.nn.attention.flex_attention import (
@@ -27,21 +27,21 @@ from torch.nn.attention.flex_attention import (
 )
 
 # Module-level type variable declarations
-VocabSize = SymVar("VocabSize")
-BlockSize = SymVar("BlockSize")
-D = SymVar("D")
-NHead = SymVar("NHead")
-NLayer = SymVar("NLayer")
-IntermediateSize = SymVar("IntermediateSize")
-NLocalHeads = SymVar("NLocalHeads")
-MaxBatchSize = SymVar("MaxBatchSize")
-MaxSeqLen = SymVar("MaxSeqLen")
-NHeads = SymVar("NHeads")
-HeadDim = SymVar("HeadDim")
-B = SymVar("B")
-T = SymVar("T")
-S = SymVar("S")
-SeqLen = SymVar("SeqLen")
+VocabSize = SymIntVar("VocabSize")
+BlockSize = SymIntVar("BlockSize")
+D = SymIntVar("D")
+NHead = SymIntVar("NHead")
+NLayer = SymIntVar("NLayer")
+IntermediateSize = SymIntVar("IntermediateSize")
+NLocalHeads = SymIntVar("NLocalHeads")
+MaxBatchSize = SymIntVar("MaxBatchSize")
+MaxSeqLen = SymIntVar("MaxSeqLen")
+NHeads = SymIntVar("NHeads")
+HeadDim = SymIntVar("HeadDim")
+B = SymIntVar("B")
+T = SymIntVar("T")
+S = SymIntVar("S")
+SeqLen = SymIntVar("SeqLen")
 Bs = TypeVar("Bs", bound=SymIntTuple)
 
 

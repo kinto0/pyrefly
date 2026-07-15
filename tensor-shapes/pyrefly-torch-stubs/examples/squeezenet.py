@@ -24,11 +24,11 @@ import torch.nn as nn
 import torch.nn.init as init
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
-class Fire[InC: SymVar, SQ: SymVar, E1: SymVar, E3: SymVar](nn.Module):
+class Fire[InC: SymIntVar, SQ: SymIntVar, E1: SymIntVar, E3: SymIntVar](nn.Module):
     """Fire module: squeeze (1x1 conv) then expand (parallel 1x1 + 3x3 convs).
 
     Input:  Tensor[[B, InC, H, W]]
@@ -56,7 +56,7 @@ class Fire[InC: SymVar, SQ: SymVar, E1: SymVar, E3: SymVar](nn.Module):
         )
         self.expand3x3_activation = nn.ReLU(inplace=True)
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, InC, H, W]]
     ) -> Tensor[[B, E1 + E3, H, W]]:
         x1 = self.squeeze_activation(self.squeeze(x))
@@ -70,7 +70,7 @@ class Fire[InC: SymVar, SQ: SymVar, E1: SymVar, E3: SymVar](nn.Module):
         return result
 
 
-class SqueezeNet[NC: SymVar = 1000](nn.Module):
+class SqueezeNet[NC: SymIntVar = 1000](nn.Module):
     """SqueezeNet 1.0 architecture.
 
     Input:  Tensor[[B, 3, H, W]]
@@ -116,7 +116,7 @@ class SqueezeNet[NC: SymVar = 1000](nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[[B, NC]]:
         x1 = self.features(x)

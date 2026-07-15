@@ -14,6 +14,6 @@ class SymInt[T]:
     def __mod__(self, other: SymInt) -> SymInt: ...
     def __int__(self) -> int: ...
 
-SymVar: _SpecialForm
+SymIntVar: _SpecialForm
 
 shaped_array: Any

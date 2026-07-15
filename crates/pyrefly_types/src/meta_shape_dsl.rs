@@ -3955,7 +3955,7 @@ mod tests {
         )
     }
 
-    fn fake_symvar(name: &str) -> Type {
+    fn fake_symintvar(name: &str) -> Type {
         let index = name.bytes().fold(0, |acc: u32, byte| {
             acc.wrapping_mul(16777619) ^ u32::from(byte)
         });
@@ -3966,7 +3966,7 @@ mod tests {
                 QuantifiedOrigin::Pep695,
             ),
             Name::new(name),
-            QuantifiedKind::SymVar,
+            QuantifiedKind::SymIntVar,
             None,
             Restriction::Unrestricted,
             PreInferenceVariance::Invariant,
@@ -3981,10 +3981,10 @@ mod tests {
             Type::SymInt(SymInt::Int)
         );
 
-        let quantified = fake_symvar("N");
+        let quantified = fake_symintvar("N");
         assert_eq!(
             val_to_scalar_type(&Val::Dim(quantified)),
-            Type::SymInt(SymInt::Symbolic(Box::new(fake_symvar("N"))))
+            Type::SymInt(SymInt::Symbolic(Box::new(fake_symintvar("N"))))
         );
 
         assert_eq!(
@@ -4001,8 +4001,8 @@ mod tests {
 
     #[test]
     fn test_val_to_scalar_type_preserves_symbolic_size_arithmetic() {
-        let n = SymInt::Symbolic(Box::new(fake_symvar("N")));
-        let m = SymInt::Symbolic(Box::new(fake_symvar("M")));
+        let n = SymInt::Symbolic(Box::new(fake_symintvar("N")));
+        let m = SymInt::Symbolic(Box::new(fake_symintvar("M")));
         assert_eq!(
             val_to_scalar_type(&Val::Dim(Type::SymInt(SymInt::Mul(
                 Box::new(n.clone()),

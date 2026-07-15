@@ -106,8 +106,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // ordinary literal arithmetic should keep the normal integer operator behavior.
         let is_shape_operand = |ty: &Type| match ty {
             Type::SymInt(_) => true,
-            Type::Quantified(q) => q.kind() == QuantifiedKind::SymVar,
-            Type::TypeVar(tv) => tv.kind() == QuantifiedKind::SymVar,
+            Type::Quantified(q) => q.kind() == QuantifiedKind::SymIntVar,
+            Type::TypeVar(tv) => tv.kind() == QuantifiedKind::SymIntVar,
             _ => false,
         };
         if !is_shape_operand(lhs) && !is_shape_operand(rhs) {
@@ -127,8 +127,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.heap.mk_symint(SymInt::Literal(base))
                 }
                 Type::SymInt(_) => lhs.clone(),
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => lhs.clone(),
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymVar => lhs.clone(),
+                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => lhs.clone(),
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => lhs.clone(),
                 _ => return None,
             };
             let exponent = match rhs {
@@ -150,10 +150,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 Type::SymInt(_) if symint_type_is_provably_nonnegative(rhs) => rhs.clone(),
                 Type::SymInt(_) => return Some(self.heap.mk_any_implicit()),
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => {
+                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => {
                     return Some(self.heap.mk_any_implicit());
                 }
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymVar => {
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => {
                     return Some(self.heap.mk_any_implicit());
                 }
                 Type::ClassType(cls) if cls.is_builtin("int") => {
@@ -186,8 +186,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // `SymInt` is already a dimension type.
                     Some(ty.clone())
                 }
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => Some(ty.clone()),
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymVar => Some(ty.clone()),
+                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
                 _ => None,
             }
         };

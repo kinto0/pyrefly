@@ -119,7 +119,7 @@ impl SymInt {
         match ty {
             Type::SymInt(dim) => Some(dim.clone()),
             Type::Literal(lit) if let Lit::Int(i) = &lit.value => i.as_i64().map(SymInt::Literal),
-            Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => {
+            Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => {
                 Some(SymInt::Symbolic(Box::new(ty.clone())))
             }
             Type::Var(_) => Some(SymInt::Symbolic(Box::new(ty.clone()))),

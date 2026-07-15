@@ -24,19 +24,19 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 import torch.optim
-from shape_extensions import Elements, SymInt, SymIntTuple, SymVar
+from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
 from torch import Tensor
 from torch.nn import functional as F
 
 # Module-level type variable declarations
-M = SymVar("M")
-VocabSize = SymVar("VocabSize")
-BlockSize = SymVar("BlockSize")
-NEmbedding = SymVar("NEmbedding")
-NHead = SymVar("NHead")
-NLayer = SymVar("NLayer")
-B = SymVar("B")
-T = SymVar("T")
+M = SymIntVar("M")
+VocabSize = SymIntVar("VocabSize")
+BlockSize = SymIntVar("BlockSize")
+NEmbedding = SymIntVar("NEmbedding")
+NHead = SymIntVar("NHead")
+NLayer = SymIntVar("NLayer")
+B = SymIntVar("B")
+T = SymIntVar("T")
 Bs = TypeVar("Bs", bound=SymIntTuple)
 
 

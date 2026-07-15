@@ -5,13 +5,13 @@
 
 from typing import overload
 
-from shape_extensions import SymInt, SymVar
+from shape_extensions import SymInt, SymIntVar
 
 from .. import dtype, float64, ndarray
 
 @overload
-def randn[N: SymVar](d0: SymInt[N], /) -> ndarray[[N], dtype[float64]]: ...
+def randn[N: SymIntVar](d0: SymInt[N], /) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def randn[N: SymVar, M: SymVar](
+def randn[N: SymIntVar, M: SymIntVar](
     d0: SymInt[N], d1: SymInt[M], /
 ) -> ndarray[[N, M], dtype[float64]]: ...

@@ -6,10 +6,10 @@
 from __future__ import annotations
 
 import numpy as np
-from shape_extensions import assert_shape, SymInt, SymVar
+from shape_extensions import assert_shape, SymInt, SymIntVar
 
-N = SymVar("N")
-D = SymVar("D")
+N = SymIntVar("N")
+D = SymIntVar("D")
 
 
 def harmonic_oscillator_energy(

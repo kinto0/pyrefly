@@ -7,7 +7,7 @@ from typing import Any, Literal, overload
 
 import shape_extensions
 from numpy._shapes import binary_ufunc_ir, diag_1d_ir, matmul_2d_ir, reduce_ir
-from shape_extensions import SymInt, SymIntTuple, SymVar, uses_shape_dsl
+from shape_extensions import SymInt, SymIntTuple, SymIntVar, uses_shape_dsl
 
 from . import linalg as linalg, random as random
 
@@ -35,13 +35,13 @@ class ndarray[Shape: _Shape = _AnyShape, DType = Any]:
     shape: Shape
     dtype: DType
     @overload
-    def __len__[N: SymVar](self: ndarray[[N]]) -> SymInt[N]: ...
+    def __len__[N: SymIntVar](self: ndarray[[N]]) -> SymInt[N]: ...
     @overload
-    def __len__[N: SymVar, M: SymVar](self: ndarray[[N, M]]) -> SymInt[N]: ...
+    def __len__[N: SymIntVar, M: SymIntVar](self: ndarray[[N, M]]) -> SymInt[N]: ...
     def __getitem__[
-        N: SymVar,
-        M: SymVar,
-        I: SymVar,
+        N: SymIntVar,
+        M: SymIntVar,
+        I: SymIntVar,
         RowIndexScalar: (int32, int64, intp),
         ColumnIndexScalar: (int32, int64, intp),
     ](
@@ -53,7 +53,7 @@ class ndarray[Shape: _Shape = _AnyShape, DType = Any]:
     ) -> ndarray[[I], DType]: ...
     # Only 2-D transpose is modeled for the NumPy shape-stub MVP.
     @property
-    def T[N: SymVar, P: SymVar](
+    def T[N: SymIntVar, P: SymIntVar](
         self: ndarray[[N, P], DType],
     ) -> ndarray[[P, N], DType]: ...
     @overload
@@ -85,37 +85,37 @@ class ndarray[Shape: _Shape = _AnyShape, DType = Any]:
     def __pow__(self, other: int | float) -> ndarray[Shape, DType]: ...
     # TODO: Bridge until operator dunders/bound methods can share the DSL-backed
     # `np.matmul` rule and diagnostics.
-    def __matmul__[N: SymVar, M: SymVar, P: SymVar](
+    def __matmul__[N: SymIntVar, M: SymIntVar, P: SymIntVar](
         self: ndarray[[N, M], DType],
         other: ndarray[[M, P]],
     ) -> ndarray[[N, P], DType]: ...
     # Narrow method bridge for PCA demos; the free `np.mean` covers general reductions.
     @overload
-    def mean[N: SymVar, M: SymVar](
+    def mean[N: SymIntVar, M: SymIntVar](
         self: ndarray[[N, M], DType],
         axis: Literal[0],
         *,
         keepdims: Literal[False] = False,
     ) -> ndarray[[M], DType]: ...
     @overload
-    def mean[N: SymVar](
+    def mean[N: SymIntVar](
         self: ndarray[[N], DType],
     ) -> ndarray[tuple[()], DType]: ...
     @overload
-    def sum[N: SymVar, M: SymVar](
+    def sum[N: SymIntVar, M: SymIntVar](
         self: ndarray[[N, M], DType],
         axis: Literal[1],
         *,
         keepdims: Literal[True],
     ) -> ndarray[[N, 1], DType]: ...
     @overload
-    def sum[N: SymVar, M: SymVar, K: SymVar](
+    def sum[N: SymIntVar, M: SymIntVar, K: SymIntVar](
         self: ndarray[[N, M, K], DType],
         axis: Literal[1],
         *,
         keepdims: Literal[False] = False,
     ) -> ndarray[[N, K], DType]: ...
-    def max[N: SymVar, M: SymVar](
+    def max[N: SymIntVar, M: SymIntVar](
         self: ndarray[[N, M], DType],
         axis: Literal[1],
         *,
@@ -147,7 +147,7 @@ def clip[Shape: _Shape](
     a: ndarray[Shape], a_min: int | float, a_max: int | float
 ) -> ndarray[Shape]: ...
 def negative[Shape: _Shape](x: ndarray[Shape]) -> ndarray[Shape]: ...
-def fill_diagonal[N: SymVar, DType](
+def fill_diagonal[N: SymIntVar, DType](
     a: ndarray[[N, N], DType],
     val: Any,
     wrap: bool = False,
@@ -156,19 +156,19 @@ def fill_diagonal[N: SymVar, DType](
 def diag[DType](
     v: ndarray[_AnyShape, DType], k: int = 0
 ) -> ndarray[_AnyShape, DType]: ...
-def arange[N: SymVar](stop: SymInt[N], /) -> ndarray[[N], dtype[intp]]: ...
+def arange[N: SymIntVar](stop: SymInt[N], /) -> ndarray[[N], dtype[intp]]: ...
 @overload
-def expand_dims[N: SymVar, M: SymVar, DType](
+def expand_dims[N: SymIntVar, M: SymIntVar, DType](
     a: ndarray[[N, M], DType],
     axis: Literal[0, -3],
 ) -> ndarray[[1, N, M], DType]: ...
 @overload
-def expand_dims[N: SymVar, M: SymVar, DType](
+def expand_dims[N: SymIntVar, M: SymIntVar, DType](
     a: ndarray[[N, M], DType],
     axis: Literal[1, -2],
 ) -> ndarray[[N, 1, M], DType]: ...
 @overload
-def expand_dims[N: SymVar, M: SymVar, DType](
+def expand_dims[N: SymIntVar, M: SymIntVar, DType](
     a: ndarray[[N, M], DType],
     axis: Literal[2, -1],
 ) -> ndarray[[N, M, 1], DType]: ...
@@ -181,14 +181,14 @@ def min(a: ndarray, axis: _Axis = None, *, keepdims: bool = False) -> ndarray: .
 @uses_shape_dsl(reduce_ir)
 def max(a: ndarray, axis: _Axis = None, *, keepdims: bool = False) -> ndarray: ...
 @overload
-def argmin[N: SymVar, M: SymVar](
+def argmin[N: SymIntVar, M: SymIntVar](
     a: ndarray[[N, M]],
     axis: Literal[0, -2],
     *,
     keepdims: Literal[False] = False,
 ) -> ndarray[[M], dtype[intp]]: ...
 @overload
-def argmin[N: SymVar, M: SymVar](
+def argmin[N: SymIntVar, M: SymIntVar](
     a: ndarray[[N, M]],
     axis: Literal[1, -1],
     *,
@@ -201,214 +201,216 @@ def matmul(a: ndarray, b: ndarray, /) -> ndarray: ...
 # generic `Shape: tuple[int, ...]` overload once carrier shapes flow through
 # downstream shaped-array operations without degrading to unknown.
 @overload
-def zeros[N: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar, M: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar, M: SymVar, ScalarT: generic](
+def zeros[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def zeros[N: SymVar](
+def zeros[N: SymIntVar](
     shape: SymInt[N], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def zeros[N: SymVar](
+def zeros[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def zeros[N: SymVar, M: SymVar](
+def zeros[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N, M], dtype[float64]]: ...
 @overload
-def zeros[N: SymVar](
+def zeros[N: SymIntVar](
     shape: SymInt[N], dtype: Any, order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def zeros[N: SymVar](
+def zeros[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: Any, order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def zeros[N: SymVar, M: SymVar](
+def zeros[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: Any, order: str = ...
 ) -> ndarray[[N, M]]: ...
 @overload
-def ones[N: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar, M: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar, M: SymVar, ScalarT: generic](
+def ones[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def ones[N: SymVar](
+def ones[N: SymIntVar](
     shape: SymInt[N], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def ones[N: SymVar](
+def ones[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def ones[N: SymVar, M: SymVar](
+def ones[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N, M], dtype[float64]]: ...
 @overload
-def ones[N: SymVar](shape: SymInt[N], dtype: Any, order: str = ...) -> ndarray[[N]]: ...
+def ones[N: SymIntVar](
+    shape: SymInt[N], dtype: Any, order: str = ...
+) -> ndarray[[N]]: ...
 @overload
-def ones[N: SymVar](
+def ones[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: Any, order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def ones[N: SymVar, M: SymVar](
+def ones[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: Any, order: str = ...
 ) -> ndarray[[N, M]]: ...
 @overload
-def full[N: SymVar, ScalarT: generic](
+def full[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N],
     fill_value: Any,
     dtype: type[ScalarT],
     order: str = ...,
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar, ScalarT: generic](
+def full[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]],
     fill_value: Any,
     dtype: type[ScalarT],
     order: str = ...,
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar, M: SymVar, ScalarT: generic](
+def full[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]],
     fill_value: Any,
     dtype: type[ScalarT],
     order: str = ...,
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar, ScalarT: generic](
+def full[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N],
     fill_value: Any,
     dtype: dtype[ScalarT],
     order: str = ...,
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar, ScalarT: generic](
+def full[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]],
     fill_value: Any,
     dtype: dtype[ScalarT],
     order: str = ...,
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar, M: SymVar, ScalarT: generic](
+def full[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]],
     fill_value: Any,
     dtype: dtype[ScalarT],
     order: str = ...,
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def full[N: SymVar](
+def full[N: SymIntVar](
     shape: SymInt[N], fill_value: Any, dtype: Any = ..., order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def full[N: SymVar](
+def full[N: SymIntVar](
     shape: tuple[SymInt[N]], fill_value: Any, dtype: Any = ..., order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def full[N: SymVar, M: SymVar](
+def full[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]],
     fill_value: Any,
     dtype: Any = ...,
     order: str = ...,
 ) -> ndarray[[N, M]]: ...
 @overload
-def empty[N: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar, M: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, ScalarT: generic](
     shape: SymInt[N], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar, M: SymVar, ScalarT: generic](
+def empty[N: SymIntVar, M: SymIntVar, ScalarT: generic](
     shape: tuple[SymInt[N], SymInt[M]], dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N, M], dtype[ScalarT]]: ...
 @overload
-def empty[N: SymVar](
+def empty[N: SymIntVar](
     shape: SymInt[N], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def empty[N: SymVar](
+def empty[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N], dtype[float64]]: ...
 @overload
-def empty[N: SymVar, M: SymVar](
+def empty[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: None = ..., order: str = ...
 ) -> ndarray[[N, M], dtype[float64]]: ...
 @overload
-def empty[N: SymVar](
+def empty[N: SymIntVar](
     shape: SymInt[N], dtype: Any, order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def empty[N: SymVar](
+def empty[N: SymIntVar](
     shape: tuple[SymInt[N]], dtype: Any, order: str = ...
 ) -> ndarray[[N]]: ...
 @overload
-def empty[N: SymVar, M: SymVar](
+def empty[N: SymIntVar, M: SymIntVar](
     shape: tuple[SymInt[N], SymInt[M]], dtype: Any, order: str = ...
 ) -> ndarray[[N, M]]: ...
 @overload
-def eye[N: SymVar, ScalarT: generic](
+def eye[N: SymIntVar, ScalarT: generic](
     N: SymInt[N], M: None = ..., k: int = ..., *, dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def eye[N: SymVar, ScalarT: generic](
+def eye[N: SymIntVar, ScalarT: generic](
     N: SymInt[N], M: None, k: int, dtype: type[ScalarT], order: str = ...
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def eye[N: SymVar, ScalarT: generic](
+def eye[N: SymIntVar, ScalarT: generic](
     N: SymInt[N],
     M: None = ...,
     k: int = ...,
@@ -417,30 +419,30 @@ def eye[N: SymVar, ScalarT: generic](
     order: str = ...,
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def eye[N: SymVar, ScalarT: generic](
+def eye[N: SymIntVar, ScalarT: generic](
     N: SymInt[N], M: None, k: int, dtype: dtype[ScalarT], order: str = ...
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def eye[N: SymVar](
+def eye[N: SymIntVar](
     N: SymInt[N], M: None = ..., k: int = ..., dtype: None = ..., order: str = ...
 ) -> ndarray[[N, N], dtype[float64]]: ...
 @overload
-def eye[N: SymVar](
+def eye[N: SymIntVar](
     N: SymInt[N], M: None = ..., k: int = ..., dtype: Any = ..., order: str = ...
 ) -> ndarray[[N, N]]: ...
 @overload
-def identity[N: SymVar, ScalarT: generic](
+def identity[N: SymIntVar, ScalarT: generic](
     n: SymInt[N], dtype: type[ScalarT], *, like: Any = ...
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def identity[N: SymVar, ScalarT: generic](
+def identity[N: SymIntVar, ScalarT: generic](
     n: SymInt[N], dtype: dtype[ScalarT], *, like: Any = ...
 ) -> ndarray[[N, N], dtype[ScalarT]]: ...
 @overload
-def identity[N: SymVar](
+def identity[N: SymIntVar](
     n: SymInt[N], dtype: None = ..., *, like: Any = ...
 ) -> ndarray[[N, N], dtype[float64]]: ...
 @overload
-def identity[N: SymVar](
+def identity[N: SymIntVar](
     n: SymInt[N], dtype: Any, *, like: Any = ...
 ) -> ndarray[[N, N]]: ...

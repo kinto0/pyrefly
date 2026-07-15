@@ -9,14 +9,14 @@ from typing import assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
     from torch import Tensor
 
 
-class MultiHead[D: SymVar](nn.Module):
+class MultiHead[D: SymIntVar](nn.Module):
     """Module using ParameterList to store per-head projection weights."""
 
     def __init__(self, d: SymInt[D], n_heads: int) -> None:
@@ -25,7 +25,7 @@ class MultiHead[D: SymVar](nn.Module):
             [nn.Parameter(torch.randn(d, d)) for _ in range(n_heads)]
         )
 
-    def forward[B: SymVar](self, x: Tensor[[B, D]]) -> Tensor[[B, D]]:
+    def forward[B: SymIntVar](self, x: Tensor[[B, D]]) -> Tensor[[B, D]]:
         return x
 
 

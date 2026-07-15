@@ -14,10 +14,10 @@ at Python runtime. Two independent issues with standard Python typing:
    SOLVED: shape_extensions patches __class_getitem__ on import.
 
 2. PEP 695 TypeVar doesn't support arithmetic — N + 1, N * 2, etc. fail.
-   SOLVED: shape_extensions.SymVar provides arithmetic operators that return self.
+   SOLVED: shape_extensions.SymIntVar provides arithmetic operators that return self.
 
 This file tests both the remaining problems (PEP 695 TypeVar arithmetic)
-and the solutions (shape_extensions patches, shape_extensions.SymVar, Generic integration).
+and the solutions (shape_extensions patches, shape_extensions.SymIntVar, Generic integration).
 """
 
 import unittest
@@ -30,7 +30,7 @@ from shape_extensions import (
     defines_assert_shape,
     enable_torchscript_runtime_compat,
     SymInt,
-    SymVar,
+    SymIntVar,
     TypeVarTuple,
 )
 
@@ -319,72 +319,72 @@ class TestDimRuntime(unittest.TestCase):
                 return x
 
 
-class TestSymVarRuntime(unittest.TestCase):
-    """shape_extensions.SymVar provides arithmetic operators that don't crash."""
+class TestSymIntVarRuntime(unittest.TestCase):
+    """shape_extensions.SymIntVar provides arithmetic operators that don't crash."""
 
     def test_add(self):
-        """N + 1 doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """N + 1 doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = N + 1
         self.assertIsNotNone(result)
 
     def test_radd(self):
-        """1 + N doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """1 + N doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = 1 + N
         self.assertIsNotNone(result)
 
     def test_sub(self):
-        """N - 1 doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """N - 1 doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = N - 1
         self.assertIsNotNone(result)
 
     def test_rsub(self):
-        """1 - N doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """1 - N doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = 1 - N
         self.assertIsNotNone(result)
 
     def test_mul(self):
-        """N * 2 doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """N * 2 doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = N * 2
         self.assertIsNotNone(result)
 
     def test_rmul(self):
-        """2 * N doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """2 * N doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = 2 * N
         self.assertIsNotNone(result)
 
     def test_floordiv(self):
-        """N // 2 doesn't crash with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """N // 2 doesn't crash with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
         result = N // 2
         self.assertIsNotNone(result)
 
     def test_chained(self):
         """(N + 1) * 2 doesn't crash — chained arithmetic."""
-        N = SymVar("N")
+        N = SymIntVar("N")
         result = (N + 1) * 2
         self.assertIsNotNone(result)
 
     def test_two_vars(self):
-        """N + M doesn't crash with two shape_extensions.SymVars."""
-        N = SymVar("N")
-        M = SymVar("M")
+        """N + M doesn't crash with two shape_extensions.SymIntVars."""
+        N = SymIntVar("N")
+        M = SymIntVar("M")
         result = N + M
         self.assertIsNotNone(result)
 
     def test_repr(self):
-        """shape_extensions.SymVar repr shows the name."""
-        N = SymVar("N")
+        """shape_extensions.SymIntVar repr shows the name."""
+        N = SymIntVar("N")
         self.assertEqual(repr(N), "N")
 
     def test_in_dim(self):
-        """SymInt[N] with shape_extensions.SymVar."""
-        N = SymVar("N")
+        """SymInt[N] with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
 
         def f(x: SymInt[N]) -> SymInt[N]:
             return x
@@ -392,8 +392,8 @@ class TestSymVarRuntime(unittest.TestCase):
         f(42)
 
     def test_arithmetic_in_dim(self):
-        """SymInt[N+1] with shape_extensions.SymVar — N+1 returns self, which SymInt accepts."""
-        N = SymVar("N")
+        """SymInt[N+1] with shape_extensions.SymIntVar — N+1 returns self, which SymInt accepts."""
+        N = SymIntVar("N")
 
         def f(x: SymInt[N]) -> SymInt[N + 1]:
             return x
@@ -402,12 +402,12 @@ class TestSymVarRuntime(unittest.TestCase):
 
 
 class TestGenericRuntime(unittest.TestCase):
-    """Generic works with shape_extensions.SymVar at runtime thanks to __class__ = typing.TypeVar."""
+    """Generic works with shape_extensions.SymIntVar at runtime thanks to __class__ = typing.TypeVar."""
 
     def test_generic_subscript(self):
-        """Generic[N, M] works with shape_extensions.SymVar."""
-        N = SymVar("N")
-        M = SymVar("M")
+        """Generic[N, M] works with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
+        M = SymIntVar("M")
 
         class Foo(Generic[N, M]):
             pass
@@ -416,8 +416,8 @@ class TestGenericRuntime(unittest.TestCase):
 
     def test_generic_as_base_class(self):
         """class Foo(Generic[N, M]) with method annotations works."""
-        N = SymVar("N")
-        M = SymVar("M")
+        N = SymIntVar("N")
+        M = SymIntVar("M")
 
         class Foo(Generic[N, M]):
             def forward(self, x: SymInt[N]) -> SymInt[M]:
@@ -428,9 +428,9 @@ class TestGenericRuntime(unittest.TestCase):
         self.assertEqual(result, 42)
 
     def test_generic_accepts_intvar(self):
-        """Generic[N] works when N is shape_extensions.SymVar — it sets
+        """Generic[N] works when N is shape_extensions.SymIntVar — it sets
         __class__ = typing.TypeVar so isinstance(N, typing.TypeVar) returns True."""
-        N = SymVar("N")
+        N = SymIntVar("N")
 
         class Layer(Generic[N]):
             def forward(self, x: SymInt[N]) -> SymInt[N + 1]:
@@ -442,7 +442,7 @@ class TestGenericRuntime(unittest.TestCase):
 
     def test_generic_with_dim_arithmetic(self):
         """Generic[N] with SymInt[N+1] in a method works."""
-        N = SymVar("N")
+        N = SymIntVar("N")
 
         class PadLayer(Generic[N]):
             def forward(self, x: SymInt[N]) -> SymInt[N + 1]:
@@ -453,9 +453,9 @@ class TestGenericRuntime(unittest.TestCase):
         self.assertEqual(result, 42)
 
     def test_typeddict_generic_intvar(self):
-        """TypedDict + Generic[N] works with shape_extensions.SymVar."""
-        N = SymVar("N")
-        M = SymVar("M")
+        """TypedDict + Generic[N] works with shape_extensions.SymIntVar."""
+        N = SymIntVar("N")
+        M = SymIntVar("M")
 
         class MyDict(TypedDict, Generic[N, M]):
             x: SymInt[N]
@@ -498,7 +498,7 @@ class TestTypeVarTupleRuntime(unittest.TestCase):
     def test_mixed_with_typevar(self):
         """Generic[*Ns, N] — variadic + fixed dim works."""
         Ns = TypeVarTuple("Ns")
-        N = SymVar("N")
+        N = SymIntVar("N")
 
         class Layer(Generic[*Ns, N]):
             def forward(self, x: SymInt[*Ns]) -> SymInt[N + 1]:

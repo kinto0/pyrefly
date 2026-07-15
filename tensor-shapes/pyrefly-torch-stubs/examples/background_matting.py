@@ -48,7 +48,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -76,7 +76,7 @@ def conv_init(m: nn.Module) -> None:
 # (not ResnetConditionHR or NLayerDiscriminator). Included for completeness.
 
 
-def conv3x3[InC: SymVar, OutC: SymVar](
+def conv3x3[InC: SymIntVar, OutC: SymIntVar](
     in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """3×3 conv + BN + ReLU, shape-preserving (padding=1)."""
@@ -87,7 +87,7 @@ def conv3x3[InC: SymVar, OutC: SymVar](
     )
 
 
-def conv1x1[InC: SymVar, OutC: SymVar](
+def conv1x1[InC: SymIntVar, OutC: SymIntVar](
     in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """1×1 conv + BN + ReLU, changes channels only."""
@@ -98,7 +98,7 @@ def conv1x1[InC: SymVar, OutC: SymVar](
     )
 
 
-def upconv3x3[InC: SymVar, OutC: SymVar](
+def upconv3x3[InC: SymIntVar, OutC: SymIntVar](
     in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """Upsample(2×) + 3×3 conv + BN + ReLU."""
@@ -115,7 +115,7 @@ def upconv3x3[InC: SymVar, OutC: SymVar](
 # ============================================================================
 
 
-class ResnetBlock[C: SymVar](nn.Module):
+class ResnetBlock[C: SymIntVar](nn.Module):
     """Residual block with ReflectionPad2d.
 
     conv_block = nn.Sequential(
@@ -141,7 +141,7 @@ class ResnetBlock[C: SymVar](nn.Module):
             nn.BatchNorm2d(dim),
         )
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         return x + self.conv_block(x)
@@ -152,7 +152,7 @@ class ResnetBlock[C: SymVar](nn.Module):
 # ============================================================================
 
 
-class EncoderBranch[InC: SymVar](nn.Module):
+class EncoderBranch[InC: SymIntVar](nn.Module):
     """Single encoder branch: input → 256 channels at 1/4 spatial resolution.
 
     Architecture (ngf=64), built as nn.Sequential:
@@ -180,7 +180,7 @@ class EncoderBranch[InC: SymVar](nn.Module):
             nn.ReLU(),
         )
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, InC, H, W]]
     ) -> Tensor[[B, 256, (H - 1) // 4 + 1, (W - 1) // 4 + 1]]:
         return self.model(x)
@@ -220,7 +220,7 @@ class ImageEncoder(nn.Module):
             nn.ReLU(),
         )
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> tuple[
         Tensor[[B, 128, (H - 1) // 2 + 1, (W - 1) // 2 + 1]],
@@ -345,7 +345,7 @@ class Generator(nn.Module):
             nn.Conv2d(64, 3, kernel_size=7, padding=0),
         )
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self,
         image: Tensor[[B, 3, 256, 256]],
         back: Tensor[[B, 3, 256, 256]],
@@ -440,7 +440,7 @@ class Discriminator(nn.Module):
             nn.Conv2d(512, 1, kernel_size=4, stride=1, padding=2),
         )
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[
         [B, 1, 3 + (1 + (1 + H // 2) // 2) // 2, 3 + (1 + (1 + W // 2) // 2) // 2]

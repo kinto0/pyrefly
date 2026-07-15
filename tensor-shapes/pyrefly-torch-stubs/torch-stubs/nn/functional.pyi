@@ -10,7 +10,7 @@ Functional neural network operations including convolution, pooling, activation,
 
 from typing import Literal, overload
 
-from shape_extensions import Elements, SymIntTuple, SymVar, uses_shape_dsl
+from shape_extensions import Elements, SymIntTuple, SymIntVar, uses_shape_dsl
 from torch._shapes import (
     adaptive_pool_ir,
     conv_ir,
@@ -821,7 +821,7 @@ def softmin[Shape: SymIntTuple](
 # Linear
 # ==============================================================================
 
-def linear[Bs: SymIntTuple, IN: SymVar, OUT: SymVar](
+def linear[Bs: SymIntTuple, IN: SymIntVar, OUT: SymIntVar](
     input: Tensor[[*Elements[Bs], IN]],
     weight: Tensor[[OUT, IN]],
     bias: Tensor[[OUT]] | None = None,
@@ -834,7 +834,7 @@ def linear[Bs: SymIntTuple, IN: SymVar, OUT: SymVar](
 # ==============================================================================
 
 @overload
-def embedding[T: SymVar, V: SymVar, D: SymVar](
+def embedding[T: SymIntVar, V: SymIntVar, D: SymIntVar](
     input: Tensor[[T]],
     weight: Tensor[[V, D]],
     padding_idx: int | None = None,
@@ -844,7 +844,7 @@ def embedding[T: SymVar, V: SymVar, D: SymVar](
     sparse: bool = False,
 ) -> Tensor[[T, D]]: ...
 @overload
-def embedding[B: SymVar, T: SymVar, V: SymVar, D: SymVar](
+def embedding[B: SymIntVar, T: SymIntVar, V: SymIntVar, D: SymIntVar](
     input: Tensor[[B, T]],
     weight: Tensor[[V, D]],
     padding_idx: int | None = None,
@@ -891,12 +891,12 @@ def dropout3d[S: SymIntTuple](
 
 # Attention operations
 def scaled_dot_product_attention[
-    B: SymVar,
-    H: SymVar,
-    Tq: SymVar,
-    Tkv: SymVar,
-    D: SymVar,
-    Dv: SymVar,
+    B: SymIntVar,
+    H: SymIntVar,
+    Tq: SymIntVar,
+    Tkv: SymIntVar,
+    D: SymIntVar,
+    Dv: SymIntVar,
 ](
     query: Tensor[[B, H, Tq, D]],
     key: Tensor[[B, H, Tkv, D]],
@@ -920,7 +920,7 @@ def cosine_similarity(
     """
     ...
 
-def grid_sample[B: SymVar, C: SymVar, Hout: SymVar, Wout: SymVar](
+def grid_sample[B: SymIntVar, C: SymIntVar, Hout: SymIntVar, Wout: SymIntVar](
     input: Tensor[[B, C, *Elements[SymIntTuple]]],
     grid: Tensor[[B, Hout, Wout, 2]],
     mode: str = "bilinear",

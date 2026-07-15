@@ -11,7 +11,7 @@ where each element is Literal[n] for the corresponding dimension.
 
 from typing import Literal, TYPE_CHECKING
 
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 
 if TYPE_CHECKING:
@@ -46,21 +46,21 @@ def test_shape_5d(
 # ============================================================================
 
 
-def test_shape_symbolic[N: SymVar, M: SymVar](
+def test_shape_symbolic[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]],
 ) -> tuple[SymInt[N], SymInt[M]]:
     """Shape with symbolic dimensions returns SymInt types"""
     return x.shape
 
 
-def test_shape_mixed[N: SymVar](
+def test_shape_mixed[N: SymIntVar](
     x: Tensor[[N, 3, 4]],
 ) -> tuple[SymInt[N], Literal[3], Literal[4]]:
     """Shape with mix of symbolic and literal dimensions"""
     return x.shape
 
 
-def test_shape_arithmetic[N: SymVar](
+def test_shape_arithmetic[N: SymIntVar](
     x: Tensor[[N + 1, N * 2]],
 ) -> tuple[SymInt[N + 1], SymInt[N * 2]]:
     """Shape with arithmetic expressions in dimensions"""

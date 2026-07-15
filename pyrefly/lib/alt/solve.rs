@@ -207,7 +207,7 @@ pub enum TypeFormContext {
     TypeVarConstraint,
     /// Default values for each kind of type variable
     TypeVarDefault,
-    SymVarDefault,
+    SymIntVarDefault,
     ParamSpecDefault,
     TypeVarTupleDefault,
     /// A type being aliased
@@ -219,7 +219,7 @@ pub enum TypeFormContext {
 
 /// The position in which a value is being interpreted as a type, used by
 /// `untype` to tailor the error when a quantified variable's kind is not legal
-/// there (e.g. a `SymVar` used as an ordinary type, or a `TypeVar` used in shape
+/// there (e.g. a `SymIntVar` used as an ordinary type, or a `TypeVar` used in shape
 /// arithmetic).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum UntypeContext {
@@ -229,7 +229,7 @@ pub(crate) enum UntypeContext {
     GenericBase,
     /// A symbolic-integer dimension position. Carries a human-readable
     /// description of the context (e.g. `"in shape arithmetic"`) used in the
-    /// error message when a non-`SymVar` is used here.
+    /// error message when a non-`SymIntVar` is used here.
     SymbolicInt(&'static str),
 }
 
@@ -237,7 +237,7 @@ impl TypeFormContext {
     pub fn quantified_kind_default(x: QuantifiedKind) -> Self {
         match x {
             QuantifiedKind::TypeVar => TypeFormContext::TypeVarDefault,
-            QuantifiedKind::SymVar => TypeFormContext::SymVarDefault,
+            QuantifiedKind::SymIntVar => TypeFormContext::SymIntVarDefault,
             QuantifiedKind::ParamSpec => TypeFormContext::ParamSpecDefault,
             QuantifiedKind::TypeVarTuple => TypeFormContext::TypeVarTupleDefault,
         }
@@ -1958,7 +1958,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Quantified {
         let kind = tp.kind;
-        let restriction = if matches!(kind, QuantifiedKind::SymVar) {
+        let restriction = if matches!(kind, QuantifiedKind::SymIntVar) {
             Restriction::Unrestricted
         } else if let Some(bound) = &tp.bound {
             let bound_ty = self.expr_untype(bound, TypeFormContext::TypeVarConstraint, errors);
@@ -3190,7 +3190,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         fn quantified_error(kind: QuantifiedKind) -> ErrorKind {
             match kind {
-                QuantifiedKind::TypeVar | QuantifiedKind::SymVar => ErrorKind::InvalidTypeVar,
+                QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => ErrorKind::InvalidTypeVar,
                 QuantifiedKind::ParamSpec => ErrorKind::InvalidParamSpec,
                 QuantifiedKind::TypeVarTuple => ErrorKind::InvalidTypeVarTuple,
             }
@@ -3288,7 +3288,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.heap.mk_any_error()
                 }
             }
-            QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                 if default.is_kind_param_spec() || default.is_kind_type_var_tuple() {
                     self.error(
                         errors,
@@ -4487,7 +4487,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         let result = self.expr_check(e, None, errors);
         match special_export {
-            Some(special @ (SpecialExport::TypeVar | SpecialExport::SymVar)) => {
+            Some(special @ (SpecialExport::TypeVar | SpecialExport::SymIntVar)) => {
                 self.error(
                     errors,
                     e.range(),
@@ -4496,7 +4496,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         "{} must be assigned to a variable",
                         match special {
                             SpecialExport::TypeVar => "TypeVar",
-                            SpecialExport::SymVar => "SymVar",
+                            SpecialExport::SymIntVar => "SymIntVar",
                             _ => unreachable!("guarded by outer match"),
                         }
                     ),
@@ -6157,7 +6157,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     context,
                 )
             }
-            // A quantified *value* (e.g. a `SymVar` used in value position) is
+            // A quantified *value* (e.g. a `SymIntVar` used in value position) is
             // validated like its type form: convert via `to_type` so the same
             // kind check applies.
             Type::QuantifiedValue(q) => Some(self.validate_untyped_type_var_context(
@@ -6207,11 +6207,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             _ => None,
         };
         match (quantified_kind_and_name, context) {
-            (Some((QuantifiedKind::SymVar, symvar_name)), UntypeContext::Type) => self.error(
+            (Some((QuantifiedKind::SymIntVar, symintvar_name)), UntypeContext::Type) => self.error(
                 errors,
                 range,
                 ErrorKind::InvalidAnnotation,
-                format!("`{symvar_name}` is a `SymVar` and cannot be used as an ordinary type"),
+                format!(
+                    "`{symintvar_name}` is a `SymIntVar` and cannot be used as an ordinary type"
+                ),
             ),
             (
                 Some((
@@ -6225,7 +6227,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 errors,
                 range,
                 ErrorKind::InvalidAnnotation,
-                format!("`{typevar_name}` must be a `SymVar` to be used {error_context}"),
+                format!("`{typevar_name}` must be a `SymIntVar` to be used {error_context}"),
             ),
             _ => ty,
         }
@@ -6579,9 +6581,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             {
                 ty
             }
-            // A `SymVar`'s default (e.g. `N = 3`) is a dimension expression, not
+            // A `SymIntVar`'s default (e.g. `N = 3`) is a dimension expression, not
             // an ordinary type, so route it through the dimension parser.
-            _ if type_form_context == TypeFormContext::SymVarDefault => self
+            _ if type_form_context == TypeFormContext::SymIntVarDefault => self
                 .parse_dimension_list(slice::from_ref(x), errors)
                 .and_then(|dims| dims.into_iter().next())
                 .unwrap_or_else(Type::any_error),

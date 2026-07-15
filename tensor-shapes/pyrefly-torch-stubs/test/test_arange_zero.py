@@ -8,7 +8,7 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymVar
+from shape_extensions import SymIntVar
 
 if TYPE_CHECKING:
     from shape_extensions import SymInt
@@ -20,11 +20,11 @@ def test_arange():
     assert_type(x, Tensor[[3]])
 
 
-def test_arange_symbolic[N: SymVar](t: SymInt[N]):
+def test_arange_symbolic[N: SymIntVar](t: SymInt[N]):
     x = torch.arange(0, t)
     assert_type(x, Tensor[[N]])
 
 
-def test_arange_single_arg[N: SymVar](t: SymInt[N]):
+def test_arange_single_arg[N: SymIntVar](t: SymInt[N]):
     x = torch.arange(t)
     assert_type(x, Tensor[[N]])

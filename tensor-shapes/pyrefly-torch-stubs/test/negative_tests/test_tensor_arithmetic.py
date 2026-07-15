@@ -7,7 +7,7 @@
 
 from typing import Any, assert_type, TYPE_CHECKING
 
-from shape_extensions import Elements, SymIntTuple, SymVar
+from shape_extensions import Elements, SymIntTuple, SymIntVar
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -118,19 +118,19 @@ def chained_with_tensor(x: Tensor[[2, 3]], y: Tensor[[2, 3]]) -> Tensor[[2, 3]]:
 # ============================================================================
 
 
-def add_symbolic[N: SymVar, M: SymVar](x: Tensor[[N, M]]) -> Tensor[[N, M]]:
+def add_symbolic[N: SymIntVar, M: SymIntVar](x: Tensor[[N, M]]) -> Tensor[[N, M]]:
     """Scalar add with symbolic dimensions"""
     return x + 1.0
 
 
-def mul_symbolic[N: SymVar, M: SymVar](
+def mul_symbolic[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]], y: Tensor[[N, M]]
 ) -> Tensor[[N, M]]:
     """Tensor multiply with symbolic dimensions"""
     return x * y
 
 
-def chained_symbolic[B: SymVar, N: SymVar, M: SymVar](
+def chained_symbolic[B: SymIntVar, N: SymIntVar, M: SymIntVar](
     x: Tensor[[B, N, M]],
 ) -> Tensor[[B, N, M]]:
     """Chained ops with 3D symbolic tensor"""
@@ -195,24 +195,28 @@ def broadcast_both_any(x: Tensor[[Any, 3]], y: Tensor[[Any, 3]]) -> None:
 # ============================================================================
 
 
-def broadcast_same_symbolic[N: SymVar, M: SymVar](
+def broadcast_same_symbolic[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, M]], y: Tensor[[N, M]]
 ) -> None:
     """Same symbolic dims are compatible"""
     assert_type(x + y, Tensor[[N, M]])
 
 
-def broadcast_symbolic_with_1[N: SymVar](x: Tensor[[N, 3]], y: Tensor[[1, 3]]) -> None:
+def broadcast_symbolic_with_1[N: SymIntVar](
+    x: Tensor[[N, 3]], y: Tensor[[1, 3]]
+) -> None:
     """Size(1) broadcasts to symbolic dim"""
     assert_type(x + y, Tensor[[N, 3]])
 
 
-def broadcast_1_with_symbolic[N: SymVar](x: Tensor[[1, 3]], y: Tensor[[N, 3]]) -> None:
+def broadcast_1_with_symbolic[N: SymIntVar](
+    x: Tensor[[1, 3]], y: Tensor[[N, 3]]
+) -> None:
     """Symmetric: Size(1) on the left broadcasts to symbolic on the right"""
     assert_type(x + y, Tensor[[N, 3]])
 
 
-def broadcast_different_symbolic[N: SymVar, M: SymVar](
+def broadcast_different_symbolic[N: SymIntVar, M: SymIntVar](
     x: Tensor[[N, 3]], y: Tensor[[M, 3]]
 ) -> Tensor[[N, 3]]:
     """Different symbolic dimensions are not compatible for broadcasting."""

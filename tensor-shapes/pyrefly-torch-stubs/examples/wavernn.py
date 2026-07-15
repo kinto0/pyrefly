@@ -29,11 +29,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
-class ResBlock[NF: SymVar = 128](nn.Module):
+class ResBlock[NF: SymIntVar = 128](nn.Module):
     def __init__(self, n_freq: SymInt[NF] = 128) -> None:
         super().__init__()
         self.resblock_model = nn.Sequential(
@@ -48,7 +48,7 @@ class ResBlock[NF: SymVar = 128](nn.Module):
             nn.BatchNorm1d(n_freq),
         )
 
-    def forward[B: SymVar, L: SymVar](
+    def forward[B: SymIntVar, L: SymIntVar](
         self, specgram: Tensor[[B, NF, L]]
     ) -> Tensor[[B, NF, L]]:
         residual = self.resblock_model(specgram)
@@ -59,10 +59,10 @@ class ResBlock[NF: SymVar = 128](nn.Module):
 
 
 class MelResNet[
-    NF: SymVar = 128,
-    NH: SymVar = 128,
-    NO: SymVar = 128,
-    K: SymVar = 5,
+    NF: SymIntVar = 128,
+    NH: SymIntVar = 128,
+    NO: SymIntVar = 128,
+    K: SymIntVar = 5,
 ](nn.Module):
     def __init__(
         self,
@@ -88,7 +88,7 @@ class MelResNet[
             in_channels=n_hidden, out_channels=n_output, kernel_size=1
         )
 
-    def forward[B: SymVar, L: SymVar](
+    def forward[B: SymIntVar, L: SymIntVar](
         self, specgram: Tensor[[B, NF, L]]
     ) -> Tensor[[B, NO, (1 + L) + (-1 * K)]]:
         x = self.conv_in(specgram)
@@ -105,13 +105,13 @@ class MelResNet[
         return x
 
 
-class Stretch2d[TS: SymVar, FS: SymVar](nn.Module):
+class Stretch2d[TS: SymIntVar, FS: SymIntVar](nn.Module):
     def __init__(self, time_scale: SymInt[TS], freq_scale: SymInt[FS]) -> None:
         super().__init__()
         self.freq_scale = freq_scale
         self.time_scale = time_scale
 
-    def forward[B: SymVar, C: SymVar, F: SymVar, T: SymVar](
+    def forward[B: SymIntVar, C: SymIntVar, F: SymIntVar, T: SymIntVar](
         self, specgram: Tensor[[B, C, F, T]]
     ) -> Tensor[[B, C, F * FS, T * TS]]:
         x = specgram.repeat_interleave(self.freq_scale, -2)
@@ -122,10 +122,10 @@ class Stretch2d[TS: SymVar, FS: SymVar](nn.Module):
 
 
 class UpsampleNetwork[
-    NF: SymVar = 128,
-    NH: SymVar = 128,
-    NO: SymVar = 128,
-    K: SymVar = 5,
+    NF: SymIntVar = 128,
+    NH: SymIntVar = 128,
+    NO: SymIntVar = 128,
+    K: SymIntVar = 5,
 ](nn.Module):
     def __init__(
         self,
@@ -162,7 +162,7 @@ class UpsampleNetwork[
             up_layers.append(conv)
         self.upsample_layers = nn.Sequential(*up_layers)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, specgram: Tensor[[B, NF, T]]
     ) -> tuple[Tensor[[B, NF, Any]], Tensor[[B, NO, Any]]]:
         resnet_output = self.resnet(specgram)
@@ -190,13 +190,13 @@ class UpsampleNetwork[
 
 
 class WaveRNN[
-    NC: SymVar,
-    NR: SymVar = 512,
-    NFC: SymVar = 512,
-    NF: SymVar = 128,
-    NH: SymVar = 128,
-    NO: SymVar = 128,
-    K: SymVar = 5,
+    NC: SymIntVar,
+    NR: SymIntVar = 512,
+    NFC: SymIntVar = 512,
+    NF: SymIntVar = 128,
+    NH: SymIntVar = 128,
+    NO: SymIntVar = 128,
+    K: SymIntVar = 5,
 ](nn.Module):
     def __init__(
         self,
@@ -244,7 +244,7 @@ class WaveRNN[
         self.fc2 = nn.Linear(n_fc + self.n_aux, n_fc)
         self.fc3 = nn.Linear(n_fc, n_classes)
 
-    def forward[B: SymVar, T: SymVar](
+    def forward[B: SymIntVar, T: SymIntVar](
         self, waveform: Tensor[[B, 1, T]], specgram: Tensor[[B, 1, NF, Any]]
     ) -> Tensor[[B, 1, T, NC]]:
         if waveform.size(1) != 1:
@@ -333,7 +333,7 @@ class WaveRNN[
         assert_type(result, Tensor[[B, 1, T, NC]])
         return result
 
-    def infer[B: SymVar](
+    def infer[B: SymIntVar](
         self, specgram: Tensor[[B, NF, Any]], lengths: Tensor[[B]] | None = None
     ) -> tuple[Tensor, Tensor[[B]] | None]:
         device = specgram.device

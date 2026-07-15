@@ -253,7 +253,7 @@ def shaped_array(*, shape: str) -> typing.Callable[[type], type]:
     return decorator
 
 
-class SymVar:
+class SymIntVar:
     """Symbolic variable with arithmetic support for tensor shape dimensions.
 
     Like typing.TypeVar but arithmetic operations (N + 1, N * 2, etc.)
@@ -261,8 +261,7 @@ class SymVar:
     __class__ = typing.TypeVar makes isinstance(x, typing.TypeVar)
     return True, so Generic[N] and TypedDict + Generic[N] both work.
 
-    In pyrefly, shape_extensions.SymVar is treated identically to
-    typing.TypeVar.
+    In pyrefly, shape_extensions.SymIntVar marks symbolic integer dimensions.
     """
 
     __class__ = typing.TypeVar

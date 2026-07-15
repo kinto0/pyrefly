@@ -69,7 +69,7 @@ impl Restriction {
             Self::Bound(t) => t.clone(),
             Self::Constraints(ts) => unions(ts.clone(), heap),
             Self::Unrestricted => match kind {
-                QuantifiedKind::TypeVar | QuantifiedKind::SymVar => {
+                QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
                     stdlib.object().clone().to_type()
                 }
                 QuantifiedKind::ParamSpec => Type::Ellipsis,

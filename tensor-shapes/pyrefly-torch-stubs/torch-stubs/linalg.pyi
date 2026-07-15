@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 # Type stubs for torch.linalg module (Phase 4: Advanced Linear Algebra)
-from shape_extensions import Elements, SymIntTuple, SymVar, uses_shape_dsl
+from shape_extensions import Elements, SymIntTuple, SymIntVar, uses_shape_dsl
 from torch import Tensor
 from torch._shapes import eig_ir, eigvals_ir, slogdet_ir, solve_ir, solve_reversed_ir
 
@@ -37,7 +37,7 @@ def cholesky_solve(self: Tensor, other: Tensor, upper: bool = False) -> Tensor: 
 def inv[Shape: SymIntTuple](input: Tensor[Shape]) -> Tensor[Shape]: ...
 
 # Determinant
-def det[Batch: SymIntTuple, M: SymVar, N: SymVar](
+def det[Batch: SymIntTuple, M: SymIntVar, N: SymIntVar](
     input: Tensor[[*Elements[Batch], M, N]],
 ) -> Tensor[Batch]: ...
 
@@ -52,6 +52,6 @@ def matrix_power[Shape: SymIntTuple](input: Tensor[Shape], n: int) -> Tensor[Sha
 def matrix_exp[Shape: SymIntTuple](input: Tensor[Shape]) -> Tensor[Shape]: ...
 
 # Matrix rank
-def matrix_rank[Batch: SymIntTuple, M: SymVar, N: SymVar](
+def matrix_rank[Batch: SymIntTuple, M: SymIntVar, N: SymIntVar](
     input: Tensor[[*Elements[Batch], M, N]], tol: float = None, hermitian: bool = False
 ) -> Tensor[Batch]: ...

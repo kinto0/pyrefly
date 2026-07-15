@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -49,7 +49,9 @@ class MaskNetConfig:
     compression_num: int = 0
 
 
-class MaskBlock[InD: SymVar, HidD: SymVar, RedD: SymVar, OutD: SymVar](nn.Module):
+class MaskBlock[InD: SymIntVar, HidD: SymIntVar, RedD: SymIntVar, OutD: SymIntVar](
+    nn.Module
+):
     """Core building block of MaskNet.
 
     Generates an instance-guided mask from V_emb, applies it to V_hidden,
@@ -77,7 +79,7 @@ class MaskBlock[InD: SymVar, HidD: SymVar, RedD: SymVar, OutD: SymVar](nn.Module
         self.hidden_act: nn.Module = getattr(nn, hidden_activation)()
         self.hidden_dropout = nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, HidD]]
     ) -> Tensor[[B, OutD]]:
         V_mask = self.mask_layer(V_emb)
@@ -98,7 +100,7 @@ class MaskBlock[InD: SymVar, HidD: SymVar, RedD: SymVar, OutD: SymVar](nn.Module
         return v_out
 
 
-class SerialMaskNet[InD: SymVar, OutD: SymVar](nn.Module):
+class SerialMaskNet[InD: SymIntVar, OutD: SymIntVar](nn.Module):
     """Serial MaskNet: chain of MaskBlocks where each block's output feeds the next."""
 
     def __init__(
@@ -128,7 +130,7 @@ class SerialMaskNet[InD: SymVar, OutD: SymVar](nn.Module):
             )
         self.output_dim = output_dim
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, InD]]
     ) -> Tensor[[B, OutD]]:
         v_out: Tensor = V_hidden
@@ -142,7 +144,9 @@ class SerialMaskNet[InD: SymVar, OutD: SymVar](nn.Module):
         return result
 
 
-class ParallelMaskNet[InD: SymVar, BlkD: SymVar = 64, OutD: SymVar = 64](nn.Module):
+class ParallelMaskNet[InD: SymIntVar, BlkD: SymIntVar = 64, OutD: SymIntVar = 64](
+    nn.Module
+):
     """Parallel MaskNet: multiple independent MaskBlocks, outputs concatenated."""
 
     def __init__(
@@ -187,7 +191,7 @@ class ParallelMaskNet[InD: SymVar, BlkD: SymVar = 64, OutD: SymVar = 64](nn.Modu
         self.dnn = nn.Sequential(*dnn_layers) if dnn_layers else nn.Identity()
         self.output_dim = output_dim
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, InD]]
     ) -> Tensor[[B, OutD]]:
         block_out = [
@@ -203,7 +207,7 @@ class ParallelMaskNet[InD: SymVar, BlkD: SymVar = 64, OutD: SymVar = 64](nn.Modu
         return result
 
 
-class MaskNetBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
+class MaskNetBackbone[F: SymIntVar, D: SymIntVar, OutD: SymIntVar](nn.Module):
     """MaskNet backbone: instance-guided feature masking.
 
     Args:
@@ -278,7 +282,7 @@ class MaskNetBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
     def output_dim(self) -> SymInt[OutD]:
         return self._output_dim
 
-    def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:
+    def forward[B: SymIntVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:
         working_embs: Tensor = input_embs
         # LCE compression: [B, F, D] -> [B, compression_num, D]
         if self.lce is not None:

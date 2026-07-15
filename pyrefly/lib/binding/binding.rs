@@ -2249,7 +2249,7 @@ pub enum Binding {
         TextRange,
         Option<Box<MultiTargetReceiver>>,
     ),
-    /// TypeVar or SymVar
+    /// TypeVar or SymIntVar
     TypeVar(
         Box<(
             Option<Idx<KeyAnnotation>>,

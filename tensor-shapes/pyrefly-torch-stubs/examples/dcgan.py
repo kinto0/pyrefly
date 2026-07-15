@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymVar
+    from shape_extensions import SymInt, SymIntVar
     from torch import Tensor
 
 
@@ -48,7 +48,7 @@ def weights_init(m: nn.Module) -> None:
 # ============================================================================
 
 
-class GenUpStage[InC: SymVar](nn.Module):
+class GenUpStage[InC: SymIntVar](nn.Module):
     """Generator upsample stage: halves channels, doubles spatial.
 
     ConvTranspose2d(C, C//2, 4, 2, 1) + BN + ReLU.
@@ -59,13 +59,13 @@ class GenUpStage[InC: SymVar](nn.Module):
         self.deconv = nn.ConvTranspose2d(in_ch, in_ch // 2, 4, 2, 1, bias=False)
         self.bn = nn.BatchNorm2d(in_ch // 2)
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, InC, H, W]]
     ) -> Tensor[[B, InC // 2, (H - 1) * 2 + 2, (W - 1) * 2 + 2]]:
         return F.relu(self.bn(self.deconv(x)))
 
 
-class DiscDownStage[InC: SymVar](nn.Module):
+class DiscDownStage[InC: SymIntVar](nn.Module):
     """Discriminator downsample stage: doubles channels, halves spatial.
 
     Conv2d(C, 2*C, 4, 2, 1) + BN + LeakyReLU.
@@ -76,7 +76,7 @@ class DiscDownStage[InC: SymVar](nn.Module):
         self.conv = nn.Conv2d(in_ch, 2 * in_ch, 4, 2, 1, bias=False)
         self.bn = nn.BatchNorm2d(2 * in_ch)
 
-    def forward[B: SymVar, H: SymVar, W: SymVar](
+    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, InC, H, W]]
     ) -> Tensor[[B, 2 * InC, (H - 2) // 2 + 1, (W - 2) // 2 + 1]]:
         return F.leaky_relu(self.bn(self.conv(x)), 0.2)
@@ -114,7 +114,7 @@ class Generator(nn.Module):
         # Output: ngf → nc
         self.output = nn.ConvTranspose2d(DCGAN.ngf, DCGAN.nc, 4, 2, 1, bias=False)
 
-    def _apply_stage[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _apply_stage[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: int
     ) -> Tensor[[B, C // 2, (H - 1) * 2 + 2, (W - 1) * 2 + 2]]:
         idx = len(self.up_stages) - depth
@@ -122,16 +122,28 @@ class Generator(nn.Module):
         return stage(x)
 
     @overload
-    def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, C // 2, H * 2, W * 2]]: ...
 
     @overload
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[[B, C // 2**Depth, H * 2**Depth, W * 2**Depth]]: ...
 
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, C // 2, H * 2, W * 2]]
@@ -143,7 +155,7 @@ class Generator(nn.Module):
             return y
         return self._chain(y, depth - 1)
 
-    def forward[B: SymVar](
+    def forward[B: SymIntVar](
         self, input: Tensor[[B, 100, 1, 1]]
     ) -> Tensor[[B, 3, 64, 64]]:
         h0 = F.relu(self.project_bn(self.project(input)))
@@ -184,7 +196,7 @@ class Discriminator(nn.Module):
         # Output: ndf*8 → 1
         self.output_conv = nn.Conv2d(DCGAN.ndf * 8, 1, 4, 1, 0, bias=False)
 
-    def _apply_stage[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _apply_stage[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: int
     ) -> Tensor[[B, 2 * C, (H - 2) // 2 + 1, (W - 2) // 2 + 1]]:
         idx = len(self.down_stages) - depth
@@ -192,16 +204,28 @@ class Discriminator(nn.Module):
         return stage(x)
 
     @overload
-    def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, 2 * C, H // 2, W // 2]]: ...
 
     @overload
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]: ...
 
-    def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    def _chain[
+        Depth: SymIntVar,
+        B: SymIntVar,
+        C: SymIntVar,
+        H: SymIntVar,
+        W: SymIntVar,
+    ](
         self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, 2 * C, H // 2, W // 2]]
@@ -220,7 +244,9 @@ class Discriminator(nn.Module):
             return y
         return self._chain(y, depth - 1)
 
-    def forward[B: SymVar](self, input: Tensor[[B, 3, 64, 64]]) -> Tensor[[B, 1, 1, 1]]:
+    def forward[B: SymIntVar](
+        self, input: Tensor[[B, 3, 64, 64]]
+    ) -> Tensor[[B, 1, 1, 1]]:
         h0 = F.leaky_relu(self.input_conv(input), 0.2)
         assert_type(h0, Tensor[[B, 64, 32, 32]])
         h1 = self._chain(h0, 3)  # 64→512, 32→4
