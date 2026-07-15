@@ -2098,13 +2098,6 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // both directions.
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
-            // Type::Dim is a subtype of int and float (numeric tower: Dim <: int <: float)
-            // This allows Dim[N] values to be passed where int or float parameters are expected
-            (Type::Dim(_), Type::ClassType(cls))
-                if cls.is_builtin("int") || cls.is_builtin("float") =>
-            {
-                Ok(())
-            }
             // Any exact Size expression represents an integer dimension value.
             (Type::Size(_), Type::ClassType(cls))
                 if cls.is_builtin("int") || cls.is_builtin("float") =>
@@ -2418,30 +2411,6 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 ),
                 t,
             ),
-            // ========== Dim Subtyping Rules ==========
-            // Handle Type::Dim(...) <: Type::Dim(...) by delegating to is_subset_eq for inner types
-            // This relies on top-level rules for Size <: Size, Size <: Quantified, Quantified <: Size,
-            // Size <: Var, Var <: Size, etc.
-            (Type::Dim(l_inner), Type::Dim(u_inner)) => self.is_subset_eq(l_inner, u_inner),
-            // Size expressions and symbolic shape parameters are the valid arguments to Dim.
-            (Type::Size(_), Type::Dim(dim_inner)) | (Type::Quantified(_), Type::Dim(dim_inner)) => {
-                self.is_subset_eq(got, dim_inner)
-            }
-            // Dim[X] <: Size: the internal Size expression carried by a `Type::Dim` may flow into a `Size`.
-            (Type::Dim(dim_inner), want @ Type::Size(_)) => self.is_subset_eq(dim_inner, want),
-            (Type::QuantifiedValue(q), Type::Dim(dim_inner)) => {
-                self.is_subset_eq(&Type::Quantified(q.clone()), dim_inner)
-            }
-            // Literal[n] <: Dim[X] - convert literal to Size and check Size(n) <: X
-            (Type::Literal(lit), Type::Dim(dim_inner)) if let Lit::Int(n) = &lit.value => {
-                let size_type = Type::Size(SizeExpr::Literal(n.as_i64().unwrap_or(0)));
-                self.is_subset_eq(&size_type, dim_inner)
-            }
-            // Dim[X] <: Literal[n] - convert literal to Size and check X <: Size(n)
-            (Type::Dim(dim_inner), Type::Literal(lit)) if let Lit::Int(n) = &lit.value => {
-                let size_type = Type::Size(SizeExpr::Literal(n.as_i64().unwrap_or(0)));
-                self.is_subset_eq(dim_inner, &size_type)
-            }
             // Representable integer literals compare exactly with Size expressions in either direction.
             (Type::Literal(lit), want @ Type::Size(_))
                 if let Lit::Int(n) = &lit.value
@@ -2455,18 +2424,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             {
                 self.is_subset_literal_int_size(n, got, false)
             }
-            // ClassType(int) <: Dim[...]
-            // Redirect: int <: Dim[...] becomes Size[int] <: Dim[...]
-            (Type::ClassType(cls), want @ Type::Dim(_)) if cls.is_builtin("int") => {
-                self.is_subset_eq_impl(&gradual_size(), want)
-            }
             (Type::Size(_) | Type::Quantified(_), Type::ClassType(cls))
                 if is_dim_class_type(cls) =>
             {
                 Ok(())
             }
             (Type::QuantifiedValue(_), Type::ClassType(cls)) if is_dim_class_type(cls) => Ok(()),
-            // ========== End Dim Subtyping Rules ==========
             (Type::Literal(l_lit), Type::Literal(u_lit)) => {
                 ok_or(l_lit.value == u_lit.value, SubsetError::Other)
             }

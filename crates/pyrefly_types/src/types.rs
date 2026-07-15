@@ -804,11 +804,6 @@ pub enum Type {
     /// This is the type-level representation of dimension values, used when
     /// type variables with Dim bound unify with concrete dimension values.
     Size(SizeExpr),
-    /// Legacy symbolic integer carrier.
-    ///
-    /// Source-level `Dim[...]` annotations lower to `Type::Size`. This variant
-    /// remains so older internal carriers can be normalized during migration.
-    Dim(Box<Type>),
     Tuple(Tuple),
     Module(ModuleType),
     Forall(Box<Forall<Forallable>>),
@@ -912,7 +907,6 @@ impl Visit for Type {
             Type::NNModule(x) => x.visit(f),
             Type::DataFrame(x) => x.visit(f),
             Type::Size(x) => x.visit(f),
-            Type::Dim(x) => x.visit(f),
             Type::Tuple(x) => x.visit(f),
             Type::Module(x) => x.visit(f),
             Type::Forall(x) => x.visit(f),
@@ -970,7 +964,6 @@ impl VisitMut for Type {
             Type::NNModule(x) => x.visit_mut(f),
             Type::DataFrame(x) => x.visit_mut(f),
             Type::Size(x) => x.visit_mut(f),
-            Type::Dim(x) => x.visit_mut(f),
             Type::Tuple(x) => x.visit_mut(f),
             Type::Module(x) => x.visit_mut(f),
             Type::Forall(x) => x.visit_mut(f),

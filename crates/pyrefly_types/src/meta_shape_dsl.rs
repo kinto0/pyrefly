@@ -213,11 +213,9 @@ mod extract {
     }
 
     /// Extract symbolic dimension from Type.
-    /// Handles Dim[N], SizeExpr, Quantified, Var, etc.
+    /// Handles SizeExpr, Quantified, Var, etc.
     pub fn dimension(ty: &Type) -> Option<Type> {
         match ty {
-            // Dim[inner] -> extract inner (could be Quantified, SizeExpr, etc.)
-            Type::Dim(inner) => Some((**inner).clone()),
             // Already a SizeExpr
             Type::Size(_) => Some(ty.clone()),
             // Type variable or quantified
@@ -3982,14 +3980,6 @@ mod tests {
             Type::Size(SizeExpr::Int)
         );
 
-        let legacy = Type::Dim(Box::new(Type::Size(SizeExpr::Symbolic(Box::new(
-            Type::Size(SizeExpr::Int),
-        )))));
-        assert_eq!(
-            val_to_scalar_type(&Val::Dim(legacy)),
-            Type::Size(SizeExpr::Int)
-        );
-
         let quantified = fake_symvar("N");
         assert_eq!(
             val_to_scalar_type(&Val::Dim(quantified)),
@@ -4026,12 +4016,6 @@ mod tests {
         let literal = Lit::Int(LitInt::new(3)).to_implicit_type();
         assert_eq!(
             val_to_scalar_type(&Val::Dim(Type::Size(SizeExpr::Literal(3)))),
-            literal
-        );
-        assert_eq!(
-            val_to_scalar_type(&Val::Dim(Type::Dim(Box::new(Type::Size(
-                SizeExpr::Literal(3),
-            ))))),
             literal
         );
     }

@@ -119,7 +119,6 @@ impl SizeExpr {
         match ty {
             Type::Size(dim) => Some(dim.clone()),
             Type::Literal(lit) if let Lit::Int(i) = &lit.value => i.as_i64().map(SizeExpr::Literal),
-            Type::Dim(ty) => SizeExpr::from_type(ty),
             Type::Quantified(q) if q.kind() == QuantifiedKind::SymVar => {
                 Some(SizeExpr::Symbolic(Box::new(ty.clone())))
             }
@@ -202,7 +201,7 @@ pub fn canonicalize(ty: Type) -> Type {
             }
             canonicalize_sizeexpr(dim)
         }
-        // Quantified, Var, Any, Dim, Literal are already canonical
+        // Quantified, Var, Any, and Literal are already canonical
         other => other,
     }
 }
@@ -244,16 +243,15 @@ fn sizeexpr_is_gradual(dim: &SizeExpr) -> bool {
 }
 
 /// Whether canonicalizing a `Symbolic` leaf yields the gradual size. A builtin
-/// `int` leaf (or a `Dim` wrapping one) canonicalizes to the gradual size via
-/// `canonicalize_symbolic`, so it must be reported as gradual here even though it
-/// is not itself a `Size`. Every other leaf falls back to `type_is_gradual`,
-/// which already matches how `canonicalize` short-circuits gradual (`Any`) and
-/// nested `Size` leaves. This keeps `type_is_gradual` equivalent to
+/// `int` leaf canonicalizes to the gradual size via `canonicalize_symbolic`, so
+/// it must be reported as gradual here even though it is not itself a `Size`.
+/// Every other leaf falls back to `type_is_gradual`, which already matches how
+/// `canonicalize` short-circuits gradual (`Any`) and nested `Size` leaves. This
+/// keeps `type_is_gradual` equivalent to
 /// `is_gradual_size(&canonicalize(..))` without allocating a canonical copy.
 fn symbolic_is_gradual(ty: &Type) -> bool {
     match ty {
         Type::ClassType(cls) if cls.is_builtin("int") => true,
-        Type::Dim(inner) => symbolic_is_gradual(inner),
         _ => type_is_gradual(ty),
     }
 }
@@ -291,7 +289,6 @@ fn canonicalize_symbolic(ty: Type) -> Type {
             n.map(|n| Type::Size(SizeExpr::Literal(n)))
                 .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(Type::Literal(lit)))))
         }
-        Type::Dim(inner) => canonicalize_symbolic(*inner),
         Type::ClassType(cls) if cls.is_builtin("int") => gradual_size(),
         other => Type::Size(SizeExpr::Symbolic(Box::new(other))),
     }

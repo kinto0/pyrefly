@@ -453,7 +453,6 @@ fn type_kind_name(ty: &Type) -> &'static str {
         Type::NNModule(_) => "nn_module",
         Type::DataFrame(_) => "data_frame",
         Type::Size(_) => "size",
-        Type::Dim(_) => "dim",
         Type::TypeForm(_) => "type_form",
     }
 }
@@ -665,7 +664,6 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
         }
         Type::DataFrame(schema) => type_shape_kind(context, &schema.underlying_type()),
         Type::Size(_) => named_type_shape_kind("Size", Vec::new()),
-        Type::Dim(inner) => named_type_shape_kind("Dim", vec![type_to_shape(context, inner)]),
         Type::TypeForm(inner) => {
             named_type_shape_kind("typing.TypeForm", vec![type_to_shape(context, inner)])
         }

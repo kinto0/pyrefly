@@ -261,10 +261,6 @@ fn on_type(
         Type::Tuple(t) => {
             handle_tuple_type(t, variance, inj, on_edge, on_var);
         }
-        Type::Dim(inner) => {
-            // Dim wraps a dimension type - invariant
-            on_type(Variance::Invariant, inj, inner, on_edge, on_var);
-        }
         Type::Size(dim) => {
             // SizeExpr expressions contain types - all invariant
             on_size_expr(dim, inj, on_edge, on_var);

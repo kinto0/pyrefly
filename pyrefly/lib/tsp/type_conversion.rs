@@ -464,11 +464,11 @@ impl TypeConverter<'_> {
             // --- KwCall → convert the return type ---
             PyreflyType::KwCall(kw) => self.convert(&kw.return_ty),
 
-            // --- Size / Dim → the stdlib `int` class (they represent integer dimensions) ---
+            // --- Size → the stdlib `int` class (size values represent integer dimensions) ---
             // Emitted as the real class, not `builtin("int")`: the protocol
             // restricts `BuiltInType.name` to a fixed sentinel set that excludes
             // `int`, so a bare builtin surfaces as Unknown on the consumer.
-            PyreflyType::Size(_) | PyreflyType::Dim(_) => {
+            PyreflyType::Size(_) => {
                 self.convert_class_type(self.stdlib.int_type, TypeFlags::INSTANCE)
             }
 
@@ -1242,15 +1242,12 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_size_and_dim_are_int_class() {
+    fn test_convert_size_is_int_class() {
         use pyrefly_types::dimension::SizeExpr;
 
-        // `Size`/`Dim` are integer tensor dimensions, emitted as the real `int`
+        // A `Size` is an integer tensor dimension, emitted as the real `int`
         // class rather than an off-spec `int` `BuiltInType`.
-        for ty in [
-            PyreflyType::Size(SizeExpr::literal(6)),
-            PyreflyType::Dim(Box::new(PyreflyType::Size(SizeExpr::literal(3)))),
-        ] {
+        for ty in [PyreflyType::Size(SizeExpr::literal(6))] {
             match convert_type(&ty) {
                 TspType::Class(c) => {
                     assert!(c.flags.contains(TypeFlags::INSTANCE));

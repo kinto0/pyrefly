@@ -614,10 +614,6 @@ fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
             Lit::Int(i) => i.as_i64().map(|n| Type::Size(SizeExpr::Literal(n))),
             _ => None,
         },
-        // `Dim[x]` unwraps to the normalized internal dimension `x`.
-        Type::Dim(inner) if is_valid_internal_dim(inner) => {
-            Some(canonicalize_dim((**inner).clone()))
-        }
         // Dimensions already in internal form pass through unchanged.
         Type::Size(expr) if is_valid_internal_size_expr(expr) => {
             Some(canonicalize_dim(carrier.clone()))
@@ -1204,19 +1200,14 @@ fn sub_dim(stop: Type, start: Type) -> Type {
 
 /// Apply step (stride) to a range dimension: ceil_div(range, step).
 /// step=None or step=Literal(1) is identity. For literal range and step,
-/// computes the exact integer ceiling division. For symbolic steps (Dim, Size,
+/// computes the exact integer ceiling division. For symbolic steps (Size,
 /// Quantified), builds a symbolic ceil_div expression.
 fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
     let step = match step {
         None => return range_dim,
         Some(s) => s,
     };
-    // Extract the inner type for Dim[S] → S
-    let step_inner = match &step {
-        Type::Dim(inner) => (**inner).clone(),
-        other => other.clone(),
-    };
-    match &step_inner {
+    match &step {
         // Literal step: exact arithmetic
         Type::Size(SizeExpr::Literal(1)) => range_dim,
         Type::Size(SizeExpr::Literal(s)) if *s > 1 => {
@@ -1241,11 +1232,11 @@ fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
         _ => {
             // ceil_div(range, step) = (range + step - 1) // step
             let step_minus_1 = Type::Size(SizeExpr::sub(
-                step_inner.clone(),
+                step.clone(),
                 Type::Size(SizeExpr::Literal(1)),
             ));
             let numerator = Type::Size(SizeExpr::add(range_dim, step_minus_1));
-            Type::Size(SizeExpr::floor_div(numerator, step_inner))
+            Type::Size(SizeExpr::floor_div(numerator, step))
         }
     }
 }
@@ -1381,11 +1372,6 @@ mod tests {
         LitInt::new(n).to_explicit_type()
     }
 
-    /// User-facing `Dim[x]` carrier element.
-    fn dim(inner: Type) -> Type {
-        Type::Dim(Box::new(inner))
-    }
-
     fn concrete_carrier(elts: Vec<Type>) -> Type {
         Type::Tuple(Tuple::Concrete(elts))
     }
@@ -1439,16 +1425,6 @@ mod tests {
         let carrier = concrete_carrier(vec![literal(2), literal(3)]);
         let shape = tuple_carrier_to_shape(&carrier).unwrap();
         assert_eq!(shape_to_tuple_carrier(&shape), carrier);
-    }
-
-    #[test]
-    fn dim_carrier_unwraps_to_internal_dimension() {
-        // `Dim[x]` carrier -> raw internal `x`.
-        let carrier = concrete_carrier(vec![dim(size(7))]);
-        assert_eq!(
-            tuple_carrier_to_shape(&carrier),
-            Some(ShapedArrayShape::from_types(vec![size(7)]))
-        );
     }
 
     #[test]
@@ -1526,10 +1502,6 @@ mod tests {
             tuple_carrier_to_shape(&concrete_carrier(vec![size_expr.clone()])),
             Some(ShapedArrayShape::from_types(vec![size_expr.clone()]))
         );
-        assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![dim(size_expr.clone())])),
-            Some(ShapedArrayShape::from_types(vec![size_expr]))
-        );
     }
 
     #[test]
@@ -1604,30 +1576,10 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_dim_carrier_inner_elements_fail() {
-        assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![dim(literal(3))])),
-            None
-        );
-        assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![dim(bool_literal())])),
-            None
-        );
-        assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![dim(Type::None)])),
-            None
-        );
-    }
-
-    #[test]
     fn unsupported_size_expr_operands_fail() {
         let invalid_size_expr = Type::Size(SizeExpr::Symbolic(Box::new(literal(1))));
         assert_eq!(
             tuple_carrier_to_shape(&concrete_carrier(vec![invalid_size_expr.clone()])),
-            None
-        );
-        assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![dim(invalid_size_expr)])),
             None
         );
     }

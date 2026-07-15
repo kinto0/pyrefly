@@ -729,15 +729,6 @@ impl<'a> TypeDisplayContext<'a> {
                 Ok(())
             }
             Type::Size(dim) => output.write_str(&format!("Size[{dim}]")),
-            Type::Dim(inner) => {
-                // Display Dim[Unknown] as just "Dim" for cleaner output
-                // (Unknown represents implicit Any from gradual typing)
-                // But keep Dim[Any] when explicitly annotated
-                match &**inner {
-                    Type::Any(AnyStyle::Implicit | AnyStyle::Error) => output.write_str("Dim"),
-                    _ => output.write_str(&format!("Dim[{}]", self.display_internal(inner))),
-                }
-            }
             Type::TypeVar(t) => {
                 let type_var_qname = self.stdlib.map(|s| s.type_var().qname());
                 output.write_builtin("TypeVar", type_var_qname)?;

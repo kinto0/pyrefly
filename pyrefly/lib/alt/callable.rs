@@ -1860,23 +1860,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 None => continue,
             };
 
-            // Substitute type parameters (e.g., _Dim[S] with S=1 → Dim[1]).
+            // Substitute type parameters (e.g., _Dim[S] with S=1 → Size[1]).
             let field_ty = cls.targs().substitution().substitute_into(field.ty());
 
-            // Unwrap Dim[T] → T so the DSL can extract literal ints.
-            // After type param substitution, Dim[S] with S=0 becomes Type::Dim(Size(Literal(0))).
-            // For Optional[Dim[T]] (i.e., Dim[T] | None): if T is bound, unwrap to T;
-            // if T is unbound (Any), resolve to None — the DSL models missing values as None.
+            // For optional dimension fields, if the dimension is unbound (Any), resolve to None;
+            // the DSL models missing values as None.
+            // TODO(stroxler): It is unresolved whether returning the first `Size` member (rather
+            // than `None` for an unbound/Any dimension) still preserves the old "unbound dimension
+            // resolves to None" semantics, now that an unbound `Dim[Any]` lowers to a gradual `Size`
+            // and a union may hold both a concrete `Size` and `Any`. This feature is corpus-guided,
+            // so there is no data on the intended behavior until a real case surfaces.
             let unwrapped = match field_ty {
-                Type::Dim(inner) => *inner,
                 Type::Union(ref u) => {
-                    let dim_inner = u.members.iter().find_map(|m| match m {
-                        Type::Dim(inner) => Some(inner.as_ref().clone()),
+                    let size = u.members.iter().find_map(|m| match m {
+                        Type::Size(_) => Some(m.clone()),
                         _ => None,
                     });
-                    match dim_inner {
-                        Some(Type::Any(_)) => Type::None,
-                        Some(inner) => inner,
+                    match size {
+                        Some(size) => size,
+                        None if u.members.iter().any(Type::is_any) => Type::None,
                         None => field_ty,
                     }
                 }

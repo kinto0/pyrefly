@@ -3009,7 +3009,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         // Literal negation: just negate the value directly
                         return self.heap.mk_size(SizeExpr::Literal(-val));
                     }
-                    Type::Dim(ref inner) => (**inner).clone(),
                     Type::Quantified(_) | Type::Size(_) => inner_ty.clone(),
                     _ => return Type::any_implicit(),
                 };
@@ -3023,21 +3022,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
                     self.heap.mk_size(SizeExpr::Literal(val))
                 }
-                Type::Dim(ref inner_ty) => (**inner_ty).clone(),
                 Type::Quantified(_) | Type::Size(_) => ty.clone(),
                 _ => Type::any_implicit(),
             }
         };
 
         // Extract a step value from a slice step expression.
-        // Supports literal integers, Dim[S], and Size types.
+        // Supports literal integers and Size types.
         let to_step = |expr: &Expr| -> Option<Type> {
             let ty = self.expr_infer(expr, errors);
             match &ty {
                 Type::Literal(lit) if let Some(val) = lit.value.as_index_i64() => {
                     Some(self.heap.mk_size(SizeExpr::Literal(val)))
                 }
-                Type::Dim(_) => Some(ty.clone()),
                 Type::Quantified(_) | Type::Size(_) => Some(ty.clone()),
                 _ => Option::None,
             }
@@ -3074,7 +3071,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             let is_int = matches!(&idx_ty, Type::Literal(lit) if lit.value.as_index_i64().is_some())
                 || matches!(&idx_ty, Type::ClassType(cls) if cls.is_builtin("int"))
-                || matches!(&idx_ty, Type::Dim(_));
+                || matches!(&idx_ty, Type::Size(_));
             if is_int { Some(IndexOp::Int) } else { None }
         };
 

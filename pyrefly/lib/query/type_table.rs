@@ -501,10 +501,6 @@ pub(super) fn type_to_indexed_shape(
         }
         Type::DataFrame(schema) => type_to_indexed_shape(context, &schema.underlying_type(), table),
         Type::Size(_) => indexed_named_leaf(table, "Size"),
-        Type::Dim(inner) => {
-            let inner = type_to_indexed_shape(context, inner, table);
-            insert_indexed_named(table, "Dim", vec![inner], None, Vec::new())
-        }
         Type::TypeForm(inner) => {
             let inner = type_to_indexed_shape(context, inner, table);
             insert_indexed_named(table, "typing.TypeForm", vec![inner], None, Vec::new())

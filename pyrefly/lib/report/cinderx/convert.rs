@@ -437,7 +437,6 @@ pub(crate) fn type_to_structured(
         | Type::ShapedArray(_)
         | Type::NNModule(_)
         | Type::DataFrame(_)
-        | Type::Size(_)
-        | Type::Dim(_) => insert_simple_other_form("typing.Any", table),
+        | Type::Size(_) => insert_simple_other_form("typing.Any", table),
     }
 }

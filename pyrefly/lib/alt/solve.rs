@@ -1988,8 +1988,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let mut default_ty = None;
         if let Some(default_expr) = &tp.default {
             let is_size_bound = |ty: &Type| {
-                matches!(ty, Type::Dim(_))
-                    || matches!(ty, Type::Size(_))
+                matches!(ty, Type::Size(_))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Dim"))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Size"))
             };
@@ -6179,8 +6178,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             )),
             Type::ArgsValue(q) => Some(self.heap.mk_args(*q)),
             Type::KwargsValue(q) => Some(self.heap.mk_kwargs(*q)),
-            // Dim, SizeExpr, and Tensor are already type forms
-            ty @ Type::Dim(_) => Some(ty),
+            // SizeExpr and Tensor are already type forms
             ty @ Type::Size(_) => Some(ty),
             ty @ Type::ShapedArray(_) => Some(ty),
             ty @ Type::NNModule(_) => Some(ty),

@@ -103,20 +103,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Literal integers are allowed as the non-shape side of dimension arithmetic, but
         // ordinary literal arithmetic should keep the normal integer operator behavior.
         let is_shape_operand = |ty: &Type| match ty {
-            Type::Dim(_) | Type::Size(_) => true,
+            Type::Size(_) => true,
             _ => false,
         };
         if !is_shape_operand(lhs) && !is_shape_operand(rhs) {
             return None;
         }
 
-        // Extract the dimension type from Dim, Size, or an integer literal paired with one.
+        // Extract the dimension type from Size or an integer literal paired with one.
         let to_dim_type = |ty: &Type| -> Option<Type> {
             match ty {
-                Type::Dim(inner_ty) => {
-                    // Dim wraps a dimension type (could be SizeExpr, Quantified, etc.)
-                    Some((**inner_ty).clone())
-                }
                 Type::Literal(f) if let Lit::Int(n) = &f.value => {
                     // Convert literal to SizeExpr
                     n.as_i64()
@@ -879,12 +875,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         self.distribute_over_union(&t, |t| match x.op {
             UnaryOp::USub => {
-                // Special handling for Dim: model -N as Sub(0, N)
-                if let Type::Dim(inner_ty) = t {
-                    let zero = self.heap.mk_size(SizeExpr::Literal(0));
-                    let result_ty =
-                        canonicalize(self.heap.mk_size(SizeExpr::sub(zero, (**inner_ty).clone())));
-                    return result_ty;
+                if let Type::Size(_) = t {
+                    return canonicalize(self.heap.mk_size(SizeExpr::mul(
+                        self.heap.mk_size(SizeExpr::Literal(-1)),
+                        t.clone(),
+                    )));
                 }
                 let f = |lit: &Lit| lit.negate();
                 unop(t, &f, &dunder::NEG)
