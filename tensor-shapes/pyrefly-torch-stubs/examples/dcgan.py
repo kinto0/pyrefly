@@ -136,6 +136,7 @@ class Generator(nn.Module):
     ) -> (
         Tensor[[B, C // 2, H * 2, W * 2]]
         | Tensor[[B, C // 2**Depth, H * 2**Depth, W * 2**Depth]]
+        | Tensor[[B, (C // 2) // 2 ** (Depth - 1), H * 2**Depth, W * 2**Depth]]
     ):
         y = self._apply_stage(x, depth)
         if depth == 1:
@@ -205,6 +206,14 @@ class Discriminator(nn.Module):
     ) -> (
         Tensor[[B, 2 * C, H // 2, W // 2]]
         | Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]
+        | Tensor[
+            [
+                B,
+                C * 2**Depth,
+                (H // 2) // 2 ** (Depth - 1),
+                (W // 2) // 2 ** (Depth - 1),
+            ]
+        ]
     ):
         y = self._apply_stage(x, depth)
         if depth == 1:

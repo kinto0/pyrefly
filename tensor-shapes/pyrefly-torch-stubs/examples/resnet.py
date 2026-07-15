@@ -201,6 +201,14 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
     ) -> (
         Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]
         | Tensor[[B, C * 2**Depth, (H - 1) // 2**Depth + 1, (W - 1) // 2**Depth + 1]]
+        | Tensor[
+            [
+                B,
+                C * 2**Depth,
+                ((H - 1) // 2) // 2 ** (Depth - 1) + 1,
+                ((W - 1) // 2) // 2 ** (Depth - 1) + 1,
+            ]
+        ]
     ):
         y = self._apply_stage(x, depth)
         if depth == 1:

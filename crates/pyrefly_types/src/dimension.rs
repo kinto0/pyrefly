@@ -147,6 +147,132 @@ pub fn is_gradual_size(ty: &Type) -> bool {
     matches!(ty, Type::SymInt(SymInt::Int))
 }
 
+pub fn symint_type_is_provably_nonnegative(ty: &Type) -> bool {
+    match ty {
+        Type::Literal(lit) => {
+            if let Lit::Int(i) = &lit.value
+                && let Some(n) = i.as_i64()
+            {
+                n >= 0
+            } else {
+                false
+            }
+        }
+        Type::SymInt(dim) => symint_is_provably_nonnegative(dim),
+        _ => false,
+    }
+}
+
+pub fn symint_is_provably_nonnegative(dim: &SymInt) -> bool {
+    match dim {
+        SymInt::Literal(n) => *n >= 0,
+        SymInt::Int => false,
+        SymInt::Symbolic(ty) => symint_type_is_provably_nonnegative(ty),
+        SymInt::Add(left, right) | SymInt::Mul(left, right) => {
+            symint_is_provably_nonnegative(left) && symint_is_provably_nonnegative(right)
+        }
+        SymInt::Sub(left, right) => {
+            symint_is_provably_nonnegative(left) && symint_is_provably_nonpositive(right)
+        }
+        SymInt::FloorDiv(left, right) => {
+            symint_is_provably_nonnegative(left) && symint_is_provably_positive(right)
+        }
+        SymInt::Pow(left, right) => {
+            symint_is_provably_nonnegative(left) && symint_is_provably_nonnegative(right)
+        }
+    }
+}
+
+fn symint_is_provably_positive(dim: &SymInt) -> bool {
+    match dim {
+        SymInt::Literal(n) => *n > 0,
+        SymInt::Add(left, right) => {
+            symint_is_provably_positive(left) && symint_is_provably_nonnegative(right)
+                || symint_is_provably_nonnegative(left) && symint_is_provably_positive(right)
+        }
+        SymInt::Mul(left, right) => {
+            symint_is_provably_positive(left) && symint_is_provably_positive(right)
+        }
+        SymInt::FloorDiv(_, _) => false,
+        SymInt::Pow(left, right) => {
+            matches!(right.as_ref(), SymInt::Literal(0))
+                || symint_is_provably_positive(left) && symint_is_provably_nonnegative(right)
+        }
+        _ => false,
+    }
+}
+
+fn symint_type_is_provably_positive(ty: &Type) -> bool {
+    match ty {
+        Type::Literal(lit) => {
+            if let Lit::Int(i) = &lit.value
+                && let Some(n) = i.as_i64()
+            {
+                n > 0
+            } else {
+                false
+            }
+        }
+        Type::SymInt(dim) => symint_is_provably_positive(dim),
+        _ => false,
+    }
+}
+
+fn symint_is_provably_nonpositive(dim: &SymInt) -> bool {
+    match dim {
+        SymInt::Literal(n) => *n <= 0,
+        SymInt::Add(left, right) => {
+            symint_is_provably_nonpositive(left) && symint_is_provably_nonpositive(right)
+        }
+        SymInt::Mul(left, right) => {
+            matches!(left.as_ref(), SymInt::Literal(0))
+                || matches!(right.as_ref(), SymInt::Literal(0))
+                || symint_is_provably_nonpositive(left) && symint_is_provably_nonnegative(right)
+                || symint_is_provably_nonnegative(left) && symint_is_provably_nonpositive(right)
+        }
+        _ => false,
+    }
+}
+
+pub fn symint_type_is_provably_negative(ty: &Type) -> bool {
+    match ty {
+        Type::Literal(lit) => {
+            if let Lit::Int(i) = &lit.value
+                && let Some(n) = i.as_i64()
+            {
+                n < 0
+            } else {
+                false
+            }
+        }
+        Type::SymInt(dim) => symint_is_provably_negative(dim),
+        _ => false,
+    }
+}
+
+pub fn symint_is_provably_negative(dim: &SymInt) -> bool {
+    match dim {
+        SymInt::Literal(n) => *n < 0,
+        SymInt::Int | SymInt::Symbolic(_) | SymInt::Pow(_, _) => false,
+        SymInt::Add(left, right) => {
+            symint_is_provably_negative(left) && symint_is_provably_nonpositive(right)
+                || symint_is_provably_nonpositive(left) && symint_is_provably_negative(right)
+        }
+        SymInt::Sub(left, right) => {
+            symint_is_provably_negative(left) && symint_is_provably_nonnegative(right)
+                || symint_is_provably_nonpositive(left) && symint_is_provably_positive(right)
+        }
+        SymInt::Mul(left, right) => {
+            symint_is_provably_negative(left) && symint_is_provably_positive(right)
+                || symint_is_provably_positive(left) && symint_is_provably_negative(right)
+        }
+        SymInt::FloorDiv(left, right) => {
+            symint_is_provably_negative(left) && symint_is_provably_positive(right)
+                || symint_is_provably_positive(left) && symint_is_provably_negative(right)
+        }
+    }
+}
+
 impl Display for SymInt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -581,18 +707,20 @@ fn rebuild_product(factors: Vec<Type>) -> Type {
 
 /// Canonicalize a floor division expression
 fn canonicalize_division(num: Type, den: Type) -> Type {
-    // Step 1: Canonicalize the numerator
+    // Step 1: Canonicalize operands
     let canonical_num = canonicalize_inner(num);
-
-    // Step 2: Check if numerator is a division - if so, flatten
-    if let Type::SymInt(SymInt::FloorDiv(inner_num, inner_den)) = canonical_num {
-        // Apply composition law: (a // b) // c = a // (b * c)
-        let new_den = Type::SymInt(SymInt::mul(inner_den.into_type(), den));
-        return canonicalize_division(inner_num.into_type(), new_den);
-    }
-
-    // Step 3: Now canonicalize the denominator
     let canonical_den = canonicalize_inner(den);
+
+    // Step 2: Check if numerator is a division - if so, flatten only when the
+    // outer divisor is positive. For negative divisors, Python floor division
+    // does not satisfy (a // b) // c = a // (b * c).
+    if let Type::SymInt(SymInt::FloorDiv(inner_num, inner_den)) = &canonical_num
+        && symint_type_is_provably_positive(&canonical_den)
+    {
+        // Apply composition law: (a // b) // c = a // (b * c)
+        let new_den = Type::SymInt(SymInt::mul(inner_den.clone().into_type(), canonical_den));
+        return canonicalize_division(inner_num.clone().into_type(), new_den);
+    }
 
     // Step 4: Apply simplifications
     match (&canonical_num, &canonical_den) {
@@ -604,7 +732,7 @@ fn canonicalize_division(num: Type, den: Type) -> Type {
 
         // Both literals: compute
         (Type::SymInt(SymInt::Literal(n)), Type::SymInt(SymInt::Literal(d))) if *d != 0 => {
-            Type::SymInt(SymInt::Literal(n / d))
+            Type::SymInt(SymInt::Literal(floor_div(*n, *d)))
         }
 
         // Literal term extraction from sum numerator:
@@ -881,6 +1009,16 @@ fn gcd(mut a: i64, mut b: i64) -> i64 {
         a = temp;
     }
     a
+}
+
+fn floor_div(n: i64, d: i64) -> i64 {
+    let q = n / d;
+    let r = n % d;
+    if r != 0 && ((r < 0) != (d < 0)) {
+        q - 1
+    } else {
+        q
+    }
 }
 
 /// Compare types for canonical ordering.
@@ -1263,5 +1401,54 @@ mod tests {
         }));
         let invalid_symint = Type::SymInt(SymInt::Symbolic(Box::new(bool_literal)));
         let _ = canonicalize(invalid_symint);
+    }
+
+    #[test]
+    fn canonicalize_nested_floor_div_keeps_python_negative_divisor_semantics() {
+        let nested_literal = Type::SymInt(SymInt::floor_div(
+            Type::SymInt(SymInt::floor_div(symint_literal(1), symint_literal(2))),
+            symint_literal(-1),
+        ));
+        let flattened_literal = Type::SymInt(SymInt::floor_div(
+            symint_literal(1),
+            Type::SymInt(SymInt::mul(symint_literal(2), symint_literal(-1))),
+        ));
+        assert_eq!(canonicalize(nested_literal), symint_literal(0));
+        assert_eq!(canonicalize(flattened_literal), symint_literal(-1));
+
+        let n = Type::Var(Var::ZERO);
+        let nested_symbolic = Type::SymInt(SymInt::floor_div(
+            Type::SymInt(SymInt::floor_div(n.clone(), symint_literal(2))),
+            symint_literal(-1),
+        ));
+        assert_eq!(
+            canonicalize(nested_symbolic),
+            Type::SymInt(SymInt::floor_div(
+                Type::SymInt(SymInt::floor_div(n, symint_literal(2))),
+                symint_literal(-1),
+            ))
+        );
+
+        let risky_power = Type::SymInt(SymInt::pow(
+            symint_literal(2),
+            Type::SymInt(SymInt::sub(Type::Var(Var::ZERO), symint_literal(1))),
+        ));
+        let nested_risky_power = Type::SymInt(SymInt::floor_div(
+            Type::SymInt(SymInt::floor_div(symint_literal(1), symint_literal(2))),
+            risky_power.clone(),
+        ));
+        assert_eq!(canonicalize(nested_risky_power), symint_literal(0));
+
+        let flattened_risky_power = Type::SymInt(SymInt::floor_div(
+            symint_literal(1),
+            Type::SymInt(SymInt::mul(symint_literal(2), risky_power)),
+        ));
+        assert_eq!(
+            canonicalize(flattened_risky_power),
+            Type::SymInt(SymInt::floor_div(
+                symint_literal(1),
+                Type::SymInt(SymInt::pow(symint_literal(2), Type::Var(Var::ZERO))),
+            ))
+        );
     }
 }

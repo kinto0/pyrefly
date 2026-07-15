@@ -22,6 +22,7 @@ use pyrefly_types::callable::FunctionKind;
 use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::dimension::gradual_size;
+use pyrefly_types::dimension::symint_type_is_provably_negative;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
 use pyrefly_types::shaped_array::ShapedArrayShape;
@@ -3528,6 +3529,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     DimensionExprContext::Arithmetic,
                 )?;
+                if *op == Operator::Pow {
+                    let right_dim_canon = canonicalize(right_dim.clone());
+                    if symint_type_is_provably_negative(&right_dim)
+                        || symint_type_is_provably_negative(&right_dim_canon)
+                    {
+                        self.error(
+                            errors,
+                            expr.range(),
+                            ErrorKind::InvalidAnnotation,
+                            "Tensor shape exponent must not be negative".to_owned(),
+                        );
+                        return None;
+                    }
+                    return Some(canonicalize(
+                        self.heap.mk_symint(SymInt::pow(left_dim, right_dim_canon)),
+                    ));
+                }
                 Some(self.heap.mk_symint(make_symint(left_dim, right_dim)))
             }
             // Anything else is an error

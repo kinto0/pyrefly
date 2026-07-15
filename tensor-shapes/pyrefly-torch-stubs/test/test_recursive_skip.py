@@ -692,9 +692,9 @@ class GenericDownStage(nn.Module):
 
 
 # Now that we have exponentials (SizeExpr::Pow), we CAN express the output type:
-#   channels = C * 2**I
-#   height   = H // 2**I
-#   width    = W // 2**I
+#   channels = C * 2**Depth
+#   height   = H // 2**Depth
+#   width    = W // 2**Depth
 
 
 @overload
@@ -706,24 +706,35 @@ def downsample_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
 
 
 @overload
-def downsample_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+def downsample_chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     stage: GenericDownStage,
     x: Tensor[[B, C, H, W]],
-    depth: SymInt[I],
-) -> Tensor[[B, C * 2**I, H // 2**I, W // 2**I]]: ...
+    depth: SymInt[Depth],
+) -> Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]: ...
 
 
-def downsample_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+def downsample_chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     stage: GenericDownStage,
     x: Tensor[[B, C, H, W]],
-    depth: SymInt[I],
-) -> Tensor[[B, 2 * C, H // 2, W // 2]] | Tensor[[B, C * 2**I, H // 2**I, W // 2**I]]:
-    """Chain I downsampling stages (Pattern C — exponential).
+    depth: SymInt[Depth],
+) -> (
+    Tensor[[B, 2 * C, H // 2, W // 2]]
+    | Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]
+    | Tensor[
+        [
+            B,
+            C * 2**Depth,
+            (H // 2) // 2 ** (Depth - 1),
+            (W // 2) // 2 ** (Depth - 1),
+        ]
+    ]
+):
+    """Chain Depth downsampling stages (Pattern C — exponential).
 
     Inductive step: After one stage we have Tensor[[B, 2*C, H//2, W//2]].
     Recursing with depth-1:
-        channels: 2*C * 2**(I-1) = C * 2**1 * 2**(I-1) = C * 2**I  ✓
-        spatial:  (H//2) // 2**(I-1) = H // (2 * 2**(I-1)) = H // 2**I  ✓
+        channels: 2*C * 2**(Depth-1) = C * 2**1 * 2**(Depth-1) = C * 2**Depth  ✓
+        spatial stays nested unless Depth-1 is proven nonnegative.
     """
     if depth == 1:
         return stage(x)

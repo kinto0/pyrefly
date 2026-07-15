@@ -748,6 +748,51 @@ def exact(d3: SymInt[3], s3: SymInt[3], d4: SymInt[4]) -> None:
 );
 
 testcase!(
+    test_tensor_shapes_symint_annotation_pow_exponents,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymVar
+from typing import reveal_type
+
+# The sign of symbolic forms like -M and 0 - M is not provable here, so keep
+# them consistent and reject only exponents proven negative.
+def valid[N: SymVar, M: SymVar](
+    literal: SymInt[N ** 2],
+    symbolic: SymInt[N ** M],
+    symbolic_base: SymInt[2 ** N],
+    sum_expr: SymInt[N ** (M + 1)],
+    symbolic_negative: SymInt[N ** -M],
+    symbolic_sub: SymInt[N ** (0 - M)],
+) -> None:
+    pass
+
+def canonicalized[N: SymVar](
+    half_power: SymInt[N ** (1 // 2)],
+    neg_zero: SymInt[N ** -0],
+    neg_zero_expr: SymInt[N ** -(1 - 1)],
+) -> None:
+    reveal_type(half_power)  # E: revealed type: SymInt[1]
+    reveal_type(neg_zero)  # E: revealed type: SymInt[1]
+    reveal_type(neg_zero_expr)  # E: revealed type: SymInt[1]
+
+def negative_literal[N: SymVar](x: SymInt[N ** -1]) -> None:  # E: Tensor shape exponent must not be negative
+    pass
+
+def negative_floor_div_left[N: SymVar](x: SymInt[N ** (-1 // 2)]) -> None:  # E: Tensor shape exponent must not be negative
+    pass
+
+def negative_floor_div_expr[N: SymVar](x: SymInt[N ** ((1 - 2) // 2)]) -> None:  # E: Tensor shape exponent must not be negative
+    pass
+
+def negative_floor_div_right[N: SymVar](x: SymInt[N ** (1 // -2)]) -> None:  # E: Tensor shape exponent must not be negative
+    pass
+
+def ordinary_typevar[T](x: SymInt[2 ** T]) -> None:  # E: `T` must be a `SymVar` to be used in shape arithmetic
+    pass
+"#,
+);
+
+testcase!(
     test_tensor_shapes_internal_dim_carrier_flows_to_size,
     shaped_array_env(),
     r#"
@@ -812,6 +857,28 @@ def with_derived[N: SymVar](first: SymInt[N], second: SymInt[N // 2]) -> None: .
 
 def f[N: SymVar](n: SymInt[N], half: SymInt[N // 2]) -> None:
     with_derived(n, half)
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_nested_floor_div_negative_outer_divisor,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymVar
+from typing import reveal_type
+
+def f[N: SymVar, M: SymVar, I: SymVar](
+    positive_outer: SymInt[(N // 2) // 3],
+    negative_outer: SymInt[(N // 2) // -1],
+    unknown_outer: SymInt[(N // 2) // M],
+    negative_inner_positive_outer: SymInt[(N // -2) // 3],
+    risky_power_outer: SymInt[(N // 2) // (2 ** (I - 1))],
+) -> None:
+    reveal_type(positive_outer)  # E: revealed type: SymInt[(N // 6)]
+    reveal_type(negative_outer)  # E: revealed type: SymInt[((N // 2) // -1)]
+    reveal_type(unknown_outer)  # E: revealed type: SymInt[((N // 2) // M)]
+    reveal_type(negative_inner_positive_outer)  # E: revealed type: SymInt[(N // -6)]
+    reveal_type(risky_power_outer)  # E: revealed type: SymInt[((N // 2) // (2 ** (-1 + I)))]
 "#,
 );
 
@@ -1819,6 +1886,7 @@ def ordinary_literals() -> None:
     reveal_type(1 - 2)  # E: revealed type: int
     reveal_type(2 * 3)  # E: revealed type: int
     reveal_type(5 // 2)  # E: revealed type: int
+    reveal_type(2 ** 3)  # E: revealed type: int
     total = 1
     total += 2
     reveal_type(total)  # E: revealed type: int
@@ -1832,6 +1900,68 @@ def ordinary_typevar_value[T: int](x: T) -> None:
 
 def ordinary_unrestricted_typevar_value[T](x: T) -> None:
     x + 1  # E: `+` is not supported between `T` and `Literal[1]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_symint_falls_back_to_int_behavior,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymVar
+from typing import Any, SupportsIndex, assert_type, reveal_type
+
+def take_index(x: SupportsIndex) -> None: ...
+def keep_symbolic[M: SymVar](value: SymInt[M]) -> SymInt[M]: ...
+
+def use[N: SymVar, M: SymVar](x: SymInt[N], y: SymInt[3], e3: SymInt[3], m: SymInt[M], i: int, f: float) -> None:
+    reveal_type(x + 1)  # E: revealed type: SymInt[(1 + N)]
+    reveal_type(x - 1)  # E: revealed type: SymInt[(-1 + N)]
+    reveal_type(x * 2)  # E: revealed type: SymInt[(2 * N)]
+    reveal_type(x // 2)  # E: revealed type: SymInt[(N // 2)]
+
+    reveal_type(x + f)  # E: revealed type: float
+    reveal_type(f + x)  # E: revealed type: float
+    reveal_type(x / 2)  # E: revealed type: float
+    reveal_type(x % 2)  # E: revealed type: int
+
+    reveal_type(x ** 0)  # E: revealed type: SymInt[1]
+    reveal_type(x ** 1)  # E: revealed type: SymInt[N]
+    reveal_type(x ** 2)  # E: revealed type: SymInt[(N ** 2)]
+    reveal_type(x ** e3)  # E: revealed type: SymInt[(N ** 3)]
+    reveal_type(y ** 2)  # E: revealed type: SymInt[9]
+    reveal_type(y ** e3)  # E: revealed type: SymInt[27]
+    reveal_type(x ** -1)  # E: revealed type: float
+    neg = y - 4
+    reveal_type(neg)  # E: revealed type: SymInt[-1]
+    reveal_type(x ** neg)  # E: revealed type: float
+    reveal_type(x ** f)  # E: revealed type: float
+    reveal_type(x ** i)  # E: revealed type: Unknown
+    assert_type(x ** m, Any)
+    assert_type(2 ** x, Any)
+    reveal_type(2 ** y)  # E: revealed type: SymInt[8]
+    reveal_type(x ** 100000000000000000000000000000000)  # E: revealed type: int
+    flowed = keep_symbolic(neg)
+    reveal_type(flowed)  # E: revealed type: SymInt[-1]
+    reveal_type(2 ** flowed)  # E: revealed type: float
+    reveal_type(flowed ** 0)  # E: revealed type: SymInt[1]
+
+    reveal_type(x.bit_length())  # E: revealed type: int
+    reveal_type(x.real)  # E: revealed type: int
+    reveal_type(x.numerator)  # E: revealed type: int
+    reveal_type(x.__index__())  # E: revealed type: int
+    reveal_type(hash(x))  # E: revealed type: int
+
+    reveal_type(x == i)  # E: revealed type: bool
+    reveal_type(x < i)  # E: revealed type: bool
+    reveal_type(x >= 0)  # E: revealed type: bool
+
+    take_index(x)
+    range(x)
+    [1, 2, 3][x]
+
+    reveal_type(+x)  # E: revealed type: int
+    reveal_type(-x)  # E: revealed type: int
+    reveal_type(~x)  # E: revealed type: int
 "#,
 );
 
