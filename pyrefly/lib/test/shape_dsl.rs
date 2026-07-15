@@ -678,6 +678,87 @@ def bad[S: SymIntTuple, N: SymIntVar](
 );
 
 testcase!(
+    test_tensor_shapes_syminttuple_tuple_behaviors,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymIntTuple, SymIntVar
+
+def fixed[N: SymIntVar](shape: SymIntTuple[2, N]) -> None:
+    reveal_type(shape[0])  # E: revealed type: SymInt[2]
+    reveal_type(shape[1])  # E: revealed type: SymInt[N]
+    reveal_type(shape[-1])  # E: revealed type: SymInt[N]
+    reveal_type(shape[:1])  # E: revealed type: tuple[SymInt[2]]
+    reveal_type(shape.count(2))  # E: revealed type: int
+    first, second = shape
+    reveal_type(first)  # E: revealed type: SymInt[2]
+    reveal_type(second)  # E: revealed type: SymInt[N]
+
+def bare(shape: SymIntTuple) -> None:
+    reveal_type(shape[0])  # E: revealed type: SymInt[int]
+    for dim in shape:
+        reveal_type(dim)  # E: revealed type: SymInt[int]
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_syminttuple_unpacked_tuple_behaviors,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
+
+def suffix_shape[S: SymIntTuple, N: SymIntVar](
+    shape: SymIntTuple[*Elements[S], N],
+    i: int,
+    dim: SymInt[N],
+) -> None:
+    reveal_type(shape[0])  # E: revealed type: SymInt[int]
+    reveal_type(shape[-1])  # E: revealed type: SymInt[N]
+    reveal_type(shape[i])  # E: revealed type: SymInt[int]
+    reveal_type(shape.count(dim))  # E: revealed type: int
+    for elem in shape:
+        reveal_type(elem)  # E: revealed type: SymInt[int]
+    first, *middle, last = shape
+    reveal_type(first)  # E: revealed type: SymInt[int]
+    reveal_type(middle)  # E: revealed type: list[SymInt[int]]
+    reveal_type(last)  # E: revealed type: SymInt[N]
+
+def prefix_shape[S: SymIntTuple, N: SymIntVar](
+    shape: SymIntTuple[N, *Elements[S]],
+    i: int,
+) -> None:
+    reveal_type(shape[0])  # E: revealed type: SymInt[N]
+    reveal_type(shape[-1])  # E: revealed type: SymInt[int]
+    reveal_type(shape[i])  # E: revealed type: SymInt[int]
+    for elem in shape:
+        reveal_type(elem)  # E: revealed type: SymInt[int]
+    first, *middle, last = shape
+    reveal_type(first)  # E: revealed type: SymInt[N]
+    reveal_type(middle)  # E: revealed type: list[SymInt[int]]
+    reveal_type(last)  # E: revealed type: SymInt[int]
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_ordinary_unpacked_tuple_behavior_is_not_shape_specific,
+    shaped_array_env(),
+    r#"
+from typing import assert_type, reveal_type
+from shape_extensions import SymInt
+
+def ordinary(x: tuple[str, *tuple[SymInt, ...]]) -> None:
+    reveal_type(x[0])  # E: revealed type: str
+    first, *rest = x
+    assert_type(first, str | SymInt[int])
+    reveal_type(rest)  # E: revealed type: list[str | SymInt[int]]
+    *head, last = x
+    reveal_type(head)  # E: revealed type: list[str | SymInt[int]]
+    reveal_type(last)  # E: revealed type: str | SymInt[int]
+"#,
+);
+
+testcase!(
     test_ordinary_typevar_shape_dimension_is_rejected,
     shaped_array_env(),
     r#"

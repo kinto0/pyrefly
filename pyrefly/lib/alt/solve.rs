@@ -294,10 +294,60 @@ impl TypeFormContext {
 pub enum Iterable {
     OfType(Type),
     FixedLen(Vec<Type>),
+    Unpacked {
+        prefix: Vec<Type>,
+        middle: Type,
+        suffix: Vec<Type>,
+    },
     OfTypeVarTuple(Quantified),
 }
 
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
+    pub(crate) fn symint_tuple_unpacked_element_type(
+        &self,
+        prefix: &[Type],
+        middle: &Type,
+        suffix: &[Type],
+    ) -> Type {
+        let middle = match middle {
+            Type::Tuple(Tuple::Concrete(elts)) => self.unions(elts.clone()),
+            Type::Tuple(Tuple::Unbounded(elt)) => (**elt).clone(),
+            Type::Tuple(Tuple::Unpacked(unpacked)) => {
+                let (prefix, middle, suffix) = &**unpacked;
+                self.symint_tuple_unpacked_element_type(prefix, middle, suffix)
+            }
+            _ => self
+                .unwrap_iterable(middle)
+                .unwrap_or_else(|| self.heap.mk_class_type(self.stdlib.object().clone())),
+        };
+        let mut elements = prefix.to_vec();
+        elements.push(middle);
+        elements.extend(suffix.iter().cloned());
+        if elements.iter().any(|ty| ty == &gradual_size()) {
+            gradual_size()
+        } else {
+            self.unions(elements)
+        }
+    }
+
+    fn iterate_symint_tuple(&self, symint_tuple: &SymIntTuple) -> Vec<Iterable> {
+        let Type::Tuple(tuple) = symint_tuple.to_tuple_type() else {
+            unreachable!("SymIntTuple always projects to a tuple")
+        };
+        match tuple {
+            Tuple::Concrete(elts) => vec![Iterable::FixedLen(elts)],
+            Tuple::Unbounded(elt) => vec![Iterable::OfType(*elt)],
+            Tuple::Unpacked(unpacked) => {
+                let (prefix, middle, suffix) = *unpacked;
+                vec![Iterable::Unpacked {
+                    middle: self.symint_tuple_unpacked_element_type(&prefix, &middle, &suffix),
+                    prefix,
+                    suffix,
+                }]
+            }
+        }
+    }
+
     /// Solve a `BindingLegacyTypeParam`, producing a `LegacyTypeParameterLookup` that tells the
     /// caller whether the name is a type parameter and, if so, which `Quantified` to use.
     ///
@@ -920,6 +970,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::ClassType(cls) if let Some(Tuple::Concrete(elts)) = self.as_tuple(cls) => {
                 vec![Iterable::FixedLen(elts.clone())]
             }
+            Type::SymIntTuple(symint_tuple) => self.iterate_symint_tuple(symint_tuple),
             Type::Tuple(Tuple::Concrete(elts)) => vec![Iterable::FixedLen(elts.clone())],
             Type::Tuple(Tuple::Unbounded(elt)) => vec![Iterable::OfType((**elt).clone())],
             Type::Tuple(Tuple::Unpacked(f)) if f.0.is_empty() && f.2.is_empty() => {
@@ -1003,12 +1054,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             match iterable {
                 Iterable::OfType(t) => produced_types.push(t),
                 Iterable::FixedLen(ts) => produced_types.extend(ts),
+                Iterable::Unpacked {
+                    prefix,
+                    middle,
+                    suffix,
+                } => {
+                    produced_types.extend(prefix);
+                    produced_types.push(middle);
+                    produced_types.extend(suffix);
+                }
                 Iterable::OfTypeVarTuple(q) => {
                     produced_types.push(self.heap.mk_element_of_type_var_tuple(q))
                 }
             }
         }
-        self.unions(produced_types)
+        if produced_types.iter().any(|ty| ty == &gradual_size()) {
+            gradual_size()
+        } else {
+            self.unions(produced_types)
+        }
     }
 
     fn check_is_exception(
@@ -2361,7 +2425,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let iterables = self.iterate(iterable_ty.ty(), *range, errors, None);
                 for iterable in iterables {
                     match iterable {
-                        Iterable::OfType(_) => {}
+                        Iterable::OfType(_) | Iterable::Unpacked { .. } => {}
                         Iterable::OfTypeVarTuple(_) => {
                             self.error(
                                 errors,
@@ -4168,6 +4232,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Iterable::OfType(ty) => match pos {
                     UnpackedPosition::Index(_) | UnpackedPosition::ReverseIndex(_) => ty,
                     UnpackedPosition::Slice(_, _) => self.heap.mk_class_type(self.stdlib.list(ty)),
+                },
+                Iterable::Unpacked {
+                    prefix,
+                    middle,
+                    suffix,
+                } => match pos {
+                    UnpackedPosition::Index(i) => {
+                        prefix.get(*i).cloned().unwrap_or_else(|| middle.clone())
+                    }
+                    UnpackedPosition::ReverseIndex(i) => {
+                        if *i > 0 && *i <= suffix.len() {
+                            suffix[suffix.len() - *i].clone()
+                        } else {
+                            middle.clone()
+                        }
+                    }
+                    UnpackedPosition::Slice(i, j) => {
+                        let mut elements = prefix.iter().skip(*i).cloned().collect::<Vec<_>>();
+                        elements.push(middle.clone());
+                        elements
+                            .extend(suffix.iter().take(suffix.len().saturating_sub(*j)).cloned());
+                        let elem_ty = if elements.iter().any(|ty| ty == &gradual_size()) {
+                            gradual_size()
+                        } else {
+                            self.unions(elements)
+                        };
+                        self.heap.mk_class_type(self.stdlib.list(elem_ty))
+                    }
                 },
                 Iterable::OfTypeVarTuple(_) => {
                     // Type var tuples can resolve to anything so we fall back to object

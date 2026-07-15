@@ -2763,6 +2763,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
                 ),
+                Type::SymIntTuple(ref symint_tuple) => self.infer_symint_tuple_subscript(
+                    symint_tuple,
+                    slice,
+                    range,
+                    errors,
+                    Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
+                ),
                 Type::Any(style) => style.propagate(),
                 Type::Literal(ref lit) if let Lit::Bytes(ref bytes) = lit.value => self.subscript_bytes_literal(
                     bytes,

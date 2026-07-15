@@ -272,8 +272,28 @@ impl SymIntTuple {
             Tuple::Unbounded(_) => {
                 unreachable!("shaped-array unbounded shapes must be tuple[Any, ...]")
             }
-            Tuple::Concrete(_) | Tuple::Unpacked(_) => Type::Tuple(self.0.clone()),
+            Tuple::Concrete(_) => Type::Tuple(self.0.clone()),
+            Tuple::Unpacked(unpacked) => {
+                let (prefix, middle, suffix) = &**unpacked;
+                let middle = if is_tuple_carrier_shape_middle(middle) {
+                    Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
+                } else {
+                    middle.clone()
+                };
+                Type::Tuple(Tuple::Unpacked(Box::new((
+                    prefix.clone(),
+                    middle,
+                    suffix.clone(),
+                ))))
+            }
         }
+    }
+
+    pub fn to_tuple(&self) -> Tuple {
+        let Type::Tuple(tuple) = self.to_tuple_type() else {
+            unreachable!("SymIntTuple always projects to a tuple")
+        };
+        tuple
     }
 
     /// Create variadic shape with unpacked TypeVarTuple: Tensor[2, *Shape, 4]
@@ -1454,6 +1474,32 @@ mod tests {
             Type::Tuple(Tuple::Unpacked(Box::new((
                 vec![size(2)],
                 middle,
+                vec![size(3)],
+            ))))
+        );
+    }
+
+    #[test]
+    fn unpacked_carrier_middle_projects_to_gradual_symint_tuple() {
+        let s = Type::Quantified(Box::new(Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("__test__"),
+                AnchorIndex::first(TextRange::default()),
+                QuantifiedOrigin::Pep695,
+            ),
+            Name::new("S"),
+            QuantifiedKind::TypeVar,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )));
+        let projected = SymIntTuple::unpacked(vec![size(2)], s, vec![size(3)]).to_tuple_type();
+
+        assert_eq!(
+            projected,
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                vec![size(2)],
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
                 vec![size(3)],
             ))))
         );
