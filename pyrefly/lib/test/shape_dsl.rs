@@ -550,13 +550,13 @@ def f[N: SymIntVar](
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_symint_tuple)  # E: revealed type: Array[[N], int]
     reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
+    reveal_type(carrier)  # E: revealed type: SymIntTuple[2, 3]
+    reveal_type(mixed_carrier)  # E: revealed type: SymIntTuple[2, 3, N]
+    reveal_type(unbounded)  # E: revealed type: SymIntTuple
     p: Array[tuple[Literal[2], Literal[3]], int] = compact
     c: Array[[2, 3], int] = pep484
     st: Array[SymIntTuple[2, 3], int] = compact
     mst: Array[tuple[Literal[2], Literal[3], SymInt[N]], int] = mixed_symint_tuple
-    t: tuple[Literal[2], Literal[3]] = carrier
-    mt: tuple[Literal[2], Literal[3], SymInt[N]] = mixed_carrier
-    u: tuple[int, ...] = unbounded
 
 def append_dim[S: SymIntTuple, OUT: SymIntVar](
     explicit: Array[SymIntTuple[*Elements[S], OUT], int],
@@ -588,6 +588,11 @@ def gradual_middle(
     result: Array[[1, *Elements[SymIntTuple], 3], int],
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[1, *tuple[int, ...], 3], int]
+
+def concrete_elements_middle(
+    result: Array[[1, *Elements[SymIntTuple[2, 3]], 4], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4], int]
 "#,
 );
 
@@ -612,6 +617,63 @@ def f[M: SymIntVar, N: SymIntVar](
     result: Array[[M, N], int],
 ) -> None:
     reveal_type(append_dim(source, result))  # E: revealed type: Array[[M, N], int]
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_syminttuple_assignability,
+    shaped_array_env(),
+    r#"
+from typing import Literal
+from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
+
+def takes_symint_tuple(x: SymIntTuple) -> None: ...
+def takes_tuple_of_symints(x: tuple[SymInt, ...]) -> None: ...
+def takes_tuple_of_ints(x: tuple[int, ...]) -> None: ...
+def takes_fixed_shape(x: SymIntTuple[2, 3]) -> None: ...
+def takes_fixed_symbolic_shape[N: SymIntVar](x: SymIntTuple[2, N]) -> None: ...
+def takes_fixed_symint_tuple[N: SymIntVar](x: tuple[SymInt[2], SymInt[N]]) -> None: ...
+def takes_legacy_literal_pair(x: tuple[Literal[2], Literal[3]]) -> None: ...
+def takes_int_pair(x: tuple[int, int]) -> None: ...
+def takes_unpacked_shape[S: SymIntTuple, N: SymIntVar](x: SymIntTuple[*Elements[S], N]) -> None: ...
+
+def bare(shape: SymIntTuple, ints: tuple[int, ...], symints: tuple[SymInt, ...]) -> None:
+    takes_tuple_of_symints(shape)
+    takes_tuple_of_ints(shape)
+    takes_symint_tuple(ints)
+    takes_symint_tuple(symints)
+
+def fixed[N: SymIntVar](
+    shape: SymIntTuple[2, N],
+    shape_23: SymIntTuple[2, 3],
+    tuple_of_symints: tuple[SymInt[2], SymInt[N]],
+    legacy_23: tuple[Literal[2], Literal[3]],
+) -> None:
+    takes_fixed_symint_tuple(shape)
+    takes_fixed_symbolic_shape(tuple_of_symints)
+    takes_fixed_shape(legacy_23)
+    takes_legacy_literal_pair(shape_23)
+    takes_int_pair(shape)
+
+def unpacked[S: SymIntTuple, N: SymIntVar](
+    shape: SymIntTuple[*Elements[S], N],
+    whole_shape: SymIntTuple[*Elements[S]],
+    carrier: S,
+) -> None:
+    takes_unpacked_shape(shape)
+    carrier_from_whole_shape: S = whole_shape
+    whole_shape_from_carrier: SymIntTuple[*Elements[S]] = carrier
+
+def bad[S: SymIntTuple, N: SymIntVar](
+    shape_24: SymIntTuple[2, 4],
+    int_pair: tuple[int, int],
+    ints: tuple[int, ...],
+    symints: tuple[SymInt, ...],
+) -> None:
+    takes_fixed_shape(shape_24)  # E: Shape dimension mismatch
+    takes_fixed_shape(int_pair)  # E: is not assignable
+    takes_unpacked_shape(ints)  # E: is not assignable
+    takes_unpacked_shape(symints)  # E: is not assignable
 "#,
 );
 
@@ -1116,6 +1178,19 @@ def f(bad: Array[["rows", 3], int]) -> None: ...  # E: Could not find name `rows
 );
 
 testcase!(
+    test_shaped_array_rejects_invalid_tuple_carrier_for_syminttuple_bound,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymIntTuple, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def f(bad: Array[tuple[str], int]) -> None: ...  # E: Invalid shaped-array shape carrier `tuple[str]`
+"#,
+);
+
+testcase!(
     test_shaped_array_compact_list_rejects_unbounded_tuple_unpack,
     shaped_array_env(),
     r#"
@@ -1597,7 +1672,7 @@ def f(x_2_3: Array[[2, 3], int]) -> None:
 );
 
 testcase!(
-    bug = "invalid closed carrier Array[tuple[str, str], int] is not yet rejected",
+    bug = "closed-carrier diagnostic wording/placement is provisional until tuple<->SymIntTuple assignability lands",
     test_shaped_array_invalid_closed_carrier,
     shaped_array_env(),
     r#"
@@ -1607,16 +1682,16 @@ from shape_extensions import shaped_array
 class Array[Shape, DType]: ...
 
 def want_2_3(x: Array[[2, 3], int]) -> None: ...
-def want_bad(x: Array[tuple[str, str], int]) -> None: ...
+def want_bad(x: Array[tuple[str, str], int]) -> None: ...  # E: Invalid shaped-array shape carrier `tuple[str, str]`
 
 # `tuple[str, str]` is not a valid shape carrier. It projects to a shapeless
 # array internally; a source-aware diagnostic rejecting this form is deferred.
-def f(x_bad: Array[tuple[str, str], int]) -> None:
-    want_2_3(x_bad)  # E: Argument `Array[tuple[Unknown, ...], int]` is not assignable to parameter `x` with type `Array[[2, 3], int]`
+def f(x_bad: Array[tuple[str, str], int]) -> None:  # E: Invalid shaped-array shape carrier `tuple[str, str]`
+    want_2_3(x_bad)
     want_bad(x_bad)
 
 def g(x_2_3: Array[[2, 3], int]) -> None:
-    want_bad(x_2_3)  # E: Argument `Array[[2, 3], int]` is not assignable to parameter `x` with type `Array[tuple[Unknown, ...], int]`
+    want_bad(x_2_3)
 "#,
 );
 

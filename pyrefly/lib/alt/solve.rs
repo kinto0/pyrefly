@@ -20,6 +20,7 @@ use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::shaped_array::ShapedArrayType;
+use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_alias::TypeAliasIndex;
 use pyrefly_types::type_alias::TypeAliasRef;
@@ -6084,7 +6085,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 if let Type::ClassType(cls) = t.as_ref()
                     && self.is_symint_tuple_class(cls.class_object())
                 {
-                    return Some(self.bare_symint_tuple_carrier());
+                    return Some(self.heap.mk_symint_tuple(SymIntTuple::shapeless()));
                 }
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "SymInt")
@@ -6170,6 +6171,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::KwargsValue(q) => Some(self.heap.mk_kwargs(*q)),
             // SymInt and Tensor are already type forms.
             ty @ Type::SymInt(_) => Some(ty),
+            ty @ Type::SymIntTuple(_) => Some(ty),
             ty @ Type::ShapedArray(_) => Some(ty),
             ty @ Type::NNModule(_) => Some(ty),
             ty @ Type::DataFrame(_) => Some(ty),

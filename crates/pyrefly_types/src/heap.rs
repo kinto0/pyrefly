@@ -39,6 +39,7 @@ use crate::param_spec::ParamSpec;
 use crate::quantified::Quantified;
 use crate::sentinel::Sentinel;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::SymIntTuple;
 use crate::special_form::SpecialForm;
 use crate::tuple::Tuple;
 use crate::type_alias::TypeAliasData;
@@ -448,6 +449,11 @@ impl TypeHeap {
     /// Create a `Type::ShapedArray` from a ShapedArrayType.
     pub fn mk_shaped_array(&self, shaped_array: ShapedArrayType) -> Type {
         Type::ShapedArray(Box::new(shaped_array))
+    }
+
+    /// Create a `Type::SymIntTuple` from a SymIntTuple.
+    pub fn mk_symint_tuple(&self, symint_tuple: SymIntTuple) -> Type {
+        Type::SymIntTuple(Box::new(symint_tuple))
     }
 
     /// Create a `Type::NNModule` from an NNModuleType.

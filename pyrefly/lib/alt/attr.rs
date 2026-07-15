@@ -2310,6 +2310,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // Dimension values behave like int for attribute access
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.int().clone()))
             }
+            Type::SymIntTuple(_) => {}
             Type::Tuple(tuple) => {
                 acc.push(AttributeBase1::ClassInstance(self.erase_tuple_type(tuple)))
             }

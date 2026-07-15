@@ -263,6 +263,19 @@ impl SymIntTuple {
         &self.0
     }
 
+    /// Project this shape to the ordinary tuple type it denotes.
+    pub fn to_tuple_type(&self) -> Type {
+        match &self.0 {
+            Tuple::Unbounded(t) if t.is_any() => {
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
+            }
+            Tuple::Unbounded(_) => {
+                unreachable!("shaped-array unbounded shapes must be tuple[Any, ...]")
+            }
+            Tuple::Concrete(_) | Tuple::Unpacked(_) => Type::Tuple(self.0.clone()),
+        }
+    }
+
     /// Create variadic shape with unpacked TypeVarTuple: Tensor[2, *Shape, 4]
     pub fn unpacked(prefix: Vec<Type>, middle: Type, suffix: Vec<Type>) -> Self {
         // Canonicalize all dimensions
@@ -650,7 +663,8 @@ pub fn shape_to_tuple_carrier(shape: &SymIntTuple) -> Type {
 /// Detects a tuple-carrier shape variable occupying the variadic middle of an
 /// unpacked shape.
 pub fn is_tuple_carrier_shape_middle(ty: &Type) -> bool {
-    matches!(ty, Type::Var(_)) || matches!(ty, Type::Quantified(q) if q.is_type_var())
+    matches!(ty, Type::Var(_) | Type::TypeVar(_))
+        || matches!(ty, Type::Quantified(q) if q.is_type_var())
 }
 
 /// Convert a projected tuple-carrier shape back to the class type argument.
@@ -1332,6 +1346,7 @@ mod tests {
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::dimension::SymInt;
+    use crate::dimension::gradual_size;
     use crate::lit_int::LitInt;
     use crate::literal::Lit;
     use crate::literal::LitStyle;
@@ -1391,6 +1406,56 @@ mod tests {
         assert_eq!(
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![literal(3), literal(4), literal(5)])
+        );
+    }
+
+    #[test]
+    fn shapeless_projects_to_gradual_symint_tuple() {
+        assert_eq!(
+            SymIntTuple::shapeless().to_tuple_type(),
+            Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
+        );
+    }
+
+    #[test]
+    fn concrete_projects_to_symint_dims_not_literals() {
+        let n = Type::Quantified(Box::new(Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("__test__"),
+                AnchorIndex::first(TextRange::default()),
+                QuantifiedOrigin::Pep695,
+            ),
+            Name::new("N"),
+            QuantifiedKind::SymIntVar,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )));
+        let projected = SymIntTuple::from_types(vec![size(2), n.clone()]).to_tuple_type();
+
+        assert_eq!(
+            projected,
+            Type::Tuple(Tuple::Concrete(vec![
+                size(2),
+                Type::SymInt(SymInt::Symbolic(Box::new(n))),
+            ]))
+        );
+        assert_eq!(projected.to_string(), "tuple[SymInt[2], SymInt[N]]");
+    }
+
+    #[test]
+    fn unpacked_projection_preserves_shape() {
+        let middle = Type::any_tuple();
+        let projected =
+            SymIntTuple::unpacked(vec![size(2)], middle.clone(), vec![size(3)]).to_tuple_type();
+
+        assert_eq!(
+            projected,
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                vec![size(2)],
+                middle,
+                vec![size(3)],
+            ))))
         );
     }
 

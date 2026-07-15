@@ -3786,11 +3786,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Returns whether `ty` is the normalized upper bound for a bare `SymIntTuple`
     /// carrier `TypeVar`.
     ///
-    /// When the user writes `[S: SymIntTuple]`, Pyrefly normalizes `SymIntTuple` to a
-    /// `tuple[int, ...]` type. Other tuple bounds are ordinary type bounds and
-    /// must not enable compact shape-list parsing.
+    /// Other tuple bounds are ordinary type bounds and must not enable compact
+    /// shape-list parsing.
     fn is_symint_tuple_carrier_bound(ty: &Type, int_type: &Type) -> bool {
         match ty {
+            Type::SymIntTuple(_) => true,
             Type::Tuple(Tuple::Unbounded(inner)) => inner.as_ref() == int_type,
             _ => false,
         }
@@ -3802,7 +3802,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// tuples), and `TypeVar`s whose upper bound is a `SymIntTuple` (i.e., a tuple type).
     fn is_symint_tuple_elements_carrier(&self, ty: &Type) -> bool {
         let upper_bound = match ty {
-            Type::Tuple(_) | Type::UntypedAlias(_) => return true,
+            Type::Tuple(_) | Type::SymIntTuple(_) | Type::UntypedAlias(_) => return true,
             Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
             Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
             _ => return false,
@@ -3842,19 +3842,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         match Ast::unpack_slice(&subscript.slice) {
             [arg] => {
                 let carrier = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
-                if self.is_symint_tuple_elements_carrier(&carrier) {
-                    Ok(Some(carrier))
-                } else {
-                    self.error(
-                        errors,
-                        arg.range(),
-                        ErrorKind::InvalidAnnotation,
-                        format!(
-                            "`Elements[...]` requires a `SymIntTuple` carrier, got `{}`",
-                            self.for_display(carrier)
-                        ),
-                    );
-                    Err(())
+                match carrier {
+                    Type::SymIntTuple(shape) => match shape.as_tuple() {
+                        Tuple::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
+                        tuple if tuple.is_any_tuple() => Ok(Some(self.bare_symint_tuple_carrier())),
+                        _ => {
+                            self.error(
+                                errors,
+                                arg.range(),
+                                ErrorKind::InvalidAnnotation,
+                                "`Elements[...]` only supports concrete `SymIntTuple[...]` values or shape carriers"
+                                    .to_owned(),
+                            );
+                            Err(())
+                        }
+                    },
+                    carrier if self.is_symint_tuple_elements_carrier(&carrier) => Ok(Some(carrier)),
+                    carrier => {
+                        self.error(
+                            errors,
+                            arg.range(),
+                            ErrorKind::InvalidAnnotation,
+                            format!(
+                                "`Elements[...]` requires a `SymIntTuple` carrier, got `{}`",
+                                self.for_display(carrier)
+                            ),
+                        );
+                        Err(())
+                    }
                 }
             }
             args => {
@@ -3928,6 +3943,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 Err(()) => return None,
             };
+            if let Type::Tuple(Tuple::Concrete(middle)) = middle_ty {
+                let dims = prefix.into_iter().chain(middle).chain(suffix).collect();
+                return Some(SymIntTuple::from_types(dims));
+            }
             return Some(SymIntTuple::unpacked(prefix, middle_ty, suffix));
         }
 
@@ -3967,13 +3986,29 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
         let validate_shape_slot = shape_idx < args.len() && args.len() <= tparams.len();
+        let shape_param_accepts_symint_tuple = matches!(
+            shape_param.upper_bound(self.stdlib, self.heap),
+            Type::SymIntTuple(_)
+        );
+        let shape_validation_arg = |carrier: &Type| {
+            if shape_param_accepts_symint_tuple {
+                self.heap.mk_symint_tuple(SymIntTuple::shapeless())
+            } else {
+                carrier.clone()
+            }
+        };
+        let mut shape_arg_carrier = None;
         let class_targs = args
             .iter()
             .enumerate()
             .map(|(i, arg)| match arg {
                 Expr::List(ExprList { elts, .. }) if i == shape_idx => {
                     match self.parse_symint_tuple_shape_args(elts, errors) {
-                        Some(shape) => shape_to_tuple_carrier(&shape),
+                        Some(shape) => {
+                            let carrier = shape_to_tuple_carrier(&shape);
+                            shape_arg_carrier = Some(carrier.clone());
+                            shape_validation_arg(&carrier)
+                        }
                         None => Type::any_error(),
                     }
                 }
@@ -3982,29 +4017,65 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         && let Type::ClassDef(cls) = self.expr_infer(arg, &self.error_swallower())
                         && self.is_symint_tuple_class(&cls)
                     {
-                        self.bare_symint_tuple_carrier()
+                        let carrier = self.bare_symint_tuple_carrier();
+                        shape_arg_carrier = Some(carrier.clone());
+                        shape_validation_arg(&carrier)
                     } else {
-                        let ty = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
-                        if validate_shape_slot
-                            && i == shape_idx
-                            && Self::has_unbounded_tuple_carrier(&ty)
-                        {
-                            self.error(
-                                errors,
-                                arg.range(),
-                                ErrorKind::InvalidAnnotation,
-                                "Unbounded tuple types cannot be used as shaped-array shape carriers"
-                                    .to_owned(),
-                            );
-                            Type::any_error()
-                        } else {
-                            ty
+                        match self.expr_untype(arg, TypeFormContext::TypeArgument, errors) {
+                            Type::SymIntTuple(shape) if i == shape_idx => {
+                                let carrier = if shape.as_tuple().is_any_tuple() {
+                                    self.bare_symint_tuple_carrier()
+                                } else {
+                                    shape_to_tuple_carrier(&shape)
+                                };
+                                shape_arg_carrier = Some(carrier.clone());
+                                shape_validation_arg(&carrier)
+                            }
+                            ty => {
+                                if validate_shape_slot
+                                    && i == shape_idx
+                                    && Self::has_unbounded_tuple_carrier(&ty)
+                                {
+                                    self.error(
+                                        errors,
+                                        arg.range(),
+                                        ErrorKind::InvalidAnnotation,
+                                        "Unbounded tuple types cannot be used as shaped-array shape carriers"
+                                            .to_owned(),
+                                    );
+                                    Type::any_error()
+                                } else if i == shape_idx && matches!(ty, Type::Tuple(_)) {
+                                    if tuple_carrier_to_shape(&ty).is_some() {
+                                        shape_arg_carrier = Some(ty.clone());
+                                        shape_validation_arg(&ty)
+                                    } else {
+                                        self.error(
+                                            errors,
+                                            arg.range(),
+                                            ErrorKind::InvalidAnnotation,
+                                            format!(
+                                                "Invalid shaped-array shape carrier `{}`",
+                                                self.for_display(ty)
+                                            ),
+                                        );
+                                        Type::any_error()
+                                    }
+                                } else {
+                                    ty
+                                }
+                            }
                         }
                     }
                 }
             })
             .collect();
-        let base_class = self.specialize_nontypeddict_to_classtype(cls, class_targs, range, errors);
+        let mut base_class =
+            self.specialize_nontypeddict_to_classtype(cls, class_targs, range, errors);
+        if let Some(carrier) = shape_arg_carrier
+            && let Some(shape_arg) = base_class.targs_mut().as_mut().get_mut(shape_idx)
+        {
+            *shape_arg = carrier;
+        }
         self.shaped_array_classtype_to_shaped_array_type(&base_class)
             .to_type()
     }
@@ -4013,7 +4084,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let Some(shape) = self.parse_symint_tuple_shape_args(args, errors) else {
             return self.heap.mk_type_of(Type::any_error());
         };
-        self.heap.mk_type_of(shape_to_tuple_carrier(&shape))
+        self.heap.mk_type_of(self.heap.mk_symint_tuple(shape))
     }
 
     fn parse_single_symint_type(

@@ -450,6 +450,7 @@ fn type_kind_name(ty: &Type) -> &'static str {
         Type::Materialization => "materialization",
         Type::Var(_) => "var",
         Type::ShapedArray(_) => "shaped_array",
+        Type::SymIntTuple(_) => "symint_tuple",
         Type::NNModule(_) => "nn_module",
         Type::DataFrame(_) => "data_frame",
         Type::SymInt(_) => "symint",
@@ -652,6 +653,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
         Type::Materialization => named_type_shape_kind("Materialization", Vec::new()),
         Type::Var(_) => named_type_shape_kind("typing.Any", Vec::new()),
         Type::ShapedArray(_) => named_type_shape_kind("Tensor", Vec::new()),
+        Type::SymIntTuple(_) => named_type_shape_kind("SymIntTuple", Vec::new()),
         Type::NNModule(module) => {
             let args = module
                 .class

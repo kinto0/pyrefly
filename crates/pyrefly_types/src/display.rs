@@ -695,6 +695,15 @@ impl<'a> TypeDisplayContext<'a> {
                 }
             },
             Type::ShapedArray(shaped_array) => self.fmt_shaped_array(shaped_array, output),
+            Type::SymIntTuple(symint_tuple) => {
+                if symint_tuple.as_tuple().is_any_tuple() {
+                    output.write_str("SymIntTuple")
+                } else {
+                    output.write_str("SymIntTuple[")?;
+                    output.write_str(&symint_tuple.to_string())?;
+                    output.write_str("]")
+                }
+            }
             Type::NNModule(module) => {
                 // Display as the class name (e.g., MaxPool2d)
                 self.fmt_helper_generic(&Type::ClassType(module.class.clone()), false, output)
@@ -1750,6 +1759,18 @@ pub mod tests {
                 .to_string(),
             "Array[[3, N]]"
         );
+    }
+
+    #[test]
+    fn test_display_symint_tuple_type() {
+        let concrete = Type::SymIntTuple(Box::new(SymIntTuple::new(vec![
+            SymInt::Literal(2),
+            SymInt::Literal(3),
+        ])));
+        assert_eq!(concrete.to_string(), "SymIntTuple[2, 3]");
+
+        let gradual = Type::SymIntTuple(Box::new(SymIntTuple::shapeless()));
+        assert_eq!(gradual.to_string(), "SymIntTuple");
     }
 
     fn fake_generic_bound_method(

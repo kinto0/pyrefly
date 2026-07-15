@@ -483,6 +483,7 @@ pub(super) fn type_to_indexed_shape(
         Type::Materialization => indexed_named_leaf(table, "Materialization"),
         Type::Var(_) => indexed_named_leaf(table, "typing.Any"),
         Type::ShapedArray(_) => indexed_named_leaf(table, "Tensor"),
+        Type::SymIntTuple(_) => indexed_named_leaf(table, "SymIntTuple"),
         Type::NNModule(module) => {
             let args = module
                 .class

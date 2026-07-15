@@ -412,6 +412,8 @@ impl TypeConverter<'_> {
                 self.convert_class_type(&t.base_class, TypeFlags::INSTANCE)
             }
 
+            PyreflyType::SymIntTuple(_) => builtin("tuple"),
+
             // --- NNModule → ClassType from class ---
             PyreflyType::NNModule(m) => self.convert_class_type(&m.class, TypeFlags::INSTANCE),
 

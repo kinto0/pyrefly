@@ -62,6 +62,7 @@ use crate::param_spec::ParamSpec;
 use crate::quantified::Quantified;
 use crate::sentinel::Sentinel;
 use crate::shaped_array::ShapedArrayType;
+use crate::shaped_array::SymIntTuple;
 use crate::simplify::unions;
 use crate::special_form::SpecialForm;
 use crate::stdlib::Stdlib;
@@ -788,6 +789,8 @@ pub enum Type {
     /// Shaped-array type with shape information.
     /// Example: Tensor[2, 3] represents a 2x3 tensor
     ShapedArray(Box<ShapedArrayType>),
+    /// First-class tensor shape tuple.
+    SymIntTuple(Box<SymIntTuple>),
     /// nn.Module instance with captured constructor arguments.
     /// Wraps a ClassType + field map of init args, enabling DSL forward
     /// functions to access shape-relevant constructor parameters directly.
@@ -904,6 +907,7 @@ impl Visit for Type {
             Type::TypedDict(x) => x.visit(f),
             Type::PartialTypedDict(x) => x.visit(f),
             Type::ShapedArray(x) => x.visit(f),
+            Type::SymIntTuple(x) => x.visit(f),
             Type::NNModule(x) => x.visit(f),
             Type::DataFrame(x) => x.visit(f),
             Type::SymInt(x) => x.visit(f),
@@ -961,6 +965,7 @@ impl VisitMut for Type {
             Type::TypedDict(x) => x.visit_mut(f),
             Type::PartialTypedDict(x) => x.visit_mut(f),
             Type::ShapedArray(x) => x.visit_mut(f),
+            Type::SymIntTuple(x) => x.visit_mut(f),
             Type::NNModule(x) => x.visit_mut(f),
             Type::DataFrame(x) => x.visit_mut(f),
             Type::SymInt(x) => x.visit_mut(f),

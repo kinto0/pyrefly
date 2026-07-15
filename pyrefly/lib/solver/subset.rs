@@ -918,6 +918,91 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
     }
 
+    fn symint_tuple_has_carrier_middle(shape: &SymIntTuple) -> bool {
+        match shape.as_tuple() {
+            Tuple::Unpacked(unpacked) => {
+                let (_, middle, _) = &**unpacked;
+                is_tuple_carrier_shape_middle(middle)
+            }
+            Tuple::Concrete(_) | Tuple::Unbounded(_) => false,
+        }
+    }
+
+    fn symint_tuple_as_carrier_middle(shape: &SymIntTuple) -> Option<&Type> {
+        match shape.as_tuple() {
+            Tuple::Unpacked(unpacked) => {
+                let (prefix, middle, suffix) = &**unpacked;
+                if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
+                    Some(middle)
+                } else {
+                    None
+                }
+            }
+            Tuple::Concrete(_) | Tuple::Unbounded(_) => None,
+        }
+    }
+
+    fn is_subset_symint_tuple_to_type(
+        &mut self,
+        got: &SymIntTuple,
+        want: &Type,
+    ) -> Result<(), SubsetError> {
+        if let Some(carrier) = Self::symint_tuple_as_carrier_middle(got) {
+            self.is_subset_eq(carrier, want)
+        } else {
+            self.is_subset_eq(&got.to_tuple_type(), want)
+        }
+    }
+
+    fn is_subset_type_to_symint_tuple(
+        &mut self,
+        got: &Type,
+        want: &SymIntTuple,
+    ) -> Result<(), SubsetError> {
+        if let Some(carrier) = Self::symint_tuple_as_carrier_middle(want) {
+            self.is_subset_eq(got, carrier)
+        } else {
+            self.is_subset_eq(got, &want.to_tuple_type())
+        }
+    }
+
+    fn is_subset_symint_tuple(
+        &mut self,
+        got: &SymIntTuple,
+        want: &SymIntTuple,
+    ) -> Result<(), SubsetError> {
+        if Self::symint_tuple_has_carrier_middle(got) || Self::symint_tuple_has_carrier_middle(want)
+        {
+            self.bind_tensor_dimensions(got, want)
+        } else {
+            self.is_subset_eq(&got.to_tuple_type(), &want.to_tuple_type())
+        }
+    }
+
+    fn is_subset_symint_tuple_to_tuple(
+        &mut self,
+        got: &SymIntTuple,
+        want: &Tuple,
+    ) -> Result<(), SubsetError> {
+        if Self::symint_tuple_has_carrier_middle(got) {
+            self.bind_tensor_dimensions(got, &SymIntTuple::from_tuple(want.clone()))
+        } else {
+            self.is_subset_eq(&got.to_tuple_type(), &Type::Tuple(want.clone()))
+        }
+    }
+
+    fn is_subset_tuple_to_symint_tuple(
+        &mut self,
+        got: &Tuple,
+        want: &SymIntTuple,
+    ) -> Result<(), SubsetError> {
+        if Self::symint_tuple_has_carrier_middle(want) {
+            self.bind_tensor_dimensions(&SymIntTuple::from_tuple(got.clone()), want)
+        } else {
+            self.is_subset_eq(&Type::Tuple(got.clone()), &want.to_tuple_type())
+        }
+    }
+
     fn is_paramlist_subset_of_paramspec(
         &mut self,
         got: &ParamList,
@@ -1852,6 +1937,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     )))
                 }
             }
+            (Type::SymIntTuple(got), want @ Type::Quantified(_)) => {
+                self.is_subset_symint_tuple_to_type(got, want)
+            }
+            (got @ Type::Quantified(_), Type::SymIntTuple(want)) => {
+                self.is_subset_type_to_symint_tuple(got, want)
+            }
             (_, Type::Quantified(_)) => Err(SubsetError::Other),
             (l, Type::Intersect(u)) => all(u.0.iter(), |u| self.is_subset_eq(l, u)),
             (l, Type::Union(u_union)) => {
@@ -2346,6 +2437,17 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (Type::SelfType(_), Type::SelfType(_)) => Ok(()),
             (Type::SelfType(got), _) => self.is_subset_eq(&Type::ClassType(got.clone()), want),
+            (Type::SymIntTuple(got), Type::SymIntTuple(want)) => {
+                self.is_subset_symint_tuple(got, want)
+            }
+            (Type::SymIntTuple(got), Type::Tuple(want)) => {
+                self.is_subset_symint_tuple_to_tuple(got, want)
+            }
+            (Type::Tuple(got), Type::SymIntTuple(want)) => {
+                self.is_subset_tuple_to_symint_tuple(got, want)
+            }
+            (Type::SymIntTuple(got), _) => self.is_subset_symint_tuple_to_type(got, want),
+            (got, Type::SymIntTuple(want)) => self.is_subset_type_to_symint_tuple(got, want),
             (Type::Tuple(l), Type::Tuple(u)) => self.is_subset_tuple(l, u),
             (Type::Tuple(Tuple::Concrete(left_elts)), _) => {
                 let tuple_type = self.solver.heap.mk_class_type(
