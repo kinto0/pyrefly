@@ -3615,9 +3615,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         );
         // Flag unannotated variables whose inferred type is an implicit `Any` (unknown).
         // Annotated variables have a declared type; attribute assignments (`receiver_idx`)
-        // and class-body assignments (class attributes) are covered by
-        // `implicit-any-attribute`, so they are excluded here to avoid a double report.
-        // Sub-kind of `implicit-any`.
+        // and class-body assignments are covered by attribute-specific checks, so they are
+        // excluded here to avoid a double report.
         if annot_key.is_none()
             && receiver_idx.is_none()
             && !is_class_body_assignment

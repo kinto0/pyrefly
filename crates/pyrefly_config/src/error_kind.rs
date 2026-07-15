@@ -168,8 +168,7 @@ pub enum ErrorKind {
     /// code (suppressing `implicit-any` suppresses every sub-kind).
     ImplicitAny,
     /// An implicit `Any` introduced when a class attribute without an explicit
-    /// annotation is defined by assignment to `self.x = None`, `self.x = ()`,
-    /// or a value with an unknown type.
+    /// annotation is defined by assignment to `self.x = None` or `self.x = ()`.
     /// This is a sub-kind of [ImplicitAny]: suppressing `implicit-any` also suppresses this error.
     ImplicitAnyAttribute,
     /// An implicit `Any` introduced when an empty container (`[]`, `{}`) cannot
@@ -362,6 +361,8 @@ pub enum ErrorKind {
     UnexpectedPositionalArgument,
     /// Attempting to use a type checker directive without importing it from `typing`.
     UnimportedDirective,
+    /// An unannotated attribute assigned a value with unknown type.
+    UnknownAttributeType,
     /// Accessing a DataFrame column that does not exist in the inferred schema.
     UnknownColumn,
     /// Attempting to use a name that is not defined.
@@ -532,6 +533,7 @@ impl ErrorKind {
             ErrorKind::UnannotatedParameter => Severity::Ignore,
             ErrorKind::UnannotatedReturn => Severity::Ignore,
             ErrorKind::ImplicitAnyLambda => Severity::Ignore,
+            ErrorKind::UnknownAttributeType => Severity::Ignore,
             ErrorKind::UnknownVariableType => Severity::Ignore,
             ErrorKind::UnnecessaryComparison => Severity::Warn,
             ErrorKind::UnnecessaryTypeConversion => Severity::Warn,

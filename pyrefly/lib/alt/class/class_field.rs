@@ -2339,13 +2339,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         self.expand_mut(&mut ty);
         // An unannotated attribute whose value has a bare implicit `Any` type (e.g. from an
-        // untyped call) is reported the same way as the `None`/empty-tuple sentinel cases
-        // above: `implicit-any-attribute`.
+        // untyped call) is reported separately from the `None`/empty-tuple sentinel cases above.
         if annotation.is_none() && matches!(&ty, Type::Any(AnyStyle::Implicit)) {
             self.error(
                 errors,
                 x.range(),
-                ErrorKind::ImplicitAnyAttribute,
+                ErrorKind::UnknownAttributeType,
                 "This expression is implicitly inferred to be `Any`. Please provide an explicit type annotation.".to_owned(),
             );
         }

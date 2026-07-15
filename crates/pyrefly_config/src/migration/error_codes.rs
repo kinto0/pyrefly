@@ -311,9 +311,9 @@ mod tests {
 
         assert!(result.is_ok());
         let errors = pyrefly_cfg.root.errors.as_ref().unwrap();
-        // `reportUnknownMemberType` maps to `implicit-any-attribute`.
+        // `reportUnknownMemberType` maps to `unknown-attribute-type`.
         assert_eq!(
-            errors.severity(ErrorKind::ImplicitAnyAttribute),
+            errors.severity(ErrorKind::UnknownAttributeType),
             Severity::Error
         );
     }

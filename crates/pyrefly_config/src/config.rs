@@ -2499,6 +2499,10 @@ output-format = "omit-errors"
             );
         }
         assert_eq!(
+            errors.severity(ErrorKind::UnknownAttributeType),
+            Severity::Ignore
+        );
+        assert_eq!(
             errors.severity(ErrorKind::UnknownVariableType),
             Severity::Ignore
         );
