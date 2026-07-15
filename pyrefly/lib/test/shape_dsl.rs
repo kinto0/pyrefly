@@ -546,7 +546,7 @@ def f[N: SymVar](
     reveal_type(pep484)  # E: revealed type: Array[[2, 3], int]
     reveal_type(size_tuple)  # E: revealed type: Array[[2, 3], int]
     reveal_type(mixed_size_tuple)  # E: revealed type: Array[[2, 3, N], int]
-    reveal_type(bare_dim)  # E: revealed type: Dim[N]
+    reveal_type(bare_dim)  # E: revealed type: Size[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_size_tuple)  # E: revealed type: Array[[N], int]
     reveal_type(any_dim)  # E: revealed type: Array[[Unknown], int]
@@ -704,7 +704,67 @@ def sizes[N: SymVar](
     reveal_type(symbolic)  # E: revealed type: Size[N]
     reveal_type(arithmetic)  # E: revealed type: Size[(1 + N)]
     assert_type(arithmetic, Size[N + 1])
-    dim
+    reveal_type(dim)  # E: revealed type: Size[(1 + N)]
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_dim_annotations_parse_to_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Dim, Size, SymVar
+from typing import Any, reveal_type
+
+def bare_dim(x: Dim) -> None:
+    reveal_type(x)  # E: revealed type: Dim
+
+def dims[N: SymVar](
+    literal: Dim[3],
+    symbolic: Dim[N],
+    arithmetic: Dim[N + 1],
+) -> None:
+    reveal_type(literal)  # E: revealed type: Size[3]
+    reveal_type(symbolic)  # E: revealed type: Size[N]
+    reveal_type(arithmetic)  # E: revealed type: Size[(1 + N)]
+    reveal_type(arithmetic + 1)  # E: revealed type: Size[(2 + N)]
+
+def gradual(any_dim: Dim[Any], int_dim: Dim[int]) -> None:
+    reveal_type(int_dim)  # E: revealed type: Size[int]
+    take_size3(any_dim)
+    take_dim3(any_dim)
+    take_size3(int_dim)
+    take_dim3(int_dim)
+
+def take_size3(x: Size[3]) -> None: ...
+def take_dim3(x: Dim[3]) -> None: ...
+def take_size4(x: Size[4]) -> None: ...
+
+def exact(d3: Dim[3], s3: Size[3], d4: Dim[4]) -> None:
+    take_size3(d3)
+    take_dim3(s3)
+    take_size4(d3)  # E: Argument `Size[3]` is not assignable to parameter `x` with type `Size[4]`
+    take_dim3(d4)  # E: Argument `Size[4]` is not assignable to parameter `x` with type `Size[3]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_internal_dim_carrier_flows_to_size,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Size, SizeTuple, SymVar, shaped_array
+from typing import Any, reveal_type
+
+@shaped_array(shape="Shape")
+class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]:
+    shape: Shape
+
+def take_size[N: SymVar](x: Size[N]) -> None: ...
+def take_size4(x: Size[4]) -> None: ...
+
+def shape_carrier_dim_to_size[N: SymVar](symbolic: Array[[N], int]) -> None:
+    reveal_type(symbolic.shape[0])  # E: revealed type: Dim[N]
+    take_size(symbolic.shape[0])
+    take_size4(symbolic.shape[0])  # E: Argument `Dim[N]` is not assignable to parameter `x` with type `Size[4]`
 "#,
 );
 
@@ -1661,8 +1721,8 @@ def ordinary_literals() -> None:
     reveal_type(total)  # E: revealed type: int
 
 def dim_literals[N: SymVar](x: Dim[N]) -> None:
-    reveal_type(x + 1)  # E: revealed type: Dim
-    reveal_type(1 + x)  # E: revealed type: Dim
+    reveal_type(x + 1)  # E: revealed type: Size[(1 + N)]
+    reveal_type(1 + x)  # E: revealed type: Size[(1 + N)]
 
 def ordinary_typevar_value[T: int](x: T) -> None:
     reveal_type(x + 1)  # E: revealed type: int
@@ -1686,7 +1746,7 @@ M = SymVar("M")
 class Box(Generic[N]): ...
 
 def f(n: Dim[N], shifted: Dim[N + 1], x: Tensor[[N, M]], shifted_x: Tensor[[N + 1, M]], y: Box[N]) -> None:
-    reveal_type(n)  # E: revealed type: Dim[N]
+    reveal_type(n)  # E: revealed type: Size[N]
     assert_type(shifted, Dim[N + 1])
     reveal_type(x)  # E: revealed type: Tensor[[N, M]]
     assert_type(shifted_x, Tensor[[N + 1, M]])
@@ -1723,7 +1783,7 @@ def shape[N: SymVar, M: SymVar, Shape: SizeTuple](
     packed: Tensor[[*Elements[Shape], N]],
     boxed: SymBox[N],
 ) -> None:
-    reveal_type(n)  # E: revealed type: Dim[N]
+    reveal_type(n)  # E: revealed type: Size[N]
     reveal_type(x)  # E: revealed type: Tensor[[N]]
     reveal_type(packed)  # E: revealed type: Tensor[[*Shape, N]]
     reveal_type(boxed)  # E: revealed type: SymBox[N]
@@ -1745,7 +1805,7 @@ def alias_specialization[N: SymVar, ShapeT: SizeTuple](
 ) -> None:
     reveal_type(x)  # E: revealed type: Tensor[[N]]
     reveal_type(packed)  # E: revealed type: Tensor[[*ShapeT, N]]
-    reveal_type(ordinary)  # E: revealed type: tuple[int, Dim[N]]
+    reveal_type(ordinary)  # E: revealed type: tuple[int, Size[N]]
 "#,
 );
 

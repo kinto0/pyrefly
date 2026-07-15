@@ -2656,10 +2656,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 // Dim type parsing: Dim[3], Dim[N], Dim[N+1] syntax
                 Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
-                    self.parse_symint_type(xs, range, errors)
+                    self.parse_single_size_expr_type("Dim", xs, range, errors)
                 }
                 Type::ClassDef(ref cls) if self.is_size_class(cls) => {
-                    self.parse_size_type(xs, range, errors)
+                    self.parse_single_size_expr_type("Size", xs, range, errors)
                 }
                 Type::ClassDef(ref cls)
                     if cls.has_toplevel_qname("shape_extensions", "ProxyMethod") =>
@@ -4026,37 +4026,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.heap.mk_type_of(shape_to_tuple_carrier(&shape))
     }
 
-    /// Parse Dim[3], Dim[N], Dim[N+1] into Type::Dim(...)
-    fn parse_symint_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
-        // Dim takes exactly one argument
+    fn parse_single_size_expr_type(
+        &self,
+        spelling: &str,
+        args: &[Expr],
+        range: TextRange,
+        errors: &ErrorCollector,
+    ) -> Type {
         if args.len() != 1 {
             self.error(
                 errors,
                 range,
                 ErrorKind::BadSpecialization,
-                format!("Expected 1 type argument for `Dim`, got {}", args.len()),
-            );
-            return Type::any_error();
-        }
-
-        // Parse, simplify, and validate the dimension
-        let Some(dims) = self.parse_dimension_list(args, errors) else {
-            return Type::any_error();
-        };
-
-        // Wrap in Type::Dim(...)
-        self.heap
-            .mk_type_of(self.heap.mk_dim(dims.into_iter().next().unwrap()))
-    }
-
-    /// Parse Size[3], Size[N], Size[N+1] into Type::Size(...)
-    fn parse_size_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
-        if args.len() != 1 {
-            self.error(
-                errors,
-                range,
-                ErrorKind::BadSpecialization,
-                format!("Expected 1 type argument for `Size`, got {}", args.len()),
+                format!(
+                    "Expected 1 type argument for `{}`, got {}",
+                    spelling,
+                    args.len()
+                ),
             );
             return Type::any_error();
         }
@@ -4064,9 +4050,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let Some(dims) = self.parse_dimension_list(args, errors) else {
             return Type::any_error();
         };
-        let dim = dims.into_iter().next().unwrap();
+        let dim = dims.into_iter().next().expect(
+            "parse_dimension_list returns a non-empty list for a single validated argument",
+        );
+        // `Dim[Any]`/`Size[Any]` desugar to plain `Any` since it's maximally gradual.
         if matches!(dim, Type::Any(_)) {
-            // Size[Any] desugars to plain Any since it's maximally gradual
             return dim;
         }
         let Some(size_expr) = SizeExpr::from_type(&dim) else {

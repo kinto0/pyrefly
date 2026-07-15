@@ -2431,6 +2431,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Size(_), Type::Dim(dim_inner)) | (Type::Quantified(_), Type::Dim(dim_inner)) => {
                 self.is_subset_eq(got, dim_inner)
             }
+            // Dim[X] <: Size: the internal Size expression carried by a `Type::Dim` may flow into a `Size`.
+            (Type::Dim(dim_inner), want @ Type::Size(_)) => self.is_subset_eq(dim_inner, want),
             (Type::QuantifiedValue(q), Type::Dim(dim_inner)) => {
                 self.is_subset_eq(&Type::Quantified(q.clone()), dim_inner)
             }
