@@ -6088,13 +6088,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 {
                     return Some(self.bare_size_tuple_carrier());
                 }
-                // Canonicalize bare Dim to Type::Dim for consistency.
+                // Bare `shape_extensions.Dim` is the gradual size type, the same as
+                // `Size[int]`.
                 // Subscripted Dim[X] is already converted to Type::Size in parse_single_size_expr_type,
                 // so only the bare case (promoted to ClassType with default targs) reaches here.
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "Dim")
                 {
-                    return Some(self.heap.mk_dim(cls.targs().as_slice()[0].clone()));
+                    return Some(gradual_size());
                 }
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "Size")

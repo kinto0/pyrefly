@@ -520,7 +520,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Literal, reveal_type
-from shape_extensions import Dim, Elements, SizeTuple, SymVar, shaped_array
+from shape_extensions import Dim, Elements, Size, SizeTuple, SymVar, shaped_array
 
 type _Shape = SizeTuple
 type _AnyShape = tuple[Any, ...]
@@ -549,13 +549,13 @@ def f[N: SymVar](
     reveal_type(bare_dim)  # E: revealed type: Size[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_size_tuple)  # E: revealed type: Array[[N], int]
-    reveal_type(any_dim)  # E: revealed type: Array[[Unknown], int]
+    reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
     p: Array[tuple[Literal[2], Literal[3]], int] = compact
     c: Array[[2, 3], int] = pep484
     st: Array[SizeTuple[2, 3], int] = compact
-    mst: Array[tuple[Literal[2], Literal[3], Dim[N]], int] = mixed_size_tuple
+    mst: Array[tuple[Literal[2], Literal[3], Size[N]], int] = mixed_size_tuple
     t: tuple[Literal[2], Literal[3]] = carrier
-    mt: tuple[Literal[2], Literal[3], Dim[N]] = mixed_carrier
+    mt: tuple[Literal[2], Literal[3], Size[N]] = mixed_carrier
     u: tuple[int, ...] = unbounded
 
 def append_dim[S: SizeTuple, OUT: SymVar](
@@ -716,7 +716,7 @@ from shape_extensions import Dim, Size, SymVar
 from typing import Any, reveal_type
 
 def bare_dim(x: Dim) -> None:
-    reveal_type(x)  # E: revealed type: Dim
+    reveal_type(x)  # E: revealed type: Size[int]
 
 def dims[N: SymVar](
     literal: Dim[3],
@@ -761,10 +761,57 @@ class Array[Shape: SizeTuple = tuple[Any, ...], DType = Any]:
 def take_size[N: SymVar](x: Size[N]) -> None: ...
 def take_size4(x: Size[4]) -> None: ...
 
-def shape_carrier_dim_to_size[N: SymVar](symbolic: Array[[N], int]) -> None:
-    reveal_type(symbolic.shape[0])  # E: revealed type: Dim[N]
+def shape_carrier_uses_canonical_size[N: SymVar](symbolic: Array[[N], int]) -> None:
+    reveal_type(symbolic.shape[0])  # E: revealed type: Size[N]
     take_size(symbolic.shape[0])
-    take_size4(symbolic.shape[0])  # E: Argument `Dim[N]` is not assignable to parameter `x` with type `Size[4]`
+    take_size4(symbolic.shape[0])  # E: Argument `Size[N]` is not assignable to parameter `x` with type `Size[4]`
+"#,
+);
+
+testcase!(
+    test_shaped_array_overload_impl_accepts_symbolic_size_return,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Dim, SymVar, shaped_array
+from typing import overload
+
+@shaped_array(shape="Shape")
+class Tensor[Shape]: ...
+
+class Layer: ...
+
+@overload
+def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    x: Tensor[[B, C, H, W]],
+    layer: Layer,
+    depth: Dim[1],
+) -> Tensor[[B, C + 32, H, W]]: ...
+
+@overload
+def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    x: Tensor[[B, C, H, W]],
+    layer: Layer,
+    depth: Dim[I],
+) -> Tensor[[B, C + I * 32, H, W]]: ...
+
+def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
+    x: Tensor[[B, C, H, W]],
+    layer: Layer,
+    depth: Dim[I],
+) -> Tensor[[B, C + 32, H, W]] | Tensor[[B, C + I * 32, H, W]]: ...
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_nested_symbolic_size_matches_itself,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Dim, Size, SymVar
+
+def with_derived[N: SymVar](first: Dim[N], second: Size[N // 2]) -> None: ...
+
+def f[N: SymVar](n: Dim[N], half: Size[N // 2]) -> None:
+    with_derived(n, half)
 "#,
 );
 
@@ -1367,7 +1414,7 @@ def carrier[S](x: Array[S, float]) -> None:
     reveal_type(x.shape)  # E: revealed type: S
 
 def concrete[M: SymVar](x: Array[[2, 4, M], float]) -> None:
-    reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], Literal[4], Dim[M]]
+    reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], Literal[4], Size[M]]
 
 def unpacked_prefix[*Ts](x: Array[tuple[Literal[2], *Ts], float]) -> None:
     reveal_type(x.shape)  # E: revealed type: tuple[Literal[2], *Ts]

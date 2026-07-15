@@ -440,11 +440,6 @@ impl TypeHeap {
         Type::Never(style)
     }
 
-    /// Create a `Type::Dim` wrapping an inner type.
-    pub fn mk_dim(&self, inner: Type) -> Type {
-        Type::Dim(Box::new(inner))
-    }
-
     /// Create a `Type::Size` from a SizeExpr.
     pub fn mk_size(&self, size_expr: SizeExpr) -> Type {
         Type::Size(size_expr)

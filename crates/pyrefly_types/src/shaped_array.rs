@@ -25,7 +25,6 @@ use crate::dimension::is_gradual_size;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
 use crate::tuple::Tuple;
-use crate::types::AnyStyle;
 use crate::types::Type;
 
 // ============================================================================
@@ -568,17 +567,16 @@ fn canonicalize_dim(dim: Type) -> Type {
         .unwrap_or_else(|| canonicalize(dim))
 }
 
-/// Convert an internal shape dimension into its user-facing tuple-carrier
-/// element. Literal dimensions become `Literal[n]`; every other (non-literal)
-/// dimension type is wrapped in `Dim[...]`.
+/// Convert an internal shape dimension into its tuple-carrier element.
+/// Literal dimensions become `Literal[n]`; other dimensions remain in their
+/// canonical internal representation.
 fn dim_to_carrier_element(dim: &Type) -> Type {
     match dim {
         Type::Size(SizeExpr::Literal(n)) => LitInt::new(*n).to_explicit_type(),
-        Type::Size(SizeExpr::Int) => Type::Dim(Box::new(Type::any_implicit())),
-        Type::Size(SizeExpr::Symbolic(ty)) => Type::Dim(ty.clone()),
-        Type::Any(AnyStyle::Error) => Type::Dim(Box::new(Type::Any(AnyStyle::Error))),
-        Type::Any(_) => Type::Dim(Box::new(Type::any_implicit())),
-        _ => Type::Dim(Box::new(dim.clone())),
+        Type::Any(_) => dim.clone(),
+        _ => SizeExpr::from_type(dim)
+            .map(Type::Size)
+            .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(dim.clone())))),
     }
 }
 
@@ -1454,28 +1452,28 @@ mod tests {
     }
 
     #[test]
-    fn explicit_any_internal_dimension_becomes_implicit_dim_any_carrier() {
+    fn explicit_any_internal_dimension_stays_any_carrier() {
         let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Explicit)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
-            concrete_carrier(vec![dim(Type::any_implicit())])
+            concrete_carrier(vec![Type::Any(AnyStyle::Explicit)])
         );
     }
 
     #[test]
-    fn error_any_internal_dimension_preserves_error_style_in_dim_carrier() {
+    fn error_any_internal_dimension_preserves_error_style_in_carrier() {
         let shape = ShapedArrayShape::from_types(vec![Type::Any(AnyStyle::Error)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
-            concrete_carrier(vec![dim(Type::Any(AnyStyle::Error))])
+            concrete_carrier(vec![Type::Any(AnyStyle::Error)])
         );
     }
 
     #[test]
-    fn symbolic_internal_dimension_round_trips_through_dim_carrier() {
+    fn symbolic_internal_dimension_round_trips_through_size_carrier() {
         let var = Type::Var(Var::ZERO);
         let shape = ShapedArrayShape::from_types(vec![var.clone()]);
-        let carrier = concrete_carrier(vec![dim(var)]);
+        let carrier = concrete_carrier(vec![Type::Size(SizeExpr::Symbolic(Box::new(var)))]);
 
         assert_eq!(shape_to_tuple_carrier(&shape), carrier);
         assert_eq!(tuple_carrier_to_shape(&carrier), Some(shape));

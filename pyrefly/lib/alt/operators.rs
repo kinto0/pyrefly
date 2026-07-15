@@ -143,13 +143,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             _ => unreachable!(),
         };
 
-        // If either operand is Dim, return Dim-wrapped result. Otherwise
-        // (e.g., Dim-bounded type parameters), return the dimension expression.
-        if matches!(lhs, Type::Dim(_)) || matches!(rhs, Type::Dim(_)) {
-            Some(self.heap.mk_dim(result_ty))
-        } else {
-            Some(result_ty)
-        }
+        Some(result_ty)
     }
 
     fn try_binop_calls(
@@ -890,7 +884,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     let zero = self.heap.mk_size(SizeExpr::Literal(0));
                     let result_ty =
                         canonicalize(self.heap.mk_size(SizeExpr::sub(zero, (**inner_ty).clone())));
-                    return self.heap.mk_dim(result_ty);
+                    return result_ty;
                 }
                 let f = |lit: &Lit| lit.negate();
                 unop(t, &f, &dunder::NEG)

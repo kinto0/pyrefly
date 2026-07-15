@@ -1765,6 +1765,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     return Ok(());
                 }
 
+                let got_canonical = got_expanded.clone().canonicalize();
+                let want_canonical = want_expanded.clone().canonicalize();
+                if got_canonical == want_canonical {
+                    return Ok(());
+                }
+
                 if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
                     && !matches!(want_symbolic.as_ref(), Type::Size(_))
                 {
@@ -1784,24 +1790,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         ShapeError::nested_type_var_not_inferred(),
                     ));
                 }
-                let got_canonical = got_expanded.canonicalize();
-                let want_canonical = want_expanded.canonicalize();
-                if got_canonical == want_canonical {
-                    Ok(())
-                } else {
-                    let mut got_expanded = Type::Size(s1.clone());
-                    let mut want_expanded = Type::Size(s2.clone());
-                    self.solver.expand_with_bounds(&mut got_expanded);
-                    self.solver.expand_with_bounds(&mut want_expanded);
-                    Err(SubsetError::ShapedArrayShape(
-                        ShapeError::structural_mismatch(
-                            got_expanded.to_string(),
-                            got_canonical.to_string(),
-                            want_expanded.to_string(),
-                            want_canonical.to_string(),
-                        ),
-                    ))
-                }
+                Err(SubsetError::ShapedArrayShape(
+                    ShapeError::structural_mismatch(
+                        got_expanded.to_string(),
+                        got_canonical.to_string(),
+                        want_expanded.to_string(),
+                        want_canonical.to_string(),
+                    ),
+                ))
             }
             // Size <: Quantified - expand, canonicalize Size, and compare
             // A SizeExpr like (A + A) // 2 might simplify to A (a Quantified)
@@ -2460,9 +2456,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.is_subset_literal_int_size(n, got, false)
             }
             // ClassType(int) <: Dim[...]
-            // Redirect: int <: Dim[...] becomes Dim[any_implicit] <: Dim[...]
+            // Redirect: int <: Dim[...] becomes Size[int] <: Dim[...]
             (Type::ClassType(cls), want @ Type::Dim(_)) if cls.is_builtin("int") => {
-                self.is_subset_eq_impl(&self.solver.heap.mk_dim(Type::any_implicit()), want)
+                self.is_subset_eq_impl(&gradual_size(), want)
             }
             (Type::Size(_) | Type::Quantified(_), Type::ClassType(cls))
                 if is_dim_class_type(cls) =>

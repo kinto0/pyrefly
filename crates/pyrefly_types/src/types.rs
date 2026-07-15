@@ -804,14 +804,10 @@ pub enum Type {
     /// This is the type-level representation of dimension values, used when
     /// type variables with Dim bound unify with concrete dimension values.
     Size(SizeExpr),
-    /// Symbolic integer type - wraps dimension expressions for use in type annotations
-    /// Examples:
-    ///   - Type::Dim(SizeExpr(Literal(3))) for Dim[3]
-    ///   - Type::Dim(Quantified) for Dim[N]
-    ///   - Type::Dim(SizeExpr(Add(...))) for Dim[N+1]
+    /// Legacy symbolic integer carrier.
     ///
-    /// This is the type annotation form of symbolic integers, distinct from
-    /// concrete integer literals which use Type::Literal(Lit::Int(...)).
+    /// Source-level `Dim[...]` annotations lower to `Type::Size`. This variant
+    /// remains so older internal carriers can be normalized during migration.
     Dim(Box<Type>),
     Tuple(Tuple),
     Module(ModuleType),
