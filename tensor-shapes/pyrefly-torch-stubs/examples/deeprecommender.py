@@ -41,7 +41,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 # Activation function type — all are shape-preserving: Tensor[S] -> Tensor[S]
@@ -72,9 +72,9 @@ class AutoEncoder[InDim: SymVar, H1: SymVar, H2: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_dim: Dim[InDim],
-        h1: Dim[H1],
-        h2: Dim[H2],
+        in_dim: SymInt[InDim],
+        h1: SymInt[H1],
+        h2: SymInt[H2],
         act_fn: ShapePreservingActivation = nn.SELU,
         dp_drop_prob: float = 0.0,
     ) -> None:

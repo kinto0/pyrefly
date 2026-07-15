@@ -36,7 +36,7 @@ from shape_extensions import SizeTuple, SymVar
 from torch import distributions as pyd
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -156,7 +156,7 @@ class BaselineActor[S: SymVar, A: SymVar](nn.Module):
                   Linear(400, A) → Tanh
     """
 
-    def __init__(self, state_size: Dim[S], action_size: Dim[A]) -> None:
+    def __init__(self, state_size: SymInt[S], action_size: SymInt[A]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(state_size, 400)
         self.fc2 = nn.Linear(400, 400)
@@ -180,7 +180,7 @@ class BaselineCritic[S: SymVar, A: SymVar](nn.Module):
                   Linear(400, 300) → ReLU → Linear(300, 1)
     """
 
-    def __init__(self, state_size: Dim[S], action_size: Dim[A]) -> None:
+    def __init__(self, state_size: SymInt[S], action_size: SymInt[A]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(state_size + action_size, 400)
         self.fc2 = nn.Linear(400, 300)
@@ -208,9 +208,9 @@ class BigCritic[S: SymVar, A: SymVar, H: SymVar](nn.Module):
 
     def __init__(
         self,
-        state_space_size: Dim[S],
-        act_space_size: Dim[A],
-        hidden_size: Dim[H],
+        state_space_size: SymInt[S],
+        act_space_size: SymInt[A],
+        hidden_size: SymInt[H],
     ) -> None:
         super().__init__()
         self.fc1 = nn.Linear(state_space_size + act_space_size, hidden_size)
@@ -238,7 +238,7 @@ class BaselineDiscreteCritic[S: SymVar, A: SymVar, H: SymVar](nn.Module):
     """
 
     def __init__(
-        self, obs_shape: Dim[S], action_shape: Dim[A], hidden_size: Dim[H]
+        self, obs_shape: SymInt[S], action_shape: SymInt[A], hidden_size: SymInt[H]
     ) -> None:
         super().__init__()
         self.fc1 = nn.Linear(obs_shape, hidden_size)
@@ -268,9 +268,9 @@ class StochasticActor[S: SymVar, A: SymVar, H: SymVar](nn.Module):
 
     def __init__(
         self,
-        state_space_size: Dim[S],
-        act_space_size: Dim[A],
-        hidden_size: Dim[H],
+        state_space_size: SymInt[S],
+        act_space_size: SymInt[A],
+        hidden_size: SymInt[H],
         log_std_low: float = -10.0,
         log_std_high: float = 2.0,
         dist_impl: str = "pyd",
@@ -325,7 +325,7 @@ class GracBaselineActor[S: SymVar, A: SymVar](nn.Module):
     Returns Normal(mean, std).
     """
 
-    def __init__(self, obs_size: Dim[S], action_size: Dim[A]) -> None:
+    def __init__(self, obs_size: SymInt[S], action_size: SymInt[A]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(obs_size, 400)
         self.fc2 = nn.Linear(400, 300)
@@ -352,7 +352,7 @@ class BaselineDiscreteActor[S: SymVar, A: SymVar, H: SymVar](nn.Module):
     """
 
     def __init__(
-        self, obs_shape: Dim[S], action_size: Dim[A], hidden_size: Dim[H]
+        self, obs_shape: SymInt[S], action_size: SymInt[A], hidden_size: SymInt[H]
     ) -> None:
         super().__init__()
         self.fc1 = nn.Linear(obs_shape, hidden_size)
@@ -385,7 +385,7 @@ class SmallPixelEncoder[C: SymVar, OutDim: SymVar](nn.Module):
     - Linear(3136, OutDim)
     """
 
-    def __init__(self, channels: Dim[C], out_dim: Dim[OutDim]) -> None:
+    def __init__(self, channels: SymInt[C], out_dim: SymInt[OutDim]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
@@ -420,7 +420,7 @@ class BigPixelEncoder[C: SymVar, OutDim: SymVar](nn.Module):
     - Linear(39200, OutDim) → LayerNorm(OutDim) → Tanh
     """
 
-    def __init__(self, channels: Dim[C], out_dim: Dim[OutDim]) -> None:
+    def __init__(self, channels: SymInt[C], out_dim: SymInt[OutDim]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=2)
         self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=1)

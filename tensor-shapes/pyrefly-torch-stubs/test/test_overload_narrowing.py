@@ -14,7 +14,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -61,7 +61,7 @@ class GenericDenseLayer(nn.Module):
 def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[1],
+    depth: SymInt[1],
 ) -> Tensor[[B, C + 32, H, W]]: ...
 
 
@@ -69,14 +69,14 @@ def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
 def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + I * 32, H, W]]: ...
 
 
 def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + 32, H, W]] | Tensor[[B, C + I * 32, H, W]]:
     if depth == 1:
         return layer(x)

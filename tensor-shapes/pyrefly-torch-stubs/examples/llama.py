@@ -49,7 +49,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymInt
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -70,13 +70,13 @@ class LLaMAConfig[
 ]:
     """Configuration for LLaMA model, generic over key dimensions."""
 
-    vocab_size: Dim[VocabSize]
-    dim: Dim[D]
-    n_heads: Dim[NHead]
-    n_layers: Dim[NLayer]
-    hidden_dim: Dim[HiddenDim]
-    max_batch_size: Dim[MaxBatch]
-    max_seq_len: Dim[MaxSeq]
+    vocab_size: SymInt[VocabSize]
+    dim: SymInt[D]
+    n_heads: SymInt[NHead]
+    n_layers: SymInt[NLayer]
+    hidden_dim: SymInt[HiddenDim]
+    max_batch_size: SymInt[MaxBatch]
+    max_seq_len: SymInt[MaxSeq]
     norm_eps: float = 1e-5
 
 
@@ -92,7 +92,7 @@ def compute_hidden_dim(dim: int, multiple_of: int = 256) -> int:
 
 
 def precompute_freqs_cis[HeadDim: SymVar, End: SymVar](
-    dim: Dim[HeadDim], end: Dim[End], theta: float = 10000.0
+    dim: SymInt[HeadDim], end: SymInt[End], theta: float = 10000.0
 ) -> Tensor[[End, HeadDim // 2]]:
     """Precompute complex-valued frequency tensor for RoPE.
 
@@ -158,7 +158,7 @@ def apply_rotary_emb[B: SymVar, NHead: SymVar, T: SymVar, HeadDim: SymVar](
 # ============================================================================
 
 
-def build_causal_mask[T: SymVar](seq_len: Dim[T]) -> Tensor[[T, T]]:
+def build_causal_mask[T: SymVar](seq_len: SymInt[T]) -> Tensor[[T, T]]:
     """Build causal (upper-triangular) attention mask.
 
     Original: llama/model.py, constructed in Transformer.__init__.
@@ -182,7 +182,7 @@ class RMSNorm[D: SymVar](nn.Module):
     Shape-preserving: (*, D) → (*, D)
     """
 
-    def __init__(self, dim: Dim[D], eps: float = 1e-6) -> None:
+    def __init__(self, dim: SymInt[D], eps: float = 1e-6) -> None:
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
@@ -258,7 +258,7 @@ class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.M
         self.wv = nn.Linear(config.dim, config.dim, bias=False)
         self.wo = nn.Linear(config.dim, config.dim, bias=False)
         # KV cache: pre-allocated buffers for inference.
-        # Shape: (MaxBatch, MaxSeq, NHead, HeadDim). torch.zeros with Dim args → typed.
+        # Shape: (MaxBatch, MaxSeq, NHead, HeadDim). torch.zeros with SymInt args → typed.
         self.cache_k = torch.zeros(
             (config.max_batch_size, config.max_seq_len, config.n_heads, self.head_dim)
         )
@@ -269,7 +269,7 @@ class Attention[D: SymVar, NHead: SymVar, MaxBatch: SymVar, MaxSeq: SymVar](nn.M
     def forward[B: SymVar, T: SymVar, SP: SymVar](
         self,
         x: Tensor[[B, T, D]],
-        start_pos: Dim[SP] | None = None,
+        start_pos: SymInt[SP] | None = None,
         freqs_cis: Tensor[[T, D // NHead // 2]] | None = None,
         mask: Tensor[[T, T]] | None = None,
     ) -> Tensor[[B, T, D]]:
@@ -358,7 +358,7 @@ class TransformerBlock[
     def forward[B: SymVar, T: SymVar, SP: SymVar](
         self,
         x: Tensor[[B, T, D]],
-        start_pos: Dim[SP] | None = None,
+        start_pos: SymInt[SP] | None = None,
         freqs_cis: Tensor[[T, D // NHead // 2]] | None = None,
         mask: Tensor[[T, T]] | None = None,
     ) -> Tensor[[B, T, D]]:
@@ -403,7 +403,7 @@ class Transformer[VocabSize: SymVar, D: SymVar, NHead: SymVar, HiddenDim: SymVar
         self.output = nn.Linear(config.dim, config.vocab_size, bias=False)
 
     def forward[B: SymVar, T: SymVar, SP: SymVar](
-        self, tokens: Tensor[[B, T]], start_pos: Dim[SP] | None = None
+        self, tokens: Tensor[[B, T]], start_pos: SymInt[SP] | None = None
     ) -> Tensor[[B, VocabSize]]:
         h = self.tok_embeddings(tokens)
         assert_type(h, Tensor[[B, T, D]])

@@ -46,7 +46,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -61,7 +61,7 @@ class Prenet[NMel: SymVar](nn.Module):
     (B, NMel) → (B, 256)
     """
 
-    def __init__(self, n_mel: Dim[NMel]) -> None:
+    def __init__(self, n_mel: SymInt[NMel]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(n_mel, 256)
         self.fc2 = nn.Linear(256, 256)
@@ -90,7 +90,7 @@ class Postnet[NMel: SymVar](nn.Module):
     (B, NMel, T) → (B, NMel, T)
     """
 
-    def __init__(self, n_mel: Dim[NMel]) -> None:
+    def __init__(self, n_mel: SymInt[NMel]) -> None:
         super().__init__()
         self.conv1 = nn.Conv1d(n_mel, 512, kernel_size=5, stride=1, padding=2)
         self.bn1 = nn.BatchNorm1d(512)
@@ -138,7 +138,7 @@ class Encoder[EmbDim: SymVar](nn.Module):
     (B, EmbDim, T) → (B, T, EmbDim)
     """
 
-    def __init__(self, embed_dim: Dim[EmbDim]) -> None:
+    def __init__(self, embed_dim: SymInt[EmbDim]) -> None:
         super().__init__()
         self.conv1 = nn.Conv1d(embed_dim, embed_dim, kernel_size=5, stride=1, padding=2)
         self.bn1 = nn.BatchNorm1d(embed_dim)
@@ -216,7 +216,7 @@ class Attention[EmbDim: SymVar](nn.Module):
     - attention_weights: (B, T) — alignment probabilities
     """
 
-    def __init__(self, embed_dim: Dim[EmbDim]) -> None:
+    def __init__(self, embed_dim: SymInt[EmbDim]) -> None:
         super().__init__()
         self.query_layer = nn.Linear(1024, 128, bias=False)
         self.memory_layer = nn.Linear(embed_dim, 128, bias=False)
@@ -271,7 +271,7 @@ class DecoderStep[EmbDim: SymVar](nn.Module):
         → gate_layer → (B, 1)  [stop token]
     """
 
-    def __init__(self, embed_dim: Dim[EmbDim]) -> None:
+    def __init__(self, embed_dim: SymInt[EmbDim]) -> None:
         super().__init__()
         self.attention_rnn = nn.LSTMCell(256 + embed_dim, 1024)
         self.decoder_rnn = nn.LSTMCell(1024 + embed_dim, 1024)
@@ -333,7 +333,9 @@ class Tacotron2[NSymbols: SymVar](nn.Module):
     is not fully typed (it requires variable-length list accumulation).
     """
 
-    def __init__(self, n_symbols: Dim[NSymbols], max_decoder_steps: int = 1000) -> None:
+    def __init__(
+        self, n_symbols: SymInt[NSymbols], max_decoder_steps: int = 1000
+    ) -> None:
         super().__init__()
         self.embedding = nn.Embedding(n_symbols, 512)
         self.encoder = Encoder(512)
@@ -434,8 +436,8 @@ class ConvNorm[InC: SymVar, OutC: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_channels: Dim[InC],
-        out_channels: Dim[OutC],
+        in_channels: SymInt[InC],
+        out_channels: SymInt[OutC],
         kernel_size: int = 1,
         stride: int = 1,
         padding: int = 0,
@@ -464,7 +466,7 @@ class LinearNorm[InF: SymVar, OutF: SymVar](nn.Module):
     Original: tacotron2/layers.py LinearNorm class.
     """
 
-    def __init__(self, in_features: Dim[InF], out_features: Dim[OutF]) -> None:
+    def __init__(self, in_features: SymInt[InF], out_features: SymInt[OutF]) -> None:
         super().__init__()
         self.linear = nn.Linear(in_features, out_features)
         nn.init.xavier_uniform_(self.linear.weight)

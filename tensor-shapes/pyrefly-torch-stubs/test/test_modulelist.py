@@ -11,14 +11,14 @@ from shape_extensions import SymVar
 from torch.nn import Module, ModuleList
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
 class Block[N: SymVar](Module):
     """Transformer block with self-attention and MLP. Generic over embedding dim, num heads, and block size."""
 
-    def __init__(self, x: Dim[N]):
+    def __init__(self, x: SymInt[N]):
         super().__init__()
         self.x = x
 

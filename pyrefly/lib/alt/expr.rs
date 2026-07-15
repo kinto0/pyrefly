@@ -2654,10 +2654,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::ClassDef(ref cls) if self.is_size_tuple_class(cls) => {
                     self.parse_size_tuple_type(xs, errors)
                 }
-                // Dim type parsing: Dim[3], Dim[N], Dim[N+1] syntax
-                Type::ClassDef(ref cls) if self.is_dim_class(cls) => {
-                    self.parse_dim_type(xs, range, errors)
-                }
                 Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
                     self.parse_symint_type(xs, range, errors)
                 }
@@ -3334,11 +3330,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.shaped_array_with_shape(tensor, shapeless)
     }
 
-    /// Check if a class is a Dim class (shape_extensions.Dim)
-    fn is_dim_class(&self, cls: &Class) -> bool {
-        cls.has_toplevel_qname("shape_extensions", "Dim")
-    }
-
     /// Check if a class is a SymInt class (shape_extensions.SymInt)
     fn is_symint_class(&self, cls: &Class) -> bool {
         cls.has_toplevel_qname("shape_extensions", "SymInt")
@@ -3375,23 +3366,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     && self.is_shape_arith_wrapper_class(cls)
                 {
                     return self.parse_dimension_expr_with_context(&x.slice, errors, context);
-                }
-                if let Type::ClassDef(ref cls) = base
-                    && self.is_dim_class(cls)
-                {
-                    let xs = Ast::unpack_slice(&x.slice);
-                    return match xs {
-                        [arg] => self.parse_dimension_expr_with_context(arg, errors, context),
-                        _ => {
-                            self.error(
-                                errors,
-                                expr.range(),
-                                ErrorKind::BadSpecialization,
-                                format!("Expected 1 type argument for `Dim`, got {}", xs.len()),
-                            );
-                            None
-                        }
-                    };
                 }
             }
             Expr::Call(ExprCall {
@@ -4059,11 +4033,6 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         let size = canonicalize(self.heap.mk_symint(symint));
         self.heap.mk_type_of(size)
-    }
-
-    /// Parse Dim[3], Dim[N], Dim[N+1] into a canonical `Type::SymInt(...)`.
-    fn parse_dim_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
-        self.parse_single_symint_type("Dim", args, range, errors)
     }
 
     /// Parse SymInt[3], SymInt[N], SymInt[N+1] into `Type::SymInt(...)`.

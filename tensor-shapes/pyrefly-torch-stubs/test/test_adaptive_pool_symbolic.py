@@ -15,7 +15,7 @@ from shape_extensions import SymVar
 
 if TYPE_CHECKING:
     import torch.nn.functional as F
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -27,19 +27,19 @@ def test_adaptive_pool_symbolic_batch[B: SymVar](x: Tensor[[B, 64, 56, 56]]):
 
 
 def test_adaptive_pool_symbolic_output[B: SymVar, S: SymVar](
-    x: Tensor[[B, 64, 56, 56]], s: Dim[S]
+    x: Tensor[[B, 64, 56, 56]], s: SymInt[S]
 ):
     """Adaptive pool with symbolic output size dimensions"""
     # Use symbolic dimension s in output_size
     # This previously failed because tuple with symbolic dims wasn't handled
     y = F.adaptive_avg_pool2d(x, (s, s))
 
-    # Output has symbolic spatial dimensions S (not Dim[S] in the type annotation)
+    # Output has symbolic spatial dimensions S (not SymInt[S] in the type annotation)
     assert_type(y, Tensor[[B, 64, S, S]])
 
 
 def test_adaptive_pool_mixed[B: SymVar, H: SymVar](
-    x: Tensor[[B, 64, 56, 56]], h: Dim[H]
+    x: Tensor[[B, 64, 56, 56]], h: SymInt[H]
 ):
     """Adaptive pool with mixed literal and symbolic output size"""
     # One literal, one symbolic dimension

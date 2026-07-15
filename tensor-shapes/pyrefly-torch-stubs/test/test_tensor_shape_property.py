@@ -15,7 +15,7 @@ from shape_extensions import SymVar
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -48,20 +48,20 @@ def test_shape_5d(
 
 def test_shape_symbolic[N: SymVar, M: SymVar](
     x: Tensor[[N, M]],
-) -> tuple[Dim[N], Dim[M]]:
-    """Shape with symbolic dimensions returns Dim types"""
+) -> tuple[SymInt[N], SymInt[M]]:
+    """Shape with symbolic dimensions returns SymInt types"""
     return x.shape
 
 
 def test_shape_mixed[N: SymVar](
     x: Tensor[[N, 3, 4]],
-) -> tuple[Dim[N], Literal[3], Literal[4]]:
+) -> tuple[SymInt[N], Literal[3], Literal[4]]:
     """Shape with mix of symbolic and literal dimensions"""
     return x.shape
 
 
 def test_shape_arithmetic[N: SymVar](
     x: Tensor[[N + 1, N * 2]],
-) -> tuple[Dim[N + 1], Dim[N * 2]]:
+) -> tuple[SymInt[N + 1], SymInt[N * 2]]:
     """Shape with arithmetic expressions in dimensions"""
     return x.shape

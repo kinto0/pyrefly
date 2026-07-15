@@ -658,17 +658,6 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_type(&class_type.targs().as_slice()[0])?;
                 output.write_str(", ...]")
             }
-            // Display Dim[Unknown] as just "Dim" for cleaner output
-            Type::ClassType(class_type)
-                if class_type.has_qname("shape_extensions", "Dim")
-                    && class_type.targs().as_slice().len() == 1
-                    && matches!(
-                        class_type.targs().as_slice()[0],
-                        Type::Any(AnyStyle::Implicit | AnyStyle::Error)
-                    ) =>
-            {
-                output.write_qname(class_type.qname())
-            }
             Type::ClassType(class_type) => {
                 output.write_qname(class_type.qname())?;
                 output.write_targs(class_type.targs())

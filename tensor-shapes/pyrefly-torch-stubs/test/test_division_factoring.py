@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import assert_type
 
-from shape_extensions import Dim, SymVar
+from shape_extensions import SymInt, SymVar
 from torch import Tensor
 
 

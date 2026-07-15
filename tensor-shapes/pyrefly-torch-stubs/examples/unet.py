@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -43,7 +43,7 @@ class DoubleConv[InC: SymVar, OutC: SymVar](nn.Module):
     """
 
     def __init__(
-        self, c_in: Dim[InC], c_out: Dim[OutC], c_mid: int | None = None
+        self, c_in: SymInt[InC], c_out: SymInt[OutC], c_mid: int | None = None
     ) -> None:
         super().__init__()
         mid = c_mid if c_mid is not None else c_out
@@ -72,7 +72,7 @@ class Down[InC: SymVar, OutC: SymVar](nn.Module):
     MaxPool2d(kernel_size=2) with stride=2 halves spatial dimensions.
     """
 
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC]) -> None:
+    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
         super().__init__()
         self.pool = nn.MaxPool2d(2)
         self.conv = DoubleConv(c_in, c_out)
@@ -99,7 +99,7 @@ class Up[C_in: SymVar, C_out: SymVar](nn.Module):
     DoubleConv then reduces to C_out.
     """
 
-    def __init__(self, c_in: Dim[C_in], c_out: Dim[C_out]) -> None:
+    def __init__(self, c_in: SymInt[C_in], c_out: SymInt[C_out]) -> None:
         super().__init__()
         self.up = nn.ConvTranspose2d(c_in, c_in // 2, kernel_size=2, stride=2)
         self.conv = DoubleConv(c_in, c_out)
@@ -126,7 +126,7 @@ class UpBilinear[C_cat: SymVar, C_out: SymVar](nn.Module):
     in the original code).
     """
 
-    def __init__(self, c_cat: Dim[C_cat], c_out: Dim[C_out]) -> None:
+    def __init__(self, c_cat: SymInt[C_cat], c_out: SymInt[C_out]) -> None:
         super().__init__()
         self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.conv = DoubleConv(c_cat, c_out, c_mid=c_cat // 2)
@@ -157,7 +157,7 @@ class OutConv[InC: SymVar, OutC: SymVar](nn.Module):
         (H + 0 - 1*(1-1) - 1) // 1 + 1 = H
     """
 
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC]) -> None:
+    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
         super().__init__()
         self.conv = nn.Conv2d(c_in, c_out, kernel_size=1)
 
@@ -191,7 +191,9 @@ class UNet[NChannels: SymVar, NClasses: SymVar](nn.Module):
     inductive hypothesis), then decodes (restores shape via skip connection).
     """
 
-    def __init__(self, n_channels: Dim[NChannels], n_classes: Dim[NClasses]) -> None:
+    def __init__(
+        self, n_channels: SymInt[NChannels], n_classes: SymInt[NClasses]
+    ) -> None:
         super().__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -233,7 +235,7 @@ class UNet[NChannels: SymVar, NClasses: SymVar](nn.Module):
         return up(deep, skip)
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[I]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
     ) -> Tensor[[B, C, H, W]]:
         """Shape-preserving recursive encoder-decoder.
 
@@ -274,7 +276,9 @@ class UNetBilinear[NChannels: SymVar, NClasses: SymVar](nn.Module):
     512 channels instead of 1024 (factor=2 halves the bottleneck).
     """
 
-    def __init__(self, n_channels: Dim[NChannels], n_classes: Dim[NClasses]) -> None:
+    def __init__(
+        self, n_channels: SymInt[NChannels], n_classes: SymInt[NClasses]
+    ) -> None:
         super().__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes

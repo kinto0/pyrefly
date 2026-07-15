@@ -16,22 +16,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
 class DCGAN:
     # Number of channels in the training images. For color images this is 3
-    nc: Final[Dim[3]] = 3
+    nc: Final[SymInt[3]] = 3
 
     # Size of z latent vector (i.e. size of generator input)
-    nz: Final[Dim[100]] = 100
+    nz: Final[SymInt[100]] = 100
 
     # Size of feature maps in generator
-    ngf: Final[Dim[64]] = 64
+    ngf: Final[SymInt[64]] = 64
 
     # Size of feature maps in discriminator
-    ndf: Final[Dim[64]] = 64
+    ndf: Final[SymInt[64]] = 64
 
 
 # custom weights initialization called on netG and netD
@@ -54,7 +54,7 @@ class GenUpStage[InC: SymVar](nn.Module):
     ConvTranspose2d(C, C//2, 4, 2, 1) + BN + ReLU.
     """
 
-    def __init__(self, in_ch: Dim[InC]) -> None:
+    def __init__(self, in_ch: SymInt[InC]) -> None:
         super().__init__()
         self.deconv = nn.ConvTranspose2d(in_ch, in_ch // 2, 4, 2, 1, bias=False)
         self.bn = nn.BatchNorm2d(in_ch // 2)
@@ -71,7 +71,7 @@ class DiscDownStage[InC: SymVar](nn.Module):
     Conv2d(C, 2*C, 4, 2, 1) + BN + LeakyReLU.
     """
 
-    def __init__(self, in_ch: Dim[InC]) -> None:
+    def __init__(self, in_ch: SymInt[InC]) -> None:
         super().__init__()
         self.conv = nn.Conv2d(in_ch, 2 * in_ch, 4, 2, 1, bias=False)
         self.bn = nn.BatchNorm2d(2 * in_ch)
@@ -123,16 +123,16 @@ class Generator(nn.Module):
 
     @overload
     def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[1]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, C // 2, H * 2, W * 2]]: ...
 
     @overload
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[[B, C // 2**Depth, H * 2**Depth, W * 2**Depth]]: ...
 
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, C // 2, H * 2, W * 2]]
         | Tensor[[B, C // 2**Depth, H * 2**Depth, W * 2**Depth]]
@@ -192,16 +192,16 @@ class Discriminator(nn.Module):
 
     @overload
     def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[1]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, 2 * C, H // 2, W // 2]]: ...
 
     @overload
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]: ...
 
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, 2 * C, H // 2, W // 2]]
         | Tensor[[B, C * 2**Depth, H // 2**Depth, W // 2**Depth]]

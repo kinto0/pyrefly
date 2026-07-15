@@ -106,16 +106,6 @@ class Elements:
         return f"Elements[{self.carrier!r}]"
 
 
-class Dim[T]:
-    """Symbolic integer type for dimension values.
-
-    At runtime this is a no-op generic class. The type checker uses the
-    .pyi stub for shape inference.
-    """
-
-    pass
-
-
 class SymInt[T]:
     """Symbolic integer type for dimension values.
 
@@ -139,7 +129,6 @@ def enable_torchscript_runtime_compat() -> None:
     paths. It intentionally has no disable API for production callers.
     """
 
-    Dim.__class_getitem__ = classmethod(_return_int)
     SymInt.__class_getitem__ = classmethod(_return_int)
 
 

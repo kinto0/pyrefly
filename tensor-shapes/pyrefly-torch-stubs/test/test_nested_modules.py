@@ -15,7 +15,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 # ============================================================================
@@ -28,7 +28,7 @@ class LinearLayer[N: SymVar, M: SymVar](nn.Module):
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         self.weight = torch.randn(out_features, in_features)
 
@@ -46,9 +46,9 @@ class TwoLayerMLP[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         # Can we initialize typed modules?
@@ -82,9 +82,9 @@ class SimpleMLP[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         # Just assign, no type annotation
@@ -116,7 +116,7 @@ class Block[N: SymVar, M: SymVar](nn.Module):
 
     linear: LinearLayer[N, M]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         self.linear = LinearLayer(in_features, out_features)
 
@@ -135,10 +135,10 @@ class DeepMLP[N: SymVar, M: SymVar, K: SymVar, L: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden1: Dim[M],
-        hidden2: Dim[K],
-        out_features: Dim[L],
+        in_features: SymInt[N],
+        hidden1: SymInt[M],
+        hidden2: SymInt[K],
+        out_features: SymInt[L],
     ):
         super().__init__()
         self.block1 = Block(in_features, hidden1)  # N -> M
@@ -174,9 +174,9 @@ class HybridModel[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         self.encoder = LinearLayer(in_features, hidden_features)  # N -> M
@@ -214,7 +214,7 @@ class Projection[D_in: SymVar, D_out: SymVar](nn.Module):
 
     weight: Tensor[[D_out, D_in]]
 
-    def __init__(self, in_dim: Dim[D_in], out_dim: Dim[D_out]):
+    def __init__(self, in_dim: SymInt[D_in], out_dim: SymInt[D_out]):
         super().__init__()
         self.weight = torch.randn(out_dim, in_dim)
 
@@ -232,7 +232,7 @@ class AttentionWithProjections[D: SymVar](nn.Module):
     k_proj: Projection[D, D]
     v_proj: Projection[D, D]
 
-    def __init__(self, d_model: Dim[D]):
+    def __init__(self, d_model: SymInt[D]):
         super().__init__()
         self.q_proj = Projection(d_model, d_model)  # D -> D
         self.k_proj = Projection(d_model, d_model)  # D -> D
@@ -269,7 +269,7 @@ class ConvBlock[C_in: SymVar, C_out: SymVar](nn.Module):
 
     weight: Tensor[[C_out, C_in, 3, 3]]
 
-    def __init__(self, in_channels: Dim[C_in], out_channels: Dim[C_out]):
+    def __init__(self, in_channels: SymInt[C_in], out_channels: SymInt[C_out]):
         super().__init__()
         self.weight = torch.randn(out_channels, in_channels, 3, 3)
 
@@ -287,7 +287,7 @@ class ResBlock[C: SymVar](nn.Module):
     conv1: ConvBlock[C, C]
     conv2: ConvBlock[C, C]
 
-    def __init__(self, channels: Dim[C]):
+    def __init__(self, channels: SymInt[C]):
         super().__init__()
         self.conv1 = ConvBlock(channels, channels)  # C -> C
         self.conv2 = ConvBlock(channels, channels)  # C -> C
@@ -330,10 +330,10 @@ class ParallelBranches[N: SymVar, M1: SymVar, M2: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden1: Dim[M1],
-        hidden2: Dim[M2],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden1: SymInt[M1],
+        hidden2: SymInt[M2],
+        out_features: SymInt[K],
     ):
         super().__init__()
         self.branch1_layer1 = LinearLayer(in_features, hidden1)  # N -> M1

@@ -10,7 +10,7 @@ from typing import assert_type, TYPE_CHECKING
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -24,7 +24,7 @@ def test_split(x: Tensor[[4, 5, 18]]):
 
 
 def test_split_symbolic[B: SymVar, T: SymVar, N: SymVar](
-    x: Tensor[[B, T, (3 * N)]], n: Dim[N]
+    x: Tensor[[B, T, (3 * N)]], n: SymInt[N]
 ):
     y = x.split(n, dim=2)
     assert_type(y, tuple[Tensor[[B, T, N]], Tensor[[B, T, N]], Tensor[[B, T, N]]])

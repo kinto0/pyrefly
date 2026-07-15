@@ -6,14 +6,14 @@
 from __future__ import annotations
 
 import numpy as np
-from shape_extensions import assert_shape, Dim, SymVar
+from shape_extensions import assert_shape, SymInt, SymVar
 
 N = SymVar("N")
 
 
 def square_svd_components(
-    x: np.ndarray[tuple[Dim[N], Dim[N]]],
-) -> np.ndarray[tuple[Dim[N], Dim[N]]]:
+    x: np.ndarray[tuple[SymInt[N], SymInt[N]]],
+) -> np.ndarray[tuple[SymInt[N], SymInt[N]]]:
     _u, _s, vt = np.linalg.svd(x, full_matrices=False)
     return vt
 
@@ -72,8 +72,8 @@ def test_eigh_square_matrix() -> None:
 
 
 def particle_in_box_shape_path(
-    n_points: Dim[N],
-) -> tuple[np.ndarray[tuple[Dim[N]]], np.ndarray[tuple[Dim[N], Dim[N]]]]:
+    n_points: SymInt[N],
+) -> tuple[np.ndarray[tuple[SymInt[N]]], np.ndarray[tuple[SymInt[N], SymInt[N]]]]:
     dx = 1.0 / (n_points + 1)
     diagonal = np.full(n_points, 2.0 / dx**2)
     off_diagonal = np.full(n_points - 1, -1.0 / dx**2)
@@ -98,9 +98,9 @@ def test_norm_3d_axis_keepdims_for_nbody() -> None:
 
 
 def gravitational_force_shape_path(
-    pos: np.ndarray[tuple[Dim[N], Dim[3]]],
-    mass: np.ndarray[tuple[Dim[N]]],
-) -> np.ndarray[tuple[Dim[N], Dim[3]]]:
+    pos: np.ndarray[tuple[SymInt[N], SymInt[3]]],
+    mass: np.ndarray[tuple[SymInt[N]]],
+) -> np.ndarray[tuple[SymInt[N], SymInt[3]]]:
     diff = pos[None, :, :] - pos[:, None, :]
     dist = np.linalg.norm(diff, axis=-1, keepdims=True)
     np.fill_diagonal(dist[:, :, 0], 1.0)

@@ -54,7 +54,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -71,9 +71,9 @@ class LSTMWithProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Module
 
     def __init__(
         self,
-        input_size: Dim[InSize],
-        hidden_size: Dim[Hidden],
-        proj_size: Dim[Proj],
+        input_size: SymInt[InSize],
+        hidden_size: SymInt[Hidden],
+        proj_size: SymInt[Proj],
     ) -> None:
         super().__init__()
         self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
@@ -107,9 +107,9 @@ class LSTMWithoutProjection[InSize: SymVar, Hidden: SymVar, Proj: SymVar](nn.Mod
 
     def __init__(
         self,
-        input_dim: Dim[InSize],
-        lstm_dim: Dim[Hidden],
-        proj_dim: Dim[Proj],
+        input_dim: SymInt[InSize],
+        lstm_dim: SymInt[Hidden],
+        proj_dim: SymInt[Proj],
         num_lstm_layers: int,
     ) -> None:
         super().__init__()
@@ -154,8 +154,8 @@ class SpeakerEncoder[InDim: SymVar, ProjDim: SymVar](nn.Module):
 
     def __init__(
         self,
-        input_dim: Dim[InDim],
-        proj_dim: Dim[ProjDim],
+        input_dim: SymInt[InDim],
+        proj_dim: SymInt[ProjDim],
         lstm_dim: int = 768,
         num_lstm_layers: int = 3,
         use_lstm_with_projection: bool = True,

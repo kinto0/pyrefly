@@ -50,7 +50,7 @@ The real `torch` library's type stubs don't carry shape information, so
 captures kernel size, stride, and padding as type-level values, and a `forward`
 that computes the output spatial dimensions).
 
-The `shape_extensions` package exports `Dim` — the bridge between runtime
+The `shape_extensions` package exports `SymInt` — the bridge between runtime
 integer values and type-level symbols. The package also includes utilities to
 support runtime evaluation of types with shapes and decorators such as
 `@uses_shape_dsl(...)` and `@shaped_array(...)`.
@@ -104,20 +104,20 @@ class Attention[D, NHead, HeadDim](nn.Module): ...
 
 # Good: HeadDim is derived
 class Attention[D, NHead](nn.Module):
-    def __init__(self, dim: Dim[D], num_heads: Dim[NHead]) -> None:
-        self.head_dim = dim // num_heads  # Dim[D // NHead]
+    def __init__(self, dim: SymInt[D], num_heads: SymInt[NHead]) -> None:
+        self.head_dim = dim // num_heads  # SymInt[D // NHead]
 ```
 
 ### Step 2: Type the constructor
 
-Constructor params that set dimensions become `Dim[...]`. This binds class
+Constructor params that set dimensions become `SymInt[...]`. This binds class
 type parameters. Sub-modules constructed with these Dims automatically get
 typed — Conv2d, Linear, LSTM, etc. stubs capture channel/feature dims.
 
 ```python
 class PromptEncoder[D, ES, MIC](nn.Module):
-    def __init__(self, embed_dim: Dim[D], emb_size: Dim[ES],
-                 mask_in_chans: Dim[MIC]) -> None:
+    def __init__(self, embed_dim: SymInt[D], emb_size: SymInt[ES],
+                 mask_in_chans: SymInt[MIC]) -> None:
         self.mask_conv1 = nn.Conv2d(1, mask_in_chans // 4, kernel_size=2, stride=2)
         # Conv2d captures MIC//4 as output channels
 ```
@@ -142,12 +142,12 @@ reshapes, matmuls, conv chains, and branch joins.
 ### Binding order matters
 
 When type vars appear in derived positions (`Tensor[B, QH * QW, KH * KW]`),
-put bare `Dim[X]` params BEFORE tensor params so the checker binds them first:
+put bare `SymInt[X]` params BEFORE tensor params so the checker binds them first:
 
 ```python
 # Good: dims-first, derived expressions in tensors
 def add_decomposed_rel_pos[B, QH, QW, KH, KW, HD](
-    q_h: Dim[QH], q_w: Dim[QW], k_h: Dim[KH], k_w: Dim[KW],
+    q_h: SymInt[QH], q_w: SymInt[QW], k_h: SymInt[KH], k_w: SymInt[KW],
     attn: Tensor[B, QH * QW, KH * KW],
     q: Tensor[B, QH * QW, HD],
     rel_pos_h: Tensor[RPH, HD],
@@ -192,9 +192,9 @@ before concluding anything is untracked.
 The op that appears to lose shapes is often not the problem. Trace back to
 find where shape info was actually lost:
 
-- **`int` where `Dim` is needed.** If a function takes `size: int` but the
+- **`int` where `SymInt` is needed.** If a function takes `size: int` but the
   caller passes a runtime value, shapes enter as unrefined. Fix: change to
-  `size: Dim[S]`. Example: `start_pos: int` → `start_pos: Dim[SP] | None`.
+  `size: SymInt[S]`. Example: `start_pos: int` → `start_pos: SymInt[SP] | None`.
 
 - **`list[...]` where `tuple[...]` is needed.** List literals homogenize
   element types. `torch.cat([a, b])` loses per-tensor shapes;
@@ -281,16 +281,16 @@ Floor division loses the remainder, so `N * (X // N)` only equals `X` when
 Note: `(a * b) // b → a` IS simplified (sound for all positive integers).
 Only the reverse direction is unsound.
 
-### Default values for Dim params
+### Default values for SymInt params
 
-`Literal[0]` is not assignable to `Dim[SP]`. Use `Optional` instead:
+`Literal[0]` is not assignable to `SymInt[SP]`. Use `Optional` instead:
 
 ```python
 # Won't work:
-def forward[SP](self, start_pos: Dim[SP] = 0): ...
+def forward[SP](self, start_pos: SymInt[SP] = 0): ...
 
 # Works:
-def forward[SP](self, start_pos: Dim[SP] | None = None): ...
+def forward[SP](self, start_pos: SymInt[SP] | None = None): ...
 ```
 
 ### ModuleList erases type params
@@ -321,14 +321,14 @@ the checker sees each module's type params and chains them. But returning
 
 ```python
 # BAD: factory function — Sequential type params erased at function boundary
-def _make_block[InC, OutC](in_c: Dim[InC], out_c: Dim[OutC]) -> nn.Sequential:
+def _make_block[InC, OutC](in_c: SymInt[InC], out_c: SymInt[OutC]) -> nn.Sequential:
     return nn.Sequential(nn.Conv2d(in_c, 128, ...), nn.Conv2d(128, out_c, ...))
 self.block = _make_block(185, 38)  # type is Sequential[*tuple[Unknown, ...]]
 self.block(x)  # returns bare Tensor!
 
 # GOOD: class with typed forward — shapes preserved
 class Block[InC, OutC](nn.Module):
-    def __init__(self, in_c: Dim[InC], out_c: Dim[OutC]) -> None:
+    def __init__(self, in_c: SymInt[InC], out_c: SymInt[OutC]) -> None:
         super().__init__()
         self.net = nn.Sequential(nn.Conv2d(in_c, 128, ...), nn.Conv2d(128, out_c, ...))
     def forward[B, H, W](self, x: Tensor[B, InC, H, W]) -> Tensor[B, OutC, H, W]:
@@ -376,11 +376,11 @@ def forward[B, T](self, x: Tensor[B, T, 512]) -> Tensor[B, T, 512]:
 
 When a module's channel count is chosen at construction time and used in the
 forward signature, make it a class-level type parameter and accept the
-corresponding `Dim[...]` in `__init__`:
+corresponding `SymInt[...]` in `__init__`:
 
 ```python
 class DoubleConv[InC, OutC](nn.Module):
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC]) -> None:
+    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(c_in, c_out, kernel_size=3, padding=1)
         ...
@@ -389,9 +389,9 @@ class DoubleConv[InC, OutC](nn.Module):
         ...
 ```
 
-`Dim[InC]` is the key construct from `shape_extensions`: it connects a runtime
+`SymInt[InC]` is the key construct from `shape_extensions`: it connects a runtime
 integer value to a type-level symbol. When someone writes `DoubleConv(3, 64)`,
-the type checker sees `c_in: Dim[InC]` receiving `3`, binds `InC = 3`, and
+the type checker sees `c_in: SymInt[InC]` receiving `3`, binds `InC = 3`, and
 infers the module type as `DoubleConv[3, 64]`. From there, the forward
 signature resolves to `Tensor[B, 3, H, W] -> Tensor[B, 64, H, W]`.
 
@@ -457,7 +457,7 @@ Modules called in sequence with known shapes. The simplest architecture pattern.
 
 ```python
 class BaselineActor[S, A](nn.Module):
-    def __init__(self, state_size: Dim[S], action_size: Dim[A]) -> None:
+    def __init__(self, state_size: SymInt[S], action_size: SymInt[A]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(state_size, 400)
         self.fc2 = nn.Linear(400, 400)
@@ -509,8 +509,8 @@ When every layer has the same type, use `nn.ModuleList[LayerType]` and iterate:
 
 ```python
 class Encoder[NHead, DK, DInner](nn.Module):
-    def __init__(self, n_head: Dim[NHead], d_k: Dim[DK],
-                 d_inner: Dim[DInner], n_layers: int = 6) -> None:
+    def __init__(self, n_head: SymInt[NHead], d_k: SymInt[DK],
+                 d_inner: SymInt[DInner], n_layers: int = 6) -> None:
         super().__init__()
         self.layer_stack = nn.ModuleList(
             [EncoderLayer(n_head, d_k, d_inner) for _ in range(n_layers)]
@@ -541,7 +541,7 @@ ShapePreservingActivation = (
 )
 
 class ResNetBlock[C](nn.Module):
-    def __init__(self, c: Dim[C], act_fn: ShapePreservingActivation) -> None:
+    def __init__(self, c: SymInt[C], act_fn: ShapePreservingActivation) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=3, padding=1, bias=False),
@@ -589,7 +589,7 @@ class UNet[NChannels, NClasses](nn.Module):
         return up(deep, skip)
 
     def recurse[I, B, C, H, W](
-        self, x: Tensor[B, C, H, W], depth: Dim[I]
+        self, x: Tensor[B, C, H, W], depth: SymInt[I]
     ) -> Tensor[B, C, H, W]:
         if depth == 0:
             return x
@@ -646,16 +646,16 @@ class Generator(nn.Module):
 
     @overload
     def _chain[B, C, H, W](
-        self, x: Tensor[B, C, H, W], depth: Dim[1]
+        self, x: Tensor[B, C, H, W], depth: SymInt[1]
     ) -> Tensor[B, C // 2, H * 2, W * 2]: ...
 
     @overload
     def _chain[I, B, C, H, W](
-        self, x: Tensor[B, C, H, W], depth: Dim[I]
+        self, x: Tensor[B, C, H, W], depth: SymInt[I]
     ) -> Tensor[B, C // 2 ** I, H * 2 ** I, W * 2 ** I]: ...
 
     def _chain[I, B, C, H, W](
-        self, x: Tensor[B, C, H, W], depth: Dim[I]
+        self, x: Tensor[B, C, H, W], depth: SymInt[I]
     ) -> (Tensor[B, C // 2, H * 2, W * 2]
          | Tensor[B, C // 2 ** I, H * 2 ** I, W * 2 ** I]):
         y = self._apply_stage(x, depth)
@@ -664,7 +664,7 @@ class Generator(nn.Module):
         return self._chain(y, depth - 1)
 ```
 
-The base-case overload (`depth: Dim[1]`) handles the single-stage case where
+The base-case overload (`depth: SymInt[1]`) handles the single-stage case where
 the formula simplifies concretely. The recursive overload uses `2**I` to
 express the exponential relationship.
 
@@ -699,11 +699,11 @@ For models with many hyperparameters, use a generic `@dataclass`:
 ```python
 @dataclass
 class GPTConfig[VocabSize, BlockSize, NEmbedding, NHead, NLayer]:
-    block_size: Dim[BlockSize]
-    vocab_size: Dim[VocabSize]
-    n_layer: Dim[NLayer]
-    n_head: Dim[NHead]
-    n_embd: Dim[NEmbedding]
+    block_size: SymInt[BlockSize]
+    vocab_size: SymInt[VocabSize]
+    n_layer: SymInt[NLayer]
+    n_head: SymInt[NHead]
+    n_embd: SymInt[NEmbedding]
     dropout: float = 0.0
     bias: bool = True
 ```
@@ -786,12 +786,12 @@ recursive depth. The `_chain` methods in dcgan and resnet demonstrate this:
 ```python
 @overload
 def _chain[B, C, H, W](
-    self, x: Tensor[B, C, H, W], depth: Dim[1]
+    self, x: Tensor[B, C, H, W], depth: SymInt[1]
 ) -> Tensor[B, C // 2, H * 2, W * 2]: ...
 
 @overload
 def _chain[I, B, C, H, W](
-    self, x: Tensor[B, C, H, W], depth: Dim[I]
+    self, x: Tensor[B, C, H, W], depth: SymInt[I]
 ) -> Tensor[B, C // 2 ** I, H * 2 ** I, W * 2 ** I]: ...
 ```
 
@@ -835,7 +835,7 @@ bare `Tensor` (nothing tracked).
 
 ```python
 class MLP[InDim, OutDim](nn.Module):
-    def __init__(self, input_dim: Dim[InDim], output_dim: Dim[OutDim],
+    def __init__(self, input_dim: SymInt[InDim], output_dim: SymInt[OutDim],
                  hidden_units: list[int], activation: str = "ReLU") -> None:
         # Dynamic internals: getattr, list-based construction
         ...
@@ -856,13 +856,13 @@ through the chain. Without the typed interface, `B` is lost entirely.
 
 `list[int]` element access returns `int`, losing the concrete value at the
 type level. When a dimension comes from a list (e.g., `hidden_units[-1]`),
-add an explicit `Dim` field to the config:
+add an explicit `SymInt` field to the config:
 
 ```python
 @dataclass
 class Config[K, MlpOut]:
-    num_output_features: Dim[K]
-    mlp_output_dim: Dim[MlpOut]       # explicit — was hidden_units[-1]
+    num_output_features: SymInt[K]
+    mlp_output_dim: SymInt[MlpOut]       # explicit — was hidden_units[-1]
     mlp_hidden_units: list[int] = field(default_factory=lambda: [512, 256])
 ```
 
@@ -914,11 +914,11 @@ on. Instead, trace upstream to find where shapes were actually lost. See
 [Section 3](#3-what-should-work) for the full diagnostic approach. Common
 fixes:
 
-- Change `int` to `Dim[X]` so shapes enter the function typed
+- Change `int` to `SymInt[X]` so shapes enter the function typed
 - Use `tuple(...)` instead of `list[...]` for `torch.cat` arguments
 - Break inlined expressions into separate assignments
 - Fix the stub if an op returns bare `Tensor` when it shouldn't
-- Add explicit `Dim` fields to configs for values from `list[int]` access
+- Add explicit `SymInt` fields to configs for values from `list[int]` access
 - Type module interfaces even when internals are dynamic
 
 ---
@@ -977,7 +977,7 @@ Quick reference for common dynamic patterns that break shape tracking.
 |---------|-------------|-----|
 | `getattr(nn, str)()` | Returns `Any` | Union of typed `nn.Module` subclasses |
 | `nn.Sequential(*list_var)` | Erases module types | Individual attributes, chain in `forward` |
-| `list[int]` element access | Erases concrete value | Add explicit `Dim` field to config |
+| `list[int]` element access | Erases concrete value | Add explicit `SymInt` field to config |
 | Heterogeneous `ModuleList` loop | Homogenizes type params | Spell out blocks, or typed interface (last resort) |
 
 Typed interfaces (`type: ignore[bad-assignment]` to narrow) are the fallback
@@ -997,13 +997,13 @@ when none of the above fixes apply — not the first move.
 | ShapePreservingActivation | [resnet](tensor-shapes/pyrefly-torch-stubs/examples/resnet.py) | Union of activation types as callable |
 | Multi-Head Attention | [llama](tensor-shapes/pyrefly-torch-stubs/examples/llama.py), [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py) | Reshape+transpose multi-head, `D // NHead`, RoPE |
 | KV Cache | [llama](tensor-shapes/pyrefly-torch-stubs/examples/llama.py) | Optional `start_pos`, typed cache, branch-per-path |
-| Windowed Attention | [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py) | Window partition/unpartition with `Dim[WS]`, generic `H, W` on attention |
+| Windowed Attention | [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py) | Window partition/unpartition with `SymInt[WS]`, generic `H, W` on attention |
 | Typed Distributions | [drq](tensor-shapes/pyrefly-torch-stubs/examples/drq.py) | `Distribution[*EventShape]`, `SquashedNormal` |
 | Variadic Batch | [tacotron2](tensor-shapes/pyrefly-torch-stubs/examples/tacotron2.py) | `forward[*Bs]` for any-batch-shape support |
 | Typed Dynamic Interface | [finalmlp](tensor-shapes/pyrefly-torch-stubs/examples/finalmlp.py) | Typed forward on dynamic-internal modules, `Module.forward` → `Any` |
-| Config Dim Extraction | [finalmlp](tensor-shapes/pyrefly-torch-stubs/examples/finalmlp.py) | Explicit `Dim` fields for values from `list[int]` access |
+| Config SymInt Extraction | [finalmlp](tensor-shapes/pyrefly-torch-stubs/examples/finalmlp.py) | Explicit `SymInt` fields for values from `list[int]` access |
 | Typed Element Lists | [finalmlp](tensor-shapes/pyrefly-torch-stubs/examples/finalmlp.py) | `list[Tensor[B]]` + annotated stack result for `Linear` matching |
 | First-Iteration Split | [finalmlp](tensor-shapes/pyrefly-torch-stubs/examples/finalmlp.py) | Separate shape-changing first iteration from shape-preserving rest |
 | Autoregressive Loop | [tacotron2](tensor-shapes/pyrefly-torch-stubs/examples/tacotron2.py) | `list[Tensor[B, 80]]` + `torch.stack`, typed elements |
-| Dims-First Params | [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py) | Bind bare `Dim[X]` before derived `Tensor[..., X*Y, ...]` |
+| Dims-First Params | [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py) | Bind bare `SymInt[X]` before derived `Tensor[..., X*Y, ...]` |
 | Conv Chain Formulas | [sam](tensor-shapes/pyrefly-torch-stubs/examples/sam.py), [background_matting](tensor-shapes/pyrefly-torch-stubs/examples/background_matting.py), [stargan](tensor-shapes/pyrefly-torch-stubs/examples/stargan.py) | `4*ES → 2*ES → ES`, `(S-16)//16+1` through Conv2d/ConvTranspose2d |

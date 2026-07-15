@@ -11,7 +11,7 @@ import torch
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymInt
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -40,7 +40,7 @@ def test_symbolic_identity_wrong() -> Tensor[[4, 3]]:
 
 def numel_returns_bad_explicit_symint[N: SymVar, M: SymVar](
     x: Tensor[[N, M]],
-) -> Dim[N + M]:
+) -> SymInt[N + M]:
     s = x.numel()
     assert_type(s, SymInt[N * M])
     # E: Returned type `SymInt[(N * M)]` is not assignable
@@ -60,7 +60,7 @@ def view_returns_bad_explicit_tensor[N: SymVar, M: SymVar](
 
 def numel_returns_bad_implicit_symint[N: SymVar, M: SymVar, K: SymVar](
     x: Tensor[[N, M]],
-) -> Dim[K]:
+) -> SymInt[K]:
     s = x.numel()
     assert_type(s, SymInt[N * M])
     # E: Returned type `SymInt[(N * M)]` is not assignable
@@ -78,9 +78,9 @@ def view_returns_bad_implicit_tensor[N: SymVar, M: SymVar, K: SymVar](
     return v
 
 
-def test_numel_returns_bad_implicit_symint() -> Dim[11]:
+def test_numel_returns_bad_implicit_symint() -> SymInt[11]:
     n = numel_returns_bad_implicit_symint(torch.randn(3, 4))
-    assert_type(n, Dim)
+    assert_type(n, SymInt)
     # Should infer: Literal[12] (3*4=12)
     return n
 

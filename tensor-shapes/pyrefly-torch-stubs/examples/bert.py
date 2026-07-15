@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymInt, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -34,7 +34,7 @@ class LayerNorm[Features: SymVar](nn.Module):
     a_2: Tensor[[Features]]
     b_2: Tensor[[Features]]
 
-    def __init__(self, features: Dim[Features], eps: float = 1e-6) -> None:
+    def __init__(self, features: SymInt[Features], eps: float = 1e-6) -> None:
         super().__init__()
         self.a_2 = nn.Parameter(torch.ones(features))
         self.b_2 = nn.Parameter(torch.zeros(features))
@@ -56,7 +56,7 @@ class SublayerConnection[Hidden: SymVar](nn.Module):
     Note for code simplicity the norm is first as opposed to last.
     """
 
-    def __init__(self, size: Dim[Hidden], dropout: float) -> None:
+    def __init__(self, size: SymInt[Hidden], dropout: float) -> None:
         super().__init__()
         self.norm = LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
@@ -74,7 +74,7 @@ class PositionwiseFeedForward[DModel: SymVar, DFF: SymVar](nn.Module):
     """Implements FFN equation."""
 
     def __init__(
-        self, d_model: Dim[DModel], d_ff: Dim[DFF], dropout: float = 0.1
+        self, d_model: SymInt[DModel], d_ff: SymInt[DFF], dropout: float = 0.1
     ) -> None:
         super().__init__()
         self.w_1 = nn.Linear(d_model, d_ff)
@@ -127,7 +127,9 @@ class Attention(nn.Module):
 class MultiHeadedAttention[DModel: SymVar, H: SymVar](nn.Module):
     """Take in model size and number of heads."""
 
-    def __init__(self, h: Dim[H], d_model: Dim[DModel], dropout: float = 0.1) -> None:
+    def __init__(
+        self, h: SymInt[H], d_model: SymInt[DModel], dropout: float = 0.1
+    ) -> None:
         super().__init__()
         assert d_model % h == 0
 
@@ -199,7 +201,7 @@ class TokenEmbedding[VocabSize: SymVar, EmbedSize: SymVar = 512](
     nn.Embedding[VocabSize, EmbedSize]
 ):
     def __init__(
-        self, vocab_size: Dim[VocabSize], embed_size: Dim[EmbedSize] = 512
+        self, vocab_size: SymInt[VocabSize], embed_size: SymInt[EmbedSize] = 512
     ) -> None:
         super().__init__(vocab_size, embed_size, padding_idx=0)
 
@@ -243,8 +245,8 @@ class BERTEmbedding[VocabSize: SymVar, EmbedSize: SymVar](nn.Module):
 
     def __init__(
         self,
-        vocab_size: Dim[VocabSize],
-        embed_size: Dim[EmbedSize],
+        vocab_size: SymInt[VocabSize],
+        embed_size: SymInt[EmbedSize],
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
@@ -296,8 +298,8 @@ class TransformerBlock[Hidden: SymVar, H: SymVar](nn.Module):
 
     def __init__(
         self,
-        hidden: Dim[Hidden],
-        attn_heads: Dim[H],
+        hidden: SymInt[Hidden],
+        attn_heads: SymInt[H],
         feed_forward_hidden: int,
         dropout: float,
     ) -> None:
@@ -334,10 +336,10 @@ class BERT[VocabSize: SymVar, Hidden: SymVar = 768, H: SymVar = 12](nn.Module):
 
     def __init__(
         self,
-        vocab_size: Dim[VocabSize],
-        hidden: Dim[Hidden] = 768,
+        vocab_size: SymInt[VocabSize],
+        hidden: SymInt[Hidden] = 768,
         n_layers: int = 12,
-        attn_heads: Dim[H] = 12,
+        attn_heads: SymInt[H] = 12,
         dropout: float = 0.1,
     ) -> None:
         """
@@ -395,7 +397,7 @@ class NextSentencePrediction[Hidden: SymVar](nn.Module):
     2-class classification model : is_next, is_not_next
     """
 
-    def __init__(self, hidden: Dim[Hidden]) -> None:
+    def __init__(self, hidden: SymInt[Hidden]) -> None:
         super().__init__()
         self.linear = nn.Linear(hidden, 2)
         self.softmax = nn.LogSoftmax(dim=-1)
@@ -412,7 +414,7 @@ class MaskedLanguageModel[Hidden: SymVar, VocabSize: SymVar](nn.Module):
     n-class classification problem, n-class = vocab_size
     """
 
-    def __init__(self, hidden: Dim[Hidden], vocab_size: Dim[VocabSize]) -> None:
+    def __init__(self, hidden: SymInt[Hidden], vocab_size: SymInt[VocabSize]) -> None:
         super().__init__()
         self.linear = nn.Linear(hidden, vocab_size)
         self.softmax = nn.LogSoftmax(dim=-1)
@@ -430,7 +432,7 @@ class BERTLM[VocabSize: SymVar, Hidden: SymVar, H: SymVar](nn.Module):
     """
 
     def __init__(
-        self, bert: BERT[VocabSize, Hidden, H], vocab_size: Dim[VocabSize]
+        self, bert: BERT[VocabSize, Hidden, H], vocab_size: SymInt[VocabSize]
     ) -> None:
         super().__init__()
         self.bert = bert

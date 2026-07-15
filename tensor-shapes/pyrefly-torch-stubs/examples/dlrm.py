@@ -55,7 +55,7 @@ import torch.nn as nn
 import torch.quantization
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymInt, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -72,7 +72,7 @@ class BottomMLP[DenseDim: SymVar, D: SymVar](nn.Module):
     (B, DenseDim) → (B, D)
     """
 
-    def __init__(self, dense_dim: Dim[DenseDim], embed_dim: Dim[D]) -> None:
+    def __init__(self, dense_dim: SymInt[DenseDim], embed_dim: SymInt[D]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(dense_dim, 512)
         self.fc2 = nn.Linear(512, 256)
@@ -99,7 +99,7 @@ class TopMLP[TopIn: SymVar](nn.Module):
     (B, TopIn) → (B, 1)
     """
 
-    def __init__(self, top_in: Dim[TopIn]) -> None:
+    def __init__(self, top_in: SymInt[TopIn]) -> None:
         super().__init__()
         self.fc1 = nn.Linear(top_in, 512)
         self.fc2 = nn.Linear(512, 256)
@@ -133,8 +133,8 @@ class DLRM[DenseDim: SymVar, D: SymVar](nn.Module):
 
     def __init__(
         self,
-        dense_dim: Dim[DenseDim],
-        embed_dim: Dim[D],
+        dense_dim: SymInt[DenseDim],
+        embed_dim: SymInt[D],
         vocab1: int,
         vocab2: int,
         vocab3: int,
@@ -232,7 +232,7 @@ class QREmbeddingBag[D: SymVar](nn.Module):
     def __init__(
         self,
         num_categories: int,
-        embedding_dim: Dim[D],
+        embedding_dim: SymInt[D],
         q_factor: int,
     ) -> None:
         super().__init__()
@@ -278,7 +278,7 @@ class PREmbeddingBag[D: SymVar](nn.Module):
     def __init__(
         self,
         num_rows: int,
-        embedding_dim: Dim[D],
+        embedding_dim: SymInt[D],
     ) -> None:
         super().__init__()
         self.num_rows = num_rows
@@ -365,7 +365,7 @@ class QuantizedEmbeddingBag[D: SymVar](nn.Module):
     def __init__(
         self,
         num_embeddings: int,
-        embedding_dim: Dim[D],
+        embedding_dim: SymInt[D],
     ) -> None:
         super().__init__()
         self.embedding_dim = embedding_dim

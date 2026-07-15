@@ -16,7 +16,7 @@ import torch.nn as nn
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -24,9 +24,9 @@ if TYPE_CHECKING:
 
 
 class Reshaper[K: SymVar, D: SymVar](nn.Module):
-    """Linear whose out_features is a Dim expression, followed by view."""
+    """Linear whose out_features is a SymInt expression, followed by view."""
 
-    def __init__(self, k: Dim[K], d: Dim[D]) -> None:
+    def __init__(self, k: SymInt[K], d: SymInt[D]) -> None:
         super().__init__()
         self.k = k
         self.d = d
@@ -42,7 +42,7 @@ class Reshaper[K: SymVar, D: SymVar](nn.Module):
 
 
 def test_view_on_variadic_linear():
-    """view() on Linear output with Dim expression doesn't crash."""
+    """view() on Linear output with SymInt expression doesn't crash."""
     m = Reshaper(16, 8)
     x: Tensor[[4, 256]] = torch.randn(4, 256)
     out = m(x)
@@ -53,7 +53,7 @@ def test_view_on_variadic_linear():
 
 
 def reshape_variadic[Bs: SizeTuple, C: SymVar](
-    x: Tensor[[*Elements[Bs], C]], c: Dim[C]
+    x: Tensor[[*Elements[Bs], C]], c: SymInt[C]
 ) -> Tensor[[*Elements[Bs], C]]:
     """reshape on a variadic tensor should not crash."""
     y = x.reshape(-1, c)

@@ -136,8 +136,8 @@ fn accepts_all_class_objects(ty: &Type) -> bool {
     }
 }
 
-fn is_dim_class_type(cls: &ClassType) -> bool {
-    cls.has_qname("shape_extensions", "Dim")
+fn is_symint_class_type(cls: &ClassType) -> bool {
+    cls.has_qname("shape_extensions", "SymInt")
 }
 
 /// Check if a param list has both `*args: Any` and `**kwargs: Any`
@@ -2425,11 +2425,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.is_subset_literal_int_size(n, got, false)
             }
             (Type::SymInt(_) | Type::Quantified(_), Type::ClassType(cls))
-                if is_dim_class_type(cls) =>
+                if is_symint_class_type(cls) =>
             {
                 Ok(())
             }
-            (Type::QuantifiedValue(_), Type::ClassType(cls)) if is_dim_class_type(cls) => Ok(()),
+            (Type::QuantifiedValue(_), Type::ClassType(cls)) if is_symint_class_type(cls) => Ok(()),
             (Type::Literal(l_lit), Type::Literal(u_lit)) => {
                 ok_or(l_lit.value == u_lit.value, SubsetError::Other)
             }

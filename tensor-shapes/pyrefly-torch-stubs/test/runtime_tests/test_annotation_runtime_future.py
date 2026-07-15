@@ -20,7 +20,7 @@ import unittest
 from typing import assert_type, Generic
 
 import torch
-from shape_extensions import assert_shape, Dim, SymVar
+from shape_extensions import assert_shape, SymInt, SymVar
 
 
 class TestSubscriptRuntime(unittest.TestCase):
@@ -142,36 +142,36 @@ class TestClassAnnotationRuntime(unittest.TestCase):
 
 
 class TestDimRuntime(unittest.TestCase):
-    """Dim[...] with future annotations — all work since annotations are strings."""
+    """SymInt[...] with future annotations — all work since annotations are strings."""
 
     def test_dim_concrete(self):
-        """Dim[3] — works."""
+        """SymInt[3] — works."""
 
-        def f(x: Dim[3]) -> Dim[3]:
+        def f(x: SymInt[3]) -> SymInt[3]:
             return x
 
         f(42)
 
     def test_dim_typevar(self):
-        """Dim[N] — works."""
+        """SymInt[N] — works."""
 
-        def f[N](x: Dim[N]) -> Dim[N]:
+        def f[N](x: SymInt[N]) -> SymInt[N]:
             return x
 
         f(42)
 
     def test_dim_arithmetic(self):
-        """Dim[N+1] — works with future annotations (annotation is a string)."""
+        """SymInt[N+1] — works with future annotations (annotation is a string)."""
 
-        def f[N](x: Dim[N]) -> Dim[N + 1]:
+        def f[N](x: SymInt[N]) -> SymInt[N + 1]:
             return x
 
         f(42)
 
     def test_dim_two_typevars(self):
-        """Dim[N+M] — works with future annotations."""
+        """SymInt[N+M] — works with future annotations."""
 
-        def f[N, M](x: Dim[N]) -> Dim[N + M]:
+        def f[N, M](x: SymInt[N]) -> SymInt[N + M]:
             return x
 
         f(42)

@@ -6,18 +6,18 @@
 from __future__ import annotations
 
 import numpy as np
-from shape_extensions import assert_shape, Dim, SymVar
+from shape_extensions import assert_shape, SymInt, SymVar
 
 N = SymVar("N")
 D = SymVar("D")
 
 
 def harmonic_oscillator_energy(
-    position: np.ndarray[tuple[Dim[N], Dim[D]]],
-    velocity: np.ndarray[tuple[Dim[N], Dim[D]]],
+    position: np.ndarray[tuple[SymInt[N], SymInt[D]]],
+    velocity: np.ndarray[tuple[SymInt[N], SymInt[D]]],
     stiffness: float,
     mass: float,
-) -> np.ndarray[tuple[Dim[N]]]:
+) -> np.ndarray[tuple[SymInt[N]]]:
     """Compute the total oscillator energy for a batch of states.
 
     Each row is one independent oscillator state, and each column is a spatial
@@ -32,9 +32,9 @@ def harmonic_oscillator_energy(
 
 
 def linear_elastic_displacement(
-    stiffness: np.ndarray[tuple[Dim[N], Dim[N]]],
-    force: np.ndarray[tuple[Dim[N], Dim[1]]],
-) -> np.ndarray[tuple[Dim[N], Dim[1]]]:
+    stiffness: np.ndarray[tuple[SymInt[N], SymInt[N]]],
+    force: np.ndarray[tuple[SymInt[N], SymInt[1]]],
+) -> np.ndarray[tuple[SymInt[N], SymInt[1]]]:
     """Solve a linear elastic equilibrium system.
 
     In small-displacement linear elasticity, the discretized equilibrium
@@ -47,9 +47,9 @@ def linear_elastic_displacement(
 
 
 def gravitational_forces(
-    position: np.ndarray[tuple[Dim[N], Dim[3]]],
-    mass: np.ndarray[tuple[Dim[N]]],
-) -> np.ndarray[tuple[Dim[N], Dim[3]]]:
+    position: np.ndarray[tuple[SymInt[N], SymInt[3]]],
+    mass: np.ndarray[tuple[SymInt[N]]],
+) -> np.ndarray[tuple[SymInt[N], SymInt[3]]]:
     """Compute Newtonian gravitational forces for an n-body system.
 
     Each row of `position` is a particle's 3-D location, and `mass` stores one
@@ -70,8 +70,8 @@ def gravitational_forces(
 
 
 def particle_in_box(
-    n_points: Dim[N],
-) -> tuple[np.ndarray[tuple[Dim[N]]], np.ndarray[tuple[Dim[N], Dim[N]]]]:
+    n_points: SymInt[N],
+) -> tuple[np.ndarray[tuple[SymInt[N]]], np.ndarray[tuple[SymInt[N], SymInt[N]]]]:
     """Solve a finite-difference quantum particle-in-a-box Hamiltonian.
 
     A one-dimensional particle in a box is a standard quantum mechanics model:

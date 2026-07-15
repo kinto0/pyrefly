@@ -12,7 +12,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -21,7 +21,7 @@ class LinearLayer[N: SymVar, M: SymVar](nn.Module):
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         self.weight = torch.randn(out_features, in_features)
 
@@ -45,7 +45,7 @@ class TwoLayer[N: SymVar, M: SymVar, K: SymVar](nn.Module):
     layer1: LinearLayer[N, M]
     layer2: LinearLayer[M, K]
 
-    def __init__(self, n: Dim[N], m: Dim[M], k: Dim[K]):
+    def __init__(self, n: SymInt[N], m: SymInt[M], k: SymInt[K]):
         super().__init__()
         self.layer1 = LinearLayer(n, m)
         self.layer2 = LinearLayer(m, k)

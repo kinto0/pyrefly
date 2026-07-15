@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -58,10 +58,10 @@ class MaskBlock[InD: SymVar, HidD: SymVar, RedD: SymVar, OutD: SymVar](nn.Module
 
     def __init__(
         self,
-        input_dim: Dim[InD],
-        hidden_dim: Dim[HidD],
-        reduced_dim: Dim[RedD],
-        output_dim: Dim[OutD],
+        input_dim: SymInt[InD],
+        hidden_dim: SymInt[HidD],
+        reduced_dim: SymInt[RedD],
+        output_dim: SymInt[OutD],
         hidden_activation: str = "ReLU",
         dropout_rate: float = 0.0,
         layer_norm: bool = True,
@@ -103,8 +103,8 @@ class SerialMaskNet[InD: SymVar, OutD: SymVar](nn.Module):
 
     def __init__(
         self,
-        input_dim: Dim[InD],
-        output_dim: Dim[OutD],
+        input_dim: SymInt[InD],
+        output_dim: SymInt[OutD],
         hidden_units: list[int],
         hidden_activation: str = "ReLU",
         reduction_ratio: float = 1.0,
@@ -147,10 +147,10 @@ class ParallelMaskNet[InD: SymVar, BlkD: SymVar = 64, OutD: SymVar = 64](nn.Modu
 
     def __init__(
         self,
-        input_dim: Dim[InD],
-        output_dim: Dim[OutD],
+        input_dim: SymInt[InD],
+        output_dim: SymInt[OutD],
         num_blocks: int = 1,
-        block_dim: Dim[BlkD] = 64,
+        block_dim: SymInt[BlkD] = 64,
         dnn_hidden_units: list[int] | None = None,
         hidden_activation: str = "ReLU",
         reduction_ratio: float = 1.0,
@@ -215,9 +215,9 @@ class MaskNetBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
 
     def __init__(
         self,
-        num_features: Dim[F],
-        emb_dim: Dim[D],
-        output_dim: Dim[OutD],
+        num_features: SymInt[F],
+        emb_dim: SymInt[D],
+        output_dim: SymInt[OutD],
         config: MaskNetConfig | None = None,
     ) -> None:
         super().__init__()
@@ -275,7 +275,7 @@ class MaskNetBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
         )
 
     @property
-    def output_dim(self) -> Dim[OutD]:
+    def output_dim(self) -> SymInt[OutD]:
         return self._output_dim
 
     def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:

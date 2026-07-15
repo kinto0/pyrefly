@@ -29,7 +29,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -41,18 +41,18 @@ class FinalMLPConfig[
     K: SymVar = 16,
 ]:
     mlp1_hidden_units: list[int] = field(default_factory=lambda: [512, 256])
-    mlp1_output_dim: Dim[M1Out] = 256  # type: ignore[bad-assignment]
+    mlp1_output_dim: SymInt[M1Out] = 256  # type: ignore[bad-assignment]
     mlp1_activation: str = "ReLU"
     mlp1_dropout: float = 0.0
     mlp1_batch_norm: bool = False
     mlp2_hidden_units: list[int] = field(default_factory=lambda: [512, 256])
-    mlp2_output_dim: Dim[M2Out] = 256  # type: ignore[bad-assignment]
+    mlp2_output_dim: SymInt[M2Out] = 256  # type: ignore[bad-assignment]
     mlp2_activation: str = "ReLU"
     mlp2_dropout: float = 0.0
     mlp2_batch_norm: bool = False
-    num_heads: Dim[NH] = 1  # type: ignore[bad-assignment]
+    num_heads: SymInt[NH] = 1  # type: ignore[bad-assignment]
     num_layers: int = 1
-    num_output_features: Dim[K] = 16  # type: ignore[bad-assignment]
+    num_output_features: SymInt[K] = 16  # type: ignore[bad-assignment]
 
 
 class MLP[InD: SymVar, OutD: SymVar](nn.Module):
@@ -62,13 +62,13 @@ class MLP[InD: SymVar, OutD: SymVar](nn.Module):
     Bridge dims InD and OutD provide typed input/output interface.
     """
 
-    output_dim: Dim[OutD]
+    output_dim: SymInt[OutD]
 
     def __init__(
         self,
-        input_dim: Dim[InD],
+        input_dim: SymInt[InD],
         hidden_units: list[int],
-        output_dim: Dim[OutD],
+        output_dim: SymInt[OutD],
         activation: str = "ReLU",
         dropout: float = 0.0,
         batch_norm: bool = False,
@@ -107,10 +107,10 @@ class InteractionAggregation[XD: SymVar, YD: SymVar, OutD: SymVar, NH: SymVar](
 
     def __init__(
         self,
-        x_dim: Dim[XD],
-        y_dim: Dim[YD],
-        output_dim: Dim[OutD],
-        num_heads: Dim[NH],
+        x_dim: SymInt[XD],
+        y_dim: SymInt[YD],
+        output_dim: SymInt[OutD],
+        num_heads: SymInt[NH],
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
@@ -179,10 +179,10 @@ class FinalMLPLayer[
 
     def __init__(
         self,
-        num_features: Dim[F],
-        emb_dim: Dim[D],
-        num_output_features: Dim[K],
-        output_emb_dim: Dim[D],
+        num_features: SymInt[F],
+        emb_dim: SymInt[D],
+        num_output_features: SymInt[K],
+        output_emb_dim: SymInt[D],
         config: FinalMLPConfig[M1Out, M2Out, NH, K],
     ) -> None:
         super().__init__()
@@ -256,8 +256,8 @@ class FinalMLPBackbone[
 
     def __init__(
         self,
-        num_features: Dim[F],
-        emb_dim: Dim[D],
+        num_features: SymInt[F],
+        emb_dim: SymInt[D],
         config: FinalMLPConfig[M1Out, M2Out, NH, K] | None = None,
     ) -> None:
         super().__init__()

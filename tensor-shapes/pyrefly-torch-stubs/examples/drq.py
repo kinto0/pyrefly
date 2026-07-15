@@ -49,7 +49,7 @@ from torch.distributions import Normal, TransformedDistribution
 from torch.distributions.transforms import Transform
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -129,7 +129,7 @@ class Encoder[C: SymVar, FeatDim: SymVar](nn.Module):
     (B, C, 84, 84) → (B, FeatDim)
     """
 
-    def __init__(self, channels: Dim[C], feature_dim: Dim[FeatDim]) -> None:
+    def __init__(self, channels: SymInt[C], feature_dim: SymInt[FeatDim]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=2)
         self.conv2 = nn.Conv2d(32, 32, kernel_size=3, stride=1)
@@ -201,10 +201,10 @@ class Actor[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module):
 
     def __init__(
         self,
-        channels: Dim[C],
-        feature_dim: Dim[FeatDim],
-        action_dim: Dim[ActDim],
-        hidden_dim: Dim[H],
+        channels: SymInt[C],
+        feature_dim: SymInt[FeatDim],
+        action_dim: SymInt[ActDim],
+        hidden_dim: SymInt[H],
         log_std_bounds: tuple[float, float] = (-10.0, 2.0),
     ) -> None:
         super().__init__()
@@ -259,10 +259,10 @@ class Critic[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module):
 
     def __init__(
         self,
-        channels: Dim[C],
-        feature_dim: Dim[FeatDim],
-        action_dim: Dim[ActDim],
-        hidden_dim: Dim[H],
+        channels: SymInt[C],
+        feature_dim: SymInt[FeatDim],
+        action_dim: SymInt[ActDim],
+        hidden_dim: SymInt[H],
     ) -> None:
         super().__init__()
         self.encoder = Encoder(channels, feature_dim)
@@ -330,10 +330,10 @@ class DRQAgent[C: SymVar, FeatDim: SymVar, ActDim: SymVar, H: SymVar](nn.Module)
 
     def __init__(
         self,
-        channels: Dim[C],
-        feature_dim: Dim[FeatDim],
-        action_dim: Dim[ActDim],
-        hidden_dim: Dim[H],
+        channels: SymInt[C],
+        feature_dim: SymInt[FeatDim],
+        action_dim: SymInt[ActDim],
+        hidden_dim: SymInt[H],
         discount: float = 0.99,
         init_temperature: float = 0.1,
         lr: float = 1e-3,

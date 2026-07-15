@@ -29,12 +29,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
 class ResBlock[NF: SymVar = 128](nn.Module):
-    def __init__(self, n_freq: Dim[NF] = 128) -> None:
+    def __init__(self, n_freq: SymInt[NF] = 128) -> None:
         super().__init__()
         self.resblock_model = nn.Sequential(
             nn.Conv1d(
@@ -67,10 +67,10 @@ class MelResNet[
     def __init__(
         self,
         n_res_block: int = 10,
-        n_freq: Dim[NF] = 128,
-        n_hidden: Dim[NH] = 128,
-        n_output: Dim[NO] = 128,
-        kernel_size: Dim[K] = 5,
+        n_freq: SymInt[NF] = 128,
+        n_hidden: SymInt[NH] = 128,
+        n_output: SymInt[NO] = 128,
+        kernel_size: SymInt[K] = 5,
     ) -> None:
         super().__init__()
         self.conv_in = nn.Conv1d(
@@ -106,7 +106,7 @@ class MelResNet[
 
 
 class Stretch2d[TS: SymVar, FS: SymVar](nn.Module):
-    def __init__(self, time_scale: Dim[TS], freq_scale: Dim[FS]) -> None:
+    def __init__(self, time_scale: SymInt[TS], freq_scale: SymInt[FS]) -> None:
         super().__init__()
         self.freq_scale = freq_scale
         self.time_scale = time_scale
@@ -131,10 +131,10 @@ class UpsampleNetwork[
         self,
         upsample_scales: list[int],
         n_res_block: int = 10,
-        n_freq: Dim[NF] = 128,
-        n_hidden: Dim[NH] = 128,
-        n_output: Dim[NO] = 128,
-        kernel_size: Dim[K] = 5,
+        n_freq: SymInt[NF] = 128,
+        n_hidden: SymInt[NH] = 128,
+        n_output: SymInt[NO] = 128,
+        kernel_size: SymInt[K] = 5,
     ) -> None:
         super().__init__()
 
@@ -201,15 +201,15 @@ class WaveRNN[
     def __init__(
         self,
         upsample_scales: list[int],
-        n_classes: Dim[NC],
+        n_classes: SymInt[NC],
         hop_length: int,
         n_res_block: int = 10,
-        n_rnn: Dim[NR] = 512,
-        n_fc: Dim[NFC] = 512,
-        kernel_size: Dim[K] = 5,
-        n_freq: Dim[NF] = 128,
-        n_hidden: Dim[NH] = 128,
-        n_output: Dim[NO] = 128,
+        n_rnn: SymInt[NR] = 512,
+        n_fc: SymInt[NFC] = 512,
+        kernel_size: SymInt[K] = 5,
+        n_freq: SymInt[NF] = 128,
+        n_hidden: SymInt[NH] = 128,
+        n_output: SymInt[NO] = 128,
     ) -> None:
         super().__init__()
 

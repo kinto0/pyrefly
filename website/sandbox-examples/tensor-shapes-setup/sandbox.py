@@ -10,12 +10,12 @@ from typing import assert_type, TYPE_CHECKING
 import torch
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
-# Dim arithmetic: compute dimensions at the type level
-def split_and_combine[D](x: Tensor[D], half: Dim[D // 2]) -> Tensor[D // 2]:
+# SymInt arithmetic: compute dimensions at the type level
+def split_and_combine[D](x: Tensor[D], half: SymInt[D // 2]) -> Tensor[D // 2]:
     return torch.randn(half)
 
 
@@ -24,17 +24,17 @@ result = split_and_combine(a, 4)
 assert_type(result, Tensor[4])
 
 
-# Dim values compose through functions
-def double_dim[N](n: Dim[N]) -> Dim[N * 2]:
+# SymInt values compose through functions
+def double_dim[N](n: SymInt[N]) -> SymInt[N * 2]:
     return n * 2
 
 
 doubled = double_dim(5)
-assert_type(doubled, Dim[10])
+assert_type(doubled, SymInt[10])
 
 
-# Use Dim to build tensors with matching shapes
-def make_pair[D](d: Dim[D]) -> tuple[Tensor[D], Tensor[D, D]]:
+# Use SymInt to build tensors with matching shapes
+def make_pair[D](d: SymInt[D]) -> tuple[Tensor[D], Tensor[D, D]]:
     return torch.randn(d), torch.randn(d, d)
 
 
@@ -42,5 +42,5 @@ vec, mat = make_pair(4)
 assert_type(vec, Tensor[4])
 assert_type(mat, Tensor[4, 4])
 
-# ERROR: wrong assert_type -- doubled is Dim[10], not Dim[20]
-assert_type(doubled, Dim[20])
+# ERROR: wrong assert_type -- doubled is SymInt[10], not SymInt[20]
+assert_type(doubled, SymInt[20])

@@ -23,7 +23,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 class Encode[C: SymVar, K: SymVar](nn.Module):
     """Adds K channels: Tensor[[B, C]] -> Tensor[[B, C + K]]."""
 
-    def __init__(self, c: Dim[C], k: Dim[K]) -> None:
+    def __init__(self, c: SymInt[C], k: SymInt[K]) -> None:
         super().__init__()
         self.linear = nn.Linear(c, c + k)
 
@@ -53,7 +53,7 @@ class Decode[C: SymVar, K: SymVar](nn.Module):
     concatenates them, and projects back to C.
     """
 
-    def __init__(self, c: Dim[C], k: Dim[K]) -> None:
+    def __init__(self, c: SymInt[C], k: SymInt[K]) -> None:
         super().__init__()
         self.linear = nn.Linear(2 * c + k, c)
 
@@ -67,7 +67,7 @@ class Decode[C: SymVar, K: SymVar](nn.Module):
 class Bottleneck[C: SymVar](nn.Module):
     """Identity-shaped bottleneck: Tensor[[B, C]] -> Tensor[[B, C]]."""
 
-    def __init__(self, c: Dim[C]) -> None:
+    def __init__(self, c: SymInt[C]) -> None:
         super().__init__()
         self.linear = nn.Linear(c, c)
 
@@ -288,7 +288,7 @@ class RecursiveUNet(nn.Module):
         self.bottleneck = GenericBottleneck()
 
     def recurse[I: SymVar, B: SymVar, C: SymVar](
-        self, x: Tensor[[B, C]], depth: Dim[I]
+        self, x: Tensor[[B, C]], depth: SymInt[I]
     ) -> Tensor[[B, C]]:
         """Shape-preserving recursive encoder-decoder.
 
@@ -369,7 +369,7 @@ class RecursiveUNet2d(nn.Module):
         self.bottleneck = Bottleneck2d()
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[I]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
     ) -> Tensor[[B, C, H, W]]:
         """Shape-preserving recursive encoder-decoder with spatial dims.
 
@@ -429,7 +429,7 @@ class SegmentationUNet(nn.Module):
         self.output_proj = nn.Conv2d(64, 21, kernel_size=1)
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[I]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
     ) -> Tensor[[B, C, H, W]]:
         if depth == 0:
             return self.bottleneck(x)
@@ -489,7 +489,7 @@ class AdditiveUNet(nn.Module):
         self.bottleneck = Bottleneck2d()
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[I]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
     ) -> Tensor[[B, C, H, W]]:
         if depth == 0:
             return self.bottleneck(x)
@@ -540,7 +540,7 @@ class GenericDenseLayer(nn.Module):
 def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[1],
+    depth: SymInt[1],
 ) -> Tensor[[B, C + 32, H, W]]: ...
 
 
@@ -548,14 +548,14 @@ def dense_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
 def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + I * 32, H, W]]: ...
 
 
 def dense_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: GenericDenseLayer,
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + 32, H, W]] | Tensor[[B, C + I * 32, H, W]]:
     """Chain I DenseNet layers, accumulating 32 channels each.
 
@@ -612,7 +612,7 @@ class SymbolicDenseLayer[GR: SymVar](nn.Module):
 def symbolic_dense_chain[GR: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     x: Tensor[[B, C, H, W]],
     layer: SymbolicDenseLayer[GR],
-    depth: Dim[1],
+    depth: SymInt[1],
 ) -> Tensor[[B, C + GR, H, W]]: ...
 
 
@@ -627,7 +627,7 @@ def symbolic_dense_chain[
 ](
     x: Tensor[[B, C, H, W]],
     layer: SymbolicDenseLayer[GR],
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + I * GR, H, W]]: ...
 
 
@@ -641,7 +641,7 @@ def symbolic_dense_chain[
 ](
     x: Tensor[[B, C, H, W]],
     layer: SymbolicDenseLayer[GR],
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C + GR, H, W]] | Tensor[[B, C + I * GR, H, W]]:
     """Chain I DenseNet layers with symbolic growth rate GR.
 
@@ -701,7 +701,7 @@ class GenericDownStage(nn.Module):
 def downsample_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     stage: GenericDownStage,
     x: Tensor[[B, C, H, W]],
-    depth: Dim[1],
+    depth: SymInt[1],
 ) -> Tensor[[B, 2 * C, H // 2, W // 2]]: ...
 
 
@@ -709,14 +709,14 @@ def downsample_chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
 def downsample_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     stage: GenericDownStage,
     x: Tensor[[B, C, H, W]],
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, C * 2**I, H // 2**I, W // 2**I]]: ...
 
 
 def downsample_chain[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
     stage: GenericDownStage,
     x: Tensor[[B, C, H, W]],
-    depth: Dim[I],
+    depth: SymInt[I],
 ) -> Tensor[[B, 2 * C, H // 2, W // 2]] | Tensor[[B, C * 2**I, H // 2**I, W // 2**I]]:
     """Chain I downsampling stages (Pattern C — exponential).
 
@@ -906,7 +906,7 @@ class RecursiveDemucs(nn.Module):
         self.bottleneck = DemucsBottleneck()
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, T: SymVar](
-        self, x: Tensor[[B, C, T]], depth: Dim[I]
+        self, x: Tensor[[B, C, T]], depth: SymInt[I]
     ) -> Tensor[[B, C, T]]:
         """Shape-preserving recursive encoder-decoder.
 

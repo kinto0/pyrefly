@@ -555,7 +555,7 @@ impl Display for ShapedArrayShape {
 // A "tuple carrier" is the user-facing spelling of a shape that NumPy-style
 // syntax such as `ndarray[[3, 4, 5], DType]` or
 // `ndarray[tuple[Literal[3], Literal[4], Literal[5]], DType]` produces, where
-// each dimension is written as `Literal[n]` or `Dim[x]`. Internally we store
+// each dimension is written as `Literal[n]` or `SymInt[x]`. Internally we store
 // scalar dimensions as `Type::SymInt`, while variadic middles keep their carrier
 // type. These helpers canonicalize between the two representations so the rest
 // of the type checker only ever deals with the internal form.
@@ -960,7 +960,7 @@ pub enum IndexOp {
         stop: Option<Type>,
         /// Step/stride for the slice. `None` means step=1 (default).
         /// Can be a literal `SymInt(Literal(n))`, a symbolic `SymInt(Var(...))`,
-        /// a `Dim[S]`, or a `Quantified` type variable.
+        /// a `SymInt[S]`, or a `Quantified` type variable.
         step: Option<Type>,
     },
     /// Tensor index: replaces dimension with the index tensor's dims

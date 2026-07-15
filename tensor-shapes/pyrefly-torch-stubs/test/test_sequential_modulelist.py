@@ -17,7 +17,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 # ============================================================================
@@ -30,7 +30,7 @@ class LinearLayer[N: SymVar, M: SymVar](nn.Module):
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Now M and N are bound to runtime values via Literal types
         self.weight = torch.randn(out_features, in_features)
@@ -81,9 +81,9 @@ class ManualSequential[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         # Now N, M, K are bound to runtime values via Literal types

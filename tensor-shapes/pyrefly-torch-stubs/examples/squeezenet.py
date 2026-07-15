@@ -24,7 +24,7 @@ import torch.nn as nn
 import torch.nn.init as init
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -40,10 +40,10 @@ class Fire[InC: SymVar, SQ: SymVar, E1: SymVar, E3: SymVar](nn.Module):
 
     def __init__(
         self,
-        inplanes: Dim[InC],
-        squeeze_planes: Dim[SQ],
-        expand1x1_planes: Dim[E1],
-        expand3x3_planes: Dim[E3],
+        inplanes: SymInt[InC],
+        squeeze_planes: SymInt[SQ],
+        expand1x1_planes: SymInt[E1],
+        expand3x3_planes: SymInt[E3],
     ) -> None:
         super().__init__()
         self.inplanes = inplanes
@@ -80,7 +80,7 @@ class SqueezeNet[NC: SymVar = 1000](nn.Module):
     channel progression is fixed by architecture design.
     """
 
-    def __init__(self, num_classes: Dim[NC] = 1000, dropout: float = 0.5) -> None:
+    def __init__(self, num_classes: SymInt[NC] = 1000, dropout: float = 0.5) -> None:
         super().__init__()
         self.num_classes = num_classes
         self.features = nn.Sequential(

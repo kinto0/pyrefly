@@ -39,7 +39,7 @@ from shape_extensions import Elements, SizeTuple, SymVar
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -50,7 +50,7 @@ def find_multiple(n: int, k: int) -> int:
 
 
 class RMSNorm[D: SymVar](nn.Module):
-    def __init__(self, dim: Dim[D], eps: float = 1e-5):
+    def __init__(self, dim: SymInt[D], eps: float = 1e-5):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
@@ -73,10 +73,10 @@ class RMSNorm[D: SymVar](nn.Module):
 class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
     def __init__(
         self,
-        max_batch_size: Dim[B],
-        max_seq_length: Dim[MaxSeq],
-        n_heads: Dim[NHead],
-        head_dim: Dim[HD],
+        max_batch_size: SymInt[B],
+        max_seq_length: SymInt[MaxSeq],
+        n_heads: SymInt[NHead],
+        head_dim: SymInt[HD],
         dtype: Any = torch.bfloat16,
     ):
         super().__init__()
@@ -105,9 +105,9 @@ class KVCache[B: SymVar, NHead: SymVar, MaxSeq: SymVar, HD: SymVar](nn.Module):
 class ConditionalFeedForward[NExp: SymVar, Inter: SymVar, D: SymVar](nn.Module):
     def __init__(
         self,
-        num_experts: Dim[NExp],
-        intermediate_size: Dim[Inter],
-        dim: Dim[D],
+        num_experts: SymInt[NExp],
+        intermediate_size: SymInt[Inter],
+        dim: SymInt[D],
     ):
         super().__init__()
         self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_size, dim))
@@ -135,10 +135,10 @@ class ConditionalFeedForward[NExp: SymVar, Inter: SymVar, D: SymVar](nn.Module):
 class MOEFeedForward[D: SymVar, NExp: SymVar, A: SymVar, Inter: SymVar](nn.Module):
     def __init__(
         self,
-        dim: Dim[D],
-        num_experts: Dim[NExp],
-        num_activated_experts: Dim[A],
-        intermediate_size: Dim[Inter],
+        dim: SymInt[D],
+        num_experts: SymInt[NExp],
+        num_activated_experts: SymInt[A],
+        intermediate_size: SymInt[Inter],
     ) -> None:
         super().__init__()
         self.gate = nn.Linear(dim, num_experts, bias=False)
@@ -248,10 +248,10 @@ def apply_rotary_emb[S: SizeTuple](x: Tensor[S], freqs_cis: Tensor) -> Tensor[S]
 class Attention[D: SymVar, NHead: SymVar, NLocalHead: SymVar, HD: SymVar](nn.Module):
     def __init__(
         self,
-        dim: Dim[D],
-        n_head: Dim[NHead],
-        n_local_heads: Dim[NLocalHead],
-        head_dim: Dim[HD],
+        dim: SymInt[D],
+        n_head: SymInt[NHead],
+        n_local_heads: SymInt[NLocalHead],
+        head_dim: SymInt[HD],
     ):
         super().__init__()
         total_head_dim = (n_head + 2 * n_local_heads) * head_dim
@@ -346,13 +346,13 @@ class TransformerBlock[
 ](nn.Module):
     def __init__(
         self,
-        dim: Dim[D],
-        n_head: Dim[NHead],
-        n_local_heads: Dim[NLocalHead],
-        head_dim: Dim[HD],
-        num_experts: Dim[NExp],
-        num_activated_experts: Dim[A],
-        intermediate_size: Dim[Inter],
+        dim: SymInt[D],
+        n_head: SymInt[NHead],
+        n_local_heads: SymInt[NLocalHead],
+        head_dim: SymInt[HD],
+        num_experts: SymInt[NExp],
+        num_activated_experts: SymInt[A],
+        intermediate_size: SymInt[Inter],
         norm_eps: float,
     ) -> None:
         super().__init__()
@@ -448,7 +448,7 @@ class Transformer(nn.Module):
         assert_type(freqs_cis, Tensor)  # bare — indexing on bare freqs_cis
         # ModelArgs uses plain int — sub-module dims are Unknown
         x = self.tok_embeddings(idx)
-        assert_type(x, Tensor)  # type: ignore  # Unknown — config dims are int not Dim
+        assert_type(x, Tensor)  # type: ignore  # Unknown — config dims are int not SymInt
 
         for layer in self.layers:
             x = layer(x, input_pos, freqs_cis, mask)

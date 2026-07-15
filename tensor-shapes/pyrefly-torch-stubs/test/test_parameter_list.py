@@ -12,14 +12,14 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
 class MultiHead[D: SymVar](nn.Module):
     """Module using ParameterList to store per-head projection weights."""
 
-    def __init__(self, d: Dim[D], n_heads: int) -> None:
+    def __init__(self, d: SymInt[D], n_heads: int) -> None:
         super().__init__()
         self.weights = nn.ParameterList(
             [nn.Parameter(torch.randn(d, d)) for _ in range(n_heads)]

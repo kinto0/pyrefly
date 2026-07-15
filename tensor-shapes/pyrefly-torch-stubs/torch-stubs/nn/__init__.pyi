@@ -23,7 +23,7 @@ from typing import (
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim as _Dim, ProxyMethod, uses_shape_dsl
+    from shape_extensions import ProxyMethod, SymInt as _SymInt, uses_shape_dsl
     from torch import Tensor
     from torch._shapes import (
         nn_avgpool_forward_ir,
@@ -122,8 +122,8 @@ class Linear[IN: SymVar, OUT: SymVar](Module):
 
     def __init__(
         self,
-        in_features: _Dim[IN],
-        out_features: _Dim[OUT],
+        in_features: _SymInt[IN],
+        out_features: _SymInt[OUT],
         bias: bool = True,
         device: Any = None,
         dtype: Any = None,
@@ -152,8 +152,8 @@ class Embedding[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
 
     def __init__(
         self,
-        num_embeddings: _Dim[NUM_EMB],
-        embedding_dim: _Dim[EMB_DIM],
+        num_embeddings: _SymInt[NUM_EMB],
+        embedding_dim: _SymInt[EMB_DIM],
         padding_idx: int | None = None,
         max_norm: float | None = None,
         norm_type: float = 2.0,
@@ -499,7 +499,7 @@ class Conv1d[
 ](Module):
     """1D convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults (S=1, P=0, D=1) apply when arguments are omitted.
     """
 
@@ -507,12 +507,12 @@ class Conv1d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K],
-        stride: _Dim[S] = 1,
-        padding: _Dim[P] = 0,
-        dilation: _Dim[D] = 1,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K],
+        stride: _SymInt[S] = 1,
+        padding: _SymInt[P] = 0,
+        dilation: _SymInt[D] = 1,
         groups: int = 1,
         bias: bool = True,
         padding_mode: str = "zeros",
@@ -533,7 +533,7 @@ class Conv2d[
 ](Module):
     """2D convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults (S=1, P=0, D=1) apply when arguments are omitted.
 
     kernel_size, stride, padding, and dilation also accept tuple[int, int]
@@ -549,12 +549,12 @@ class Conv2d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K] | tuple[int, int],
-        stride: _Dim[S] | tuple[int, int] = 1,
-        padding: _Dim[P] | tuple[int, int] | str = 0,
-        dilation: _Dim[D] | tuple[int, int] = 1,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K] | tuple[int, int],
+        stride: _SymInt[S] | tuple[int, int] = 1,
+        padding: _SymInt[P] | tuple[int, int] | str = 0,
+        dilation: _SymInt[D] | tuple[int, int] = 1,
         groups: int = 1,
         bias: bool = True,
         padding_mode: str = "zeros",
@@ -582,7 +582,7 @@ class Conv3d[
 ](Module):
     """3D convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults (S=1, P=0, D=1) apply when arguments are omitted.
     """
 
@@ -590,12 +590,12 @@ class Conv3d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K],
-        stride: _Dim[S] = 1,
-        padding: _Dim[P] = 0,
-        dilation: _Dim[D] = 1,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K],
+        stride: _SymInt[S] = 1,
+        padding: _SymInt[P] = 0,
+        dilation: _SymInt[D] = 1,
         groups: int = 1,
         bias: bool = True,
         padding_mode: str = "zeros",
@@ -625,7 +625,7 @@ class ConvTranspose1d[
 ](Module):
     """1D transposed convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, OP, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, OP, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults apply when arguments are omitted.
     """
 
@@ -633,15 +633,15 @@ class ConvTranspose1d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K],
-        stride: _Dim[S] = 1,
-        padding: _Dim[P] = 0,
-        output_padding: _Dim[OP] = 0,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K],
+        stride: _SymInt[S] = 1,
+        padding: _SymInt[P] = 0,
+        output_padding: _SymInt[OP] = 0,
         groups: int = 1,
         bias: bool = True,
-        dilation: _Dim[D] = 1,
+        dilation: _SymInt[D] = 1,
         padding_mode: str = "zeros",
         device: Any = None,
         dtype: Any = None,
@@ -661,7 +661,7 @@ class ConvTranspose2d[
 ](Module):
     """2D transposed convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, OP, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, OP, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults apply when arguments are omitted.
     """
 
@@ -669,15 +669,15 @@ class ConvTranspose2d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K],
-        stride: _Dim[S] = 1,
-        padding: _Dim[P] = 0,
-        output_padding: _Dim[OP] = 0,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K],
+        stride: _SymInt[S] = 1,
+        padding: _SymInt[P] = 0,
+        output_padding: _SymInt[OP] = 0,
         groups: int = 1,
         bias: bool = True,
-        dilation: _Dim[D] = 1,
+        dilation: _SymInt[D] = 1,
         padding_mode: str = "zeros",
         device: Any = None,
         dtype: Any = None,
@@ -704,7 +704,7 @@ class ConvTranspose3d[
 ](Module):
     """3D transposed convolution. Tracks channel and spatial dimensions.
 
-    Type parameters S, P, OP, D are bound from constructor arguments via _Dim[T].
+    Type parameters S, P, OP, D are bound from constructor arguments via _SymInt[T].
     PEP 696 defaults apply when arguments are omitted.
     """
 
@@ -712,15 +712,15 @@ class ConvTranspose3d[
 
     def __init__(
         self,
-        in_channels: _Dim[InC],
-        out_channels: _Dim[OutC],
-        kernel_size: _Dim[K],
-        stride: _Dim[S] = 1,
-        padding: _Dim[P] = 0,
-        output_padding: _Dim[OP] = 0,
+        in_channels: _SymInt[InC],
+        out_channels: _SymInt[OutC],
+        kernel_size: _SymInt[K],
+        stride: _SymInt[S] = 1,
+        padding: _SymInt[P] = 0,
+        output_padding: _SymInt[OP] = 0,
         groups: int = 1,
         bias: bool = True,
-        dilation: _Dim[D] = 1,
+        dilation: _SymInt[D] = 1,
         padding_mode: str = "zeros",
         device: Any = None,
         dtype: Any = None,
@@ -841,28 +841,32 @@ class AvgPool3d(Module):
 
 class AdaptiveAvgPool1d[OL: SymVar](Module):
     """1D adaptive average pooling"""
-    def __init__(self, output_size: _Dim[OL]) -> None: ...
+    def __init__(self, output_size: _SymInt[OL]) -> None: ...
     def forward[B: SymVar, C: SymVar](
         self, input: Tensor[[B, C, Any]]
     ) -> Tensor[[B, C, OL]]: ...
 
 class AdaptiveAvgPool2d[OH: SymVar, OW: SymVar](Module):
     """2D adaptive average pooling"""
-    def __init__(self, output_size: tuple[_Dim[OH], _Dim[OW]]) -> None: ...
+    def __init__(self, output_size: tuple[_SymInt[OH], _SymInt[OW]]) -> None: ...
     def forward[B: SymVar, C: SymVar](
         self, input: Tensor[[B, C, Any, Any]]
     ) -> Tensor[[B, C, OH, OW]]: ...
 
 class AdaptiveAvgPool3d[OD: SymVar, OH: SymVar, OW: SymVar](Module):
     """3D adaptive average pooling"""
-    def __init__(self, output_size: tuple[_Dim[OD], _Dim[OH], _Dim[OW]]) -> None: ...
+    def __init__(
+        self, output_size: tuple[_SymInt[OD], _SymInt[OH], _SymInt[OW]]
+    ) -> None: ...
     def forward[B: SymVar, C: SymVar](
         self, input: Tensor[[B, C, Any, Any, Any]]
     ) -> Tensor[[B, C, OD, OH, OW]]: ...
 
 class AdaptiveMaxPool1d[OL: SymVar](Module):
     """1D adaptive max pooling"""
-    def __init__(self, output_size: _Dim[OL], return_indices: bool = False) -> None: ...
+    def __init__(
+        self, output_size: _SymInt[OL], return_indices: bool = False
+    ) -> None: ...
     def forward[B: SymVar, C: SymVar](
         self, input: Tensor[[B, C, Any]]
     ) -> Tensor[[B, C, OL]]: ...
@@ -870,7 +874,7 @@ class AdaptiveMaxPool1d[OL: SymVar](Module):
 class AdaptiveMaxPool2d[OH: SymVar, OW: SymVar](Module):
     """2D adaptive max pooling"""
     def __init__(
-        self, output_size: tuple[_Dim[OH], _Dim[OW]], return_indices: bool = False
+        self, output_size: tuple[_SymInt[OH], _SymInt[OW]], return_indices: bool = False
     ) -> None: ...
     def forward[B: SymVar, C: SymVar](
         self, input: Tensor[[B, C, Any, Any]]
@@ -880,7 +884,7 @@ class AdaptiveMaxPool3d[OD: SymVar, OH: SymVar, OW: SymVar](Module):
     """3D adaptive max pooling"""
     def __init__(
         self,
-        output_size: tuple[_Dim[OD], _Dim[OH], _Dim[OW]],
+        output_size: tuple[_SymInt[OD], _SymInt[OH], _SymInt[OW]],
         return_indices: bool = False,
     ) -> None: ...
     def forward[B: SymVar, C: SymVar](
@@ -1177,7 +1181,7 @@ class LazyLinear[OUT: SymVar](Module):
 
     def __init__(
         self,
-        out_features: _Dim[OUT],
+        out_features: _SymInt[OUT],
         bias: bool = True,
         device: Any = None,
         dtype: Any = None,
@@ -1233,8 +1237,8 @@ class EmbeddingBag[NUM_EMB: SymVar, EMB_DIM: SymVar](Module):
 
     def __init__(
         self,
-        num_embeddings: _Dim[NUM_EMB],
-        embedding_dim: _Dim[EMB_DIM],
+        num_embeddings: _SymInt[NUM_EMB],
+        embedding_dim: _SymInt[EMB_DIM],
         max_norm: float | None = None,
         norm_type: float = 2.0,
         scale_grad_by_freq: bool = False,

@@ -48,7 +48,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -77,7 +77,7 @@ def conv_init(m: nn.Module) -> None:
 
 
 def conv3x3[InC: SymVar, OutC: SymVar](
-    in_channels: Dim[InC], out_channels: Dim[OutC]
+    in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """3×3 conv + BN + ReLU, shape-preserving (padding=1)."""
     return nn.Sequential(
@@ -88,7 +88,7 @@ def conv3x3[InC: SymVar, OutC: SymVar](
 
 
 def conv1x1[InC: SymVar, OutC: SymVar](
-    in_channels: Dim[InC], out_channels: Dim[OutC]
+    in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """1×1 conv + BN + ReLU, changes channels only."""
     return nn.Sequential(
@@ -99,7 +99,7 @@ def conv1x1[InC: SymVar, OutC: SymVar](
 
 
 def upconv3x3[InC: SymVar, OutC: SymVar](
-    in_channels: Dim[InC], out_channels: Dim[OutC]
+    in_channels: SymInt[InC], out_channels: SymInt[OutC]
 ) -> nn.Sequential:
     """Upsample(2×) + 3×3 conv + BN + ReLU."""
     return nn.Sequential(
@@ -129,7 +129,7 @@ class ResnetBlock[C: SymVar](nn.Module):
     (B, C, H, W) → (B, C, H, W)
     """
 
-    def __init__(self, dim: Dim[C]) -> None:
+    def __init__(self, dim: SymInt[C]) -> None:
         super().__init__()
         self.conv_block = nn.Sequential(
             nn.ReflectionPad2d(1),
@@ -165,7 +165,7 @@ class EncoderBranch[InC: SymVar](nn.Module):
     We use H, W that are multiples of 4 in practice.
     """
 
-    def __init__(self, in_channels: Dim[InC]) -> None:
+    def __init__(self, in_channels: SymInt[InC]) -> None:
         super().__init__()
         self.model = nn.Sequential(
             nn.ReflectionPad2d(3),

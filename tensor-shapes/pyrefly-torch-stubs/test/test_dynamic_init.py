@@ -17,7 +17,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 # ============================================================================
@@ -30,7 +30,7 @@ class DynamicLinear[N: SymVar, M: SymVar](nn.Module):
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Now N and M are bound via Literal params, so we can create tensors
         self.weight = torch.randn(out_features, in_features)
@@ -90,11 +90,13 @@ def test_multiple_instances():
 class ModelConfig[N: SymVar, M: SymVar, K: SymVar]:
     """Generic configuration with dimension type parameters"""
 
-    input_dim: Dim[N]
-    hidden_dim: Dim[M]
-    output_dim: Dim[K]
+    input_dim: SymInt[N]
+    hidden_dim: SymInt[M]
+    output_dim: SymInt[K]
 
-    def __init__(self, input_dim: Dim[N], hidden_dim: Dim[M], output_dim: Dim[K]):
+    def __init__(
+        self, input_dim: SymInt[N], hidden_dim: SymInt[M], output_dim: SymInt[K]
+    ):
         # Store Literal parameters - they retain their types when assigned to typed fields
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -109,7 +111,7 @@ class ConfiguredModel[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(self, config: ModelConfig[N, M, K]):
         super().__init__()
-        # Now config.hidden_dim has type Dim[M], config.input_dim has type Dim[N]
+        # Now config.hidden_dim has type SymInt[M], config.input_dim has type SymInt[N]
         # So torch.randn() gets Literal arguments and can infer shapes!
         self.w1 = torch.randn(config.hidden_dim, config.input_dim)
         self.w2 = torch.randn(config.output_dim, config.hidden_dim)
@@ -168,21 +170,21 @@ def test_config_multiple_instances():
 # Test 3: Summary - Solution with Literal Parameters
 # ============================================================================
 
-# SOLUTION: Use Dim[N] parameters to bind type variables!
+# SOLUTION: Use SymInt[N] parameters to bind type variables!
 #
 # Previously these were LIMITATIONS, but now they work:
 #
 # 1. torch.randn() with Literal parameters works! ✅
-#    def __init__(self, in_features: Dim[N: SymVar], out_features: Dim[M]):
+#    def __init__(self, in_features: SymInt[N: SymVar], out_features: SymInt[M]):
 #        self.weight = torch.randn(out_features, in_features)
 #
 # 2. Runtime __init__ parameters CAN connect to generic type params via Literal ✅
-#    The Dim[N] annotation binds the type variable N to the runtime value
+#    The SymInt[N] annotation binds the type variable N to the runtime value
 #
 # 3. Multiple instances with different dimensions work! ✅
 #    layer1 = DynamicLinear(64, 128)
 #    layer2 = DynamicLinear(256, 512)
 #
-# Key insight: Dim[N] creates a bridge between compile-time type variables
+# Key insight: SymInt[N] creates a bridge between compile-time type variables
 # and runtime dimension values. When you pass a literal value to __init__,
 # the type variable becomes bound to that concrete dimension.

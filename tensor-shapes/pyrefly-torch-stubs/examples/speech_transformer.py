@@ -21,7 +21,7 @@ Port notes:
 - mask operations (masked_fill, repeat) typed but mask shape
   not tracked (uses Tensor without shape params)
 - PositionalEncoding ported: uses nn.Buffer (replaces register_buffer);
-  Dim <: float allows math.log(10000.0) / d_model without cast;
+  SymInt <: float allows math.log(10000.0) / d_model without cast;
   forward returns shapeless Tensor because symbolic slice on concrete buffer
   doesn't propagate shapes
 - Encoder/Decoder ported with homogeneous ModuleList iteration:
@@ -38,7 +38,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -72,7 +72,7 @@ class PositionalEncoding[DModel: SymVar](nn.Module):
     - Uses .size(1) to get symbolic length for slicing
     """
 
-    def __init__(self, d_model: Dim[DModel], max_len: int = 5000) -> None:
+    def __init__(self, d_model: SymInt[DModel], max_len: int = 5000) -> None:
         super().__init__()
         pe: Tensor = torch.zeros(max_len, d_model)
         position: Tensor = torch.arange(0, max_len).unsqueeze(1).float()
@@ -159,7 +159,9 @@ class MultiHeadAttention[NHead: SymVar, DK: SymVar](nn.Module):
     9. Linear:            [B, Tq, NHead*DK] → [B, Tq, NHead*DK]
     """
 
-    def __init__(self, n_head: Dim[NHead], d_k: Dim[DK], dropout: float = 0.1) -> None:
+    def __init__(
+        self, n_head: SymInt[NHead], d_k: SymInt[DK], dropout: float = 0.1
+    ) -> None:
         super().__init__()
         d_model = n_head * d_k
         self.w_qs = nn.Linear(d_model, d_model)
@@ -245,7 +247,7 @@ class PositionwiseFeedForward[DModel: SymVar, DInner: SymVar](nn.Module):
     """
 
     def __init__(
-        self, d_model: Dim[DModel], d_inner: Dim[DInner], dropout: float = 0.1
+        self, d_model: SymInt[DModel], d_inner: SymInt[DInner], dropout: float = 0.1
     ) -> None:
         super().__init__()
         self.w_1 = nn.Linear(d_model, d_inner)
@@ -280,9 +282,9 @@ class EncoderLayer[NHead: SymVar, DK: SymVar, DInner: SymVar](nn.Module):
 
     def __init__(
         self,
-        n_head: Dim[NHead],
-        d_k: Dim[DK],
-        d_inner: Dim[DInner],
+        n_head: SymInt[NHead],
+        d_k: SymInt[DK],
+        d_inner: SymInt[DInner],
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
@@ -315,9 +317,9 @@ class DecoderLayer[NHead: SymVar, DK: SymVar, DInner: SymVar](nn.Module):
 
     def __init__(
         self,
-        n_head: Dim[NHead],
-        d_k: Dim[DK],
-        d_inner: Dim[DInner],
+        n_head: SymInt[NHead],
+        d_k: SymInt[DK],
+        d_inner: SymInt[DInner],
         dropout: float = 0.1,
     ) -> None:
         super().__init__()
@@ -368,9 +370,9 @@ class Encoder[NHead: SymVar, DK: SymVar, DInner: SymVar](nn.Module):
 
     def __init__(
         self,
-        n_head: Dim[NHead],
-        d_k: Dim[DK],
-        d_inner: Dim[DInner],
+        n_head: SymInt[NHead],
+        d_k: SymInt[DK],
+        d_inner: SymInt[DInner],
         n_layers: int = 6,
         dropout: float = 0.1,
     ) -> None:
@@ -417,9 +419,9 @@ class Decoder[NHead: SymVar, DK: SymVar, DInner: SymVar](nn.Module):
 
     def __init__(
         self,
-        n_head: Dim[NHead],
-        d_k: Dim[DK],
-        d_inner: Dim[DInner],
+        n_head: SymInt[NHead],
+        d_k: SymInt[DK],
+        d_inner: SymInt[DInner],
         n_layers: int = 6,
         dropout: float = 0.1,
     ) -> None:

@@ -139,19 +139,19 @@ def process(items: List[str]):
 fn test_symvar_type_parameter_marker_imports_are_used() {
     let code = r#"
 from os import path
-from shape_extensions import Dim, SymVar
+from shape_extensions import SymInt, SymVar
 import shape_extensions as se
 
-def direct[N: SymVar](x: Dim[N]) -> Dim[N]:
+def direct[N: SymVar](x: SymInt[N]) -> SymInt[N]:
     return x
 
-def module_alias[N: se.SymVar](x: se.Dim[N]) -> se.Dim[N]:
+def module_alias[N: se.SymVar](x: se.SymInt[N]) -> se.SymInt[N]:
     return x
 "#;
     let shape_extensions = r#"
 from typing import _SpecialForm
 
-class Dim[T]: ...
+class SymInt[T]: ...
 SymVar: _SpecialForm
 "#;
     let (handles, state) = mk_multi_file_state(

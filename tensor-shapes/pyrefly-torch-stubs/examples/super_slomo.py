@@ -16,7 +16,7 @@ Port notes:
 - Uses scale_factor=2 (int) instead of 2.0 (float) for F.interpolate
     (the DSL's interpolate_ir expects int|symint for scale_factor)
 - Uses (k - 1) // 2 instead of int((filterSize - 1) / 2) for padding
-    (equivalent for odd kernel sizes, keeps Dim type tracking)
+    (equivalent for odd kernel sizes, keeps SymInt type tracking)
 - Variable reassignment with shape change requires unique variable names
 - backWarp ported as BackWarp[W, H]: added torch.meshgrid, expand_as,
     F.grid_sample stubs; register_buffer → nn.Buffer; variable renames
@@ -31,7 +31,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -46,14 +46,16 @@ class Down[InC: SymVar, OutC: SymVar](nn.Module):
     Halves spatial dims via avg_pool2d(2), transforms channels.
     Conv uses padding=(filterSize-1)//2 to preserve spatial dims after pooling.
 
-    WORKAROUND: filterSize is a plain int (not Dim[K]) because the padding
+    WORKAROUND: filterSize is a plain int (not SymInt[K]) because the padding
     expression 2*((K-1)//2) doesn't simplify to K-1 symbolically, causing
     Conv2d spatial formulas to not reduce properly. Using plain int means
     concrete literal values propagate through Conv2d type params at each
     instantiation site.
     """
 
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC], filter_size: int) -> None:
+    def __init__(
+        self, c_in: SymInt[InC], c_out: SymInt[OutC], filter_size: int
+    ) -> None:
         super().__init__()
         padding = (filter_size - 1) // 2
         self.pool = nn.AvgPool2d(2)
@@ -84,7 +86,7 @@ class Up[InC: SymVar, OutC: SymVar](nn.Module):
     conv2: 2*OutC -> OutC (after cat with skip connection of OutC channels)
     """
 
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC]) -> None:
+    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(c_in, c_out, 3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(2 * c_out, c_out, 3, stride=1, padding=1)
@@ -128,7 +130,7 @@ class UNet[InC: SymVar, OutC: SymVar](nn.Module):
     it preserves channels rather than doubling/halving.
     """
 
-    def __init__(self, c_in: Dim[InC], c_out: Dim[OutC]) -> None:
+    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(c_in, 32, 7, stride=1, padding=3)
         self.conv2 = nn.Conv2d(32, 32, 7, stride=1, padding=3)
@@ -196,7 +198,7 @@ class UNet[InC: SymVar, OutC: SymVar](nn.Module):
         return up(deep, x)  # type: ignore[bad-argument-type]
 
     def recurse[I: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[I]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
     ) -> Tensor[[B, C, H, W]]:
         """Shape-preserving recursive encoder-decoder.
 
@@ -246,7 +248,9 @@ class BackWarp[W: SymVar, H: SymVar](nn.Module):
     Stores precomputed coordinate grids as buffers.
     """
 
-    def __init__(self, width: Dim[W], height: Dim[H], device: torch.device) -> None:
+    def __init__(
+        self, width: SymInt[W], height: SymInt[H], device: torch.device
+    ) -> None:
         super().__init__()
         self.W = width
         self.H = height

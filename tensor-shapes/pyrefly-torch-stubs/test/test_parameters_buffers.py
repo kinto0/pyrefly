@@ -15,7 +15,7 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 # ============================================================================
@@ -30,7 +30,7 @@ class LinearWithParams[N: SymVar, M: SymVar](nn.Module):
     weight: Tensor[[M, N]]
     bias: Tensor[[M]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Now N and M are bound to runtime values via Literal types
         self.weight = torch.randn(out_features, in_features)
@@ -61,7 +61,7 @@ def test_basic_parameters():
 class LinearNoAnnotations[N: SymVar, M: SymVar](nn.Module):
     """Linear layer without explicit parameter type annotations"""
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Just assign, no type annotation (but using Literal params to bind N, M)
         self.weight = torch.randn(out_features, in_features)
@@ -99,9 +99,9 @@ class MultiLayerParams[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         # Now N, M, K are bound to runtime values via Literal types
@@ -157,7 +157,7 @@ class SimpleBufferModule[N: SymVar](nn.Module):
 
     running_sum: Tensor[[N]]
 
-    def __init__(self, n: Dim[N]):
+    def __init__(self, n: SymInt[N]):
         super().__init__()
         # Now N is bound to runtime value via Literal type
         self.running_sum = torch.zeros(n)
@@ -187,7 +187,7 @@ class LinearLayerWithParams[N: SymVar, M: SymVar](nn.Module):
     weight: Tensor[[M, N]]
     bias: Tensor[[M]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Now N and M are bound to runtime values via Literal types
         self.weight = torch.randn(out_features, in_features)
@@ -207,9 +207,9 @@ class MLPWithNestedParams[N: SymVar, M: SymVar, K: SymVar](nn.Module):
 
     def __init__(
         self,
-        in_features: Dim[N],
-        hidden_features: Dim[M],
-        out_features: Dim[K],
+        in_features: SymInt[N],
+        hidden_features: SymInt[M],
+        out_features: SymInt[K],
     ):
         super().__init__()
         # Now N, M, K are bound, so we can construct the nested modules
@@ -243,7 +243,7 @@ class WeightTying[N: SymVar, M: SymVar](nn.Module):
 
     shared_weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: Dim[N], out_features: Dim[M]):
+    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
         super().__init__()
         # Now N and M are bound to runtime values via Literal types
         self.shared_weight = torch.randn(out_features, in_features)
@@ -282,7 +282,7 @@ class ConvWithParams[C_in: SymVar, C_out: SymVar](nn.Module):
     weight: Tensor[[C_out, C_in, 3, 3]]
     bias: Tensor[[C_out]]
 
-    def __init__(self, in_channels: Dim[C_in], out_channels: Dim[C_out]):
+    def __init__(self, in_channels: SymInt[C_in], out_channels: SymInt[C_out]):
         super().__init__()
         # Now C_in and C_out are bound to runtime values via Literal types
         self.weight = torch.randn(out_channels, in_channels, 3, 3)
@@ -320,7 +320,7 @@ class AttentionParams[D: SymVar](nn.Module):
     w_v: Tensor[[D, D]]
     w_o: Tensor[[D, D]]
 
-    def __init__(self, d_model: Dim[D]):
+    def __init__(self, d_model: SymInt[D]):
         super().__init__()
         # Now D is bound to runtime value via Literal type
         self.w_q = torch.randn(d_model, d_model)

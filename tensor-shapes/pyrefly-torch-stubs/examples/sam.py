@@ -18,7 +18,7 @@ Port notes:
   trackable. window_size=0 means global attention (no partition).
 - Relative positional embeddings (get_rel_pos, add_decomposed_rel_pos) included.
   get_rel_pos is fully typed: F.interpolate, torch.arange, fancy indexing all
-  tracked. add_decomposed_rel_pos takes independent dims first (bare Dim params)
+  tracked. add_decomposed_rel_pos takes independent dims first (bare SymInt params)
   so the checker binds QH/QW/KH/KW before processing derived expressions in
   tensor types. ImageAttention/ViTBlock use IS (class param) for square spatial
   dims — same type var for both rel_pos (construction) and forward (usage).
@@ -27,7 +27,7 @@ Port notes:
   followed by reshape+permute+reshape+unbind. This entire chain is fully
   shape-tracked through all 4 steps, producing typed q/k/v tensors.
   Attention matmul, softmax, and head reassemble are also tracked.
-  `self.scale: float` annotation prevents `Any` from `Dim ** float` (typeshed gap).
+  `self.scale: float` annotation prevents `Any` from `SymInt ** float` (typeshed gap).
 - The two-way transformer's Attention (cross-attention) is cleaner: separate
   Q/K/V projections with reshape→transpose for multi-head, similar to LLaMA.
   Fully shape-tracked.
@@ -62,7 +62,7 @@ import torch.nn.functional as F
 from shape_extensions import Elements, SizeTuple, SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymInt
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
@@ -79,7 +79,7 @@ class LayerNorm2d[C: SymVar](nn.Module):
     (B, C, H, W) → (B, C, H, W)
     """
 
-    def __init__(self, num_channels: Dim[C], eps: float = 1e-6) -> None:
+    def __init__(self, num_channels: SymInt[C], eps: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(num_channels))
         self.bias = nn.Parameter(torch.zeros(num_channels))
@@ -102,7 +102,7 @@ class MLPBlock[D: SymVar, MlpDim: SymVar](nn.Module):
     (*, D) → (*, D)
     """
 
-    def __init__(self, embedding_dim: Dim[D], mlp_dim: Dim[MlpDim]) -> None:
+    def __init__(self, embedding_dim: SymInt[D], mlp_dim: SymInt[MlpDim]) -> None:
         super().__init__()
         self.lin1 = nn.Linear(embedding_dim, mlp_dim)
         self.lin2 = nn.Linear(mlp_dim, embedding_dim)
@@ -119,7 +119,7 @@ class MLPBlock[D: SymVar, MlpDim: SymVar](nn.Module):
 
 
 def window_partition[B: SymVar, H: SymVar, W: SymVar, WS: SymVar, D: SymVar](
-    x: Tensor[[B, H, W, D]], window_size: Dim[WS]
+    x: Tensor[[B, H, W, D]], window_size: SymInt[WS]
 ) -> Tensor[[B * (H // WS) * (W // WS), WS, WS, D]]:
     """Partition into non-overlapping windows.
 
@@ -142,10 +142,10 @@ def window_partition[B: SymVar, H: SymVar, W: SymVar, WS: SymVar, D: SymVar](
 
 
 def window_unpartition[B: SymVar, H: SymVar, W: SymVar, WS: SymVar, D: SymVar](
-    window_size: Dim[WS],
-    h: Dim[H],
-    w: Dim[W],
-    batch_size: Dim[B],
+    window_size: SymInt[WS],
+    h: SymInt[H],
+    w: SymInt[W],
+    batch_size: SymInt[B],
     windows: Tensor[[B * (H // WS) * (W // WS), WS, WS, D]],
 ) -> Tensor[[B, H, W, D]]:
     """Undo window partition: reassemble windows into spatial grid.
@@ -168,14 +168,14 @@ def window_unpartition[B: SymVar, H: SymVar, W: SymVar, WS: SymVar, D: SymVar](
 
 
 def get_rel_pos[QS: SymVar, KS: SymVar, HD: SymVar, RP: SymVar](
-    q_size: Dim[QS], k_size: Dim[KS], rel_pos: Tensor[[RP, HD]]
+    q_size: SymInt[QS], k_size: SymInt[KS], rel_pos: Tensor[[RP, HD]]
 ) -> Tensor[[QS, KS, HD]]:
     """Get relative positional embeddings for query/key size pair.
 
     Original: image_encoder.py get_rel_pos function.
 
     Uses F.interpolate to resize the learned embedding table if needed,
-    then indexes by computed relative coordinates. With Dim-typed args,
+    then indexes by computed relative coordinates. With SymInt-typed args,
     the full chain is shape-tracked: reshape, permute, interpolate,
     arange, broadcasting subtraction, and fancy indexing all produce
     typed outputs.
@@ -213,10 +213,10 @@ def add_decomposed_rel_pos[
     RPH: SymVar,
     RPW: SymVar,
 ](
-    q_h: Dim[QH],
-    q_w: Dim[QW],
-    k_h: Dim[KH],
-    k_w: Dim[KW],
+    q_h: SymInt[QH],
+    q_w: SymInt[QW],
+    k_h: SymInt[KH],
+    k_w: SymInt[KW],
     attn: Tensor[[B, QH * QW, KH * KW]],
     q: Tensor[[B, QH * QW, HD]],
     rel_pos_h: Tensor[[RPH, HD]],
@@ -230,7 +230,7 @@ def add_decomposed_rel_pos[
     (from MViTv2). Computes q @ Rh and q @ Rw via torch.einsum, then adds
     to attention map with broadcasting.
 
-    Independent type params (QH, QW, KH, KW) appear as bare Dim params
+    Independent type params (QH, QW, KH, KW) appear as bare SymInt params
     first, so the checker binds them before processing derived expressions
     (QH*QW, 2*QH-1) in the tensor types.
 
@@ -267,7 +267,7 @@ class ImageAttention[D: SymVar, NHead: SymVar, IS: SymVar](nn.Module):
     Combined QKV projection: Linear(D, 3*D) → reshape+permute+unbind → q, k, v
     → scaled dot-product attention → view+permute+reshape → output projection.
     Fully shape-tracked through the entire chain (reshape, permute, unbind,
-    matmul, view all tracked with Dim args).
+    matmul, view all tracked with SymInt args).
 
     When use_rel_pos=True, learned relative position embeddings of shape
     (2*IS-1, D//NHead) are tracked via the IS type param.
@@ -277,11 +277,11 @@ class ImageAttention[D: SymVar, NHead: SymVar, IS: SymVar](nn.Module):
 
     def __init__(
         self,
-        dim: Dim[D],
-        num_heads: Dim[NHead],
+        dim: SymInt[D],
+        num_heads: SymInt[NHead],
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
-        input_size: Dim[IS] | None = None,
+        input_size: SymInt[IS] | None = None,
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
@@ -293,7 +293,7 @@ class ImageAttention[D: SymVar, NHead: SymVar, IS: SymVar](nn.Module):
         if use_rel_pos:
             assert input_size is not None
             # Learned relative position embeddings for height and width
-            # Shape: (2*IS-1, D//NHead). Tracked via Dim[IS] type param.
+            # Shape: (2*IS-1, D//NHead). Tracked via SymInt[IS] type param.
             self.rel_pos_h = nn.Parameter(
                 torch.zeros(2 * input_size - 1, self.head_dim)
             )
@@ -358,7 +358,7 @@ class ViTBlock[D: SymVar, NHead: SymVar, MlpDim: SymVar, IS: SymVar, WS: SymVar]
     """Vision Transformer block in BHWC format.
 
     Supports both global attention (window_size=None) and windowed attention
-    (window_size=Dim[WS]). With windowed attention, the block partitions the
+    (window_size=SymInt[WS]). With windowed attention, the block partitions the
     spatial grid into non-overlapping windows before attention, then unpartitions.
 
     (B, IS, IS, D) → (B, IS, IS, D)
@@ -366,12 +366,12 @@ class ViTBlock[D: SymVar, NHead: SymVar, MlpDim: SymVar, IS: SymVar, WS: SymVar]
 
     def __init__(
         self,
-        dim: Dim[D],
-        num_heads: Dim[NHead],
-        mlp_dim: Dim[MlpDim],
+        dim: SymInt[D],
+        num_heads: SymInt[NHead],
+        mlp_dim: SymInt[MlpDim],
         use_rel_pos: bool = False,
-        window_size: Dim[WS] | None = None,
-        input_size: Dim[IS] | None = None,
+        window_size: SymInt[WS] | None = None,
+        input_size: SymInt[IS] | None = None,
     ) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
@@ -436,7 +436,7 @@ class PatchEmbed[EmbDim: SymVar](nn.Module):
     Conv2d output: (B, EmbDim, (S-16)//16+1, (S-16)//16+1) → permute → BHWC
     """
 
-    def __init__(self, embed_dim: Dim[EmbDim]) -> None:
+    def __init__(self, embed_dim: SymInt[EmbDim]) -> None:
         super().__init__()
         self.proj = nn.Conv2d(3, embed_dim, kernel_size=16, stride=16)
 
@@ -473,8 +473,8 @@ class ImageEncoderViT[EmbDim: SymVar, OutC: SymVar](nn.Module):
 
     def __init__(
         self,
-        embed_dim: Dim[EmbDim],
-        out_chans: Dim[OutC],
+        embed_dim: SymInt[EmbDim],
+        out_chans: SymInt[OutC],
         depth: int,
         num_heads: int,
         mlp_ratio: float = 4.0,
@@ -554,9 +554,9 @@ class CrossAttention[D: SymVar, IntDim: SymVar, NHead: SymVar](nn.Module):
 
     def __init__(
         self,
-        embedding_dim: Dim[D],
-        internal_dim: Dim[IntDim],
-        num_heads: Dim[NHead],
+        embedding_dim: SymInt[D],
+        internal_dim: SymInt[IntDim],
+        num_heads: SymInt[NHead],
     ) -> None:
         super().__init__()
         self.num_heads = num_heads
@@ -626,9 +626,9 @@ class TwoWayAttentionBlock[D: SymVar, NHead: SymVar, MlpDim: SymVar](nn.Module):
 
     def __init__(
         self,
-        embedding_dim: Dim[D],
-        num_heads: Dim[NHead],
-        mlp_dim: Dim[MlpDim],
+        embedding_dim: SymInt[D],
+        num_heads: SymInt[NHead],
+        mlp_dim: SymInt[MlpDim],
         downsample_rate: int = 2,
     ) -> None:
         super().__init__()
@@ -708,9 +708,9 @@ class TwoWayTransformer[D: SymVar, NHead: SymVar, MlpDim: SymVar](nn.Module):
 
     def __init__(
         self,
-        embedding_dim: Dim[D],
-        num_heads: Dim[NHead],
-        mlp_dim: Dim[MlpDim],
+        embedding_dim: SymInt[D],
+        num_heads: SymInt[NHead],
+        mlp_dim: SymInt[MlpDim],
         depth: int,
         downsample_rate: int = 2,
     ) -> None:
@@ -764,7 +764,7 @@ class PositionalEmbeddingRandom[D: SymVar](nn.Module):
     (..., 2) → (..., 2*D) via sin/cos encoding
     """
 
-    def __init__(self, num_pos_feats: Dim[D]) -> None:
+    def __init__(self, num_pos_feats: SymInt[D]) -> None:
         super().__init__()
         self.positional_encoding_gaussian_matrix: Tensor[[2, D]] = nn.Buffer(
             torch.randn(2, num_pos_feats), persistent=False
@@ -825,10 +825,10 @@ class PromptEncoder[D: SymVar, ES: SymVar, MIC: SymVar](nn.Module):
 
     def __init__(
         self,
-        embed_dim: Dim[D],
-        emb_size: Dim[ES],
+        embed_dim: SymInt[D],
+        emb_size: SymInt[ES],
         input_image_size: tuple[int, int],
-        mask_in_chans: Dim[MIC],
+        mask_in_chans: SymInt[MIC],
     ) -> None:
         super().__init__()
         self.embed_dim = embed_dim
@@ -971,7 +971,7 @@ class PromptEncoder[D: SymVar, ES: SymVar, MIC: SymVar](nn.Module):
         points: tuple[Tensor[[B, N, 2]], Tensor[[B, N]]] | None,
         boxes: Tensor[[B, M, 4]] | None,
         masks: Tensor[[B, 1, 4 * ES, 4 * ES]] | None,
-    ) -> Dim[B]:
+    ) -> SymInt[B]:
         """Infer batch size from whichever prompt is provided."""
         if points is not None:
             return points[0].shape[0]
@@ -1000,9 +1000,9 @@ class HypernetworkMLP[In: SymVar, Hidden: SymVar, Out: SymVar](nn.Module):
 
     def __init__(
         self,
-        input_dim: Dim[In],
-        hidden_dim: Dim[Hidden],
-        output_dim: Dim[Out],
+        input_dim: SymInt[In],
+        hidden_dim: SymInt[Hidden],
+        output_dim: SymInt[Out],
         sigmoid_output: bool = False,
     ) -> None:
         super().__init__()
@@ -1055,10 +1055,10 @@ class MaskDecoder[D: SymVar, NHead: SymVar, MlpDim: SymVar, NumMasks: SymVar](
 
     def __init__(
         self,
-        transformer_dim: Dim[D],
-        num_heads: Dim[NHead],
-        mlp_dim: Dim[MlpDim],
-        num_multimask_outputs: Dim[NumMasks],
+        transformer_dim: SymInt[D],
+        num_heads: SymInt[NHead],
+        mlp_dim: SymInt[MlpDim],
+        num_multimask_outputs: SymInt[NumMasks],
         transformer_depth: int = 2,
     ) -> None:
         super().__init__()

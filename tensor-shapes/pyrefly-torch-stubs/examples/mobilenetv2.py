@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -47,16 +47,16 @@ class InvertedResidual[Inp: SymVar, Oup: SymVar, ER: SymVar, S: SymVar](nn.Modul
 
     def __init__(
         self,
-        inp: Dim[Inp],
-        oup: Dim[Oup],
-        stride: Dim[S],
-        expand_ratio: Dim[ER],
+        inp: SymInt[Inp],
+        oup: SymInt[Oup],
+        stride: SymInt[S],
+        expand_ratio: SymInt[ER],
     ) -> None:
         super().__init__()
         if stride not in [1, 2]:
             raise ValueError(f"stride should be 1 or 2 instead of {stride}")
 
-        # removed int(round(...)) — no-op on ints, kills Dim tracking
+        # removed int(round(...)) — no-op on ints, kills SymInt tracking
         hidden_dim = inp * expand_ratio
         self.use_res_connect: bool = stride == 1 and inp == oup
         self.expand_ratio = expand_ratio
@@ -118,12 +118,12 @@ class MobileNetV2[NC: SymVar = 1000, LC: SymVar = 1280](nn.Module):
 
     def __init__(
         self,
-        num_classes: Dim[NC] = 1000,
+        num_classes: SymInt[NC] = 1000,
         width_mult: float = 1.0,
         inverted_residual_setting: list[list[int]] | None = None,
         round_nearest: int = 8,
         dropout: float = 0.2,
-        last_channel: Dim[LC] = 1280,
+        last_channel: SymInt[LC] = 1280,
     ) -> None:
         super().__init__()
 

@@ -29,14 +29,14 @@ from shape_extensions import Elements, SizeTuple
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
 class LayerNorm[M: SymVar](nn.Module):
     """LayerNorm but with an optional bias. Generic over normalized dimension size."""
 
-    def __init__(self, ndim: Dim[M], bias: bool):
+    def __init__(self, ndim: SymInt[M], bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
@@ -57,11 +57,11 @@ class GPTConfig[
 ]:
     """Configuration for GPT model, generic over key dimensions"""
 
-    block_size: Dim[BlockSize]
-    vocab_size: Dim[VocabSize]
-    n_layer: Dim[NLayer]
-    n_head: Dim[NHead]
-    n_embd: Dim[NEmbedding]
+    block_size: SymInt[BlockSize]
+    vocab_size: SymInt[VocabSize]
+    n_layer: SymInt[NLayer]
+    n_head: SymInt[NHead]
+    n_embd: SymInt[NEmbedding]
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -194,11 +194,11 @@ class GPTConfigArgs[
 ](TypedDict):
     """TypedDict for GPTConfig constructor arguments, generic over key dimensions"""
 
-    n_layer: Dim[NLayer]
-    n_head: Dim[NHead]
-    n_embd: Dim[NEmbedding]
-    vocab_size: Dim[VocabSize]
-    block_size: Dim[BlockSize]
+    n_layer: SymInt[NLayer]
+    n_head: SymInt[NHead]
+    n_embd: SymInt[NEmbedding]
+    vocab_size: SymInt[VocabSize]
+    block_size: SymInt[BlockSize]
     bias: bool
     dropout: float
 
@@ -268,8 +268,8 @@ class GPT[
 
     # TODO(rechen): the type of `n_params` used to be inferred as `Unknown`.
     # After D95667476, it is the more precise
-    # `Literal[0] | Dim[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
-    # errors like "`/` is not supported between `Dim[((-1 * BlockSize) * NEmbedding)]` and `float`"
+    # `Literal[0] | SymInt[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
+    # errors like "`/` is not supported between `SymInt[((-1 * BlockSize) * NEmbedding)]` and `float`"
     def get_num_params(self, non_embedding=True) -> Any:
         """
         Return the number of parameters in the model.

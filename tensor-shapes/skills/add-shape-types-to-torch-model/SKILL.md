@@ -2,10 +2,10 @@
 name: add-shape-types-to-torch-model
 description: >
   Port a PyTorch model to use pyrefly's tensor shape type system (Tensor[B, C, H, W],
-  Dim[T]). Use this skill whenever the user wants to add shape annotations
+  SymInt[T]). Use this skill whenever the user wants to add shape annotations
   to a PyTorch model, type a model with tensor dimensions, port a model to use shape
   tracking, or annotate model forward methods with tensor shapes. Also use when the
-  user mentions tensor shape ports, Dim types for PyTorch, or pyrefly shape checking
+  user mentions tensor shape ports, SymInt types for PyTorch, or pyrefly shape checking
   on a model file. Invoke BEFORE starting any model port — the skill's gated workflow
   prevents common failure modes.
 ---
@@ -146,7 +146,7 @@ fall back to bare `Tensor`, which is acceptable; record the gap for the report.
 Only if the user opted into stub changes, and a minimal stub for the specific
 ops used would recover real shapes, is adding one worthwhile.
 
-For each class, list constructor parameters and whether each is Dim or
+For each class, list constructor parameters and whether each is SymInt or
 int — this feeds Step 1 of the module loop.
 
 **Check off items as you port them** (`[ ]` → `[x]`). Do not proceed to
@@ -183,20 +183,20 @@ of `assert_type`.
 ## Step 1: Inventory parameters
 
 List every constructor parameter. For each, decide:
-- **Dim**: the value determines a tensor dimension (flows to `nn.Linear`,
+- **SymInt**: the value determines a tensor dimension (flows to `nn.Linear`,
   `nn.Conv2d`, tensor creation, or any typed function that uses the value
   as a shape dimension).
 - **int**: iteration count (`n_layers`, `n_res_block`) or boolean-like flag.
 
-If in doubt, make it `Dim`. The cost is one more type param; the cost of
+If in doubt, make it `SymInt`. The cost is one more type param; the cost of
 `int` is permanent shape loss in everything downstream.
 
 **Critical rules:**
 - Every `int` that flows to a sub-module constructor (`nn.Linear(dim, ...)`)
-  MUST be `Dim`. No exceptions.
-- Never cast Dim to int (`int(dim)`, `self.x = int(dim)`) — `Dim` is a
+  MUST be `SymInt`. No exceptions.
+- Never cast SymInt to int (`int(dim)`, `self.x = int(dim)`) — `SymInt` is a
   subtype of `int`, so the cast only kills tracking. Exception:
-  `bool`/`float` conversion is necessary, but `int * Dim` produces
+  `bool`/`float` conversion is necessary, but `int * SymInt` produces
   Unknown — check whether it reaches tensor shapes before fixing. Don't
   replace with if/else branching (union of concrete expressions is worse
   than one Unknown).
@@ -204,7 +204,7 @@ If in doubt, make it `Dim`. The cost is one more type param; the cost of
   type params. Only independent degrees of freedom get type params.
 - **Dimensions from `list[int]`.** `list[int]` element access (e.g.,
   `hidden_units[-1]`) erases the concrete value to `int`. Add an explicit
-  `Dim` field to the config or constructor for that value.
+  `SymInt` field to the config or constructor for that value.
 - Use `nn.Buffer` and `nn.Parameter`, not `register_buffer`/
   `register_parameter`.
 - **Bridge dims.** When part of the model is untracked (e.g., features
@@ -218,20 +218,20 @@ If in doubt, make it `Dim`. The cost is one more type param; the cost of
 
   ```python
   class Model[NC, LC](nn.Module):
-      def __init__(self, num_classes: Dim[NC] = 1000,
-                   last_channel: Dim[LC] = 1280):
+      def __init__(self, num_classes: SymInt[NC] = 1000,
+                   last_channel: SymInt[LC] = 1280):
           ...
           self.classifier = nn.Linear(last_channel, num_classes)
   ```
 
   Here `LC` bridges the untracked feature extractor to the typed
   classifier, recovering `Tensor[B, NC]` at the output.
-- **`Dim[X] | None` for optional dimensions.** When a parameter is
+- **`SymInt[X] | None` for optional dimensions.** When a parameter is
   `Optional[int]` but flows to tensor shapes when present, type it as
-  `Dim[X] | None`, not `Optional[int]`. Example:
-  `rank_k: Optional[int]` → `rank_k: Dim[RK] | None`. In the forward
+  `SymInt[X] | None`, not `Optional[int]`. Example:
+  `rank_k: Optional[int]` → `rank_k: SymInt[RK] | None`. In the forward
   method, narrow with `if rank_k is not None:` — the checker then
-  treats `rank_k` as `Dim[RK]` inside the branch. Leaving it as
+  treats `rank_k` as `SymInt[RK]` inside the branch. Leaving it as
   `Optional[int]` permanently loses tracking in every downstream op.
 - **Parameterized config dataclasses.** When multiple modules consume
   dimensions from the same `@dataclass` config, note it — Step 2
@@ -257,7 +257,7 @@ If in doubt, make it `Dim`. The cost is one more type param; the cost of
 
   # Good: causal_mask is Tensor[MS, MS] from declaration
   class Attention[MS](nn.Module):
-      def __init__(self, max_seq_len: Dim[MS], ...):
+      def __init__(self, max_seq_len: SymInt[MS], ...):
           self.causal_mask: Tensor[MS, MS] = torch.zeros(
               max_seq_len, max_seq_len
           )
@@ -270,19 +270,19 @@ If in doubt, make it `Dim`. The cost is one more type param; the cost of
 
 ## Step 2: Type the constructor
 
-Write `__init__` with the `Dim` params from Step 1. Construct sub-modules
+Write `__init__` with the `SymInt` params from Step 1. Construct sub-modules
 using those Dims — they get typed automatically.
 
-**Default values for Dim params:** `Literal[0]` is not assignable to
-`Dim[X]` as a default. Use PEP 696 type-parameter defaults instead:
+**Default values for SymInt params:** `Literal[0]` is not assignable to
+`SymInt[X]` as a default. Use PEP 696 type-parameter defaults instead:
 
 ```python
-# Won't work — Literal[1000] not assignable to Dim[NC]:
-def __init__(self, num_classes: Dim[NC] = 1000): ...
+# Won't work — Literal[1000] not assignable to SymInt[NC]:
+def __init__(self, num_classes: SymInt[NC] = 1000): ...
 
 # Works — NC defaults to 1000 at the type level:
 class Model[NC = 1000](nn.Module):
-    def __init__(self, num_classes: Dim[NC] = 1000): ...
+    def __init__(self, num_classes: SymInt[NC] = 1000): ...
 ```
 
 **Constructor patterns that break shape tracking:**
@@ -307,9 +307,9 @@ generic so dims propagate through constructors:
 ```python
 @dataclass
 class Config[D, NHead, VocabSize]:
-    dim: Dim[D]
-    n_head: Dim[NHead]
-    vocab_size: Dim[VocabSize]
+    dim: SymInt[D]
+    n_head: SymInt[NHead]
+    vocab_size: SymInt[VocabSize]
     dropout: float = 0.0
 ```
 
@@ -332,9 +332,9 @@ combine the two patterns above — give the dataclass type params PEP
 ```python
 @dataclass
 class Config[D = 768, NHead = 12, VocabSize = 50257]:
-    dim: Dim[D] = 768
-    n_head: Dim[NHead] = 12
-    vocab_size: Dim[VocabSize] = 50257
+    dim: SymInt[D] = 768
+    n_head: SymInt[NHead] = 12
+    vocab_size: SymInt[VocabSize] = 50257
     dropout: float = 0.0
 ```
 
@@ -387,12 +387,12 @@ is complete for every BARE entry. The results tell you:
 
 Many patterns that LOOK dynamic have trackable substructure.
 Conditional branching over matmul/bmm chains, for example, is fully
-trackable if the dimension values are `Dim`-typed.
+trackable if the dimension values are `SymInt`-typed.
 
 For EACH bare `Tensor` from Step 3, attempt ALL applicable restructurings
 before falling back to typed interface:
 
-□ **`int()` or `round()` wrapping a Dim value?** Remove it. If the
+□ **`int()` or `round()` wrapping a SymInt value?** Remove it. If the
   argument is already int-compatible (e.g., `round()` on an integer
   `expand_ratio`), the wrapper is a no-op that kills tracking.
 
@@ -457,8 +457,8 @@ want typed interface, paste this filled-out receipt in your response:
 - Branch join: [not applicable — reason]
 - Inlined expressions: [split / not applicable — reason]
 - Missing stub/DSL: [checked stubs + `@uses_shape_dsl` IR — reason]
-- Dim | None reclassification: [reclassified param X / not applicable — reason]
-- Bridge dim: [promoted X to class Dim / not applicable — reason]
+- SymInt | None reclassification: [reclassified param X / not applicable — reason]
+- Bridge dim: [promoted X to class SymInt / not applicable — reason]
 - Config parameterization: [parameterized Config[...] / not applicable — reason]
 Result: still bare after all checks. Using typed interface because ___.
 ```
@@ -466,7 +466,7 @@ Result: still bare after all checks. Using typed interface because ___.
 If you cannot fill this out, you have not completed Step 4. Go back.
 
 "Restructure" usually means a 2–3 line change: separating an iteration,
-removing an `int()` cast, or adding a `Dim` type param. It does NOT mean
+removing an `int()` cast, or adding a `SymInt` type param. It does NOT mean
 rewriting the algorithm. If you find yourself writing significantly
 different logic, you've gone too far. Even partial dim tracking (e.g.,
 output dim only) is far more useful than none.
@@ -525,7 +525,7 @@ Type the forward signature:
   positions BEFORE parameters where they appear inside arithmetic
   expressions. The checker needs to bind the bare params first.
 - **Don't hide known class dims inside variadic params.** If the module
-  has a class-level Dim `D`, use `Tensor[*Bs, D]` not `Tensor[*S]`.
+  has a class-level SymInt `D`, use `Tensor[*Bs, D]` not `Tensor[*S]`.
 
 Replace every `reveal_type` with `assert_type` using the recorded types:
 - Shaped `reveal_type` → `assert_type(x, Tensor[...])` with that shape.
@@ -586,7 +586,7 @@ proceeding to the next module.
 - type: ignore count: ___
   For each: [line] [category: A1 / conditional / stub-gap] [fix attempted]
 - Step 4 receipts: [list receipt IDs, or "none — all locals shaped"]
-- int params: [list each int param and why it's not Dim, or "none"]
+- int params: [list each int param and why it's not SymInt, or "none"]
 - int() casts: [list each, or "none"]
 - Sequential(*list): [list each instance and what you did, or "none"]
 - bare Tensor in sigs: [list each with reason, or "none"]
@@ -740,7 +740,7 @@ The `shape_extensions` package bridges pyrefly's type system and Python runtime.
 Importing it patches `torch.Tensor`, `nn.Conv2d`, and other torch classes to
 accept subscript syntax (e.g., `Tensor[B, C, H, W]`) at runtime without
 crashing. It also provides `TypeVar` with arithmetic support (`N + 1`, `N // 2`
-return `self` instead of `TypeError`) and `Dim` for binding runtime ints to
+return `self` instead of `TypeError`) and `SymInt` for binding runtime ints to
 type-level symbols.
 
 `shape_extensions` is installed alongside the shape-aware torch stubs (wherever
@@ -762,7 +762,7 @@ import torch.nn as nn
 
 if TYPE_CHECKING:
     from torch import Tensor
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
 ```
 
 **Runtime-compatible annotations:** if you need annotations to evaluate at

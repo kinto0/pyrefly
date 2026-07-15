@@ -13,7 +13,7 @@
 # ## Inventory
 # - [x] HyperNet.__init__ — Dims: input_dim, output_dim; int: hidden_units (list), activation (str), dropout (float)
 # - [x] HyperNet.forward
-# - [x] APGLinear.__init__ — Dims: input_dim, output_dim, condition_dim; Dim|None: rank_k, overparam_p; int: bias (bool), generate_bias (bool)
+# - [x] APGLinear.__init__ — Dims: input_dim, output_dim, condition_dim; SymInt|None: rank_k, overparam_p; int: bias (bool), generate_bias (bool)
 # - [x] APGLinear.forward
 # - [x] APGMLP.__init__ — Dims: input_dim, output_dim (bridge); int: hidden_units (list), hidden_activation (str), condition_mode (str)
 # - [x] APGMLP.forward
@@ -27,7 +27,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -36,8 +36,8 @@ class HyperNet[IN: SymVar, OUT: SymVar](nn.Module):
 
     def __init__(
         self,
-        input_dim: Dim[IN],
-        output_dim: Dim[OUT],
+        input_dim: SymInt[IN],
+        output_dim: SymInt[OUT],
         hidden_units: list[int],
         activation: str = "ReLU",
         dropout: float = 0.0,
@@ -70,12 +70,12 @@ class APGLinear[IN: SymVar, OUT: SymVar, CD: SymVar, RK: SymVar, OP: SymVar](nn.
 
     def __init__(
         self,
-        input_dim: Dim[IN],
-        output_dim: Dim[OUT],
-        condition_dim: Dim[CD],
+        input_dim: SymInt[IN],
+        output_dim: SymInt[OUT],
+        condition_dim: SymInt[CD],
         bias: bool = True,
-        rank_k: Dim[RK] | None = None,
-        overparam_p: Dim[OP] | None = None,
+        rank_k: SymInt[RK] | None = None,
+        overparam_p: SymInt[OP] | None = None,
         generate_bias: bool = False,
         hypernet_hidden_units: list[int] | tuple[()] = (),
         hypernet_activation: str = "ReLU",
@@ -192,8 +192,8 @@ class APGMLP[InDim: SymVar, OutDim: SymVar](nn.Module):
 
     def __init__(
         self,
-        input_dim: Dim[InDim],
-        output_dim: Dim[OutDim],
+        input_dim: SymInt[InDim],
+        output_dim: SymInt[OutDim],
         hidden_units: list[int],
         hidden_activation: str = "ReLU",
         dropout: float = 0.0,
@@ -286,9 +286,9 @@ class APGBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
 
     def __init__(
         self,
-        num_features: Dim[F],
-        emb_dim: Dim[D],
-        output_dim: Dim[OutD],
+        num_features: SymInt[F],
+        emb_dim: SymInt[D],
+        output_dim: SymInt[OutD],
         config: dict | None = None,
         hidden_units: list[int] | None = None,
         hidden_activation: str = "ReLU",
@@ -353,7 +353,7 @@ class APGBackbone[F: SymVar, D: SymVar, OutD: SymVar](nn.Module):
         self._output_dim = output_dim
 
     @property
-    def output_dim(self) -> Dim[OutD]:
+    def output_dim(self) -> SymInt[OutD]:
         return self._output_dim
 
     def forward[B: SymVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:

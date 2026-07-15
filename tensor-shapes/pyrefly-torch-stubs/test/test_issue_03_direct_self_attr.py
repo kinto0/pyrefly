@@ -10,11 +10,11 @@ import torch.nn as nn
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
 
 
 class RMSNorm[D: SymVar](nn.Module):
-    def __init__(self, dim: Dim[D], eps: float = 1e-5):
+    def __init__(self, dim: SymInt[D], eps: float = 1e-5):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
@@ -25,7 +25,7 @@ class DirectAssignmentFails[D: SymVar](nn.Module):
 
     ffn_norm: RMSNorm[D]
 
-    def __init__(self, dim: Dim[D]) -> None:
+    def __init__(self, dim: SymInt[D]) -> None:
         super().__init__()
         # Direct assignment - type is lost
         self.ffn_norm = RMSNorm(dim, 1e-5)
@@ -39,7 +39,7 @@ class WorkaroundWorks[D: SymVar](nn.Module):
 
     ffn_norm: RMSNorm[D]
 
-    def __init__(self, dim: Dim[D]) -> None:
+    def __init__(self, dim: SymInt[D]) -> None:
         super().__init__()
         # Workaround: assign to local first
         ffn = RMSNorm(dim, 1e-5)

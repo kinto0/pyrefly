@@ -73,7 +73,7 @@ from torch._shapes import (
 )
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim as _Dim
+    from shape_extensions import SymInt as _SymInt
 
 __all__ = ["Tensor"]
 
@@ -1478,7 +1478,7 @@ def full(size: tuple[int, ...], fill_value: float) -> Tensor:
     """Create tensor filled with value. Shape inference via meta-shape: torch.full"""
     ...
 
-# arange overloads - Dim is compatible with int, so meta-shape handles both
+# arange overloads - SymInt is compatible with int, so meta-shape handles both
 @uses_shape_dsl(arange_ir)
 @overload
 def arange(end: int) -> Tensor:
@@ -2392,7 +2392,7 @@ def view_as_real[S: SizeTuple](input: Tensor[S]) -> Tensor[[*Elements[S], 2]]:
     ...
 
 def hann_window[N: SymVar](
-    window_length: _Dim[N],
+    window_length: _SymInt[N],
     periodic: bool = True,
     *,
     dtype: Any = None,
@@ -2403,7 +2403,7 @@ def hann_window[N: SymVar](
 
 def stft[Batch: SizeTuple, F: SymVar](
     input: Tensor[Batch],
-    n_fft: _Dim[F],
+    n_fft: _SymInt[F],
     hop_length: int | None = None,
     win_length: int | None = None,
     window: Tensor | None = None,

@@ -24,7 +24,7 @@ Port notes:
 - Fixed conv_dim=64 (default) and 128x128 image size (StarGAN standard).
   repeat_num=6 for both Generator bottleneck and Discriminator depth.
 - Condition broadcast uses .view().expand() — both operations are fully
-  shape-tracked when args are Dim values or literals. Verified by assert_type.
+  shape-tracked when args are SymInt values or literals. Verified by assert_type.
 
 Key patterns exercised:
 - nn.Sequential for large pipelines (faithful to original)
@@ -40,7 +40,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 
@@ -58,7 +58,7 @@ class ResidualBlock[C: SymVar](nn.Module):
     (B, C, H, W) → (B, C, H, W)
     """
 
-    def __init__(self, dim: Dim[C]) -> None:
+    def __init__(self, dim: SymInt[C]) -> None:
         super().__init__()
         self.conv_block = nn.Sequential(
             nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1),
@@ -100,7 +100,7 @@ class Generator[CDim: SymVar](nn.Module):
     (B, 3, 128, 128), (B, CDim) → (B, 3, 128, 128)
     """
 
-    def __init__(self, c_dim: Dim[CDim]) -> None:
+    def __init__(self, c_dim: SymInt[CDim]) -> None:
         super().__init__()
         self.main = nn.Sequential(
             # Encoder
@@ -165,7 +165,7 @@ class Discriminator[CDim: SymVar, S: SymVar](nn.Module):
     (B, 3, S, S) → (Tensor[[B, 1, S//64, S//64]], Tensor[[B, CDim]])
     """
 
-    def __init__(self, c_dim: Dim[CDim], image_size: Dim[S]) -> None:
+    def __init__(self, c_dim: SymInt[CDim], image_size: SymInt[S]) -> None:
         super().__init__()
         self.main = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1),

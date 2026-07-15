@@ -28,7 +28,6 @@ from shape_extensions import (
     assert_shape,
     D,
     defines_assert_shape,
-    Dim,
     enable_torchscript_runtime_compat,
     SymInt,
     SymVar,
@@ -69,17 +68,6 @@ class TestTorchScriptRuntimeCompat(unittest.TestCase):
 
     def setUp(self):
         super().setUp()
-        original_dim_class_getitem = Dim.__dict__.get("__class_getitem__")
-
-        def restore_dim_class_getitem():
-            if original_dim_class_getitem is None:
-                if "__class_getitem__" in Dim.__dict__:
-                    delattr(Dim, "__class_getitem__")
-            else:
-                Dim.__class_getitem__ = original_dim_class_getitem
-
-        self.addCleanup(restore_dim_class_getitem)
-
         original_class_getitem = SymInt.__dict__.get("__class_getitem__")
 
         def restore_symint_class_getitem():
@@ -90,14 +78,6 @@ class TestTorchScriptRuntimeCompat(unittest.TestCase):
                 SymInt.__class_getitem__ = original_class_getitem
 
         self.addCleanup(restore_symint_class_getitem)
-
-    def test_dim_subscript_erases_to_int(self):
-        enable_torchscript_runtime_compat()
-
-        def f[N]() -> None:
-            self.assertIs(Dim[N], int)
-
-        f()
 
     def test_symint_subscript_erases_to_int(self):
         enable_torchscript_runtime_compat()
@@ -296,46 +276,46 @@ class TestClassAnnotationRuntime(unittest.TestCase):
 
 
 class TestDimRuntime(unittest.TestCase):
-    """Dim[...] behavior at runtime.
+    """SymInt[...] behavior at runtime.
 
-    Dim natively supports __class_getitem__, so Dim[3] and Dim[N] work.
-    But Dim[N+1] crashes because Python evaluates N+1 before passing it
+    SymInt natively supports __class_getitem__, so SymInt[3] and SymInt[N] work.
+    But SymInt[N+1] crashes because Python evaluates N+1 before passing it
     to __class_getitem__, and PEP 695 TypeVar doesn't support arithmetic."""
 
     def test_dim_concrete(self):
-        """Dim[3] — concrete integer, works fine."""
+        """SymInt[3] — concrete integer, works fine."""
 
-        def f(x: Dim[3]) -> Dim[3]:
+        def f(x: SymInt[3]) -> SymInt[3]:
             return x
 
         f(42)
 
     def test_dim_typevar(self):
-        """Dim[N] — bare TypeVar, works fine."""
+        """SymInt[N] — bare TypeVar, works fine."""
 
-        def f[N](x: Dim[N]) -> Dim[N]:
+        def f[N](x: SymInt[N]) -> SymInt[N]:
             return x
 
         f(42)
 
     def test_dim_arithmetic(self):
-        """Dim[N+1] — TypeVar arithmetic crashes."""
+        """SymInt[N+1] — TypeVar arithmetic crashes."""
         with self.assertRaisesRegex(
             TypeError,
             r"unsupported operand type\(s\) for \+: 'typing.TypeVar' and 'int'",
         ):
 
-            def f[N](x: Dim[N]) -> Dim[N + 1]:
+            def f[N](x: SymInt[N]) -> SymInt[N + 1]:
                 return x
 
     def test_dim_two_typevars(self):
-        """Dim[N+M] — two TypeVars in arithmetic crashes."""
+        """SymInt[N+M] — two TypeVars in arithmetic crashes."""
         with self.assertRaisesRegex(
             TypeError,
             r"unsupported operand type\(s\) for \+: 'typing.TypeVar' and 'typing.TypeVar'",
         ):
 
-            def f[N, M](x: Dim[N]) -> Dim[N + M]:
+            def f[N, M](x: SymInt[N]) -> SymInt[N + M]:
                 return x
 
 
@@ -403,19 +383,19 @@ class TestSymVarRuntime(unittest.TestCase):
         self.assertEqual(repr(N), "N")
 
     def test_in_dim(self):
-        """Dim[N] with shape_extensions.SymVar."""
+        """SymInt[N] with shape_extensions.SymVar."""
         N = SymVar("N")
 
-        def f(x: Dim[N]) -> Dim[N]:
+        def f(x: SymInt[N]) -> SymInt[N]:
             return x
 
         f(42)
 
     def test_arithmetic_in_dim(self):
-        """Dim[N+1] with shape_extensions.SymVar — N+1 returns self, which Dim accepts."""
+        """SymInt[N+1] with shape_extensions.SymVar — N+1 returns self, which SymInt accepts."""
         N = SymVar("N")
 
-        def f(x: Dim[N]) -> Dim[N + 1]:
+        def f(x: SymInt[N]) -> SymInt[N + 1]:
             return x
 
         f(42)
@@ -440,7 +420,7 @@ class TestGenericRuntime(unittest.TestCase):
         M = SymVar("M")
 
         class Foo(Generic[N, M]):
-            def forward(self, x: Dim[N]) -> Dim[M]:
+            def forward(self, x: SymInt[N]) -> SymInt[M]:
                 return x
 
         foo = Foo()
@@ -453,7 +433,7 @@ class TestGenericRuntime(unittest.TestCase):
         N = SymVar("N")
 
         class Layer(Generic[N]):
-            def forward(self, x: Dim[N]) -> Dim[N + 1]:
+            def forward(self, x: SymInt[N]) -> SymInt[N + 1]:
                 return x
 
         layer = Layer()
@@ -461,11 +441,11 @@ class TestGenericRuntime(unittest.TestCase):
         self.assertEqual(result, 42)
 
     def test_generic_with_dim_arithmetic(self):
-        """Generic[N] with Dim[N+1] in a method works."""
+        """Generic[N] with SymInt[N+1] in a method works."""
         N = SymVar("N")
 
         class PadLayer(Generic[N]):
-            def forward(self, x: Dim[N]) -> Dim[N + 1]:
+            def forward(self, x: SymInt[N]) -> SymInt[N + 1]:
                 return x
 
         layer = PadLayer()
@@ -478,8 +458,8 @@ class TestGenericRuntime(unittest.TestCase):
         M = SymVar("M")
 
         class MyDict(TypedDict, Generic[N, M]):
-            x: Dim[N]
-            y: Dim[M]
+            x: SymInt[N]
+            y: SymInt[M]
 
         self.assertTrue(issubclass(MyDict, dict))
 
@@ -495,10 +475,10 @@ class TestTypeVarTupleRuntime(unittest.TestCase):
         self.assertIs(items[0], Ns)
 
     def test_in_dim(self):
-        """Dim[*Ns] — star-unpacking in subscript works."""
+        """SymInt[*Ns] — star-unpacking in subscript works."""
         Ns = TypeVarTuple("Ns")
 
-        def f(x: Dim[*Ns]) -> Dim[*Ns]:
+        def f(x: SymInt[*Ns]) -> SymInt[*Ns]:
             return x
 
         f(42)
@@ -508,7 +488,7 @@ class TestTypeVarTupleRuntime(unittest.TestCase):
         Ns = TypeVarTuple("Ns")
 
         class Layer(Generic[*Ns]):
-            def forward(self, x: Dim[*Ns]) -> Dim[*Ns]:
+            def forward(self, x: SymInt[*Ns]) -> SymInt[*Ns]:
                 return x
 
         layer = Layer()
@@ -521,7 +501,7 @@ class TestTypeVarTupleRuntime(unittest.TestCase):
         N = SymVar("N")
 
         class Layer(Generic[*Ns, N]):
-            def forward(self, x: Dim[*Ns]) -> Dim[N + 1]:
+            def forward(self, x: SymInt[*Ns]) -> SymInt[N + 1]:
                 return x
 
         layer = Layer()

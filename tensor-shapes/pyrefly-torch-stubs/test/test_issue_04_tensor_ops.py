@@ -9,16 +9,16 @@ import torch
 from shape_extensions import SymVar
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim
+    from shape_extensions import SymInt
     from torch import Tensor
 
 
 def test_view[B: SymVar, T: SymVar, D: SymVar, NHead: SymVar](
     x: Tensor[[B, T, D]],
-    bsz: Dim[B],
-    seqlen: Dim[T],
-    n_head: Dim[NHead],
-    head_dim: Dim[D // NHead],
+    bsz: SymInt[B],
+    seqlen: SymInt[T],
+    n_head: SymInt[NHead],
+    head_dim: SymInt[D // NHead],
 ) -> None:
     # Test view operation
     result = x.view(bsz, seqlen, n_head, head_dim)
@@ -35,8 +35,8 @@ def test_transpose[B: SymVar, T: SymVar, NHead: SymVar, HeadDim: SymVar](
 
 def test_split[B: SymVar, T: SymVar, D: SymVar, NLocalHeads: SymVar, NHead: SymVar](
     x: Tensor[[B, T, (NHead + 2 * NLocalHeads) * (D // NHead)]],
-    dim: Dim[D],
-    kv_size: Dim[NLocalHeads * (D // NHead)],
+    dim: SymInt[D],
+    kv_size: SymInt[NLocalHeads * (D // NHead)],
 ) -> None:
     # Test split with tuple (required for meta-shape inference)
     q, k, v = x.split((dim, kv_size, kv_size), dim=-1)

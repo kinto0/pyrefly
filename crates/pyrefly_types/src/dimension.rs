@@ -1028,7 +1028,7 @@ pub enum ShapeError {
     },
 
     /// Type variable in nested position cannot be inferred
-    /// For example: passing Dim[(A * B) // 2] to parameter Dim[X // 2]
+    /// For example: passing SymInt[(A * B) // 2] to parameter SymInt[X // 2]
     /// X appears in a nested position (inside // 2) and cannot be inferred
     NestedTypeVarNotInferred,
 

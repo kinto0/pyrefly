@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import Dim, SymVar
+    from shape_extensions import SymInt, SymVar
     from torch import Tensor
 
 # A no-arg factory that produces a shape-preserving activation module.
@@ -33,7 +33,7 @@ ShapePreservingActivation = (
 class ResNetBlock[C: SymVar](nn.Module):
     """Shape-preserving residual block: (B, C, H, W) -> (B, C, H, W)."""
 
-    def __init__(self, c: Dim[C], act_fn: ShapePreservingActivation) -> None:
+    def __init__(self, c: SymInt[C], act_fn: ShapePreservingActivation) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=3, padding=1, bias=False),
@@ -59,8 +59,8 @@ class ResNetDownsampleBlock[C_in: SymVar, C_out: SymVar](nn.Module):
 
     def __init__(
         self,
-        c_in: Dim[C_in],
-        c_out: Dim[C_out],
+        c_in: SymInt[C_in],
+        c_out: SymInt[C_out],
         act_fn: ShapePreservingActivation,
     ) -> None:
         super().__init__()
@@ -91,7 +91,7 @@ class ResNetGroup[C: SymVar](nn.Module):
 
     def __init__(
         self,
-        c: Dim[C],
+        c: SymInt[C],
         num_blocks: int,
         act_fn: ShapePreservingActivation,
     ) -> None:
@@ -127,7 +127,7 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
 
     def __init__(
         self,
-        num_classes: Dim[NumClasses],
+        num_classes: SymInt[NumClasses],
         act_fn_name: str = "relu",
     ):
         super().__init__()
@@ -186,18 +186,18 @@ class ResNetModel[NumClasses: SymVar](nn.Module):
 
     @overload
     def _chain[B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[1]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[1]
     ) -> Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]: ...
 
     @overload
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> Tensor[
         [B, C * 2**Depth, (H - 1) // 2**Depth + 1, (W - 1) // 2**Depth + 1]
     ]: ...
 
     def _chain[Depth: SymVar, B: SymVar, C: SymVar, H: SymVar, W: SymVar](
-        self, x: Tensor[[B, C, H, W]], depth: Dim[Depth]
+        self, x: Tensor[[B, C, H, W]], depth: SymInt[Depth]
     ) -> (
         Tensor[[B, 2 * C, (H - 1) // 2 + 1, (W - 1) // 2 + 1]]
         | Tensor[[B, C * 2**Depth, (H - 1) // 2**Depth + 1, (W - 1) // 2**Depth + 1]]
