@@ -53,7 +53,6 @@ use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::shaped_array::ShapedArraySyntax;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
-use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::types::TParams;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::Expr;
@@ -275,7 +274,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// shape-aware operations (e.g. `.shape` access, generic return reprojection)
     /// remain coherent with the jaxtyping annotation.
     fn jaxtyping_shaped_array_type(&self, mut base_class: ClassType, shape: SymIntTuple) -> Type {
-        let shape_arg_style = match self.shaped_array_shape_for_class_type(&base_class) {
+        let shape_arg_index = match self.shaped_array_shape_for_class_type(&base_class) {
             Some(shape_param) => {
                 let shape_idx = self
                     .get_class_tparams(base_class.class_object())
@@ -291,7 +290,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             "class type should have an argument for each type parameter",
                         );
                         *shape_arg = shape.to_shape_arg_type();
-                        SymIntTupleArgStyle::TupleCarrier { index: shape_idx }
+                        Some(shape_idx)
                     }
                     QuantifiedKind::TypeVarTuple => unreachable!(
                         "shaped-array metadata validation rejects TypeVarTuple shape parameters"
@@ -301,12 +300,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     ),
                 }
             }
-            None => SymIntTupleArgStyle::Unknown,
+            None => None,
         };
-        ShapedArrayType::new(base_class, shape)
-            .with_syntax(ShapedArraySyntax::Jaxtyping)
-            .with_shape_arg_style(shape_arg_style)
-            .to_type()
+        let shaped_array =
+            ShapedArrayType::new(base_class, shape).with_syntax(ShapedArraySyntax::Jaxtyping);
+        match shape_arg_index {
+            Some(index) => shaped_array.with_tuple_carrier_shape_arg(index).to_type(),
+            None => shaped_array.to_type(),
+        }
     }
 
     /// Parse a jaxtyping annotation like `Float[Tensor, "batch channels"]`.

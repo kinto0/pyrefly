@@ -13,7 +13,6 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::literal::LitEnum;
 use pyrefly_types::shaped_array::ShapedArrayType;
-use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier_arg;
 use pyrefly_types::special_form::SpecialForm;
@@ -1580,10 +1579,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         acc.found_class_attribute(attr, base);
                         return;
                     }
-                    let shape = if matches!(
-                        tensor.shape_arg_style,
-                        SymIntTupleArgStyle::TupleCarrier { .. }
-                    ) {
+                    let shape = if tensor.tuple_carrier_shape_arg_index().is_some() {
                         shape_to_tuple_carrier_arg(&tensor.shape())
                     } else {
                         shape_to_tuple_carrier(&tensor.shape())

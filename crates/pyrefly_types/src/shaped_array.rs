@@ -79,48 +79,11 @@ impl crate::equality::TypeEq for ShapedArraySyntax {
     }
 }
 
-/// How the shape appears in the underlying class type arguments.
-///
-/// This is a display concern, not part of type identity. The projected
-/// `SymIntTuple` is the semantic shape; this hint only lets diagnostics
-/// render shaped arrays like the class surface users wrote.
-#[derive(Debug, Clone, Copy, Default)]
-#[derive(Visit, VisitMut)]
-pub enum SymIntTupleArgStyle {
-    #[default]
-    Unknown,
-    /// The class argument at `index` carries the whole shape tuple.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Visit, VisitMut, TypeEq)]
+enum ShapedArrayShapeStorage {
+    Inline(SymIntTuple),
     TupleCarrier { index: usize },
-}
-
-impl PartialEq for SymIntTupleArgStyle {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for SymIntTupleArgStyle {}
-
-impl Hash for SymIntTupleArgStyle {
-    fn hash<H: Hasher>(&self, _state: &mut H) {}
-}
-
-impl PartialOrd for SymIntTupleArgStyle {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for SymIntTupleArgStyle {
-    fn cmp(&self, _other: &Self) -> Ordering {
-        Ordering::Equal
-    }
-}
-
-impl crate::equality::TypeEq for SymIntTupleArgStyle {
-    fn type_eq(&self, _other: &Self, _ctx: &mut crate::equality::TypeEqCtx) -> bool {
-        true
-    }
 }
 
 /// A class instance with shape information.
@@ -131,17 +94,9 @@ impl crate::equality::TypeEq for SymIntTupleArgStyle {
 pub struct ShapedArrayType {
     /// Base shaped-array class (e.g., torch.Tensor)
     pub base_class: ClassType,
-    /// Duplicate projected shape state while shaped arrays migrate to storing
-    /// first-class `SymIntTuple` class arguments.
-    ///
-    /// For registered arrays with `TupleCarrier` style, `shape()` projects from
-    /// the class argument and this cache must be kept coherent via `set_shape()`.
-    /// Shapeless arrays use `tuple[Any, ...]`.
-    pub shape: SymIntTuple,
+    shape: ShapedArrayShapeStorage,
     /// Whether this type was constructed from native or jaxtyping syntax.
     pub syntax: ShapedArraySyntax,
-    /// How to render the shape among the class type arguments.
-    pub shape_arg_style: SymIntTupleArgStyle,
 }
 
 impl ShapedArrayType {
@@ -149,9 +104,8 @@ impl ShapedArrayType {
     pub fn new(base_class: ClassType, shape: SymIntTuple) -> Self {
         Self {
             base_class,
-            shape,
+            shape: ShapedArrayShapeStorage::Inline(shape),
             syntax: ShapedArraySyntax::Native,
-            shape_arg_style: SymIntTupleArgStyle::Unknown,
         }
     }
 
@@ -160,9 +114,8 @@ impl ShapedArrayType {
     pub fn shapeless(base_class: ClassType) -> Self {
         Self {
             base_class,
-            shape: SymIntTuple::shapeless(),
+            shape: ShapedArrayShapeStorage::Inline(SymIntTuple::shapeless()),
             syntax: ShapedArraySyntax::Native,
-            shape_arg_style: SymIntTupleArgStyle::Unknown,
         }
     }
 
@@ -172,8 +125,8 @@ impl ShapedArrayType {
         self
     }
 
-    pub fn with_shape_arg_style(mut self, shape_arg_style: SymIntTupleArgStyle) -> Self {
-        self.shape_arg_style = shape_arg_style;
+    pub fn with_tuple_carrier_shape_arg(mut self, index: usize) -> Self {
+        self.shape = ShapedArrayShapeStorage::TupleCarrier { index };
         self
     }
 
@@ -181,15 +134,26 @@ impl ShapedArrayType {
         Type::ShapedArray(Box::new(self))
     }
 
+    pub fn tuple_carrier_shape_arg_index(&self) -> Option<usize> {
+        match self.shape {
+            ShapedArrayShapeStorage::Inline(_) => None,
+            ShapedArrayShapeStorage::TupleCarrier { index } => Some(index),
+        }
+    }
+
+    pub fn set_tuple_carrier_shape_arg(&mut self, index: usize) {
+        self.shape = ShapedArrayShapeStorage::TupleCarrier { index };
+    }
+
     pub fn shape(&self) -> SymIntTuple {
-        match self.shape_arg_style {
-            SymIntTupleArgStyle::Unknown => self.shape.clone(),
-            SymIntTupleArgStyle::TupleCarrier { index } => {
+        match &self.shape {
+            ShapedArrayShapeStorage::Inline(shape) => shape.clone(),
+            ShapedArrayShapeStorage::TupleCarrier { index } => {
                 let shape_arg = self
                     .base_class
                     .targs()
                     .as_slice()
-                    .get(index)
+                    .get(*index)
                     .expect("shape argument index should point to a class type argument");
                 SymIntTuple::from_shape_arg_type(shape_arg)
                     .or_else(|| tuple_carrier_to_shape(shape_arg))
@@ -199,16 +163,18 @@ impl ShapedArrayType {
     }
 
     pub fn set_shape(&mut self, shape: SymIntTuple) {
-        if let SymIntTupleArgStyle::TupleCarrier { index } = self.shape_arg_style {
-            let shape_arg = self
-                .base_class
-                .targs_mut()
-                .as_mut()
-                .get_mut(index)
-                .expect("shape argument index should point to a class type argument");
-            *shape_arg = shape.to_shape_arg_type();
+        match &mut self.shape {
+            ShapedArrayShapeStorage::Inline(stored_shape) => *stored_shape = shape,
+            ShapedArrayShapeStorage::TupleCarrier { index } => {
+                let shape_arg = self
+                    .base_class
+                    .targs_mut()
+                    .as_mut()
+                    .get_mut(*index)
+                    .expect("shape argument index should point to a class type argument");
+                *shape_arg = shape.to_shape_arg_type();
+            }
         }
-        self.shape = shape;
     }
 
     /// Returns rank if shape is concrete, None for variadic/shapeless
@@ -233,10 +199,7 @@ impl Display for ShapedArrayType {
                 let shape = self.shape();
                 if is_shapeless(&shape) {
                     write!(f, "{}", self.base_class.name())
-                } else if matches!(
-                    self.shape_arg_style,
-                    SymIntTupleArgStyle::TupleCarrier { .. }
-                ) {
+                } else if self.tuple_carrier_shape_arg_index().is_some() {
                     write!(
                         f,
                         "{}[{}]",
@@ -1496,7 +1459,6 @@ mod tests {
     use crate::quantified::QuantifiedOrigin;
     use crate::shaped_array::ShapedArrayType;
     use crate::shaped_array::SymIntTuple;
-    use crate::shaped_array::SymIntTupleArgStyle;
     use crate::shaped_array::shape_to_tuple_carrier;
     use crate::shaped_array::shape_to_tuple_carrier_arg;
     use crate::shaped_array::tuple_carrier_to_shape;
@@ -1556,7 +1518,7 @@ mod tests {
         )
     }
 
-    fn registered_array_shape_arg(shape_arg: Type, cached_shape: SymIntTuple) -> ShapedArrayType {
+    fn registered_array_shape_arg(shape_arg: Type) -> ShapedArrayType {
         let shape_param = fake_tparam("Shape", QuantifiedKind::TypeVar);
         let class = fake_class_type("arrays", "Array").class_object().clone();
         ShapedArrayType::new(
@@ -1564,9 +1526,27 @@ mod tests {
                 class,
                 TArgs::new(Arc::new(TParams::new(vec![shape_param])), vec![shape_arg]),
             ),
-            cached_shape,
+            SymIntTuple::shapeless(),
         )
-        .with_shape_arg_style(SymIntTupleArgStyle::TupleCarrier { index: 0 })
+        .with_tuple_carrier_shape_arg(0)
+    }
+
+    fn registered_array_shape_arg_at(
+        shape_arg_index: usize,
+        shape_args: Vec<Type>,
+    ) -> ShapedArrayType {
+        let tparams = (0..shape_args.len())
+            .map(|i| fake_tparam(&format!("Shape{i}"), QuantifiedKind::TypeVar))
+            .collect();
+        let class = fake_class_type("arrays", "Array").class_object().clone();
+        ShapedArrayType::new(
+            ClassType::new(
+                class,
+                TArgs::new(Arc::new(TParams::new(tparams)), shape_args),
+            ),
+            SymIntTuple::shapeless(),
+        )
+        .with_tuple_carrier_shape_arg(shape_arg_index)
     }
 
     #[test]
@@ -1786,8 +1766,7 @@ mod tests {
     #[test]
     fn registered_shape_projects_from_first_class_shape_arg() {
         let projected = SymIntTuple::from_types(vec![size(2), size(3)]);
-        let cached = SymIntTuple::from_types(vec![size(9)]);
-        let tensor = registered_array_shape_arg(projected.to_shape_arg_type(), cached);
+        let tensor = registered_array_shape_arg(projected.to_shape_arg_type());
 
         assert_eq!(tensor.shape(), projected);
     }
@@ -1795,22 +1774,20 @@ mod tests {
     #[test]
     fn registered_shape_projects_from_legacy_tuple_carrier() {
         let projected = SymIntTuple::from_types(vec![size(6)]);
-        let cached = SymIntTuple::from_types(vec![size(9)]);
-        let tensor = registered_array_shape_arg(concrete_carrier(vec![literal(6)]), cached);
+        let tensor = registered_array_shape_arg(concrete_carrier(vec![literal(6)]));
 
         assert_eq!(tensor.shape(), projected);
     }
 
     #[test]
-    fn set_shape_keeps_registered_shape_arg_and_cache_coherent() {
+    fn set_shape_updates_registered_shape_arg() {
         let old_shape = SymIntTuple::from_types(vec![size(2)]);
         let new_shape = SymIntTuple::from_types(vec![size(4), size(5)]);
-        let mut tensor = registered_array_shape_arg(old_shape.to_shape_arg_type(), old_shape);
+        let mut tensor = registered_array_shape_arg(old_shape.to_shape_arg_type());
 
         tensor.set_shape(new_shape.clone());
 
         assert_eq!(tensor.shape(), new_shape.clone());
-        assert_eq!(tensor.shape, new_shape.clone());
         assert_eq!(
             tensor.base_class.targs().as_slice()[0],
             new_shape.to_shape_arg_type()
@@ -1818,14 +1795,23 @@ mod tests {
     }
 
     #[test]
+    fn tuple_carrier_shape_arg_index_participates_in_identity() {
+        let shape = SymIntTuple::from_types(vec![size(2)]);
+        let shape_args = vec![shape.to_shape_arg_type(), shape.to_shape_arg_type()];
+        let first_arg_shape = registered_array_shape_arg_at(0, shape_args.clone());
+        let second_arg_shape = registered_array_shape_arg_at(1, shape_args);
+
+        assert_eq!(first_arg_shape.shape(), second_arg_shape.shape());
+        assert_ne!(first_arg_shape, second_arg_shape);
+    }
+
+    #[test]
     fn registered_shape_display_uses_projected_shape_arg() {
         let projected = SymIntTuple::from_types(vec![size(2), size(3)]);
-        let cached = SymIntTuple::from_types(vec![size(9)]);
-        let tensor = registered_array_shape_arg(projected.to_shape_arg_type(), cached.clone());
+        let tensor = registered_array_shape_arg(projected.to_shape_arg_type());
         assert_eq!(tensor.to_string(), "Array[[2, 3]]");
 
-        let tensor =
-            registered_array_shape_arg(SymIntTuple::shapeless().to_shape_arg_type(), cached);
+        let tensor = registered_array_shape_arg(SymIntTuple::shapeless().to_shape_arg_type());
         assert_eq!(tensor.to_string(), "Array");
     }
 
@@ -1834,7 +1820,7 @@ mod tests {
         expected = "registered shaped-array shape argument should project to SymIntTuple"
     )]
     fn registered_shape_with_invalid_carrier_panics() {
-        let tensor = registered_array_shape_arg(Type::None, SymIntTuple::from_types(vec![size(9)]));
+        let tensor = registered_array_shape_arg(Type::None);
 
         let _ = tensor.shape();
     }

@@ -27,7 +27,6 @@ use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
-use pyrefly_types::shaped_array::SymIntTupleArgStyle;
 use pyrefly_types::shaped_array::index_shape_int;
 use pyrefly_types::shaped_array::index_shape_multi;
 use pyrefly_types::shaped_array::index_shape_slice;
@@ -3295,8 +3294,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .get_mut(shape_idx)
                     .expect("class type should have an argument for each type parameter");
                 *shape_arg = shape.to_shape_arg_type();
-                ShapedArrayType::new(base_class, shape)
-                    .with_shape_arg_style(SymIntTupleArgStyle::TupleCarrier { index: shape_idx })
+                ShapedArrayType::new(base_class, shape).with_tuple_carrier_shape_arg(shape_idx)
             }
             QuantifiedKind::TypeVarTuple => unreachable!(
                 "shaped-array metadata validation rejects TypeVarTuple shape parameters"
@@ -3307,14 +3305,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    /// Build a shaped-array type that carries a new projected `shape`, keeping
-    /// the registered shape argument stored in `base_class` synchronized with it.
+    /// Build a shaped-array type with a new semantic shape.
     ///
-    /// The `shape` field is temporary duplicated state while shaped arrays
-    /// migrate toward first-class `SymIntTuple` shape arguments. Shape-changing
-    /// operations should route through this helper so the duplicate state stays
-    /// coherent. It preserves `tensor.syntax` and all non-shape class arguments
-    /// (notably `DType`).
+    /// Registered arrays store their shape in the metadata-selected class type
+    /// argument; unregistered arrays store it inline. Non-shape class arguments
+    /// such as `DType` are preserved.
     pub(crate) fn shaped_array_with_shape(
         &self,
         tensor: &ShapedArrayType,
@@ -3332,7 +3327,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     // coherent style regardless of the input's prior style (e.g. a
                     // stale `Unknown`): we normalize it to match where the shape
                     // now actually lives.
-                    tensor.shape_arg_style = SymIntTupleArgStyle::TupleCarrier { index: shape_idx };
+                    tensor.set_tuple_carrier_shape_arg(shape_idx);
                     tensor.set_shape(shape);
                     tensor
                 }
@@ -3345,16 +3340,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                 }
             },
-            // Native/jaxtyping arrays with no registration metadata expose
-            // `.shape` from the projected `shape` field directly, so there is no
-            // carrier to rewrite -- updating the projected shape is both
-            // necessary and sufficient for coherence.
-            None => ShapedArrayType {
-                base_class: tensor.base_class.clone(),
-                shape,
-                syntax: tensor.syntax,
-                shape_arg_style: tensor.shape_arg_style,
-            },
+            None => {
+                // A `TupleCarrier` shape lives in a registered class argument, so
+                // such a tensor always takes the `Some` branch above; only inline
+                // arrays (no registration metadata) reach here. Assert that
+                // invariant, since `new` produces an inline shape and would
+                // otherwise silently drop a carrier index -- which participates in
+                // `ShapedArrayType` identity / `Eq` / `Hash`.
+                assert!(
+                    tensor.tuple_carrier_shape_arg_index().is_none(),
+                    "a tuple-carrier shaped array reached the unregistered-class branch"
+                );
+                ShapedArrayType::new(tensor.base_class.clone(), shape).with_syntax(tensor.syntax)
+            }
         }
     }
 
@@ -3364,8 +3362,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// pre-operation shape. Routing through `shaped_array_with_shape` rewrites the
     /// carrier to the shapeless form too.
     fn shaped_array_shapeless(&self, tensor: &ShapedArrayType) -> ShapedArrayType {
-        let shapeless = ShapedArrayType::shapeless(tensor.base_class.clone()).shape;
-        self.shaped_array_with_shape(tensor, shapeless)
+        self.shaped_array_with_shape(tensor, SymIntTuple::shapeless())
     }
 
     /// Check if a class is a SymInt class (shape_extensions.SymInt)

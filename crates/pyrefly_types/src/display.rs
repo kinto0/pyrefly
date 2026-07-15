@@ -37,7 +37,6 @@ use crate::quantified::QuantifiedIdentity;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
 use crate::shaped_array::SymIntTuple;
-use crate::shaped_array::SymIntTupleArgStyle;
 use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
@@ -375,9 +374,9 @@ impl<'a> TypeDisplayContext<'a> {
     ) -> fmt::Result {
         match shaped_array.syntax {
             ShapedArraySyntax::Native => {
-                let shape_idx = match shaped_array.shape_arg_style {
-                    SymIntTupleArgStyle::TupleCarrier { index } => index,
-                    SymIntTupleArgStyle::Unknown => {
+                let shape_idx = match shaped_array.tuple_carrier_shape_arg_index() {
+                    Some(index) => index,
+                    None => {
                         output.write_qname(shaped_array.base_class.qname())?;
                         let shape = shaped_array.shape();
                         if !shape.as_tuple().is_any_tuple() {
@@ -1759,7 +1758,7 @@ pub mod tests {
 
         assert_eq!(
             ShapedArrayType::new(array, shape)
-                .with_shape_arg_style(SymIntTupleArgStyle::TupleCarrier { index: 0 })
+                .with_tuple_carrier_shape_arg(0)
                 .to_type()
                 .to_string(),
             "Array[[3, N]]"
