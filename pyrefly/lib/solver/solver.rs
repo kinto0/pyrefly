@@ -2781,7 +2781,7 @@ pub enum SubsetError {
     /// Errors involving arbitrary unknown fields in open TypedDicts
     OpenTypedDict(Box<OpenTypedDictSubsetError>),
     /// Tensor shape check failed
-    SymIntTuple(ShapeError),
+    Shape(ShapeError),
     /// We do not currently permit ShapedArray subtyping because there is no known use case and
     /// it would complicate the shape comparison. This is not a fundamental limitation,
     /// just a way to keep the complexity of an experimental feature lower.
@@ -2820,7 +2820,7 @@ impl SubsetError {
             }
             SubsetError::TypedDict(err) => Some(err.to_error_msg()),
             SubsetError::OpenTypedDict(err) => Some(err.to_error_msg()),
-            SubsetError::SymIntTuple(err) => Some(err.to_string()),
+            SubsetError::Shape(err) => Some(err.to_string()),
             SubsetError::ShapedArraySubtyping(got, want) => Some(format!(
                 "Pyrefly does not support subtyping relationships between shaped arrays `{got}` and `{want}` at this time. If you need this, consider filing an issue."
             )),

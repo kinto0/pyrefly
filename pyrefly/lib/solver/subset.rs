@@ -1786,11 +1786,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Do this after the gradual-size fast path, since any expression containing
                 // `SymInt[int]` canonicalizes to gradual `SymInt` regardless of other leaves.
                 if contains_var_in_type(&want_expanded) {
-                    return Err(SubsetError::SymIntTuple(
+                    return Err(SubsetError::Shape(
                         ShapeError::nested_type_var_not_inferred(),
                     ));
                 }
-                Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                Err(SubsetError::Shape(ShapeError::structural_mismatch(
                     got_expanded.to_string(),
                     got_canonical.to_string(),
                     want_expanded.to_string(),
@@ -1817,7 +1817,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
-                    Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                    Err(SubsetError::Shape(ShapeError::structural_mismatch(
                         Type::SymInt(s.clone()).to_string(),
                         got_canonical.to_string(),
                         Type::Quantified(q.clone()).to_string(),
@@ -1844,7 +1844,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if got_canonical == want_canonical {
                     Ok(())
                 } else {
-                    Err(SubsetError::SymIntTuple(ShapeError::structural_mismatch(
+                    Err(SubsetError::Shape(ShapeError::structural_mismatch(
                         Type::Quantified(q.clone()).to_string(),
                         got_canonical.to_string(),
                         Type::SymInt(s.clone()).to_string(),
@@ -2876,7 +2876,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // Both concrete: check rank equality and iterate through dimension pairs
             (ShapeView::Concrete(got_dims), ShapeView::Concrete(want_dims)) => {
                 if got_dims.len() != want_dims.len() {
-                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
+                    return Err(SubsetError::Shape(ShapeError::rank_mismatch(
                         got_dims.len(),
                         want_dims.len(),
                     )));
@@ -2896,7 +2896,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Check bounds: got must have at least as many dims as prefix + suffix
                 let min_required = want_prefix.len() + want_suffix.len();
                 if got_dims.len() < min_required {
-                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
+                    return Err(SubsetError::Shape(ShapeError::rank_mismatch(
                         got_dims.len(),
                         min_required,
                     )));
@@ -2972,7 +2972,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Reject cross-structural cases: extras must all be on one side.
                 if has_got_extras && has_want_extras {
-                    return Err(SubsetError::SymIntTuple(ShapeError::StructuralMismatch {
+                    return Err(SubsetError::Shape(ShapeError::StructuralMismatch {
                         got: format!("{}", got_shape),
                         got_canonical: format!("{}", got_shape),
                         want: format!("{}", want_shape),
@@ -3016,7 +3016,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // Check bounds: want must have at least as many dims as prefix + suffix
                 let min_required = got_prefix.len() + got_suffix.len();
                 if want_dims.len() < min_required {
-                    return Err(SubsetError::SymIntTuple(ShapeError::rank_mismatch(
+                    return Err(SubsetError::Shape(ShapeError::rank_mismatch(
                         min_required,
                         want_dims.len(),
                     )));
