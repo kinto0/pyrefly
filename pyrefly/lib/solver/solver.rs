@@ -117,6 +117,141 @@ impl Bounds {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use pyrefly_python::module_name::ModuleName;
+    use pyrefly_types::dimension::SymInt;
+    use pyrefly_types::dimension::gradual_size;
+    use pyrefly_types::lit_int::LitInt;
+    use pyrefly_types::quantified::AnchorIndex;
+    use pyrefly_types::quantified::QuantifiedIdentity;
+    use pyrefly_types::quantified::QuantifiedOrigin;
+    use pyrefly_types::type_var::PreInferenceVariance;
+    use pyrefly_types::types::AnyStyle;
+    use pyrefly_types::types::Union;
+
+    use super::*;
+
+    fn solver_with_answer(answer: Type) -> (Solver, Var) {
+        let solver = Solver::new(false, true, false, false, false);
+        let uniques = UniqueFactory::new();
+        let var = Var::new(&uniques);
+        solver
+            .variables
+            .lock()
+            .insert_fresh(var, Variable::Answer(answer));
+        (solver, var)
+    }
+
+    fn quantified(kind: QuantifiedKind, index: u32) -> Quantified {
+        Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("test"),
+                AnchorIndex::new(TextRange::default(), index),
+                QuantifiedOrigin::SyntheticCallableResidual,
+            ),
+            Name::new(match kind {
+                QuantifiedKind::SymVar => "S",
+                QuantifiedKind::TypeVar => "T",
+                QuantifiedKind::ParamSpec | QuantifiedKind::TypeVarTuple => {
+                    unreachable!("test only creates scalar quantifieds")
+                }
+            }),
+            kind,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )
+    }
+
+    #[test]
+    fn expand_with_bounds_canonicalizes_solved_symint_literals() {
+        let (solver, var) = solver_with_answer(LitInt::new(2).to_implicit_type());
+        let mut ty = Type::SymInt(SymInt::add(
+            Type::Var(var),
+            Type::SymInt(SymInt::Literal(1)),
+        ));
+
+        solver.expand_with_bounds(&mut ty);
+
+        assert_eq!(ty, Type::SymInt(SymInt::Literal(3)));
+    }
+
+    #[test]
+    fn expand_with_bounds_canonicalizes_solved_gradual_symint() {
+        let (solver, var) = solver_with_answer(Type::Any(AnyStyle::Explicit));
+        let mut ty = Type::SymInt(SymInt::mul(
+            Type::SymInt(SymInt::Literal(2)),
+            Type::Var(var),
+        ));
+
+        solver.expand_with_bounds(&mut ty);
+
+        assert_eq!(ty, gradual_size());
+    }
+
+    #[test]
+    fn expand_with_bounds_preserves_quantified_symint_leaves() {
+        let cases = [QuantifiedKind::SymVar, QuantifiedKind::TypeVar];
+        for (index, kind) in cases.into_iter().enumerate() {
+            let quantified = quantified(kind, index as u32);
+            let quantified_ty = Type::Quantified(Box::new(quantified));
+            let (solver, var) = solver_with_answer(quantified_ty.clone());
+            let mut ty = Type::SymInt(SymInt::add(
+                Type::Var(var),
+                Type::SymInt(SymInt::Literal(1)),
+            ));
+
+            solver.expand_with_bounds(&mut ty);
+
+            assert_eq!(
+                ty,
+                Type::SymInt(SymInt::add(Type::SymInt(SymInt::Literal(1)), quantified_ty)),
+            );
+        }
+    }
+
+    #[test]
+    fn expand_with_bounds_canonicalizes_symint_inside_tuple_splice() {
+        let quantified_ty = Type::Quantified(Box::new(quantified(QuantifiedKind::SymVar, 0)));
+        let raw_compound = Type::SymInt(SymInt::add(quantified_ty.clone(), quantified_ty));
+        let expected_compound = canonicalize(raw_compound.clone());
+        assert_ne!(raw_compound, expected_compound);
+
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![raw_compound])));
+        let mut ty = Type::Tuple(Tuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(3))],
+        ));
+
+        solver.expand_with_bounds(&mut ty);
+
+        assert_eq!(
+            ty,
+            Type::Tuple(Tuple::unpacked(
+                vec![Type::SymInt(SymInt::Literal(1))],
+                Type::Tuple(Tuple::Concrete(vec![expected_compound])),
+                vec![Type::SymInt(SymInt::Literal(3))],
+            ))
+        );
+    }
+
+    #[test]
+    fn expand_with_bounds_does_not_simplify_non_symint_types() {
+        let union = Type::Union(Box::new(Union {
+            members: vec![Type::None, Type::None],
+            display_name: None,
+        }));
+        let (solver, var) = solver_with_answer(union.clone());
+        let mut ty = Type::Var(var);
+
+        solver.expand_with_bounds(&mut ty);
+
+        assert_eq!(ty, union);
+    }
+}
+
 /// Per-call capture of generic witness information, stored on `CallContext`.
 /// Each entry records a single Forall instantiation's witness vars and the
 /// target vars that are allowed to observe the residualized answer.
@@ -931,14 +1066,27 @@ impl Solver {
         }
     }
 
-    /// Public wrapper to expand a dimension type by resolving bound Vars.
-    /// Used by subset checking to expand Vars before comparing dimension expressions.
+    /// Public wrapper to expand a dimension type by resolving bound Vars and
+    /// canonicalizing the resulting symbolic dimension expression.
+    /// Used by subset checking before comparing dimension expressions.
     pub fn expand_with_bounds(&self, dim_ty: &mut Type) {
         self.resolve_vars(
             dim_ty,
             VarExpansionPolicy::ExpandWithBounds,
             &VarRecurser::new(),
         );
+        Self::canonicalize_only_symints_mut(dim_ty);
+    }
+
+    fn canonicalize_only_symints_mut(t: &mut Type) {
+        t.transform_mut(&mut |x| {
+            if let Type::SymInt(_) = x {
+                let simplified = canonicalize(x.clone());
+                if &simplified != x {
+                    *x = simplified;
+                }
+            }
+        });
     }
 
     /// Given a `Var`, ensures that the solver has an answer for it (or inserts Any if not already),
