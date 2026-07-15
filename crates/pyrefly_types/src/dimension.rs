@@ -1205,7 +1205,7 @@ impl Display for ShapeError {
             } => {
                 write!(
                     f,
-                    "Size mismatch: expected {}, got {}",
+                    "Shape dimension mismatch: expected {}, got {}",
                     want_canonical, got_canonical
                 )
             }

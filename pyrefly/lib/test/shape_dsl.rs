@@ -630,6 +630,7 @@ class SymBox[N: SymVar]: ...
 def invalid[N, Shape: SymIntTuple](
     dim: SymInt[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
     size: SymInt[N],  # E: `N` must be a `SymVar` to be used as a shape dimension
+    arithmetic_dim: SymInt[N + 1],  # E: `N` must be a `SymVar` to be used in shape arithmetic
     list_shape: Array[[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     symint_tuple: Array[SymIntTuple[N], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
     unpack_prefix: Array[SymIntTuple[N, *Elements[Shape]], int],  # E: `N` must be a `SymVar` to be used as a shape dimension
@@ -644,6 +645,7 @@ LegacyN = TypeVar("LegacyN")
 class LegacyBox(Generic[LegacyN]):
     dim: SymInt[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
     size: SymInt[LegacyN]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
+    arithmetic_dim: SymInt[LegacyN + 1]  # E: `LegacyN` must be a `SymVar` to be used in shape arithmetic
     shape: Array[[LegacyN], int]  # E: `LegacyN` must be a `SymVar` to be used as a shape dimension
 "#,
 );
@@ -684,6 +686,21 @@ from shape_extensions import SymInt
 
 def from_size[T](s: SymInt) -> T:
     return s  # E: Returned type `SymInt[int]` is not assignable to declared return type `T`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_explicit_symint_int_display,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt
+from typing import assert_type, reveal_type
+
+def f(bare: SymInt, explicit: SymInt[int]) -> None:
+    reveal_type(bare)  # E: revealed type: SymInt[int]
+    reveal_type(explicit)  # E: revealed type: SymInt[int]
+    assert_type(bare, SymInt[int])
+    assert_type(explicit, SymInt[int])
 "#,
 );
 
@@ -744,6 +761,62 @@ def exact(d3: SymInt[3], s3: SymInt[3], d4: SymInt[4]) -> None:
     take_dim3(s3)
     take_size4(d3)  # E: Argument `SymInt[3]` is not assignable to parameter `x` with type `SymInt[4]`
     take_dim3(d4)  # E: Argument `SymInt[4]` is not assignable to parameter `x` with type `SymInt[3]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_symbolic_symint_mismatch_diagnostics,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymVar
+
+def same_symint[N: SymVar](left: SymInt[N], right: SymInt[N]) -> None: ...
+
+def f[N: SymVar](n: SymInt[N], next_n: SymInt[N + 1]) -> None:
+    exact: SymInt[N] = n
+    mismatched: SymInt[N] = next_n  # E: Shape dimension mismatch: expected SymInt[N], got SymInt[(1 + N)]
+    same_symint(n, n)
+    same_symint(n, next_n)  # E: Argument `SymInt[(1 + N)]` is not assignable to parameter `right` with type `SymInt[N]`
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_symint_annotation_rejects_non_size_arguments,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt
+
+def bad_str(x: SymInt[str]) -> None: ...  # E: Tensor shape dimensions must be integer literals or type variables, got `type[str]`
+def bad_object(x: SymInt[object]) -> None: ...  # E: Tensor shape dimensions must be integer literals or type variables, got `type[object]`
+def bad_float(x: SymInt[1.5]) -> None: ...  # E: Tensor shape dimensions must be integers, not floats or complex numbers
+def bad_complex(x: SymInt[1j]) -> None: ...  # E: Tensor shape dimensions must be integers, not floats or complex numbers
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_symint_class_and_dataclass_field_defaults,
+    shaped_array_env(),
+    r#"
+from dataclasses import dataclass
+from shape_extensions import SymInt
+from typing import assert_type
+
+class Config:
+    d: SymInt = 768
+    d2: SymInt[768] = 768
+
+@dataclass
+class DataConfig:
+    d: SymInt = 768
+    d2: SymInt[768] = 768
+
+def f(config: Config, data_config: DataConfig) -> None:
+    assert_type(config.d, SymInt[int])
+    assert_type(config.d2, SymInt[768])
+    assert_type(data_config.d, SymInt[int])
+    assert_type(data_config.d2, SymInt[768])
+    assert_type(DataConfig().d, SymInt[int])
+    assert_type(DataConfig().d2, SymInt[768])
 "#,
 );
 
