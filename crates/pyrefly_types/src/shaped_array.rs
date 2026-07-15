@@ -18,7 +18,7 @@ use pyrefly_util::display::commas_iter;
 
 use crate::class::ClassType;
 use crate::dimension::ShapeError;
-use crate::dimension::SizeExpr;
+use crate::dimension::SymInt;
 use crate::dimension::canonicalize;
 use crate::dimension::gradual_size;
 use crate::dimension::is_gradual_size;
@@ -223,18 +223,18 @@ impl Display for ShapedArrayType {
 pub struct ShapedArrayShape(Tuple);
 
 impl ShapedArrayShape {
-    pub fn new(dims: Vec<SizeExpr>) -> Self {
+    pub fn new(dims: Vec<SymInt>) -> Self {
         Self(Tuple::Concrete(
             dims.into_iter()
-                .map(|d| canonicalize(Type::Size(d)))
+                .map(|d| canonicalize(Type::SymInt(d)))
                 .collect(),
         ))
     }
 
     /// Create from Vec<Type> directly (for when dims are already wrapped)
     /// Automatically normalizes dimensions to canonical form:
-    /// - Canonicalizes SizeExpr expressions (e.g., 2+3 -> 5, N+0 -> N)
-    /// - Wraps scalar symbolic dimensions in SizeExpr::Symbolic
+    /// - Canonicalizes `SymInt` expressions (e.g., 2+3 -> 5, N+0 -> N)
+    /// - Wraps scalar symbolic dimensions in `SymInt::Symbolic`
     pub fn from_types(dims: Vec<Type>) -> Self {
         Self(Tuple::Concrete(
             dims.into_iter().map(canonicalize_dim).collect(),
@@ -344,7 +344,7 @@ impl ShapedArrayShape {
         match &self.0 {
             Tuple::Concrete(dims) => dims
                 .iter()
-                .all(|ty| matches!(ty, Type::Size(SizeExpr::Literal(_)))),
+                .all(|ty| matches!(ty, Type::SymInt(SymInt::Literal(_)))),
             Tuple::Unbounded(_) | Tuple::Unpacked(_) => false,
         }
     }
@@ -356,7 +356,7 @@ impl ShapedArrayShape {
             Tuple::Concrete(dims) if self.all_literal() => Some(
                 dims.iter()
                     .filter_map(|ty| {
-                        if let Type::Size(SizeExpr::Literal(n)) = ty {
+                        if let Type::SymInt(SymInt::Literal(n)) = ty {
                             Some(*n)
                         } else {
                             None
@@ -422,8 +422,8 @@ impl ShapedArrayShape {
     ///
     /// Handles all jaxtyping dimension types:
     /// - `Type::Any` → `_` (anonymous dim)
-    /// - `Type::Size(Literal(n))` → `n`
-    /// - `Type::Size(Add/Sub)` → `a+b` / `a-b` (no parens, no spaces)
+    /// - `Type::SymInt(Literal(n))` → `n`
+    /// - `Type::SymInt(Add/Sub)` → `a+b` / `a-b` (no parens, no spaces)
     /// - `Type::Quantified` → dim name
     /// - Unpacked with `tuple[Any, ...]` middle → `...` (ellipsis)
     /// - Unpacked with TypeVarTuple middle → `*name`
@@ -466,52 +466,52 @@ impl ShapedArrayShape {
 ///
 /// Jaxtyping uses different rendering than native tensor syntax:
 /// - `Type::Any(_)` → `_` (anonymous dim, not "Any")
-/// - `SizeExpr::Add/Sub` → `a+b` / `a-b` (no parens, no spaces)
+/// - `SymInt::Add/Sub` → `a+b` / `a-b` (no parens, no spaces)
 /// - Negative literal in Add → rendered as subtraction: `Add(-1, n)` → `n-1`
 /// - All other types use their default Display
 fn fmt_jaxtyping_dim(d: &Type) -> String {
     match d {
         Type::Any(_) => "_".to_owned(),
-        Type::Size(expr) => fmt_jaxtyping_size_expr(expr),
+        Type::SymInt(expr) => fmt_jaxtyping_symint(expr),
         _ => format!("{d}"),
     }
 }
 
 pub(crate) fn fmt_shape_dim(d: &Type) -> String {
     match d {
-        Type::Size(expr) => format!("{expr}"),
+        Type::SymInt(expr) => format!("{expr}"),
         _ => format!("{d}"),
     }
 }
 
-/// Format a SizeExpr in jaxtyping syntax (no parens, no spaces around operators).
-fn fmt_jaxtyping_size_expr(expr: &SizeExpr) -> String {
+/// Format a `SymInt` in jaxtyping syntax (no parens, no spaces around operators).
+fn fmt_jaxtyping_symint(expr: &SymInt) -> String {
     match expr {
-        SizeExpr::Literal(n) => n.to_string(),
-        SizeExpr::Int => "_".to_owned(),
-        SizeExpr::Symbolic(ty) => fmt_jaxtyping_dim(ty),
-        SizeExpr::Add(left, right) => {
+        SymInt::Literal(n) => n.to_string(),
+        SymInt::Int => "_".to_owned(),
+        SymInt::Symbolic(ty) => fmt_jaxtyping_dim(ty),
+        SymInt::Add(left, right) => {
             // After canonicalization, Sub(a,b) becomes Add(Literal(-b), a).
             // Detect this and render as subtraction: Add(-n, x) → x-n
-            if let SizeExpr::Literal(n) = left.as_ref()
+            if let SymInt::Literal(n) = left.as_ref()
                 && *n < 0
             {
-                return format!("{}-{}", fmt_jaxtyping_size_expr(right), n.wrapping_neg());
+                return format!("{}-{}", fmt_jaxtyping_symint(right), n.wrapping_neg());
             }
             format!(
                 "{}+{}",
-                fmt_jaxtyping_size_expr(left),
-                fmt_jaxtyping_size_expr(right)
+                fmt_jaxtyping_symint(left),
+                fmt_jaxtyping_symint(right)
             )
         }
-        SizeExpr::Sub(left, right) => {
+        SymInt::Sub(left, right) => {
             format!(
                 "{}-{}",
-                fmt_jaxtyping_size_expr(left),
-                fmt_jaxtyping_size_expr(right)
+                fmt_jaxtyping_symint(left),
+                fmt_jaxtyping_symint(right)
             )
         }
-        // Mul/FloorDiv fall back to default SizeExpr display (rare in jaxtyping)
+        // Mul/FloorDiv fall back to default `SymInt` display (rare in jaxtyping)
         _ => format!("{expr}"),
     }
 }
@@ -556,13 +556,13 @@ impl Display for ShapedArrayShape {
 // syntax such as `ndarray[[3, 4, 5], DType]` or
 // `ndarray[tuple[Literal[3], Literal[4], Literal[5]], DType]` produces, where
 // each dimension is written as `Literal[n]` or `Dim[x]`. Internally we store
-// scalar dimensions as `Type::Size`, while variadic middles keep their carrier
+// scalar dimensions as `Type::SymInt`, while variadic middles keep their carrier
 // type. These helpers canonicalize between the two representations so the rest
 // of the type checker only ever deals with the internal form.
 
 fn canonicalize_dim(dim: Type) -> Type {
-    SizeExpr::from_type(&dim)
-        .map(Type::Size)
+    SymInt::from_type(&dim)
+        .map(Type::SymInt)
         .map(canonicalize)
         .unwrap_or_else(|| canonicalize(dim))
 }
@@ -572,32 +572,32 @@ fn canonicalize_dim(dim: Type) -> Type {
 /// canonical internal representation.
 fn dim_to_carrier_element(dim: &Type) -> Type {
     match dim {
-        Type::Size(SizeExpr::Literal(n)) => LitInt::new(*n).to_explicit_type(),
+        Type::SymInt(SymInt::Literal(n)) => LitInt::new(*n).to_explicit_type(),
         Type::Any(_) => dim.clone(),
-        _ => SizeExpr::from_type(dim)
-            .map(Type::Size)
-            .unwrap_or_else(|| Type::Size(SizeExpr::Symbolic(Box::new(dim.clone())))),
+        _ => SymInt::from_type(dim)
+            .map(Type::SymInt)
+            .unwrap_or_else(|| Type::SymInt(SymInt::Symbolic(Box::new(dim.clone())))),
     }
 }
 
 fn is_valid_internal_dim(dim: &Type) -> bool {
     match dim {
-        Type::Size(expr) => is_valid_internal_size_expr(expr),
+        Type::SymInt(expr) => is_valid_internal_symint(expr),
         Type::Quantified(_) | Type::Var(_) | Type::Any(_) => true,
         _ => false,
     }
 }
 
-fn is_valid_internal_size_expr(expr: &SizeExpr) -> bool {
+fn is_valid_internal_symint(expr: &SymInt) -> bool {
     match expr {
-        SizeExpr::Literal(_) | SizeExpr::Int => true,
-        SizeExpr::Symbolic(ty) => is_valid_internal_dim(ty),
-        SizeExpr::Add(left, right)
-        | SizeExpr::Sub(left, right)
-        | SizeExpr::Mul(left, right)
-        | SizeExpr::FloorDiv(left, right)
-        | SizeExpr::Pow(left, right) => {
-            is_valid_internal_size_expr(left) && is_valid_internal_size_expr(right)
+        SymInt::Literal(_) | SymInt::Int => true,
+        SymInt::Symbolic(ty) => is_valid_internal_dim(ty),
+        SymInt::Add(left, right)
+        | SymInt::Sub(left, right)
+        | SymInt::Mul(left, right)
+        | SymInt::FloorDiv(left, right)
+        | SymInt::Pow(left, right) => {
+            is_valid_internal_symint(left) && is_valid_internal_symint(right)
         }
     }
 }
@@ -611,11 +611,11 @@ fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
     match carrier {
         // `Literal[n]` (int) -> internal literal dimension.
         Type::Literal(lit) => match &lit.value {
-            Lit::Int(i) => i.as_i64().map(|n| Type::Size(SizeExpr::Literal(n))),
+            Lit::Int(i) => i.as_i64().map(|n| Type::SymInt(SymInt::Literal(n))),
             _ => None,
         },
         // Dimensions already in internal form pass through unchanged.
-        Type::Size(expr) if is_valid_internal_size_expr(expr) => {
+        Type::SymInt(expr) if is_valid_internal_symint(expr) => {
             Some(canonicalize_dim(carrier.clone()))
         }
         Type::Quantified(_) | Type::Var(_) | Type::Any(_) => {
@@ -931,8 +931,8 @@ fn broadcast_dim(a_ty: &Type, b_ty: &Type, position: usize) -> Result<Type, Shap
         // Equal dimensions (after canonicalization): compatible
         _ if a_ty == b_ty => Ok(a_ty.clone()),
         // Size(1) broadcasts to anything
-        (Type::Size(SizeExpr::Literal(1)), _) => Ok(b_ty.clone()),
-        (_, Type::Size(SizeExpr::Literal(1))) => Ok(a_ty.clone()),
+        (Type::SymInt(SymInt::Literal(1)), _) => Ok(b_ty.clone()),
+        (_, Type::SymInt(SymInt::Literal(1))) => Ok(a_ty.clone()),
         // Different non-broadcastable types: incompatible
         _ => Err(ShapeError::ShapeComputation {
             message: format!(
@@ -1011,7 +1011,7 @@ pub fn index_shape_slice(
                 return Err(ShapeError::ScalarIndex);
             }
             let start = adjust_negative(
-                start.unwrap_or_else(|| Type::Size(SizeExpr::Literal(0))),
+                start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
                 &dims[0],
             );
             let stop = adjust_negative(stop.unwrap_or_else(|| dims[0].clone()), &dims[0]);
@@ -1024,7 +1024,7 @@ pub fn index_shape_slice(
         Tuple::Unpacked(unpacked) if !unpacked.0.is_empty() => {
             let (prefix, middle, suffix) = &**unpacked;
             let start = adjust_negative(
-                start.unwrap_or_else(|| Type::Size(SizeExpr::Literal(0))),
+                start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
                 &prefix[0],
             );
             let stop = adjust_negative(stop.unwrap_or_else(|| prefix[0].clone()), &prefix[0]);
@@ -1178,13 +1178,13 @@ fn shapeless_shape() -> ShapedArrayShape {
 fn adjust_negative(bound: Type, dim_size: &Type) -> Type {
     let is_negative = match &bound {
         // Literal negative: -1, -2, etc.
-        Type::Size(SizeExpr::Literal(v)) => *v < 0,
+        Type::SymInt(SymInt::Literal(v)) => *v < 0,
         // Symbolic negation: (-1 * X), (-2 * X), etc. from unary negation
-        Type::Size(SizeExpr::Mul(left, _)) if let SizeExpr::Literal(v) = left.as_ref() => *v < 0,
+        Type::SymInt(SymInt::Mul(left, _)) if let SymInt::Literal(v) = left.as_ref() => *v < 0,
         _ => false,
     };
     if is_negative {
-        Type::Size(SizeExpr::add(dim_size.clone(), bound))
+        Type::SymInt(SymInt::add(dim_size.clone(), bound))
     } else {
         bound
     }
@@ -1193,8 +1193,8 @@ fn adjust_negative(bound: Type, dim_size: &Type) -> Type {
 /// Compute stop - start, simplifying x - 0 to x.
 fn sub_dim(stop: Type, start: Type) -> Type {
     match &start {
-        Type::Size(SizeExpr::Literal(0)) => stop,
-        _ => Type::Size(SizeExpr::sub(stop, start)),
+        Type::SymInt(SymInt::Literal(0)) => stop,
+        _ => Type::SymInt(SymInt::sub(stop, start)),
     }
 }
 
@@ -1209,34 +1209,32 @@ fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
     };
     match &step {
         // Literal step: exact arithmetic
-        Type::Size(SizeExpr::Literal(1)) => range_dim,
-        Type::Size(SizeExpr::Literal(s)) if *s > 1 => {
+        Type::SymInt(SymInt::Literal(1)) => range_dim,
+        Type::SymInt(SymInt::Literal(s)) if *s > 1 => {
             let s = *s;
-            if let Type::Size(SizeExpr::Literal(n)) = &range_dim {
-                Type::Size(SizeExpr::Literal((*n + s - 1) / s))
+            if let Type::SymInt(SymInt::Literal(n)) = &range_dim {
+                Type::SymInt(SymInt::Literal((*n + s - 1) / s))
             } else {
                 // Symbolic range, literal step: ceil_div(range, step)
-                let step_minus_1 = Type::Size(SizeExpr::Literal(s - 1));
-                let numerator = Type::Size(SizeExpr::add(range_dim, step_minus_1));
-                Type::Size(SizeExpr::floor_div(
+                let step_minus_1 = Type::SymInt(SymInt::Literal(s - 1));
+                let numerator = Type::SymInt(SymInt::add(range_dim, step_minus_1));
+                Type::SymInt(SymInt::floor_div(
                     numerator,
-                    Type::Size(SizeExpr::Literal(s)),
+                    Type::SymInt(SymInt::Literal(s)),
                 ))
             }
         }
-        Type::Size(SizeExpr::Literal(s)) if *s <= 0 => {
+        Type::SymInt(SymInt::Literal(s)) if *s <= 0 => {
             // Negative or zero step: degenerate, return unknown
             Type::any_implicit()
         }
         // Symbolic step (Size var, Quantified): build ceil_div(range, step) symbolically
         _ => {
             // ceil_div(range, step) = (range + step - 1) // step
-            let step_minus_1 = Type::Size(SizeExpr::sub(
-                step.clone(),
-                Type::Size(SizeExpr::Literal(1)),
-            ));
-            let numerator = Type::Size(SizeExpr::add(range_dim, step_minus_1));
-            Type::Size(SizeExpr::floor_div(numerator, step))
+            let step_minus_1 =
+                Type::SymInt(SymInt::sub(step.clone(), Type::SymInt(SymInt::Literal(1))));
+            let numerator = Type::SymInt(SymInt::add(range_dim, step_minus_1));
+            Type::SymInt(SymInt::floor_div(numerator, step))
         }
     }
 }
@@ -1251,7 +1249,7 @@ fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
             let start = adjust_negative(
                 start
                     .clone()
-                    .unwrap_or_else(|| Type::Size(SizeExpr::Literal(0))),
+                    .unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
                 dim,
             );
             let stop = adjust_negative(stop.clone().unwrap_or_else(|| dim.clone()), dim);
@@ -1269,7 +1267,7 @@ fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
                 Some(Type::any_implicit())
             }
         }
-        IndexOp::Fancy(Some(n)) => Some(Type::Size(SizeExpr::Literal(*n))),
+        IndexOp::Fancy(Some(n)) => Some(Type::SymInt(SymInt::Literal(*n))),
         IndexOp::Fancy(None) => Some(Type::any_implicit()),
         IndexOp::NewAxis => unreachable!("NewAxis handled by apply_ops_to_dims"),
     }
@@ -1288,7 +1286,7 @@ fn apply_ops_to_dims(ops: &[IndexOp], dims: &[Type]) -> Result<(Vec<Type>, usize
     for op in ops {
         match op {
             IndexOp::NewAxis => {
-                new_dims.push(Type::Size(SizeExpr::Literal(1)));
+                new_dims.push(Type::SymInt(SymInt::Literal(1)));
             }
             IndexOp::ShapedArrayIndex(idx_dims) => {
                 if dim_idx >= dims.len() {
@@ -1340,7 +1338,7 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::dimension::SizeExpr;
+    use crate::dimension::SymInt;
     use crate::lit_int::LitInt;
     use crate::literal::Lit;
     use crate::literal::LitStyle;
@@ -1362,9 +1360,9 @@ mod tests {
     use crate::types::Type;
     use crate::types::Var;
 
-    /// Internal literal dimension `n` (`Type::Size(SizeExpr::Literal(n))`).
+    /// Internal literal dimension `n` (`Type::SymInt(SymInt::Literal(n))`).
     fn size(n: i64) -> Type {
-        Type::Size(SizeExpr::Literal(n))
+        Type::SymInt(SymInt::Literal(n))
     }
 
     /// User-facing `Literal[n]` carrier element.
@@ -1449,7 +1447,7 @@ mod tests {
     fn symbolic_internal_dimension_round_trips_through_size_carrier() {
         let var = Type::Var(Var::ZERO);
         let shape = ShapedArrayShape::from_types(vec![var.clone()]);
-        let carrier = concrete_carrier(vec![Type::Size(SizeExpr::Symbolic(Box::new(var)))]);
+        let carrier = concrete_carrier(vec![Type::SymInt(SymInt::Symbolic(Box::new(var)))]);
 
         assert_eq!(shape_to_tuple_carrier(&shape), carrier);
         assert_eq!(tuple_carrier_to_shape(&carrier), Some(shape));
@@ -1483,7 +1481,7 @@ mod tests {
     }
 
     #[test]
-    fn size_expr_carriers_with_internal_operands_pass_through() {
+    fn symint_carriers_with_internal_operands_pass_through() {
         let quantified = Type::Quantified(Box::new(Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
@@ -1496,11 +1494,11 @@ mod tests {
             Restriction::Unrestricted,
             PreInferenceVariance::Invariant,
         )));
-        let size_expr = Type::Size(SizeExpr::add(quantified.clone(), size(1)));
+        let symint = Type::SymInt(SymInt::add(quantified.clone(), size(1)));
 
         assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![size_expr.clone()])),
-            Some(ShapedArrayShape::from_types(vec![size_expr.clone()]))
+            tuple_carrier_to_shape(&concrete_carrier(vec![symint.clone()])),
+            Some(ShapedArrayShape::from_types(vec![symint.clone()]))
         );
     }
 
@@ -1576,10 +1574,10 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_size_expr_operands_fail() {
-        let invalid_size_expr = Type::Size(SizeExpr::Symbolic(Box::new(literal(1))));
+    fn unsupported_symint_operands_fail() {
+        let invalid_symint = Type::SymInt(SymInt::Symbolic(Box::new(literal(1))));
         assert_eq!(
-            tuple_carrier_to_shape(&concrete_carrier(vec![invalid_size_expr.clone()])),
+            tuple_carrier_to_shape(&concrete_carrier(vec![invalid_symint.clone()])),
             None
         );
     }

@@ -8,7 +8,7 @@
 use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
 use pyrefly_python::dunder;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::literal::LitStyle;
@@ -84,7 +84,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         )
     }
 
-    /// Try to handle binary operations on symbolic integer types (Dim and SizeExpr).
+    /// Try to handle binary operations on symbolic integer types.
     /// Returns Some(result_type) if the operation was handled, None otherwise.
     fn try_symint_binop(&self, op: Operator, lhs: &Type, rhs: &Type) -> Option<Type> {
         // Only handle if tensor shapes feature is enabled
@@ -103,7 +103,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Literal integers are allowed as the non-shape side of dimension arithmetic, but
         // ordinary literal arithmetic should keep the normal integer operator behavior.
         let is_shape_operand = |ty: &Type| match ty {
-            Type::Size(_) => true,
+            Type::SymInt(_) => true,
             _ => false,
         };
         if !is_shape_operand(lhs) && !is_shape_operand(rhs) {
@@ -114,12 +114,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let to_dim_type = |ty: &Type| -> Option<Type> {
             match ty {
                 Type::Literal(f) if let Lit::Int(n) = &f.value => {
-                    // Convert literal to SizeExpr
+                    // Convert literal to `SymInt`.
                     n.as_i64()
-                        .map(|val| self.heap.mk_size(SizeExpr::Literal(val)))
+                        .map(|val| self.heap.mk_symint(SymInt::Literal(val)))
                 }
-                Type::Size(_) => {
-                    // SizeExpr is already a dimension type - pass through
+                Type::SymInt(_) => {
+                    // `SymInt` is already a dimension type.
                     Some(ty.clone())
                 }
                 _ => None,
@@ -130,11 +130,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         // Perform the operation on the dimension types
         let result_ty = match op {
-            Operator::Add => canonicalize(self.heap.mk_size(SizeExpr::add(l_type, r_type))),
-            Operator::Sub => canonicalize(self.heap.mk_size(SizeExpr::sub(l_type, r_type))),
-            Operator::Mult => canonicalize(self.heap.mk_size(SizeExpr::mul(l_type, r_type))),
+            Operator::Add => canonicalize(self.heap.mk_symint(SymInt::add(l_type, r_type))),
+            Operator::Sub => canonicalize(self.heap.mk_symint(SymInt::sub(l_type, r_type))),
+            Operator::Mult => canonicalize(self.heap.mk_symint(SymInt::mul(l_type, r_type))),
             Operator::FloorDiv => {
-                canonicalize(self.heap.mk_size(SizeExpr::floor_div(l_type, r_type)))
+                canonicalize(self.heap.mk_symint(SymInt::floor_div(l_type, r_type)))
             }
             _ => unreachable!(),
         };
@@ -875,9 +875,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         self.distribute_over_union(&t, |t| match x.op {
             UnaryOp::USub => {
-                if let Type::Size(_) = t {
-                    return canonicalize(self.heap.mk_size(SizeExpr::mul(
-                        self.heap.mk_size(SizeExpr::Literal(-1)),
+                if let Type::SymInt(_) = t {
+                    return canonicalize(self.heap.mk_symint(SymInt::mul(
+                        self.heap.mk_symint(SymInt::Literal(-1)),
                         t.clone(),
                     )));
                 }

@@ -16,7 +16,7 @@ use itertools::izip;
 use pyrefly_python::dunder;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::dimension::ShapeError;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::contains_var_in_type;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
@@ -202,7 +202,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         size: &Type,
         literal_is_got: bool,
     ) -> Result<(), SubsetError> {
-        let literal_size = Type::Size(SizeExpr::Literal(literal));
+        let literal_size = Type::SymInt(SymInt::Literal(literal));
         let result = if literal_is_got {
             self.is_subset_eq(&literal_size, size)
         } else {
@@ -1743,24 +1743,24 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             (Type::Intersect(l), u) => any(l.0.iter(), |l| self.is_subset_eq(l, u)),
             (Type::Union(l_union), u) => all(l_union.members.iter(), |l| self.is_subset_eq(l, u)),
             // Size <: Size - expand bound Vars, canonicalize, and compare for structural equality
-            (Type::Size(s1), Type::Size(s2)) => {
+            (Type::SymInt(s1), Type::SymInt(s2)) => {
                 // Expand any bound Vars in both expressions
-                let mut got_expanded = Type::Size(s1.clone());
-                let mut want_expanded = Type::Size(s2.clone());
+                let mut got_expanded = Type::SymInt(s1.clone());
+                let mut want_expanded = Type::SymInt(s2.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
                 self.solver.expand_with_bounds(&mut want_expanded);
 
                 // Gradual-size fast path. `type_is_gradual` is a by-reference
-                // equivalent of `is_gradual_size(&canonicalize(..))` for `Size`
+                // equivalent of `is_gradual_size(&canonicalize(..))` for `SymInt`
                 // types, so we can short-circuit without allocating canonical
                 // copies on the common success path.
                 //
                 // Short-circuiting here before solving a fresh symbolic `want`
-                // (e.g. `Size[N]` for an unconstrained `SymVar` N) is safe and
+                // (e.g. `SymInt[N]` for an unconstrained `SymVar` N) is safe and
                 // does not leak an unsolved `Var`: an unconstrained `SymVar`
-                // defaults to the gradual size `Size[int]`, so a gradual `got`
-                // (like bare `Size`) flowing into `Size[N]` still resolves to
-                // `Size[int]`. We therefore need not bind N before accepting.
+                // defaults to the gradual size `SymInt[int]`, so a gradual `got`
+                // (like bare `SymInt`) flowing into `SymInt[N]` still resolves to
+                // `SymInt[int]`. We therefore need not bind N before accepting.
                 if type_is_gradual(&got_expanded) || type_is_gradual(&want_expanded) {
                     return Ok(());
                 }
@@ -1771,13 +1771,13 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     return Ok(());
                 }
 
-                if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
-                    && !matches!(want_symbolic.as_ref(), Type::Size(_))
+                if let Type::SymInt(SymInt::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::SymInt(_))
                 {
                     return self.is_subset_eq(&got_expanded, want_symbolic);
                 }
-                if let Type::Size(SizeExpr::Symbolic(got_symbolic)) = &got_expanded
-                    && !matches!(got_symbolic.as_ref(), Type::Size(_))
+                if let Type::SymInt(SymInt::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::SymInt(_))
                 {
                     return self.is_subset_eq(got_symbolic, &want_expanded);
                 }
@@ -1799,19 +1799,19 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     ),
                 ))
             }
-            // Size <: Quantified - expand, canonicalize Size, and compare
-            // A SizeExpr like (A + A) // 2 might simplify to A (a Quantified)
-            (Type::Size(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymVar => {
-                let mut got_expanded = Type::Size(s.clone());
+            // SymInt <: Quantified - expand, canonicalize SymInt, and compare.
+            // A SymInt like (A + A) // 2 might simplify to A (a Quantified).
+            (Type::SymInt(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymVar => {
+                let mut got_expanded = Type::SymInt(s.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
-                if let Type::Size(SizeExpr::Symbolic(got_symbolic)) = &got_expanded
-                    && !matches!(got_symbolic.as_ref(), Type::Size(_))
+                if let Type::SymInt(SymInt::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::SymInt(_))
                 {
                     return self.is_subset_eq(got_symbolic, want);
                 }
                 let got_canonical = got_expanded.canonicalize();
                 let want_canonical =
-                    Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
+                    Type::SymInt(SymInt::Symbolic(Box::new(Type::Quantified(q.clone()))))
                         .canonicalize();
                 if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
                     return Ok(());
@@ -1821,7 +1821,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 } else {
                     Err(SubsetError::ShapedArrayShape(
                         ShapeError::structural_mismatch(
-                            Type::Size(s.clone()).to_string(),
+                            Type::SymInt(s.clone()).to_string(),
                             got_canonical.to_string(),
                             Type::Quantified(q.clone()).to_string(),
                             want_canonical.to_string(),
@@ -1830,16 +1830,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 }
             }
             // Quantified <: Size - expand Size, canonicalize, and compare
-            (Type::Quantified(q), Type::Size(s)) if q.kind() == QuantifiedKind::SymVar => {
-                let mut want_expanded = Type::Size(s.clone());
+            (Type::Quantified(q), Type::SymInt(s)) if q.kind() == QuantifiedKind::SymVar => {
+                let mut want_expanded = Type::SymInt(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);
-                if let Type::Size(SizeExpr::Symbolic(want_symbolic)) = &want_expanded
-                    && !matches!(want_symbolic.as_ref(), Type::Size(_))
+                if let Type::SymInt(SymInt::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::SymInt(_))
                 {
                     return self.is_subset_eq(got, want_symbolic);
                 }
                 let got_canonical =
-                    Type::Size(SizeExpr::Symbolic(Box::new(Type::Quantified(q.clone()))))
+                    Type::SymInt(SymInt::Symbolic(Box::new(Type::Quantified(q.clone()))))
                         .canonicalize();
                 let want_canonical = want_expanded.canonicalize();
                 if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
@@ -1852,7 +1852,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         ShapeError::structural_mismatch(
                             Type::Quantified(q.clone()).to_string(),
                             got_canonical.to_string(),
-                            Type::Size(s.clone()).to_string(),
+                            Type::SymInt(s.clone()).to_string(),
                             want_canonical.to_string(),
                         ),
                     ))
@@ -2098,27 +2098,27 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // both directions.
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
-            // Any exact Size expression represents an integer dimension value.
-            (Type::Size(_), Type::ClassType(cls))
+            // Any exact SymInt expression represents an integer dimension value.
+            (Type::SymInt(_), Type::ClassType(cls))
                 if cls.is_builtin("int") || cls.is_builtin("float") =>
             {
                 Ok(())
             }
-            (Type::ClassType(cls), want @ Type::Size(_))
+            (Type::ClassType(cls), want @ Type::SymInt(_))
                 if cls.is_builtin("int") && is_gradual_size(want) =>
             {
                 Ok(())
             }
-            (Type::ClassType(cls), Type::Size(SizeExpr::Symbolic(inner)))
+            (Type::ClassType(cls), Type::SymInt(SymInt::Symbolic(inner)))
                 if cls.is_builtin("int")
                     && matches!(inner.as_ref(), Type::Var(_) | Type::Quantified(_)) =>
             {
                 let mut inner_expanded = (**inner).clone();
                 self.solver.expand_with_bounds(&mut inner_expanded);
                 // `inner` is invariantly a `SymVar` dimension variable (or its
-                // bound): `SizeExpr::Symbolic(Quantified)` is only constructed for
-                // the `SymVar` kind (see `SizeExpr::from_type`), so this arm needs
-                // no `QuantifiedKind` gate, unlike the sibling `Size`/`Quantified`
+                // bound): `SymInt::Symbolic(Quantified)` is only constructed for
+                // the `SymVar` kind (see `SymInt::from_type`), so this arm needs
+                // no `QuantifiedKind` gate, unlike the sibling `SymInt`/`Quantified`
                 // arms above. Once expanded, an `int` argument is compatible when
                 // the dimension resolved to a concrete `int` or a gradual size; a
                 // still-fresh var is pinned gradual (see below); anything else is a
@@ -2128,9 +2128,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     expanded if is_gradual_size(expanded) => Ok(()),
                     // An `int` argument eagerly pins a still-fresh `SymVar` to
                     // the gradual size. This is order-dependent when the `SymVar`
-                    // is repeated (e.g. `f[N: SymVar](x: Size[N], y: Size[N])`):
+                    // is repeated (e.g. `f[N: SymVar](x: SymInt[N], y: SymInt[N])`):
                     // `f(i, s3)` pins N gradual from the `int` first, so a later
-                    // concrete `Size[3]` is accepted, whereas `f(s3, i)` pins
+                    // concrete `SymInt[3]` is accepted, whereas `f(s3, i)` pins
                     // N=3 first and correctly rejects the `int`. This eager pin
                     // mirrors how Pyrefly's ordinary `TypeVar` inference behaved
                     // circa end of 2025, before it switched to bounds
@@ -2411,20 +2411,20 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 ),
                 t,
             ),
-            // Representable integer literals compare exactly with Size expressions in either direction.
-            (Type::Literal(lit), want @ Type::Size(_))
+            // Representable integer literals compare exactly with SymInt expressions in either direction.
+            (Type::Literal(lit), want @ Type::SymInt(_))
                 if let Lit::Int(n) = &lit.value
                     && let Some(n) = n.as_i64() =>
             {
                 self.is_subset_literal_int_size(n, want, true)
             }
-            (got @ Type::Size(_), Type::Literal(lit))
+            (got @ Type::SymInt(_), Type::Literal(lit))
                 if let Lit::Int(n) = &lit.value
                     && let Some(n) = n.as_i64() =>
             {
                 self.is_subset_literal_int_size(n, got, false)
             }
-            (Type::Size(_) | Type::Quantified(_), Type::ClassType(cls))
+            (Type::SymInt(_) | Type::Quantified(_), Type::ClassType(cls))
                 if is_dim_class_type(cls) =>
             {
                 Ok(())

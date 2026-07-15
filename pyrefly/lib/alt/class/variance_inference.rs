@@ -14,7 +14,7 @@ use dupe::Dupe;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::dunder;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::heap::TypeHeap;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
@@ -142,24 +142,24 @@ fn handle_tuple_type(
     }
 }
 
-fn on_size_expr(
-    dim: &SizeExpr,
+fn on_symint(
+    dim: &SymInt,
     inj: bool,
     on_edge: &mut impl FnMut(&Class) -> InferenceMap,
     on_var: &mut impl FnMut(&Name, Variance, bool, PreInferenceVariance),
 ) {
     match dim {
-        SizeExpr::Literal(_) | SizeExpr::Int => {}
-        SizeExpr::Symbolic(ty) => {
+        SymInt::Literal(_) | SymInt::Int => {}
+        SymInt::Symbolic(ty) => {
             on_type(Variance::Invariant, inj, ty, on_edge, on_var);
         }
-        SizeExpr::Add(left, right)
-        | SizeExpr::Sub(left, right)
-        | SizeExpr::Mul(left, right)
-        | SizeExpr::FloorDiv(left, right)
-        | SizeExpr::Pow(left, right) => {
-            on_size_expr(left, inj, on_edge, on_var);
-            on_size_expr(right, inj, on_edge, on_var);
+        SymInt::Add(left, right)
+        | SymInt::Sub(left, right)
+        | SymInt::Mul(left, right)
+        | SymInt::FloorDiv(left, right)
+        | SymInt::Pow(left, right) => {
+            on_symint(left, inj, on_edge, on_var);
+            on_symint(right, inj, on_edge, on_var);
         }
     }
 }
@@ -261,9 +261,9 @@ fn on_type(
         Type::Tuple(t) => {
             handle_tuple_type(t, variance, inj, on_edge, on_var);
         }
-        Type::Size(dim) => {
-            // SizeExpr expressions contain types - all invariant
-            on_size_expr(dim, inj, on_edge, on_var);
+        Type::SymInt(dim) => {
+            // Symbolic integer expressions contain types, all invariant.
+            on_symint(dim, inj, on_edge, on_var);
         }
         _ => {}
     }

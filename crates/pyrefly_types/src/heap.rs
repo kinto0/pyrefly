@@ -30,7 +30,7 @@ use crate::callable::Params;
 use crate::callable::PrefixParam;
 use crate::class::Class;
 use crate::class::ClassType;
-use crate::dimension::SizeExpr;
+use crate::dimension::SymInt;
 use crate::keywords::KwCall;
 use crate::literal::LitStyle;
 use crate::literal::Literal;
@@ -440,9 +440,9 @@ impl TypeHeap {
         Type::Never(style)
     }
 
-    /// Create a `Type::Size` from a SizeExpr.
-    pub fn mk_size(&self, size_expr: SizeExpr) -> Type {
-        Type::Size(size_expr)
+    /// Create a `Type::SymInt` from a symbolic integer expression.
+    pub fn mk_symint(&self, symint: SymInt) -> Type {
+        Type::SymInt(symint)
     }
 
     /// Create a `Type::ShapedArray` from a ShapedArrayType.

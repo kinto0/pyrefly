@@ -10,7 +10,7 @@ use std::sync::Arc;
 use dupe::Dupe;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::Function;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::display::count;
 use pyrefly_util::prelude::SliceExt;
@@ -648,16 +648,17 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                 } else {
                     let restriction = param.restriction();
-                    let arg = if matches!(param.upper_bound(self.stdlib, self.heap), Type::Size(_))
-                        && let Type::Literal(lit) = arg
-                        && let Lit::Int(i) = &lit.value
-                    {
-                        Type::Size(i.as_i64().map(SizeExpr::Literal).unwrap_or_else(|| {
-                            SizeExpr::Symbolic(Box::new(Type::Literal(lit.clone())))
-                        }))
-                    } else {
-                        arg.clone()
-                    };
+                    let arg =
+                        if matches!(param.upper_bound(self.stdlib, self.heap), Type::SymInt(_))
+                            && let Type::Literal(lit) = arg
+                            && let Lit::Int(i) = &lit.value
+                        {
+                            Type::SymInt(i.as_i64().map(SymInt::Literal).unwrap_or_else(|| {
+                                SymInt::Symbolic(Box::new(Type::Literal(lit.clone())))
+                            }))
+                        } else {
+                            arg.clone()
+                        };
                     if validate_restriction && restriction.is_restricted() {
                         let tcc = &|| {
                             TypeCheckContext::of_kind(TypeCheckKind::TypeVarSpecialization(

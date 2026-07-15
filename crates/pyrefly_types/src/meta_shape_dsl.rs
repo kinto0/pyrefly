@@ -42,7 +42,7 @@ use ruff_text_size::TextRange;
 
 use crate::callable::IdentityIgnored;
 use crate::dimension::ShapeError;
-use crate::dimension::SizeExpr;
+use crate::dimension::SymInt;
 use crate::dimension::canonicalize;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
@@ -68,7 +68,7 @@ enum Val {
     Bool(bool),
     /// String literal (e.g., einsum spec).
     Str(String),
-    /// Single tensor dimension — a symbolic `Type` (SizeExpr, Quantified, etc.).
+    /// Single tensor dimension: a symbolic `Type` (`SymInt`, `Quantified`, etc.).
     Dim(Type),
     /// Full tensor shape with concrete rank.
     Shape(ShapedArrayShape),
@@ -106,14 +106,14 @@ impl Val {
         }
     }
 
-    /// Convert to a `Type::Size` for use in dimension arithmetic within the DSL evaluator.
-    /// `Int(n)` becomes `Size(Literal(n))`; `Dim(ty)` passes through as-is.
+    /// Convert to a `Type::SymInt` for use in dimension arithmetic within the DSL evaluator.
+    /// `Int(n)` becomes `SymInt(Literal(n))`; `Dim(ty)` passes through as-is.
     /// This is for *internal* symbolic computation, not for producing user-facing types
     /// (see `val_to_scalar_type` for that).
     pub fn as_size(&self) -> Type {
         match self {
             Val::Dim(ty) => ty.clone(),
-            Val::Int(n) => Type::Size(SizeExpr::Literal(*n)),
+            Val::Int(n) => Type::SymInt(SymInt::Literal(*n)),
             _ => panic!("IR bug: expected Dim or Int, got {}", self.variant_name()),
         }
     }
@@ -145,7 +145,7 @@ impl Val {
         }
     }
 
-    /// Extract a list of `Type::Size` values from a `Val::List`, for use in shape arithmetic.
+    /// Extract a list of `Type::SymInt` values from a `Val::List`, for use in shape arithmetic.
     pub fn as_size_list(&self) -> Vec<Type> {
         self.as_list().iter().map(|v| v.as_size()).collect()
     }
@@ -172,7 +172,7 @@ impl Val {
 /// These are used in `bind_dsl_params()` to convert bound Python types
 /// to runtime values. Each returns `None` if the type doesn't match.
 mod extract {
-    use crate::dimension::SizeExpr;
+    use crate::dimension::SymInt;
     use crate::literal::Lit;
     use crate::shaped_array::ShapedArrayShape;
     use crate::tuple::Tuple;
@@ -213,16 +213,16 @@ mod extract {
     }
 
     /// Extract symbolic dimension from Type.
-    /// Handles SizeExpr, Quantified, Var, etc.
+    /// Handles `SymInt`, `Quantified`, `Var`, etc.
     pub fn dimension(ty: &Type) -> Option<Type> {
         match ty {
-            // Already a SizeExpr
-            Type::Size(_) => Some(ty.clone()),
+            // Already a symbolic integer expression.
+            Type::SymInt(_) => Some(ty.clone()),
             // Type variable or quantified
             Type::Quantified(_) | Type::Var(_) => Some(ty.clone()),
-            // Literal int -> wrap in SizeExpr
+            // Literal int -> wrap in `SymInt`.
             Type::Literal(lit) if let Lit::Int(n) = &lit.value => {
-                n.as_i64().map(|v| Type::Size(SizeExpr::Literal(v)))
+                n.as_i64().map(|v| Type::SymInt(SymInt::Literal(v)))
             }
             _ => None,
         }
@@ -2543,8 +2543,8 @@ fn eval_dsl_expr(
                         Val::Int(n) => Ok(Val::Int(-n)),
                         Val::Dim(ty) => {
                             // Negate symbolic: 0 - ty
-                            let zero = Type::Size(SizeExpr::Literal(0));
-                            Ok(Val::Dim(canonicalize(Type::Size(SizeExpr::sub(
+                            let zero = Type::SymInt(SymInt::Literal(0));
+                            Ok(Val::Dim(canonicalize(Type::SymInt(SymInt::sub(
                                 zero,
                                 ty.clone(),
                             )))))
@@ -2682,7 +2682,7 @@ fn val_as_bool(val: &Val, op_name: &str) -> Result<bool, ShapeError> {
 /// Otherwise produce `Val::Dim(ty)`.
 fn dim_val(ty: Type) -> Val {
     match &ty {
-        Type::Size(SizeExpr::Literal(n)) => Val::Int(*n),
+        Type::SymInt(SymInt::Literal(n)) => Val::Int(*n),
         _ => Val::Dim(ty),
     }
 }
@@ -2782,7 +2782,7 @@ fn eval_unpacked_slice(
 
 /// Evaluate a binary operation, dispatching on runtime Val variants.
 ///
-/// Arithmetic: both Int → concrete i64; either Dim → symbolic SizeExpr; + on Lists → concat.
+/// Arithmetic: both Int → concrete i64; either Dim → symbolic integer expression; + on Lists → concat.
 /// Comparison: concrete on Int; == None → is_none(); on Str → string compare.
 /// Note: And/Or are short-circuited in eval_dsl_expr and never reach here.
 fn eval_binop(lval: &Val, op: DslOp, rval: &Val, op_name: &str) -> Result<Val, ShapeError> {
@@ -2833,7 +2833,7 @@ fn eval_binop(lval: &Val, op: DslOp, rval: &Val, op_name: &str) -> Result<Val, S
             _ => {
                 let a = lval.as_size();
                 let b = rval.as_size();
-                Ok(dim_val(canonicalize(Type::Size(SizeExpr::add(a, b)))))
+                Ok(dim_val(canonicalize(Type::SymInt(SymInt::add(a, b)))))
             }
         },
         DslOp::Sub => match (lval, rval) {
@@ -2841,7 +2841,7 @@ fn eval_binop(lval: &Val, op: DslOp, rval: &Val, op_name: &str) -> Result<Val, S
             _ => {
                 let a = lval.as_size();
                 let b = rval.as_size();
-                Ok(dim_val(canonicalize(Type::Size(SizeExpr::sub(a, b)))))
+                Ok(dim_val(canonicalize(Type::SymInt(SymInt::sub(a, b)))))
             }
         },
         DslOp::Mul => match (lval, rval) {
@@ -2849,7 +2849,7 @@ fn eval_binop(lval: &Val, op: DslOp, rval: &Val, op_name: &str) -> Result<Val, S
             _ => {
                 let a = lval.as_size();
                 let b = rval.as_size();
-                Ok(dim_val(canonicalize(Type::Size(SizeExpr::mul(a, b)))))
+                Ok(dim_val(canonicalize(Type::SymInt(SymInt::mul(a, b)))))
             }
         },
         DslOp::FloorDiv => match (lval, rval) {
@@ -2864,7 +2864,7 @@ fn eval_binop(lval: &Val, op: DslOp, rval: &Val, op_name: &str) -> Result<Val, S
             _ => {
                 let a = lval.as_size();
                 let b = rval.as_size();
-                Ok(dim_val(canonicalize(Type::Size(SizeExpr::floor_div(a, b)))))
+                Ok(dim_val(canonicalize(Type::SymInt(SymInt::floor_div(a, b)))))
             }
         },
         DslOp::Mod => match (lval, rval) {
@@ -2925,7 +2925,7 @@ fn val_eq(a: &Val, b: &Val) -> bool {
         (Val::Dim(x), Val::Dim(y)) => x == y,
         (Val::None, Val::None) => true,
         (Val::Int(x), Val::Dim(y)) | (Val::Dim(y), Val::Int(x)) => {
-            *y == Type::Size(SizeExpr::Literal(*x))
+            *y == Type::SymInt(SymInt::Literal(*x))
         }
         _ => false,
     }
@@ -2956,9 +2956,9 @@ fn eval_call(
                     Ok(Val::Int(product))
                 } else {
                     let dims = args[0].as_size_list();
-                    let mut product = Type::Size(SizeExpr::Literal(1));
+                    let mut product = Type::SymInt(SymInt::Literal(1));
                     for d in dims {
-                        product = canonicalize(Type::Size(SizeExpr::mul(product, d)));
+                        product = canonicalize(Type::SymInt(SymInt::mul(product, d)));
                     }
                     Ok(dim_val(product))
                 }
@@ -2977,9 +2977,9 @@ fn eval_call(
                     Ok(Val::Int(total))
                 } else {
                     let dims = args[0].as_size_list();
-                    let mut total = Type::Size(SizeExpr::Literal(0));
+                    let mut total = Type::SymInt(SymInt::Literal(0));
                     for d in dims {
-                        total = canonicalize(Type::Size(SizeExpr::add(total, d)));
+                        total = canonicalize(Type::SymInt(SymInt::add(total, d)));
                     }
                     Ok(dim_val(total))
                 }
@@ -3252,17 +3252,17 @@ fn inject_shape(shape: ShapedArrayShape, ret_type: &Type) -> Type {
 
 /// Convert a DSL scalar `Val` to a `Type` for output from a shape function:
 /// - `Val::Int(n)` → `Literal[n]`
-/// - `Val::Dim(SizeExpr::Literal(n))` → `Literal[n]` (concrete dims become literals)
+/// - `Val::Dim(SymInt::Literal(n))` → `Literal[n]` (concrete dims become literals)
 /// - `Val::Dim(symbolic)` → canonical `Size[...]`
 fn val_to_scalar_type(val: &Val) -> Type {
     match val {
         Val::Int(n) => Lit::Int(LitInt::new(*n)).to_implicit_type(),
         Val::Dim(ty) => {
             let dim =
-                SizeExpr::from_type(ty).unwrap_or_else(|| SizeExpr::Symbolic(Box::new(ty.clone())));
+                SymInt::from_type(ty).unwrap_or_else(|| SymInt::Symbolic(Box::new(ty.clone())));
             match dim {
-                SizeExpr::Literal(n) => Lit::Int(LitInt::new(n)).to_implicit_type(),
-                dim => canonicalize(Type::Size(dim)),
+                SymInt::Literal(n) => Lit::Int(LitInt::new(n)).to_implicit_type(),
+                dim => canonicalize(Type::SymInt(dim)),
             }
         }
         _ => unreachable!(
@@ -3974,40 +3974,40 @@ mod tests {
 
     #[test]
     fn test_val_to_scalar_type_uses_canonical_size_for_symbolic_dims() {
-        let gradual = Type::Size(SizeExpr::Symbolic(Box::new(Type::Size(SizeExpr::Int))));
+        let gradual = Type::SymInt(SymInt::Symbolic(Box::new(Type::SymInt(SymInt::Int))));
         assert_eq!(
             val_to_scalar_type(&Val::Dim(gradual)),
-            Type::Size(SizeExpr::Int)
+            Type::SymInt(SymInt::Int)
         );
 
         let quantified = fake_symvar("N");
         assert_eq!(
             val_to_scalar_type(&Val::Dim(quantified)),
-            Type::Size(SizeExpr::Symbolic(Box::new(fake_symvar("N"))))
+            Type::SymInt(SymInt::Symbolic(Box::new(fake_symvar("N"))))
         );
 
         assert_eq!(
             val_to_scalar_type(&Val::Dim(Type::Var(Var::ZERO))),
-            Type::Size(SizeExpr::Symbolic(Box::new(Type::Var(Var::ZERO))))
+            Type::SymInt(SymInt::Symbolic(Box::new(Type::Var(Var::ZERO))))
         );
 
         let any = Type::Any(AnyStyle::Error);
         assert_eq!(
             val_to_scalar_type(&Val::Dim(any.clone())),
-            Type::Size(SizeExpr::Symbolic(Box::new(any)))
+            Type::SymInt(SymInt::Symbolic(Box::new(any)))
         );
     }
 
     #[test]
     fn test_val_to_scalar_type_preserves_symbolic_size_arithmetic() {
-        let n = SizeExpr::Symbolic(Box::new(fake_symvar("N")));
-        let m = SizeExpr::Symbolic(Box::new(fake_symvar("M")));
+        let n = SymInt::Symbolic(Box::new(fake_symvar("N")));
+        let m = SymInt::Symbolic(Box::new(fake_symvar("M")));
         assert_eq!(
-            val_to_scalar_type(&Val::Dim(Type::Size(SizeExpr::Mul(
+            val_to_scalar_type(&Val::Dim(Type::SymInt(SymInt::Mul(
                 Box::new(n.clone()),
                 Box::new(m.clone()),
             )))),
-            Type::Size(SizeExpr::Mul(Box::new(m), Box::new(n)))
+            Type::SymInt(SymInt::Mul(Box::new(m), Box::new(n)))
         );
     }
 
@@ -4015,7 +4015,7 @@ mod tests {
     fn test_val_to_scalar_type_preserves_concrete_dim_literals() {
         let literal = Lit::Int(LitInt::new(3)).to_implicit_type();
         assert_eq!(
-            val_to_scalar_type(&Val::Dim(Type::Size(SizeExpr::Literal(3)))),
+            val_to_scalar_type(&Val::Dim(Type::SymInt(SymInt::Literal(3)))),
             literal
         );
     }
@@ -4026,7 +4026,7 @@ mod tests {
             fake_class("Tensor", "torch"),
             TArgs::default(),
         ));
-        let shape = ShapedArrayShape::new(vec![SizeExpr::Literal(2)]);
+        let shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
 
         assert!(extract::shaped_array_shape(&torch_tensor).is_none());
         assert!(
@@ -4039,8 +4039,8 @@ mod tests {
     #[test]
     fn test_shape_dsl_extracts_registered_shaped_array_tuple() {
         let array = ClassType::new(fake_class("Array", "arrays"), TArgs::default());
-        let first_shape = ShapedArrayShape::new(vec![SizeExpr::Literal(2)]);
-        let second_shape = ShapedArrayShape::new(vec![SizeExpr::Literal(3)]);
+        let first_shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
+        let second_shape = ShapedArrayShape::new(vec![SymInt::Literal(3)]);
         let first = ShapedArrayType::new(array.clone(), first_shape.clone()).to_type();
         let second = ShapedArrayType::new(array.clone(), second_shape.clone()).to_type();
 
@@ -4064,8 +4064,8 @@ mod tests {
     #[test]
     fn test_shape_dsl_extracts_same_shape_union() {
         let array = ClassType::new(fake_class("Array", "arrays"), TArgs::default());
-        let shape = ShapedArrayShape::new(vec![SizeExpr::Literal(2)]);
-        let other_shape = ShapedArrayShape::new(vec![SizeExpr::Literal(3)]);
+        let shape = ShapedArrayShape::new(vec![SymInt::Literal(2)]);
+        let other_shape = ShapedArrayShape::new(vec![SymInt::Literal(3)]);
         let union = Type::Union(Box::new(Union {
             members: vec![
                 ShapedArrayType::new(array.clone(), shape.clone()).to_type(),

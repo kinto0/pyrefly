@@ -1873,7 +1873,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let unwrapped = match field_ty {
                 Type::Union(ref u) => {
                     let size = u.members.iter().find_map(|m| match m {
-                        Type::Size(_) => Some(m.clone()),
+                        Type::SymInt(_) => Some(m.clone()),
                         _ => None,
                     });
                     match size {

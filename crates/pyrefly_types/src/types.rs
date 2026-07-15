@@ -48,7 +48,7 @@ use crate::class::ClassKind;
 use crate::class::ClassType;
 use crate::data_frame::DataFrameSchema;
 use crate::dimension;
-use crate::dimension::SizeExpr;
+use crate::dimension::SymInt;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::heap::TypeHeap;
@@ -798,12 +798,12 @@ pub enum Type {
     DataFrame(Box<DataFrameSchema>),
     /// Dimension value type - represents values that satisfy Dim bound
     /// Examples:
-    ///   - Type::Size(SizeExpr::Literal(6)) for concrete dimension 6
-    ///   - Type::Size(SizeExpr::Var(v)) for dimension variables
+    ///   - `Type::SymInt(SymInt::Literal(6))` for concrete dimension 6
+    ///   - `Type::SymInt(SymInt::Symbolic(v))` for dimension variables
     ///
     /// This is the type-level representation of dimension values, used when
     /// type variables with Dim bound unify with concrete dimension values.
-    Size(SizeExpr),
+    SymInt(SymInt),
     Tuple(Tuple),
     Module(ModuleType),
     Forall(Box<Forall<Forallable>>),
@@ -906,7 +906,7 @@ impl Visit for Type {
             Type::ShapedArray(x) => x.visit(f),
             Type::NNModule(x) => x.visit(f),
             Type::DataFrame(x) => x.visit(f),
-            Type::Size(x) => x.visit(f),
+            Type::SymInt(x) => x.visit(f),
             Type::Tuple(x) => x.visit(f),
             Type::Module(x) => x.visit(f),
             Type::Forall(x) => x.visit(f),
@@ -963,7 +963,7 @@ impl VisitMut for Type {
             Type::ShapedArray(x) => x.visit_mut(f),
             Type::NNModule(x) => x.visit_mut(f),
             Type::DataFrame(x) => x.visit_mut(f),
-            Type::Size(x) => x.visit_mut(f),
+            Type::SymInt(x) => x.visit_mut(f),
             Type::Tuple(x) => x.visit_mut(f),
             Type::Module(x) => x.visit_mut(f),
             Type::Forall(x) => x.visit_mut(f),
@@ -1895,10 +1895,10 @@ impl Type {
         }
     }
 
-    /// Extract the literal value from a `SizeExpr::Literal`, if this is one.
+    /// Extract the literal value from a `SymInt::Literal`, if this is one.
     pub fn as_shape_literal(&self) -> Option<i64> {
         match self {
-            Type::Size(SizeExpr::Literal(n)) => Some(*n),
+            Type::SymInt(SymInt::Literal(n)) => Some(*n),
             _ => None,
         }
     }

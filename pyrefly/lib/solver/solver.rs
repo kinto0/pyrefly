@@ -793,7 +793,7 @@ impl Solver {
 
     /// Finish the type returned from a function call. This entails expanding solved variables,
     /// erasing unsolved variables without defaults from unions, and canonicalizing dimension
-    /// expressions so that all-literal SizeExpr trees fold to single literals.
+    /// expressions so that all-literal `SymInt` trees fold to single literals.
     pub fn for_return_boundary(&self, mut t: Type) -> Type {
         self.resolve_vars(&mut t, VarExpansionPolicy::Expand, &VarRecurser::new());
         t = t.finalize_callable_residuals_at_boundary(&self.heap, true);
@@ -1086,7 +1086,7 @@ impl Solver {
             }
             // Simplify dimension expressions
             // This ensures Tensor[(10 * 20)] becomes Tensor[200]
-            if let Type::Size(_) = x {
+            if let Type::SymInt(_) = x {
                 let simplified = canonicalize(x.clone());
                 if &simplified != x {
                     *x = simplified;

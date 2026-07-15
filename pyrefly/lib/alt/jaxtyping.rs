@@ -17,13 +17,13 @@
 //!
 //! The shape string is whitespace-separated and supports:
 //! - Named dims (`"batch"`) → Quantified TypeVars
-//! - Integer literals (`"3"`) → `Type::Size(SizeExpr::Literal(3))`
+//! - Integer literals (`"3"`) → `Type::SymInt(SymInt::Literal(3))`
 //! - Anonymous dim (`"_"`) → `Type::Any(AnyStyle::Implicit)`
 //! - Variadic (`"*batch"`) → Quantified TypeVarTuples
 //! - Ellipsis (`"..."`) → anonymous variadic (any number of any-sized dims)
 //! - Broadcast (`"#batch"`) → treated as `"batch"` (conservative, safe)
 //! - Combined (`"*#batch"`) → variadic TypeVarTuple, broadcast prefix stripped
-//! - Arithmetic (`"dim+1"`, `"n-1"`) → `Type::Size(SizeExpr::Add/Sub(...))`
+//! - Arithmetic (`"dim+1"`, `"n-1"`) → `Type::SymInt(SymInt::Add/Sub(...))`
 //! - Parenthesized (`"(1+T)"`) → parens stripped, parsed as arithmetic
 //! - Scalar (`""`) → rank-0 tensor
 //!
@@ -48,7 +48,7 @@ use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::class::ClassType;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::shaped_array::ShapedArrayShape;
 use pyrefly_types::shaped_array::ShapedArrayShapeArgStyle;
@@ -427,7 +427,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// jaxtyping's parser behavior:
     /// 1. Strip broadcast `#` prefix (treated as regular dim — conservative, safe)
     /// 2. `_` → `Type::Any(AnyStyle::Implicit)` (anonymous, any size)
-    /// 3. Integer → `Type::Size(SizeExpr::Literal(n))`
+    /// 3. Integer → `Type::SymInt(SymInt::Literal(n))`
     /// 4. Parenthesized → strip outer parens, parse inner as arithmetic
     /// 5. Contains `+`/`-` (not at position 0) → arithmetic expression
     /// 6. Named identifier → Quantified TypeVar (cached per module)
@@ -445,7 +445,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
                 // Integer literal: "3", "-1", etc.
                 if let Ok(n) = token.parse::<i64>() {
-                    return self.heap.mk_size(SizeExpr::literal(n));
+                    return self.heap.mk_symint(SymInt::literal(n));
                 }
 
                 // Parenthesized expression: "(dim+1)" → strip parens, parse as arithmetic
@@ -471,7 +471,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ///
     /// Looks for the last `+` or `-` not at position 0 (to avoid treating
     /// negative integer literals like "-3" as subtraction). Splits into
-    /// left/right atoms and creates `SizeExpr::Add` or `SizeExpr::Sub`.
+    /// left/right atoms and creates `SymInt::Add` or `SymInt::Sub`.
     ///
     /// Returns `None` if the token contains no arithmetic operator.
     fn parse_jaxtyping_arithmetic(&self, token: &str) -> Option<Type> {
@@ -492,7 +492,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Parse each operand as an integer literal or named dim
         let parse_atom = |s: &str| -> Type {
             if let Ok(n) = s.parse::<i64>() {
-                self.heap.mk_size(SizeExpr::literal(n))
+                self.heap.mk_symint(SymInt::literal(n))
             } else {
                 let q = self.get_or_create_jaxtyping_dim(Name::new(s), QuantifiedKind::SymVar);
                 Type::Quantified(Box::new(q))
@@ -502,13 +502,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let left = parse_atom(left_str);
         let right = parse_atom(right_str);
 
-        let size_expr = match op {
-            '+' => SizeExpr::add(left, right),
-            '-' => SizeExpr::sub(left, right),
+        let symint = match op {
+            '+' => SymInt::add(left, right),
+            '-' => SymInt::sub(left, right),
             _ => unreachable!("only '+' and '-' are matched above"),
         };
 
-        Some(self.heap.mk_size(size_expr))
+        Some(self.heap.mk_symint(symint))
     }
 
     /// Collect implicit jaxtyping TypeVars from a callable's signature and

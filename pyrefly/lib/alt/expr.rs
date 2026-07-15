@@ -19,7 +19,7 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::callable::FunctionKind;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::literal::LitStyle;
@@ -2656,10 +2656,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 // Dim type parsing: Dim[3], Dim[N], Dim[N+1] syntax
                 Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
-                    self.parse_single_size_expr_type("Dim", xs, range, errors)
+                    self.parse_single_symint_type("Dim", xs, range, errors)
                 }
                 Type::ClassDef(ref cls) if self.is_size_class(cls) => {
-                    self.parse_single_size_expr_type("Size", xs, range, errors)
+                    self.parse_single_symint_type("Size", xs, range, errors)
                 }
                 Type::ClassDef(ref cls)
                     if cls.has_toplevel_qname("shape_extensions", "ProxyMethod") =>
@@ -3007,22 +3007,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let inner_dim = match inner_ty {
                     Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
                         // Literal negation: just negate the value directly
-                        return self.heap.mk_size(SizeExpr::Literal(-val));
+                        return self.heap.mk_symint(SymInt::Literal(-val));
                     }
-                    Type::Quantified(_) | Type::Size(_) => inner_ty.clone(),
+                    Type::Quantified(_) | Type::SymInt(_) => inner_ty.clone(),
                     _ => return Type::any_implicit(),
                 };
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
                 // The final canonicalization happens in ShapedArrayShape::from_types.
-                return Type::Size(SizeExpr::mul(Type::Size(SizeExpr::Literal(-1)), inner_dim));
+                return Type::SymInt(SymInt::mul(Type::SymInt(SymInt::Literal(-1)), inner_dim));
             }
             let ty = self.expr_infer(expr, errors);
             match ty {
                 Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
-                    self.heap.mk_size(SizeExpr::Literal(val))
+                    self.heap.mk_symint(SymInt::Literal(val))
                 }
-                Type::Quantified(_) | Type::Size(_) => ty.clone(),
+                Type::Quantified(_) | Type::SymInt(_) => ty.clone(),
                 _ => Type::any_implicit(),
             }
         };
@@ -3033,9 +3033,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let ty = self.expr_infer(expr, errors);
             match &ty {
                 Type::Literal(lit) if let Some(val) = lit.value.as_index_i64() => {
-                    Some(self.heap.mk_size(SizeExpr::Literal(val)))
+                    Some(self.heap.mk_symint(SymInt::Literal(val)))
                 }
-                Type::Quantified(_) | Type::Size(_) => Some(ty.clone()),
+                Type::Quantified(_) | Type::SymInt(_) => Some(ty.clone()),
                 _ => Option::None,
             }
         };
@@ -3071,7 +3071,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             let is_int = matches!(&idx_ty, Type::Literal(lit) if lit.value.as_index_i64().is_some())
                 || matches!(&idx_ty, Type::ClassType(cls) if cls.is_builtin("int"))
-                || matches!(&idx_ty, Type::Size(_));
+                || matches!(&idx_ty, Type::SymInt(_));
             if is_int { Some(IndexOp::Int) } else { None }
         };
 
@@ -3113,7 +3113,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::EllipsisLiteral(_) => shaped_array_type.clone().to_type(),
             // None index: tensor[None] - inserts a new dimension of size 1 at the front
             Expr::NoneLiteral(_) => {
-                let one = self.heap.mk_size(SizeExpr::Literal(1));
+                let one = self.heap.mk_symint(SymInt::Literal(1));
                 let mut new_dims = vec![one];
                 let new_shape = match shaped_array_type.shape.as_tuple() {
                     Tuple::Concrete(dims) => {
@@ -3448,7 +3448,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if let Some(value) = int_val.as_i64() {
                         // Allow any integer value during parsing - validation happens later
                         // This allows expressions like N + 0 where 0 is part of an expression
-                        Some(self.heap.mk_size(SizeExpr::literal(value)))
+                        Some(self.heap.mk_symint(SymInt::literal(value)))
                     } else {
                         self.error(
                             errors,
@@ -3516,21 +3516,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     DimensionExprContext::Arithmetic,
                 )?;
-                Some(self.heap.mk_size(SizeExpr::sub(
-                    self.heap.mk_size(SizeExpr::Literal(0)),
-                    inner,
-                )))
+                Some(
+                    self.heap
+                        .mk_symint(SymInt::sub(self.heap.mk_symint(SymInt::Literal(0)), inner)),
+                )
             }
             // Binary operations: N + M, N * M, etc.
             Expr::BinOp(ExprBinOp {
                 left, op, right, ..
             }) => {
-                let make_size = match op {
-                    Operator::Add => SizeExpr::add,
-                    Operator::Sub => SizeExpr::sub,
-                    Operator::Mult => SizeExpr::mul,
-                    Operator::FloorDiv => SizeExpr::floor_div,
-                    Operator::Pow => SizeExpr::pow,
+                let make_symint = match op {
+                    Operator::Add => SymInt::add,
+                    Operator::Sub => SymInt::sub,
+                    Operator::Mult => SymInt::mul,
+                    Operator::FloorDiv => SymInt::floor_div,
+                    Operator::Pow => SymInt::pow,
                     _ => {
                         self.error(
                             errors,
@@ -3554,7 +3554,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     DimensionExprContext::Arithmetic,
                 )?;
-                Some(self.heap.mk_size(make_size(left_dim, right_dim)))
+                Some(self.heap.mk_symint(make_symint(left_dim, right_dim)))
             }
             // Anything else is an error
             _ => {
@@ -3586,7 +3586,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let simplified = canonicalize(dim);
 
                 // Validate that literal dimensions are positive
-                if let Type::Size(SizeExpr::Literal(value)) = &simplified
+                if let Type::SymInt(SymInt::Literal(value)) = &simplified
                     && value <= &0
                 {
                     self.error(
@@ -4023,7 +4023,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         self.heap.mk_type_of(shape_to_tuple_carrier(&shape))
     }
 
-    fn parse_single_size_expr_type(
+    fn parse_single_symint_type(
         &self,
         spelling: &str,
         args: &[Expr],
@@ -4054,10 +4054,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if matches!(dim, Type::Any(_)) {
             return dim;
         }
-        let Some(size_expr) = SizeExpr::from_type(&dim) else {
-            unreachable!("SizeExpr::from_type failed on non-Any dimension: {:?}", dim);
+        let Some(symint) = SymInt::from_type(&dim) else {
+            unreachable!("SymInt::from_type failed on non-Any dimension: {:?}", dim);
         };
-        let size = canonicalize(self.heap.mk_size(size_expr));
+        let size = canonicalize(self.heap.mk_symint(symint));
         self.heap.mk_type_of(size)
     }
 

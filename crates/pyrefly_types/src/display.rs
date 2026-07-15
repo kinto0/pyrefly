@@ -728,7 +728,7 @@ impl<'a> TypeDisplayContext<'a> {
                 }
                 Ok(())
             }
-            Type::Size(dim) => output.write_str(&format!("Size[{dim}]")),
+            Type::SymInt(dim) => output.write_str(&format!("Size[{dim}]")),
             Type::TypeVar(t) => {
                 let type_var_qname = self.stdlib.map(|s| s.type_var().qname());
                 output.write_builtin("TypeVar", type_var_qname)?;
@@ -1581,7 +1581,7 @@ pub mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::dimension::SizeExpr;
+    use crate::dimension::SymInt;
     use crate::literal::Lit;
     use crate::literal::LitEnum;
     use crate::literal::LitStyle;
@@ -1693,7 +1693,7 @@ pub mod tests {
         let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
         let shaped = ShapedArrayType::new(
             array.clone(),
-            ShapedArrayShape::new(vec![SizeExpr::Literal(2)]),
+            ShapedArrayShape::new(vec![SymInt::Literal(2)]),
         )
         .to_type();
         let shapeless = ShapedArrayType::shapeless(array).to_type();
@@ -1708,20 +1708,20 @@ pub mod tests {
         let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
 
-        assert_eq!(Type::Size(SizeExpr::Literal(3)).to_string(), "Size[3]");
+        assert_eq!(Type::SymInt(SymInt::Literal(3)).to_string(), "Size[3]");
         assert_eq!(
-            Type::Size(SizeExpr::Symbolic(Box::new(n.clone()))).to_string(),
+            Type::SymInt(SymInt::Symbolic(Box::new(n.clone()))).to_string(),
             "Size[N]"
         );
         assert_eq!(
-            Type::Size(SizeExpr::Mul(
-                Box::new(SizeExpr::Symbolic(Box::new(n))),
-                Box::new(SizeExpr::Symbolic(Box::new(m))),
+            Type::SymInt(SymInt::Mul(
+                Box::new(SymInt::Symbolic(Box::new(n))),
+                Box::new(SymInt::Symbolic(Box::new(m))),
             ))
             .to_string(),
             "Size[(N * M)]"
         );
-        assert_eq!(Type::Size(SizeExpr::Int).to_string(), "Size[int]");
+        assert_eq!(Type::SymInt(SymInt::Int).to_string(), "Size[int]");
     }
 
     #[test]
@@ -1730,11 +1730,11 @@ pub mod tests {
         let n = fake_tparam(0, "N", QuantifiedKind::SymVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::SymVar).to_type(&heap);
         let shape = ShapedArrayShape::new(vec![
-            SizeExpr::Literal(3),
-            SizeExpr::Symbolic(Box::new(n.clone())),
-            SizeExpr::Mul(
-                Box::new(SizeExpr::Symbolic(Box::new(n))),
-                Box::new(SizeExpr::Symbolic(Box::new(m))),
+            SymInt::Literal(3),
+            SymInt::Symbolic(Box::new(n.clone())),
+            SymInt::Mul(
+                Box::new(SymInt::Symbolic(Box::new(n))),
+                Box::new(SymInt::Symbolic(Box::new(m))),
             ),
         ]);
         let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
@@ -1754,8 +1754,7 @@ pub mod tests {
             TArgs::new(shape_param, vec![Type::any_tuple()]),
         );
         let n = fake_tparam(1, "N", QuantifiedKind::SymVar).to_type(&heap);
-        let shape =
-            ShapedArrayShape::new(vec![SizeExpr::Literal(3), SizeExpr::Symbolic(Box::new(n))]);
+        let shape = ShapedArrayShape::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
 
         assert_eq!(
             ShapedArrayType::new(array, shape)

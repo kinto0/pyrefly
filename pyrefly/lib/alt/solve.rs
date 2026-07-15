@@ -16,7 +16,7 @@ use pyrefly_python::ast::Ast;
 use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::short_identifier::ShortIdentifier;
-use pyrefly_types::dimension::SizeExpr;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::shaped_array::ShapedArrayType;
@@ -1988,7 +1988,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let mut default_ty = None;
         if let Some(default_expr) = &tp.default {
             let is_size_bound = |ty: &Type| {
-                matches!(ty, Type::Size(_))
+                matches!(ty, Type::SymInt(_))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Dim"))
                     || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Size"))
             };
@@ -1999,7 +1999,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 && let ruff_python_ast::Number::Int(i) = value
                 && let Some(n) = i.as_i64()
             {
-                Type::Size(SizeExpr::Literal(n))
+                Type::SymInt(SymInt::Literal(n))
             } else {
                 self.expr_untype(
                     default_expr,
@@ -6089,7 +6089,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 // Bare `shape_extensions.Dim` is the gradual size type, the same as
                 // `Size[int]`.
-                // Subscripted Dim[X] is already converted to Type::Size in parse_single_size_expr_type,
+                // Subscripted Dim[X] is already converted to `Type::SymInt` in parse_single_symint_type,
                 // so only the bare case (promoted to ClassType with default targs) reaches here.
                 if let Type::ClassType(cls) = t.as_ref()
                     && cls.has_qname("shape_extensions", "Dim")
@@ -6178,8 +6178,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             )),
             Type::ArgsValue(q) => Some(self.heap.mk_args(*q)),
             Type::KwargsValue(q) => Some(self.heap.mk_kwargs(*q)),
-            // SizeExpr and Tensor are already type forms
-            ty @ Type::Size(_) => Some(ty),
+            // SymInt and Tensor are already type forms.
+            ty @ Type::SymInt(_) => Some(ty),
             ty @ Type::ShapedArray(_) => Some(ty),
             ty @ Type::NNModule(_) => Some(ty),
             ty @ Type::DataFrame(_) => Some(ty),
