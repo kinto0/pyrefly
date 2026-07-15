@@ -102,3 +102,51 @@ pub fn print_error_summary(errors: &[Error]) {
         eprintln!("{}: {}", kind.to_name(), display::count(count, "instance"));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use starlark_map::smallmap;
+
+    use super::*;
+
+    #[test]
+    fn collect_and_sort_breaks_count_ties_by_name() {
+        // "z.py" has the largest total, so it sorts first regardless of input
+        // order. "a.py" and "b.py" tie on total (4), so the file order breaks on
+        // name ascending. Within "b.py" two kinds tie on count (2), so the
+        // per-kind order breaks on error-kind name ascending (`bad-assignment`
+        // before `bad-return`). Input order is deliberately none of these.
+        let input = vec![
+            (
+                "b.py",
+                smallmap! {
+                    ErrorKind::BadReturn => 2,
+                    ErrorKind::BadAssignment => 2,
+                },
+            ),
+            ("z.py", smallmap! { ErrorKind::BadAssignment => 5 }),
+            (
+                "a.py",
+                smallmap! {
+                    ErrorKind::BadReturn => 1,
+                    ErrorKind::BadAssignment => 3,
+                },
+            ),
+        ];
+
+        assert_eq!(
+            collect_and_sort(input),
+            vec![
+                ("z.py", vec![(ErrorKind::BadAssignment, 5)]),
+                (
+                    "a.py",
+                    vec![(ErrorKind::BadAssignment, 3), (ErrorKind::BadReturn, 1)],
+                ),
+                (
+                    "b.py",
+                    vec![(ErrorKind::BadAssignment, 2), (ErrorKind::BadReturn, 2)],
+                ),
+            ],
+        );
+    }
+}
