@@ -1814,6 +1814,136 @@ def symintvar[N: SymIntVar](x: Array[[10], int], n: SymInt[N]) -> None:
 );
 
 testcase!(
+    test_shaped_array_advanced_index_broadcast_and_placement,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymIntTuple, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def f(
+    x: Array[[10, 20, 30, 40], int],
+    row: Array[[3], int],
+    grid: Array[[2, 1], int],
+    bad: Array[[4], int],
+    scalar: Array[[], int],
+    one_dimensional: Array[[10], int],
+    pair: tuple[int, int],
+    tuple_key: tuple[None, Array[[3], int]],
+    unbounded: tuple[int, ...],
+    gradual_list: list[int],
+) -> None:
+    reveal_type(x[pair])  # E: revealed type: Array[[30, 40], int]
+    reveal_type(x[pair, grid])  # E: revealed type: Array[[2, 2, 30, 40], int]
+    reveal_type(x[(pair,)])  # E: revealed type: Array[[2, 20, 30, 40], int]
+    reveal_type(x[()])  # E: revealed type: Array[[10, 20, 30, 40], int]
+    reveal_type(x[[0, 1]])  # E: revealed type: Array[[2, 20, 30, 40], int]
+    reveal_type(x[[]])  # E: revealed type: Array[[0, 20, 30, 40], int]
+    reveal_type(x[gradual_list])  # E: revealed type: Array[[int, 20, 30, 40], int]
+    reveal_type(x[[*gradual_list]])  # E: revealed type: Array[[int, 20, 30, 40], int]
+    reveal_type(x[tuple_key])  # E: revealed type: Array[[1, 3, 20, 30, 40], int]
+    reveal_type(x[unbounded])  # E: revealed type: Array
+    reveal_type(x[(unbounded,)])  # E: revealed type: Array[[int, 20, 30, 40], int]
+    reveal_type(x[gradual_list, grid])  # E: revealed type: Array[[2, int, 30, 40], int]
+    reveal_type(x[unbounded, grid])  # E: revealed type: Array[[2, int, 30, 40], int]
+    reveal_type(x[row, grid])  # E: revealed type: Array[[2, 3, 30, 40], int]
+    reveal_type(x[row, :, grid])  # E: revealed type: Array[[2, 3, 20, 40], int]
+    reveal_type(x[row, 0, grid])  # E: revealed type: Array[[2, 3, 40], int]
+    reveal_type(x[0, row])  # E: revealed type: Array[[3, 30, 40], int]
+    reveal_type(x[:, 0, row])  # E: revealed type: Array[[10, 3, 40], int]
+    reveal_type(x[0, :, row])  # E: revealed type: Array[[20, 3, 40], int]
+    reveal_type(x[0, ..., row])  # E: revealed type: Array[[20, 30, 3], int]
+    reveal_type(x[:, row, :, 0])  # E: revealed type: Array[[10, 3, 30], int]
+    reveal_type(x[:, row, ..., grid, :])  # E: revealed type: Array[[2, 3, 10, 40], int]
+    reveal_type(x[row, ..., grid])  # E: revealed type: Array[[2, 3, 20, 30], int]
+    reveal_type(x[(0, 1, 2), grid])  # E: revealed type: Array[[2, 3, 30, 40], int]
+    reveal_type(x[scalar, scalar])  # E: revealed type: Array[[30, 40], int]
+    x[(0, 1, 2), bad]  # E: Cannot broadcast dimension SymInt[3] with dimension SymInt[4] at position 0
+    one_dimensional[(0, 1), bad]  # E: Too many indices for tensor: got 2, expected at most 1
+"#,
+);
+
+testcase!(
+    test_shaped_array_advanced_index_frontend_fallbacks,
+    shaped_array_env(),
+    r#"
+from typing import Any, Literal, reveal_type
+from types import EllipsisType
+from shape_extensions import SymInt, SymIntTuple, SymIntVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+@shaped_array(shape="Shape")
+class ArrayWithDevice[Shape: SymIntTuple, DType, Device]: ...
+
+class Unsupported: ...
+
+def fallbacks[T, *Ts](
+    x: Array[[10, 20, 30, 40], int],
+    integer_index: Array[[3], int],
+    index_with_device: ArrayWithDevice[[3], int, str],
+    bool_index: Array[[3], bool],
+    float_index: Array[[3], float],
+    str_index: Array[[3], str],
+    any_dtype_index: Array[[3], Any],
+    unsupported_index: Array[[3], Unsupported],
+    any_index: Any,
+    mixed: int | str,
+    strings: list[str],
+    anys: list[Any],
+    bools: list[bool],
+    raw: list,
+    nested: list[list[int]],
+    bool_literal: Literal[True],
+    unpacked: tuple[*Ts],
+    stored_slice: slice,
+    stored_ellipsis: EllipsisType,
+    slice_key: tuple[int, slice],
+    ellipsis_key: tuple[int, EllipsisType],
+    unconstrained: T,
+    none_index: None,
+) -> None:
+    reveal_type(x[integer_index])  # E: revealed type: Array[[3, 20, 30, 40], int]
+    reveal_type(x[index_with_device])  # E: revealed type: Array
+    reveal_type(x[bool_index])  # E: revealed type: Array
+    reveal_type(x[float_index])  # E: revealed type: Array
+    reveal_type(x[str_index])  # E: revealed type: Array
+    reveal_type(x[any_dtype_index])  # E: revealed type: Array
+    reveal_type(x[unsupported_index])  # E: revealed type: Array
+    reveal_type(x[any_index])  # E: revealed type: Array
+    reveal_type(x[mixed])  # E: revealed type: Array
+    reveal_type(x[strings])  # E: revealed type: Array
+    reveal_type(x[[*strings]])  # E: revealed type: Array
+    reveal_type(x[anys])  # E: revealed type: Array
+    reveal_type(x[bools])  # E: revealed type: Array
+    reveal_type(x[raw])  # E: revealed type: Array
+    reveal_type(x[nested])  # E: revealed type: Array
+    reveal_type(x[True])  # E: revealed type: Array
+    reveal_type(x[bool_literal])  # E: revealed type: Array
+    reveal_type(x[unpacked])  # E: revealed type: Array
+    reveal_type(x[(unpacked,)])  # E: revealed type: Array
+    reveal_type(x[unconstrained])  # E: revealed type: Array
+    reveal_type(x[stored_slice])  # E: revealed type: Array
+    reveal_type(x[stored_ellipsis])  # E: revealed type: Array
+    reveal_type(x[0, stored_slice])  # E: revealed type: Array
+    reveal_type(x[0, stored_ellipsis])  # E: revealed type: Array
+    reveal_type(x[slice_key])  # E: revealed type: Array
+    reveal_type(x[ellipsis_key])  # E: revealed type: Array
+    reveal_type(x[none_index])  # E: revealed type: Array[[1, 10, 20, 30, 40], int]
+
+def symint_sequence[N: SymIntVar](
+    x: Array[[10, 20, 30, 40], int],
+    pair: tuple[SymInt[N], int],
+) -> None:
+    reveal_type(x[pair])  # E: revealed type: Array[[30, 40], int]
+    reveal_type(x[(pair,)])  # E: revealed type: Array[[2, 20, 30, 40], int]
+"#,
+);
+
+testcase!(
     test_shaped_array_multi_axis_slice_bound_kind_recovery,
     shaped_array_env(),
     r#"
@@ -1959,9 +2089,9 @@ def f(
     reveal_type(z_reverse.shape)  # E: revealed type: SymIntTuple[5, 5]
 
     z_one = one + gradual
-    reveal_type(z_one.shape)  # E: revealed type: SymIntTuple[1, 5]
+    reveal_type(z_one.shape)  # E: revealed type: SymIntTuple[int, 5]
     z_one_reverse = gradual + one
-    reveal_type(z_one_reverse.shape)  # E: revealed type: SymIntTuple[1, 5]
+    reveal_type(z_one_reverse.shape)  # E: revealed type: SymIntTuple[int, 5]
 
     known + gradual_then_mismatch  # E: Cannot broadcast dimension SymInt[5] with dimension SymInt[4] at position 1
     gradual_then_mismatch + known  # E: Cannot broadcast dimension SymInt[4] with dimension SymInt[5] at position 1

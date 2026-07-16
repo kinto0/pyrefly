@@ -305,6 +305,57 @@ impl Display for ConditionRedundantReason {
 
 pub(crate) const MAX_TUPLE_LENGTH: usize = 256;
 
+fn is_integer_index_scalar_type(ty: &Type) -> bool {
+    match ty {
+        Type::Literal(lit) => matches!(lit.value, Lit::Int(_)),
+        Type::ClassType(cls) => cls.is_builtin("int"),
+        Type::SymInt(_) => true,
+        Type::Union(union) => {
+            !union.members.is_empty() && union.members.iter().all(is_integer_index_scalar_type)
+        }
+        _ => false,
+    }
+}
+
+fn classify_shaped_array_index_type(ty: &Type) -> Option<IndexOp> {
+    match ty {
+        Type::None => Some(IndexOp::NewAxis),
+        Type::ShapedArray(index) => {
+            let shape_index = index.tuple_carrier_shape_arg_index()?;
+            let targs = index.base_class.targs().as_slice();
+            targs
+                .get(shape_index)
+                .expect("registered shape index must reference a type argument");
+            let mut scalar_types = targs
+                .iter()
+                .enumerate()
+                .filter_map(|(i, ty)| (i != shape_index).then_some(ty));
+            let scalar_type = scalar_types.next()?;
+            if scalar_types.next().is_some() || !is_integer_index_scalar_type(scalar_type) {
+                return None;
+            }
+            index
+                .shape()
+                .as_concrete()
+                .map(|dims| IndexOp::ShapedArrayIndex(dims.to_vec()))
+        }
+        Type::Tuple(Tuple::Concrete(elements))
+            if elements.iter().all(is_integer_index_scalar_type) =>
+        {
+            Some(IndexOp::Fancy(SymInt::Literal(elements.len() as i64)))
+        }
+        Type::Tuple(Tuple::Unbounded(element)) if is_integer_index_scalar_type(element) => {
+            Some(IndexOp::Fancy(SymInt::Int))
+        }
+        Type::ClassType(cls) if cls.has_qname("builtins", "list") => match cls.targs().as_slice() {
+            [element] if is_integer_index_scalar_type(element) => Some(IndexOp::Fancy(SymInt::Int)),
+            _ => None,
+        },
+        _ if is_integer_index_scalar_type(ty) => Some(IndexOp::Int),
+        _ => None,
+    }
+}
+
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     fn synthesized_functional_class_type(&self, call: &ExprCall) -> Option<Type> {
         let anon_key = Key::Anon(call.range);
@@ -3045,45 +3096,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             type_to_dim(&ty).unwrap_or(SymInt::Int)
         };
 
-        // Classify a non-slice, non-ellipsis index expression into an IndexOp.
-        // Returns None to bail to shapeless for unclassifiable indices.
-        let classify_index_expr = |expr: &Expr| -> Option<IndexOp> {
-            // None literal → NewAxis (inserts dim of size 1)
-            if matches!(expr, Expr::NoneLiteral(_)) {
-                return Some(IndexOp::NewAxis);
-            }
-            let idx_ty = self.expr_infer(expr, errors);
-            // None type (e.g. from a variable typed as None)
-            if matches!(&idx_ty, Type::None) {
-                return Some(IndexOp::NewAxis);
-            }
-            if let Type::ShapedArray(ref idx_shaped_array) = idx_ty {
-                if let Some(dims) = idx_shaped_array.shape().as_concrete() {
-                    return Some(IndexOp::ShapedArrayIndex(dims.to_vec()));
-                }
-                return None; // shapeless index tensor → bail
-            }
-            if let Type::Tuple(ref tuple) = idx_ty {
-                return match tuple {
-                    Tuple::Concrete(elems) => {
-                        Some(IndexOp::Fancy(SymInt::Literal(elems.len() as i64)))
-                    }
-                    _ => None,
-                };
-            }
-            if let Type::ClassType(ref cls) = idx_ty
-                && cls.has_qname("builtins", "list")
-            {
-                return Some(IndexOp::Fancy(SymInt::Int));
-            }
-            let is_int = matches!(&idx_ty, Type::Literal(lit) if lit.value.as_index_i64().is_some())
-                || matches!(&idx_ty, Type::ClassType(cls) if cls.is_builtin("int"))
-                || matches!(&idx_ty, Type::SymInt(_));
-            if is_int { Some(IndexOp::Int) } else { None }
-        };
-
-        // Classify any index expression (including slices) into an IndexOp.
-        let classify = |expr: &Expr| -> Option<IndexOp> {
+        let classify = |expr: &Expr, inferred: Option<&Type>| -> Option<IndexOp> {
             match expr {
                 Expr::Slice(ExprSlice {
                     lower, upper, step, ..
@@ -3097,7 +3110,21 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         step: step_val,
                     })
                 }
-                _ => classify_index_expr(expr),
+                Expr::List(ExprList { elts, .. })
+                    if elts.iter().all(|elt| !matches!(elt, Expr::Starred(_)))
+                        && elts.iter().all(|elt| {
+                            matches!(
+                                classify_shaped_array_index_type(&self.expr_infer(elt, errors)),
+                                Some(IndexOp::Int)
+                            )
+                        }) =>
+                {
+                    Some(IndexOp::Fancy(SymInt::Literal(elts.len() as i64)))
+                }
+                _ => match inferred {
+                    Some(ty) => classify_shaped_array_index_type(ty),
+                    None => classify_shaped_array_index_type(&self.expr_infer(expr, errors)),
+                },
             }
         };
 
@@ -3153,8 +3180,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 };
 
                 // Classify all index expressions into IndexOps
-                let pre_ops: Option<Vec<IndexOp>> = pre_exprs.iter().map(&classify).collect();
-                let post_ops: Option<Vec<IndexOp>> = post_exprs.iter().map(classify).collect();
+                let pre_ops: Option<Vec<IndexOp>> =
+                    pre_exprs.iter().map(|expr| classify(expr, None)).collect();
+                let post_ops: Option<Vec<IndexOp>> =
+                    post_exprs.iter().map(|expr| classify(expr, None)).collect();
                 let (Some(pre_ops), Some(post_ops)) = (pre_ops, post_ops) else {
                     return self.shaped_array_shapeless(shaped_array_type).to_type();
                 };
@@ -3171,34 +3200,58 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
                 }
             }
-            // Integer index, tensor index, or other
             _ => {
-                let idx_type = self.expr_infer(index, errors);
-                let is_int_index = matches!(&idx_type, Type::Literal(lit) if lit.value.as_index_i64().is_some())
-                    || matches!(&idx_type, Type::ClassType(cls) if cls.is_builtin("int"));
-
-                if is_int_index {
-                    match index_shape_int(&shaped_array_type.shape()) {
-                        Ok(shape) => self
-                            .shaped_array_with_shape(shaped_array_type, shape)
-                            .to_type(),
-                        Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
-                    }
-                } else if let Type::ShapedArray(ref idx_shaped_array) = idx_type {
-                    // Tensor indexing: tensor[index_tensor] replaces first dim with index shape
-                    let idx_shape = idx_shaped_array.shape();
-                    let Some(idx_dims) = idx_shape.as_concrete() else {
+                let index_ty = self.expr_infer(index, errors);
+                if let Type::Tuple(tuple) = &index_ty {
+                    let Tuple::Concrete(elements) = tuple else {
                         return self.shaped_array_shapeless(shaped_array_type).to_type();
                     };
-                    match index_shape_tensor(&shaped_array_type.shape(), idx_dims) {
+                    let Some(ops) = elements
+                        .iter()
+                        .map(classify_shaped_array_index_type)
+                        .collect::<Option<Vec<_>>>()
+                    else {
+                        return self.shaped_array_shapeless(shaped_array_type).to_type();
+                    };
+                    return match index_shape_multi(&shaped_array_type.shape(), &ops, &[], false) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),
                         Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
+                    };
+                }
+
+                match classify(index, Some(&index_ty)) {
+                    Some(IndexOp::Int) => match index_shape_int(&shaped_array_type.shape()) {
+                        Ok(shape) => self
+                            .shaped_array_with_shape(shaped_array_type, shape)
+                            .to_type(),
+                        Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
+                    },
+                    Some(IndexOp::ShapedArrayIndex(idx_dims)) => {
+                        match index_shape_tensor(&shaped_array_type.shape(), &idx_dims) {
+                            Ok(shape) => self
+                                .shaped_array_with_shape(shaped_array_type, shape)
+                                .to_type(),
+                            Err(err) => {
+                                self.error(errors, range, ErrorKind::BadIndex, err.to_string())
+                            }
+                        }
                     }
-                } else {
-                    // Unknown index type - return shapeless
-                    self.shaped_array_shapeless(shaped_array_type).to_type()
+                    Some(op @ IndexOp::Fancy(_)) | Some(op @ IndexOp::NewAxis) => {
+                        match index_shape_multi(&shaped_array_type.shape(), &[op], &[], false) {
+                            Ok(shape) => self
+                                .shaped_array_with_shape(shaped_array_type, shape)
+                                .to_type(),
+                            Err(err) => {
+                                self.error(errors, range, ErrorKind::BadIndex, err.to_string())
+                            }
+                        }
+                    }
+                    Some(IndexOp::Slice { .. }) => {
+                        unreachable!("slice indices are handled before generic index dispatch")
+                    }
+                    None => self.shaped_array_shapeless(shaped_array_type).to_type(),
                 }
             }
         }
