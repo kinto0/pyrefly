@@ -1376,12 +1376,34 @@ testcase!(
     test_shaped_array_rejects_invalid_tuple_carrier_for_syminttuple_bound,
     shaped_array_env(),
     r#"
+from typing import Literal
 from shape_extensions import SymIntTuple, shaped_array
 
 @shaped_array(shape="Shape")
 class Array[Shape: SymIntTuple, DType]: ...
 
 def f(bad: Array[tuple[str], int]) -> None: ...  # E: Invalid shaped-array shape carrier `tuple[str]`
+def g(bad: Array[tuple[Literal[2], str, Literal[4]], int]) -> None: ...  # E: Invalid shaped-array shape carrier `tuple[Literal[2], str, Literal[4]]`
+def h(bad: Array[tuple[Literal[1], *tuple[str], Literal[2]], int]) -> None: ...  # E: Invalid shaped-array shape carrier `tuple[Literal[1], str, Literal[2]]`
+"#,
+);
+
+testcase!(
+    test_shaped_array_recovers_invalid_solved_unpacked_middle,
+    shaped_array_env(),
+    r#"
+from typing import Literal, reveal_type
+from shape_extensions import shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]: ...
+
+def make[*S](shape: tuple[*S]) -> Array[tuple[Literal[2], *S, Literal[4]], int]: ...
+
+def f(shape: tuple[str, str]) -> None:
+    x = make(shape)
+    reveal_type(x)  # E: revealed type: Array[[2, int, int, 4], int]
+    reveal_type(x[0])  # E: revealed type: Array[[int, int, 4], int]
 "#,
 );
 

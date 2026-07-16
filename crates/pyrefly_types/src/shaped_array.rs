@@ -24,6 +24,7 @@ use crate::dimension::gradual_size;
 use crate::dimension::is_gradual_size;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
+use crate::quantified::QuantifiedKind;
 use crate::tuple::Tuple;
 use crate::types::Type;
 
@@ -347,25 +348,53 @@ impl SymIntTuple {
             }
         }
 
-        if let Type::Tuple(Tuple::Concrete(dims)) = &middle
-            && let Some(dims) = dims
+        if let Type::Tuple(Tuple::Concrete(dims)) = &middle {
+            let dims = dims
                 .iter()
-                .map(carrier_element_to_dim)
-                .collect::<Option<Vec<_>>>()
-        {
+                .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size));
             prefix.extend(dims);
             prefix.extend(suffix);
             return Self::from_types(prefix);
         }
 
-        if prefix.is_empty()
-            && suffix.is_empty()
-            && let Type::Tuple(Tuple::Unbounded(elt)) = &middle
-            && elt.is_any()
-        {
-            Self::shapeless()
-        } else {
-            Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+        if let Type::Tuple(Tuple::Unpacked(unpacked)) = &middle {
+            let (inner_prefix, inner_middle, inner_suffix) = &**unpacked;
+            prefix.extend(
+                inner_prefix
+                    .iter()
+                    .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size)),
+            );
+            let mut combined_suffix: Vec<Type> = inner_suffix
+                .iter()
+                .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size))
+                .collect();
+            combined_suffix.append(&mut suffix);
+            return Self::unpacked(prefix, inner_middle.clone(), combined_suffix);
+        }
+
+        match middle {
+            Type::Tuple(Tuple::Unbounded(elt)) => {
+                if prefix.is_empty() && suffix.is_empty() && elt.is_any() {
+                    Self::shapeless()
+                } else {
+                    let middle = Type::Tuple(Tuple::Unbounded(Box::new(
+                        unbounded_middle_element_to_dim(&elt),
+                    )));
+                    Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+                }
+            }
+            Type::Any(_) => {
+                if prefix.is_empty() && suffix.is_empty() {
+                    Self::shapeless()
+                } else {
+                    let middle = Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())));
+                    Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+                }
+            }
+            middle if is_unresolved_shape_middle(&middle) => {
+                Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+            }
+            _ => Self::shapeless(),
         }
     }
 
@@ -631,9 +660,23 @@ impl Display for SymIntTuple {
                 } else {
                     format!(", {}", commas_iter(|| suffix.iter().map(fmt_shape_dim)))
                 };
-                write!(f, "{}*{}{}", prefix_str, middle, suffix_str)
+                write!(
+                    f,
+                    "{}*{}{}",
+                    prefix_str,
+                    fmt_unpacked_middle(middle),
+                    suffix_str
+                )
             }
         }
+    }
+}
+
+fn fmt_unpacked_middle(middle: &Type) -> String {
+    match middle {
+        Type::Tuple(Tuple::Unbounded(elt)) if elt.is_any() => "tuple[int, ...]".to_owned(),
+        Type::Tuple(Tuple::Unbounded(elt)) if is_gradual_size(elt) => "tuple[int, ...]".to_owned(),
+        _ => format!("{middle}"),
     }
 }
 
@@ -655,7 +698,7 @@ fn fmt_tuple_carrier(shape: &SymIntTuple) -> String {
                 return middle.to_string();
             }
             let mut parts: Vec<String> = prefix.iter().map(fmt_shape_dim).collect();
-            parts.push(format!("*{middle}"));
+            parts.push(format!("*{}", fmt_unpacked_middle(middle)));
             parts.extend(suffix.iter().map(fmt_shape_dim));
             format!("[{}]", parts.join(", "))
         }
@@ -697,7 +740,9 @@ fn dim_to_carrier_element(dim: &Type) -> Type {
 fn is_valid_internal_dim(dim: &Type) -> bool {
     match dim {
         Type::SymInt(expr) => is_valid_internal_symint(expr),
-        Type::Quantified(_) | Type::Var(_) | Type::Any(_) => true,
+        Type::Quantified(q) => q.kind == QuantifiedKind::SymIntVar,
+        Type::TypeVar(tv) => tv.kind() == QuantifiedKind::SymIntVar,
+        Type::Var(_) | Type::Any(_) => true,
         _ => false,
     }
 }
@@ -732,9 +777,13 @@ fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
         Type::SymInt(expr) if is_valid_internal_symint(expr) => {
             Some(canonicalize_dim(carrier.clone()))
         }
-        Type::Quantified(_) | Type::Var(_) | Type::Any(_) => {
+        Type::Quantified(q) if q.kind == QuantifiedKind::SymIntVar => {
             Some(canonicalize_dim(carrier.clone()))
         }
+        Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => {
+            Some(canonicalize_dim(carrier.clone()))
+        }
+        Type::Var(_) | Type::Any(_) => Some(canonicalize_dim(carrier.clone())),
         Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
         _ => None,
     }
@@ -768,8 +817,27 @@ pub fn is_tuple_carrier_shape_middle(ty: &Type) -> bool {
     // tuple-carrier syntax, e.g. `Array[S, DType]` -> `Unpacked([], S, [])`.
     // Scalar symbolic dimensions use `SymInt`/`SymIntVar` and must not reach
     // this fallback as bare TypeVars.
-    matches!(ty, Type::Var(_) | Type::TypeVar(_))
-        || matches!(ty, Type::Quantified(q) if q.is_type_var())
+    matches!(ty, Type::Var(_))
+        || matches!(ty, Type::TypeVar(tv) if tv.kind() == QuantifiedKind::TypeVar)
+        || matches!(ty, Type::Quantified(q) if q.kind == QuantifiedKind::TypeVar)
+}
+
+fn is_unresolved_shape_middle(ty: &Type) -> bool {
+    // Tuple-carrier shape variables are scalar TypeVars syntactically, but in an
+    // unpacked shape middle they stand for an unresolved shape tuple.
+    matches!(ty, Type::Var(_) | Type::TypeVarTuple(_))
+        || matches!(ty, Type::Quantified(q) if q.kind == QuantifiedKind::TypeVarTuple)
+        || is_tuple_carrier_shape_middle(ty)
+}
+
+fn unbounded_middle_element_to_dim(elt: &Type) -> Type {
+    if elt.is_any() {
+        gradual_size()
+    } else if matches!(elt, Type::ClassType(cls) if cls.is_builtin("int")) {
+        elt.clone()
+    } else {
+        carrier_element_to_dim(elt).unwrap_or_else(gradual_size)
+    }
 }
 
 /// Convert a projected tuple-carrier shape back to the class type argument.
@@ -818,6 +886,7 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
                 .iter()
                 .map(carrier_element_to_dim)
                 .collect::<Option<Vec<_>>>()?;
+            validate_tuple_carrier_unpacked_middle(middle)?;
             Some(SymIntTuple::unpacked(prefix, middle.clone(), suffix))
         }
         Type::Tuple(Tuple::Unbounded(_)) => Some(shapeless_shape()),
@@ -826,6 +895,33 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
             carrier.clone(),
             Vec::new(),
         )),
+        _ => None,
+    }
+}
+
+fn validate_tuple_carrier_unpacked_middle(middle: &Type) -> Option<()> {
+    match middle {
+        Type::Tuple(Tuple::Concrete(elts)) => {
+            elts.iter()
+                .map(carrier_element_to_dim)
+                .collect::<Option<Vec<_>>>()?;
+            Some(())
+        }
+        Type::Tuple(Tuple::Unpacked(unpacked)) => {
+            let (prefix, middle, suffix) = &**unpacked;
+            prefix
+                .iter()
+                .map(carrier_element_to_dim)
+                .collect::<Option<Vec<_>>>()?;
+            suffix
+                .iter()
+                .map(carrier_element_to_dim)
+                .collect::<Option<Vec<_>>>()?;
+            validate_tuple_carrier_unpacked_middle(middle)
+        }
+        Type::Tuple(Tuple::Unbounded(_)) => None,
+        middle if is_unresolved_shape_middle(middle) => Some(()),
+        Type::SymIntTuple(_) => Some(()),
         _ => None,
     }
 }
@@ -1469,6 +1565,8 @@ mod tests {
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
+    use crate::type_var::TypeVar;
+    use crate::type_var_tuple::TypeVarTuple;
     use crate::types::AnyStyle;
     use crate::types::TArgs;
     use crate::types::TParams;
@@ -1489,12 +1587,16 @@ mod tests {
         Type::Tuple(Tuple::Concrete(elts))
     }
 
-    fn fake_class_type(module: &str, name: &str) -> ClassType {
-        let module = Module::new(
+    fn fake_module(module: &str) -> Module {
+        Module::new(
             ModuleName::from_str(module),
             ModulePath::filesystem(PathBuf::from(module)),
             Arc::new("fake module contents".to_owned()),
-        );
+        )
+    }
+
+    fn fake_class_type(module: &str, name: &str) -> ClassType {
+        let module = fake_module(module);
         ClassType::new(
             Class::new(
                 ClassDefIndex(0),
@@ -1504,6 +1606,25 @@ mod tests {
                 None,
             ),
             TArgs::default(),
+        )
+    }
+
+    fn fake_type_var(name: &str, kind: QuantifiedKind) -> TypeVar {
+        TypeVar::new_with_kind(
+            Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
+            fake_module("__test__"),
+            kind,
+            Restriction::Unrestricted,
+            None,
+            PreInferenceVariance::Invariant,
+        )
+    }
+
+    fn fake_type_var_tuple(name: &str) -> TypeVarTuple {
+        TypeVarTuple::new(
+            Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
+            fake_module("__test__"),
+            None,
         )
     }
 
@@ -1572,14 +1693,14 @@ mod tests {
 
     #[test]
     fn from_tuple_wraps_valid_unbounded_shape_middle() {
-        let elt = Type::ClassType(fake_class_type("torch", "Materialization"));
+        let elt = literal(5);
         let shape = SymIntTuple::from_tuple(Tuple::Unbounded(Box::new(elt.clone())));
 
         assert_eq!(
             shape,
             SymIntTuple::unpacked(
                 Vec::new(),
-                Type::Tuple(Tuple::Unbounded(Box::new(elt.clone()))),
+                Type::Tuple(Tuple::Unbounded(Box::new(size(5)))),
                 Vec::new(),
             )
         );
@@ -1587,7 +1708,7 @@ mod tests {
             shape.to_tuple_type(),
             Type::Tuple(Tuple::Unpacked(Box::new((
                 Vec::new(),
-                Type::Tuple(Tuple::Unbounded(Box::new(elt))),
+                Type::Tuple(Tuple::Unbounded(Box::new(size(5)))),
                 Vec::new(),
             ))))
         );
@@ -1620,7 +1741,7 @@ mod tests {
             shape,
             SymIntTuple::unpacked(
                 vec![size(1)],
-                Type::Tuple(Tuple::Unbounded(Box::new(elt))),
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
                 vec![size(2)],
             )
         );
@@ -1654,35 +1775,8 @@ mod tests {
 
     #[test]
     fn unpacked_projection_preserves_shape() {
-        let middle = Type::any_tuple();
         let projected =
-            SymIntTuple::unpacked(vec![size(2)], middle.clone(), vec![size(3)]).to_tuple_type();
-
-        assert_eq!(
-            projected,
-            Type::Tuple(Tuple::Unpacked(Box::new((
-                vec![size(2)],
-                middle,
-                vec![size(3)],
-            ))))
-        );
-    }
-
-    #[test]
-    fn unpacked_carrier_middle_projects_to_gradual_symint_tuple() {
-        let s = Type::Quantified(Box::new(Quantified::new(
-            QuantifiedIdentity::new(
-                ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
-                QuantifiedOrigin::Pep695,
-            ),
-            Name::new("S"),
-            QuantifiedKind::TypeVar,
-            None,
-            Restriction::Unrestricted,
-            PreInferenceVariance::Invariant,
-        )));
-        let projected = SymIntTuple::unpacked(vec![size(2)], s, vec![size(3)]).to_tuple_type();
+            SymIntTuple::unpacked(vec![size(2)], Type::any_tuple(), vec![size(3)]).to_tuple_type();
 
         assert_eq!(
             projected,
@@ -1691,6 +1785,31 @@ mod tests {
                 Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
                 vec![size(3)],
             ))))
+        );
+    }
+
+    #[test]
+    fn unpacked_typevartuple_middle_projects_as_variadic() {
+        let s = Type::Quantified(Box::new(Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("__test__"),
+                AnchorIndex::first(TextRange::default()),
+                QuantifiedOrigin::Pep695,
+            ),
+            Name::new("S"),
+            QuantifiedKind::TypeVarTuple,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )));
+        let projected =
+            SymIntTuple::unpacked(vec![size(2)], s.clone(), vec![size(3)]).to_tuple_type();
+
+        assert_eq!(
+            projected,
+            Type::Tuple(Tuple::Unpacked(Box::new(
+                (vec![size(2)], s, vec![size(3)],)
+            )))
         );
     }
 
@@ -1744,18 +1863,7 @@ mod tests {
 
     #[test]
     fn raw_internal_carrier_elements_pass_through() {
-        let quantified = Type::Quantified(Box::new(Quantified::new(
-            QuantifiedIdentity::new(
-                ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
-                QuantifiedOrigin::Pep695,
-            ),
-            Name::new("T"),
-            QuantifiedKind::TypeVar,
-            None,
-            Restriction::Unrestricted,
-            PreInferenceVariance::Invariant,
-        )));
+        let quantified = Type::Quantified(Box::new(fake_tparam("N", QuantifiedKind::SymIntVar)));
         let dims = vec![
             size(8),
             Type::Any(AnyStyle::Explicit),
@@ -1771,18 +1879,7 @@ mod tests {
 
     #[test]
     fn symint_carriers_with_internal_operands_pass_through() {
-        let quantified = Type::Quantified(Box::new(Quantified::new(
-            QuantifiedIdentity::new(
-                ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
-                QuantifiedOrigin::Pep695,
-            ),
-            Name::new("T"),
-            QuantifiedKind::TypeVar,
-            None,
-            Restriction::Unrestricted,
-            PreInferenceVariance::Invariant,
-        )));
+        let quantified = Type::Quantified(Box::new(fake_tparam("N", QuantifiedKind::SymIntVar)));
         let symint = Type::SymInt(SymInt::add(quantified.clone(), size(1)));
 
         assert_eq!(
@@ -1918,9 +2015,228 @@ mod tests {
     }
 
     #[test]
+    fn invalid_concrete_tuple_middle_recovers_with_gradual_dims() {
+        let middle = Type::Tuple(Tuple::Concrete(vec![
+            literal(2),
+            Type::ClassType(fake_class_type("builtins", "str")),
+            size(3),
+            bool_literal(),
+            Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar))),
+            Type::Quantified(Box::new(fake_tparam("P", QuantifiedKind::ParamSpec))),
+            Type::Quantified(Box::new(fake_tparam("Ts", QuantifiedKind::TypeVarTuple))),
+        ]));
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(4)]);
+        let expected = SymIntTuple::from_types(vec![
+            size(1),
+            size(2),
+            gradual_size(),
+            size(3),
+            gradual_size(),
+            gradual_size(),
+            gradual_size(),
+            gradual_size(),
+            size(4),
+        ]);
+
+        assert!(matches!(shape.as_tuple(), Tuple::Concrete(_)));
+        assert_eq!(shape, expected);
+        assert_eq!(shape.to_tuple_type(), expected.to_tuple_type());
+        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+    }
+
+    #[test]
+    fn invalid_non_tuple_middle_recovers_as_shapeless() {
+        let middle = Type::ClassType(fake_class_type("builtins", "str"));
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+        assert_eq!(shape, SymIntTuple::shapeless());
+        assert_eq!(
+            shape.to_tuple_type(),
+            Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
+        );
+        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+    }
+
+    #[test]
+    fn any_middle_recovers_with_gradual_unbounded_middle() {
+        let shapeless =
+            SymIntTuple::unpacked(Vec::new(), Type::Any(AnyStyle::Implicit), Vec::new());
+        assert_eq!(shapeless, SymIntTuple::shapeless());
+
+        let shape =
+            SymIntTuple::unpacked(vec![size(1)], Type::Any(AnyStyle::Implicit), vec![size(2)]);
+
+        assert_eq!(
+            shape,
+            SymIntTuple::unpacked(
+                vec![size(1)],
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
+                vec![size(2)],
+            )
+        );
+        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+    }
+
+    #[test]
+    fn invalid_unbounded_tuple_middle_element_recovers_to_gradual() {
+        let middle = Type::Tuple(Tuple::Unbounded(Box::new(Type::ClassType(
+            fake_class_type("builtins", "str"),
+        ))));
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+        assert_eq!(
+            shape,
+            SymIntTuple::unpacked(
+                vec![size(1)],
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
+                vec![size(2)],
+            )
+        );
+        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+    }
+
+    #[test]
+    fn invalid_quantified_unbounded_middle_elements_recover_to_gradual() {
+        let invalid_elements = [
+            Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar))),
+            Type::Quantified(Box::new(fake_tparam("P", QuantifiedKind::ParamSpec))),
+            Type::Quantified(Box::new(fake_tparam("Ts", QuantifiedKind::TypeVarTuple))),
+            Type::TypeVarTuple(fake_type_var_tuple("Ts")),
+        ];
+        for elt in invalid_elements {
+            let middle = Type::Tuple(Tuple::Unbounded(Box::new(elt)));
+            let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+            assert_eq!(
+                shape,
+                SymIntTuple::unpacked(
+                    vec![size(1)],
+                    Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
+                    vec![size(2)],
+                )
+            );
+            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        }
+    }
+
+    #[test]
+    fn valid_unbounded_middle_elements_are_canonicalized() {
+        let quantified = Type::Quantified(Box::new(fake_tparam("N", QuantifiedKind::SymIntVar)));
+        let type_var = Type::TypeVar(fake_type_var("N", QuantifiedKind::SymIntVar));
+        let int_type = Type::ClassType(fake_class_type("builtins", "int"));
+        for (elt, expected) in [
+            (literal(5), size(5)),
+            (Type::Any(AnyStyle::Explicit), gradual_size()),
+            (int_type.clone(), int_type),
+            (
+                quantified.clone(),
+                Type::SymInt(SymInt::Symbolic(Box::new(quantified))),
+            ),
+            (
+                type_var.clone(),
+                Type::SymInt(SymInt::Symbolic(Box::new(type_var))),
+            ),
+            (Type::Var(Var::ZERO), Type::Var(Var::ZERO)),
+            (
+                Type::SymInt(SymInt::add(size(1), size(2))),
+                Type::SymInt(SymInt::Literal(3)),
+            ),
+        ] {
+            let middle = Type::Tuple(Tuple::Unbounded(Box::new(elt)));
+            let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+            assert_eq!(
+                shape,
+                SymIntTuple::unpacked(
+                    vec![size(1)],
+                    Type::Tuple(Tuple::Unbounded(Box::new(expected))),
+                    vec![size(2)],
+                )
+            );
+            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        }
+    }
+
+    #[test]
+    fn invalid_quantified_middle_kinds_recover_as_shapeless() {
+        for kind in [QuantifiedKind::SymIntVar, QuantifiedKind::ParamSpec] {
+            let middle = Type::Quantified(Box::new(fake_tparam("Invalid", kind)));
+            let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+            assert_eq!(shape, SymIntTuple::shapeless());
+            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        }
+    }
+
+    #[test]
+    fn scalar_typevar_middle_is_preserved_as_tuple_carrier() {
+        let quantified = Type::Quantified(Box::new(fake_tparam("Shape", QuantifiedKind::TypeVar)));
+        let whole_shape = SymIntTuple::unpacked(Vec::new(), quantified.clone(), Vec::new());
+        assert_eq!(
+            whole_shape,
+            SymIntTuple(Tuple::Unpacked(Box::new((
+                Vec::new(),
+                quantified.clone(),
+                Vec::new(),
+            ))))
+        );
+
+        let affixed = SymIntTuple::unpacked(vec![size(1)], quantified.clone(), vec![size(2)]);
+        assert_eq!(
+            affixed,
+            SymIntTuple(Tuple::Unpacked(Box::new((
+                vec![size(1)],
+                quantified,
+                vec![size(2)],
+            ))))
+        );
+
+        let direct = Type::TypeVar(fake_type_var("Shape", QuantifiedKind::TypeVar));
+        let whole_shape = SymIntTuple::unpacked(Vec::new(), direct.clone(), Vec::new());
+        assert_eq!(
+            whole_shape,
+            SymIntTuple(Tuple::Unpacked(Box::new((
+                Vec::new(),
+                direct.clone(),
+                Vec::new(),
+            ))))
+        );
+        let affixed = SymIntTuple::unpacked(vec![size(1)], direct.clone(), vec![size(2)]);
+        assert_eq!(
+            affixed,
+            SymIntTuple(Tuple::Unpacked(Box::new((
+                vec![size(1)],
+                direct,
+                vec![size(2)],
+            ))))
+        );
+    }
+
+    #[test]
+    fn true_unresolved_variadic_middles_are_preserved() {
+        for middle in [
+            Type::Quantified(Box::new(fake_tparam("Shape", QuantifiedKind::TypeVarTuple))),
+            Type::TypeVarTuple(fake_type_var_tuple("Shape")),
+            Type::Var(Var::ZERO),
+        ] {
+            let shape = SymIntTuple::unpacked(vec![size(1)], middle.clone(), vec![size(2)]);
+
+            assert_eq!(
+                shape,
+                SymIntTuple(Tuple::Unpacked(Box::new((
+                    vec![size(1)],
+                    middle,
+                    vec![size(2)],
+                ))))
+            );
+            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        }
+    }
+
+    #[test]
     fn unpacked_carrier_round_trip() {
         // tuple[Literal[2], *Ts, Literal[3]] <-> Unpacked([2], Ts, [3]).
-        let middle = Type::Any(AnyStyle::Implicit);
+        let middle = Type::Var(Var::ZERO);
         let shape = SymIntTuple::unpacked(vec![size(2)], middle.clone(), vec![size(3)]);
         let carrier = shape_to_tuple_carrier(&shape);
         assert_eq!(
@@ -1956,12 +2272,47 @@ mod tests {
     }
 
     #[test]
+    fn unpacked_tuple_carrier_middle_is_validated_strictly() {
+        let valid = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![literal(1)],
+            Type::Tuple(Tuple::Concrete(vec![literal(3)])),
+            vec![literal(2)],
+        ))));
+        assert_eq!(
+            tuple_carrier_to_shape(&valid),
+            Some(SymIntTuple::from_types(vec![size(1), size(3), size(2)]))
+        );
+
+        let invalid = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![literal(1)],
+            Type::Tuple(Tuple::Concrete(vec![Type::ClassType(fake_class_type(
+                "builtins", "str",
+            ))])),
+            vec![literal(2)],
+        ))));
+        assert_eq!(tuple_carrier_to_shape(&invalid), None);
+    }
+
+    #[test]
     fn unsupported_carrier_elements_fail() {
         // A non-int literal element is not a valid dimension.
         let carrier = concrete_carrier(vec![LitInt::new(0).to_explicit_type(), bool_literal()]);
         assert_eq!(tuple_carrier_to_shape(&carrier), None);
         // A non-tuple carrier is not convertible at all.
         assert_eq!(tuple_carrier_to_shape(&literal(3)), None);
+    }
+
+    #[test]
+    fn invalid_quantified_carrier_elements_fail_front_door() {
+        for elt in [
+            Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar))),
+            Type::Quantified(Box::new(fake_tparam("P", QuantifiedKind::ParamSpec))),
+            Type::Quantified(Box::new(fake_tparam("Ts", QuantifiedKind::TypeVarTuple))),
+            Type::TypeVar(fake_type_var("T", QuantifiedKind::TypeVar)),
+            Type::TypeVarTuple(fake_type_var_tuple("Ts")),
+        ] {
+            assert_eq!(tuple_carrier_to_shape(&concrete_carrier(vec![elt])), None);
+        }
     }
 
     #[test]
