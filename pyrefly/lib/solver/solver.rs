@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -119,11 +120,14 @@ pub(crate) fn type_as_intvar_solution(ty: &Type) -> Option<Type> {
 /// other kind are used as-is. This is distinct from the `.expect(...)` sites
 /// that pin a *bound* already validated by `validate_bound_consistency`, where a
 /// failed normalization is an invariant violation rather than a fallback.
-fn normalize_answer_for_kind(kind: QuantifiedKind, ty: &Type) -> Type {
+///
+/// Takes `Cow` so an owned answer is moved through the pass-through branch while
+/// a borrowed one is only cloned when it must be returned as-is.
+fn normalize_answer_for_kind(kind: QuantifiedKind, ty: Cow<Type>) -> Type {
     if kind == QuantifiedKind::IntVar {
-        type_as_intvar_solution(ty).unwrap_or_else(gradual_size)
+        type_as_intvar_solution(&ty).unwrap_or_else(gradual_size)
     } else {
-        ty.clone()
+        ty.into_owned()
     }
 }
 
@@ -2268,7 +2272,7 @@ impl Solver {
                     && is_subset(solved_ty, branch_ty).is_ok();
             }
             Variable::PartialQuantified(q) => {
-                let answer = normalize_answer_for_kind(q.kind(), solved_ty);
+                let answer = normalize_answer_for_kind(q.kind(), Cow::Borrowed(solved_ty));
                 *branch_value = Variable::Answer(answer);
                 return true;
             }
@@ -4195,7 +4199,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             // unrestricted marker, not constraints; keep this
                             // defensive path normalized in case an internal
                             // quantified value is constructed with constraints.
-                            let answer = normalize_answer_for_kind(kind, t2);
+                            let answer = normalize_answer_for_kind(kind, Cow::Borrowed(t2));
                             variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if let Type::Quantified(q_t2) = t2 {
@@ -4212,7 +4216,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             } else if let Some(constraint) =
                                 self.find_matching_constraint(t2, &constraints)
                             {
-                                let constraint = normalize_answer_for_kind(kind, constraint);
+                                let constraint =
+                                    normalize_answer_for_kind(kind, Cow::Borrowed(constraint));
                                 self.solver
                                     .variables
                                     .lock()
@@ -4228,7 +4233,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                                 );
                             }
                         } else {
-                            let answer = normalize_answer_for_kind(kind, t2);
+                            let answer = normalize_answer_for_kind(kind, Cow::Borrowed(t2));
                             variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if self.is_subset_eq(t2, &bound).is_err() {
@@ -4324,7 +4329,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             //
                             // TODO(https://github.com/facebook/pyrefly/issues/105): figure out
                             // what to do with ParamSpec.
-                            let answer = normalize_answer_for_kind(q.kind(), &answer);
+                            let answer = normalize_answer_for_kind(q.kind(), Cow::Owned(answer));
                             self.solver
                                 .variables
                                 .lock()
@@ -4342,7 +4347,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         drop(variables);
                         let (answer, specialization_error) =
                             self.is_subset_eq_quantified(t1, &q, None);
-                        let answer = normalize_answer_for_kind(q.kind(), &answer);
+                        let answer = normalize_answer_for_kind(q.kind(), Cow::Owned(answer));
                         if let Some(specialization_error) = specialization_error {
                             self.solver
                                 .instantiation_errors

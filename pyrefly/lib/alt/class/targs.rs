@@ -658,10 +658,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     )
                 } else {
                     let restriction = param.restriction();
+                    // Match the cheap `arg` literal shape before materializing the
+                    // parameter's upper bound, so only an integer literal argument
+                    // pays for computing the bound.
                     let arg =
-                        if matches!(param.upper_bound(self.stdlib, self.heap), Type::Int(_))
-                            && let Type::Literal(lit) = arg
+                        if let Type::Literal(lit) = arg
                             && let Lit::Int(i) = &lit.value
+                            && matches!(param.upper_bound(self.stdlib, self.heap), Type::Int(_))
                         {
                             Type::Int(i.as_i64().map(Int::Literal).unwrap_or_else(|| {
                                 Int::Symbolic(Box::new(Type::Literal(lit.clone())))
