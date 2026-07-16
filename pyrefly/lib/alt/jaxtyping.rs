@@ -406,7 +406,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::Quantified(Box::new(q))
             };
 
-            let shaped_array_shape = SymIntTuple::unpacked(prefix, middle, suffix);
+            let shaped_array_shape = SymIntTuple::unpacked_from_types(prefix, middle, suffix);
             self.jaxtyping_shaped_array_type(base_class, shaped_array_shape)
         } else {
             // Concrete shape: all tokens are non-variadic dims

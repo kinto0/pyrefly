@@ -3147,12 +3147,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     if prefix.is_empty() && suffix.is_empty() {
                         middle.clone()
                     } else {
-                        SymIntTuple::unpacked(
-                            prefix.iter().map(dim_type).collect(),
-                            middle.clone(),
-                            suffix.iter().map(dim_type).collect(),
-                        )
-                        .to_shape_arg_type()
+                        SymIntTuple::unpacked(prefix.to_vec(), middle.clone(), suffix.to_vec())
+                            .to_shape_arg_type()
                     }
                 };
 

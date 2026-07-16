@@ -2639,7 +2639,7 @@ fn eval_dsl_expr(
                 } => {
                     let prefix_types = prefix.iter().map(|v| v.as_size()).collect();
                     let suffix_types = suffix.iter().map(|v| v.as_size()).collect();
-                    Ok(Val::Shape(SymIntTuple::unpacked(
+                    Ok(Val::Shape(SymIntTuple::unpacked_from_types(
                         prefix_types,
                         middle,
                         suffix_types,

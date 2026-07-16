@@ -338,9 +338,9 @@ mod tests {
             Type::SymInt(SymInt::Literal(3)),
         ])));
         let mut ty = SymIntTuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![SymInt::Literal(1)],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(4))],
+            vec![SymInt::Literal(4)],
         )
         .to_shape_arg_type();
 
@@ -366,9 +366,9 @@ mod tests {
         ]))));
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
         let mut ty = SymIntTuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![SymInt::Literal(1)],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(4))],
+            vec![SymInt::Literal(4)],
         )
         .to_shape_arg_type();
 
@@ -392,9 +392,9 @@ mod tests {
             SymInt::Literal(2),
         )])));
         let shape = SymIntTuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![SymInt::Literal(1)],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(3))],
+            vec![SymInt::Literal(3)],
         );
         let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
 
@@ -422,9 +422,9 @@ mod tests {
         ]))));
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
         let shape = SymIntTuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![SymInt::Literal(1)],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(4))],
+            vec![SymInt::Literal(4)],
         );
         let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
 
@@ -512,9 +512,9 @@ mod tests {
             Type::SymInt(SymInt::Literal(3)),
         ])));
         let shape = SymIntTuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![SymInt::Literal(1)],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(4))],
+            vec![SymInt::Literal(4)],
         );
         let shape_param = quantified(QuantifiedKind::TypeVar, 0);
         let base_class = fake_array(TArgs::new(

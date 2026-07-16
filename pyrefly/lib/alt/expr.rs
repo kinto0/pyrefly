@@ -3973,7 +3973,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let dims = prefix.into_iter().chain(middle).chain(suffix).collect();
                 return Some(SymIntTuple::from_types(dims));
             }
-            return Some(SymIntTuple::unpacked(prefix, middle_ty, suffix));
+            return Some(SymIntTuple::unpacked_from_types(prefix, middle_ty, suffix));
         }
 
         self.parse_dimension_list(args, errors)
