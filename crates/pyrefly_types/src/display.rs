@@ -37,6 +37,7 @@ use crate::quantified::QuantifiedIdentity;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
 use crate::shaped_array::SymIntTuple;
+use crate::shaped_array::SymIntTupleView;
 use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
@@ -443,8 +444,8 @@ impl<'a> TypeDisplayContext<'a> {
         if shape.is_shapeless() {
             return self.fmt_helper_generic(&Type::any_tuple(), false, output);
         }
-        match shape.as_tuple() {
-            Tuple::Concrete(dims) => {
+        match shape.view() {
+            SymIntTupleView::Concrete(dims) => {
                 output.write_str("[")?;
                 for (i, dim) in dims.iter().enumerate() {
                     if i > 0 {
@@ -454,11 +455,14 @@ impl<'a> TypeDisplayContext<'a> {
                 }
                 output.write_str("]")
             }
-            Tuple::Unbounded(_) => {
+            SymIntTupleView::Gradual => {
                 unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
             }
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
+            SymIntTupleView::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => {
                 if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
                     return self.fmt_helper_generic(middle, false, output);
                 }

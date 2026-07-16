@@ -49,6 +49,7 @@ use crate::equality::TypeEqCtx;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
 use crate::shaped_array::SymIntTuple;
+use crate::shaped_array::SymIntTupleView;
 use crate::tuple::Tuple;
 use crate::types::Type;
 
@@ -2594,27 +2595,28 @@ fn eval_dsl_expr(
         DslExpr::Shape(inner) => {
             let val = eval_dsl_expr(inner, env, fns, op_name)?;
             let shape = val.as_shape();
-            match shape.as_tuple() {
-                Tuple::Concrete(dims) => {
+            match shape.view() {
+                SymIntTupleView::Concrete(dims) => {
                     // Use dim_val to convert concrete
                     // Type::SymInt(SymInt::Literal(n)) to Val::Int(n) so comparisons
                     // against literal ints (e.g., `d != 1` in squeeze) work naturally.
                     let vals: Vec<Val> = dims.iter().map(|d| dim_val(d.clone())).collect();
                     Ok(Val::List(vals))
                 }
-                Tuple::Unbounded(_) => Ok(Val::Unpacked {
+                SymIntTupleView::Gradual => Ok(Val::Unpacked {
                     prefix: Vec::new(),
                     middle: SymIntTuple::shapeless().to_shape_arg_type(),
                     suffix: Vec::new(),
                 }),
-                Tuple::Unpacked(unpacked) => {
-                    let (prefix, middle, suffix) = &**unpacked;
-                    Ok(Val::Unpacked {
-                        prefix: prefix.iter().map(|d| dim_val(d.clone())).collect(),
-                        middle: middle.clone(),
-                        suffix: suffix.iter().map(|d| dim_val(d.clone())).collect(),
-                    })
-                }
+                SymIntTupleView::Unpacked {
+                    prefix,
+                    middle,
+                    suffix,
+                } => Ok(Val::Unpacked {
+                    prefix: prefix.iter().map(|d| dim_val(d.clone())).collect(),
+                    middle: middle.clone(),
+                    suffix: suffix.iter().map(|d| dim_val(d.clone())).collect(),
+                }),
             }
         }
 

@@ -27,6 +27,7 @@ use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
+use pyrefly_types::shaped_array::SymIntTupleView;
 use pyrefly_types::shaped_array::index_shape_int;
 use pyrefly_types::shaped_array::index_shape_multi;
 use pyrefly_types::shaped_array::index_shape_slice;
@@ -3137,21 +3138,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::NoneLiteral(_) => {
                 let one = self.heap.mk_symint(SymInt::Literal(1));
                 let mut new_dims = vec![one];
-                let new_shape = match shaped_array_type.shape().as_tuple() {
-                    Tuple::Concrete(dims) => {
+                let new_shape = match shaped_array_type.shape().view() {
+                    SymIntTupleView::Concrete(dims) => {
                         new_dims.extend(dims.iter().cloned());
                         SymIntTuple::from_types(new_dims)
                     }
-                    Tuple::Unbounded(middle) => SymIntTuple::unpacked(
+                    SymIntTupleView::Gradual => SymIntTuple::unpacked(
                         new_dims,
-                        SymIntTuple::from_tuple(Tuple::Unbounded(middle.clone()))
-                            .to_shape_arg_type(),
+                        SymIntTuple::shapeless().to_shape_arg_type(),
                         Vec::new(),
                     ),
-                    Tuple::Unpacked(f) => {
-                        let (prefix, middle, suffix) = &**f;
+                    SymIntTupleView::Unpacked {
+                        prefix,
+                        middle,
+                        suffix,
+                    } => {
                         new_dims.extend(prefix.iter().cloned());
-                        SymIntTuple::unpacked(new_dims, middle.clone(), suffix.clone())
+                        SymIntTuple::unpacked(new_dims, middle.clone(), suffix.to_vec())
                     }
                 };
                 self.shaped_array_with_shape(shaped_array_type, new_shape)
@@ -3898,10 +3901,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             [arg] => {
                 let carrier = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
                 match carrier {
-                    Type::SymIntTuple(shape) => match shape.as_tuple() {
-                        Tuple::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
-                        _ if shape.is_shapeless() => Ok(Some(self.bare_symint_tuple_carrier())),
-                        _ => {
+                    Type::SymIntTuple(shape) => match shape.view() {
+                        SymIntTupleView::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
+                        SymIntTupleView::Gradual => Ok(Some(self.bare_symint_tuple_carrier())),
+                        SymIntTupleView::Unpacked { .. } => {
                             self.error(
                                 errors,
                                 arg.range(),

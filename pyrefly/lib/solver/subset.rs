@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::iter;
@@ -25,6 +26,7 @@ use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
 use pyrefly_types::shaped_array::ShapedArrayType;
 use pyrefly_types::shaped_array::SymIntTuple;
+use pyrefly_types::shaped_array::SymIntTupleView;
 use pyrefly_types::shaped_array::is_tuple_carrier_shape_middle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::tuple_carrier_to_shape;
@@ -919,26 +921,26 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     }
 
     fn symint_tuple_has_carrier_middle(shape: &SymIntTuple) -> bool {
-        match shape.as_tuple() {
-            Tuple::Unpacked(unpacked) => {
-                let (_, middle, _) = &**unpacked;
-                is_tuple_carrier_shape_middle(middle)
-            }
-            Tuple::Concrete(_) | Tuple::Unbounded(_) => false,
+        match shape.view() {
+            SymIntTupleView::Unpacked { middle, .. } => is_tuple_carrier_shape_middle(middle),
+            SymIntTupleView::Concrete(_) | SymIntTupleView::Gradual => false,
         }
     }
 
     fn symint_tuple_as_carrier_middle(shape: &SymIntTuple) -> Option<&Type> {
-        match shape.as_tuple() {
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
+        match shape.view() {
+            SymIntTupleView::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => {
                 if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
                     Some(middle)
                 } else {
                     None
                 }
             }
-            Tuple::Concrete(_) | Tuple::Unbounded(_) => None,
+            SymIntTupleView::Concrete(_) | SymIntTupleView::Gradual => None,
         }
     }
 
@@ -2975,21 +2977,30 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         // `Unbounded` axis that behaves the same as `Unpacked([], SymIntTuple, [])`.
         enum ShapeView<'a> {
             Concrete(&'a [Type]),
-            Unpacked(Vec<Type>, Type, Vec<Type>),
+            Unpacked {
+                prefix: &'a [Type],
+                middle: Cow<'a, Type>,
+                suffix: &'a [Type],
+            },
         }
 
         fn shape_view(shape: &SymIntTuple) -> ShapeView<'_> {
-            match shape.as_tuple() {
-                Tuple::Concrete(dims) => ShapeView::Concrete(dims),
-                Tuple::Unbounded(middle) => ShapeView::Unpacked(
-                    Vec::new(),
-                    SymIntTuple::from_tuple(Tuple::Unbounded(middle.clone())).to_shape_arg_type(),
-                    Vec::new(),
-                ),
-                Tuple::Unpacked(unpacked) => {
-                    let (prefix, middle, suffix) = &**unpacked;
-                    ShapeView::Unpacked(prefix.clone(), middle.clone(), suffix.clone())
-                }
+            match shape.view() {
+                SymIntTupleView::Concrete(dims) => ShapeView::Concrete(dims),
+                SymIntTupleView::Gradual => ShapeView::Unpacked {
+                    prefix: &[],
+                    middle: Cow::Owned(SymIntTuple::shapeless().to_shape_arg_type()),
+                    suffix: &[],
+                },
+                SymIntTupleView::Unpacked {
+                    prefix,
+                    middle,
+                    suffix,
+                } => ShapeView::Unpacked {
+                    prefix,
+                    middle: Cow::Borrowed(middle),
+                    suffix,
+                },
             }
         }
 
@@ -3013,7 +3024,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // Concrete got, Unpacked want: bind the variadic middle to the corresponding slice
             (
                 ShapeView::Concrete(got_dims),
-                ShapeView::Unpacked(want_prefix, want_middle, want_suffix),
+                ShapeView::Unpacked {
+                    prefix: want_prefix,
+                    middle: want_middle,
+                    suffix: want_suffix,
+                },
             ) => {
                 // Example: got = Tensor[2, 3, 5, 4], want = Tensor[2, *Ts, 4]
                 // Should bind Ts to (3, 5)
@@ -3044,9 +3059,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if middle_start <= middle_end {
                     let middle_slice = &got_dims[middle_start..middle_end];
                     let tuple_ty = pack_middle_slice(middle_slice);
-                    self.is_subset_eq(&tuple_ty, &want_middle)?;
-                    if is_tuple_carrier_shape_middle(&want_middle) {
-                        self.is_subset_eq(&want_middle, &tuple_ty)?;
+                    self.is_subset_eq(&tuple_ty, want_middle.as_ref())?;
+                    if is_tuple_carrier_shape_middle(want_middle.as_ref()) {
+                        self.is_subset_eq(want_middle.as_ref(), &tuple_ty)?;
                     }
                 }
             }
@@ -3067,8 +3082,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             //   want extras: none → *Qs directly
             //   check: tuple[B, *Cs, D] <: *Qs
             (
-                ShapeView::Unpacked(got_prefix, got_middle, got_suffix),
-                ShapeView::Unpacked(want_prefix, want_middle, want_suffix),
+                ShapeView::Unpacked {
+                    prefix: got_prefix,
+                    middle: got_middle,
+                    suffix: got_suffix,
+                },
+                ShapeView::Unpacked {
+                    prefix: want_prefix,
+                    middle: want_middle,
+                    suffix: want_suffix,
+                },
             ) => {
                 let matched_prefix = got_prefix.len().min(want_prefix.len());
                 let matched_suffix = got_suffix.len().min(want_suffix.len());
@@ -3116,12 +3139,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     }
                 };
 
-                let got_folded = fold(got_extra_prefix, &got_middle, got_extra_suffix);
-                let want_folded = fold(want_extra_prefix, &want_middle, want_extra_suffix);
+                let got_folded = fold(got_extra_prefix, got_middle.as_ref(), got_extra_suffix);
+                let want_folded = fold(want_extra_prefix, want_middle.as_ref(), want_extra_suffix);
 
                 self.is_subset_eq(&got_folded, &want_folded)?;
-                if is_tuple_carrier_shape_middle(&got_middle)
-                    || is_tuple_carrier_shape_middle(&want_middle)
+                if is_tuple_carrier_shape_middle(got_middle.as_ref())
+                    || is_tuple_carrier_shape_middle(want_middle.as_ref())
                 {
                     self.is_subset_eq(&want_folded, &got_folded)?;
                 }
@@ -3132,7 +3155,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             //   - Bind suffix: C <: 5, D <: 6
             //   - Bind middle: Ts := (3, 4)
             (
-                ShapeView::Unpacked(got_prefix, got_middle, got_suffix),
+                ShapeView::Unpacked {
+                    prefix: got_prefix,
+                    middle: got_middle,
+                    suffix: got_suffix,
+                },
                 ShapeView::Concrete(want_dims),
             ) => {
                 // Check bounds: want must have at least as many dims as prefix + suffix
@@ -3162,9 +3189,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 if middle_start <= middle_end {
                     let middle_slice = &want_dims[middle_start..middle_end];
                     let tuple_ty = pack_middle_slice(middle_slice);
-                    self.is_subset_eq(&got_middle, &tuple_ty)?;
-                    if is_tuple_carrier_shape_middle(&got_middle) {
-                        self.is_subset_eq(&tuple_ty, &got_middle)?;
+                    self.is_subset_eq(got_middle.as_ref(), &tuple_ty)?;
+                    if is_tuple_carrier_shape_middle(got_middle.as_ref()) {
+                        self.is_subset_eq(&tuple_ty, got_middle.as_ref())?;
                     }
                 }
             }
