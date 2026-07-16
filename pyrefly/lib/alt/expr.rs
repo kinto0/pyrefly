@@ -34,6 +34,7 @@ use pyrefly_types::shaped_array::index_shape_slice;
 use pyrefly_types::shaped_array::index_shape_tensor;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::tuple_carrier_to_shape;
+use pyrefly_types::shaped_array::type_to_dim;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDict;
@@ -3021,46 +3022,27 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // For unary negation (-expr), we preserve the Mul(-1, ...) wrapper
         // without canonicalizing, so adjust_negative can detect negative bounds
         // even after the distributive law would otherwise distribute -1 across sums.
-        let to_dim = |expr: &Expr| -> Type {
+        let to_dim = |expr: &Expr| -> SymInt {
             // Detect syntactic unary minus: -(inner)
             if let Expr::UnaryOp(x) = expr
                 && x.op == UnaryOp::USub
             {
                 let inner_ty = self.expr_infer(&x.operand, errors);
-                let inner_dim = match inner_ty {
-                    Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
+                let inner_dim = match type_to_dim(&inner_ty) {
+                    Some(SymInt::Literal(val)) => {
                         // Literal negation: just negate the value directly
-                        return self.heap.mk_symint(SymInt::Literal(-val));
+                        return SymInt::Literal(-val);
                     }
-                    _ if SymInt::from_type(&inner_ty).is_some() => inner_ty.clone(),
-                    _ => return gradual_size(),
+                    Some(dim) => dim,
+                    None => return SymInt::Int,
                 };
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
-                // The final canonicalization happens in SymIntTuple::from_types.
-                return Type::SymInt(SymInt::mul(Type::SymInt(SymInt::Literal(-1)), inner_dim));
+                // The final canonicalization happens in `SymIntTuple`.
+                return SymInt::Mul(Box::new(SymInt::Literal(-1)), Box::new(inner_dim));
             }
             let ty = self.expr_infer(expr, errors);
-            match ty {
-                Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
-                    self.heap.mk_symint(SymInt::Literal(val))
-                }
-                _ if SymInt::from_type(&ty).is_some() => ty.clone(),
-                _ => gradual_size(),
-            }
-        };
-
-        // Extract a step value from a slice step expression.
-        // Supports literal integers and SymInt types.
-        let to_step = |expr: &Expr| -> Option<Type> {
-            let ty = self.expr_infer(expr, errors);
-            match &ty {
-                Type::Literal(lit) if let Some(val) = lit.value.as_index_i64() => {
-                    Some(self.heap.mk_symint(SymInt::Literal(val)))
-                }
-                _ if SymInt::from_type(&ty).is_some() => Some(ty.clone()),
-                _ => Some(gradual_size()),
-            }
+            type_to_dim(&ty).unwrap_or(SymInt::Int)
         };
 
         // Classify a non-slice, non-ellipsis index expression into an IndexOp.
@@ -3077,22 +3059,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             if let Type::ShapedArray(ref idx_shaped_array) = idx_ty {
                 if let Some(dims) = idx_shaped_array.shape().as_concrete() {
-                    return Some(IndexOp::ShapedArrayIndex(
-                        dims.iter().cloned().map(Type::SymInt).collect(),
-                    ));
+                    return Some(IndexOp::ShapedArrayIndex(dims.to_vec()));
                 }
                 return None; // shapeless index tensor → bail
             }
             if let Type::Tuple(ref tuple) = idx_ty {
                 return match tuple {
-                    Tuple::Concrete(elems) => Some(IndexOp::Fancy(Some(elems.len() as i64))),
+                    Tuple::Concrete(elems) => {
+                        Some(IndexOp::Fancy(SymInt::Literal(elems.len() as i64)))
+                    }
                     _ => None,
                 };
             }
             if let Type::ClassType(ref cls) = idx_ty
                 && cls.has_qname("builtins", "list")
             {
-                return Some(IndexOp::Fancy(None));
+                return Some(IndexOp::Fancy(SymInt::Int));
             }
             let is_int = matches!(&idx_ty, Type::Literal(lit) if lit.value.as_index_i64().is_some())
                 || matches!(&idx_ty, Type::ClassType(cls) if cls.is_builtin("int"))
@@ -3108,7 +3090,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }) => {
                     let start = lower.as_ref().map(|e| to_dim(e));
                     let stop = upper.as_ref().map(|e| to_dim(e));
-                    let step_val = step.as_ref().and_then(|e| to_step(e));
+                    let step_val = step.as_ref().map(|e| to_dim(e));
                     Some(IndexOp::Slice {
                         start,
                         stop,
@@ -3126,7 +3108,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }) => {
                 let start = lower.as_ref().map(|e| to_dim(e));
                 let stop = upper.as_ref().map(|e| to_dim(e));
-                let step_val = step.as_ref().and_then(|e| to_step(e));
+                let step_val = step.as_ref().map(|e| to_dim(e));
                 match index_shape_slice(&shaped_array_type.shape(), start, stop, step_val) {
                     Ok(shape) => self
                         .shaped_array_with_shape(shaped_array_type, shape)
@@ -3138,33 +3120,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::EllipsisLiteral(_) => shaped_array_type.clone().to_type(),
             // None index: tensor[None] - inserts a new dimension of size 1 at the front
             Expr::NoneLiteral(_) => {
-                let one = self.heap.mk_symint(SymInt::Literal(1));
-                let mut new_dims = vec![one];
-                let new_shape = match shaped_array_type.shape().view() {
-                    SymIntTupleView::Concrete(dims) => {
-                        new_dims.extend(dims.iter().cloned().map(Type::SymInt));
-                        SymIntTuple::from_types(new_dims)
-                    }
-                    SymIntTupleView::Gradual => SymIntTuple::unpacked(
-                        new_dims,
-                        SymIntTuple::shapeless().to_shape_arg_type(),
-                        Vec::new(),
-                    ),
-                    SymIntTupleView::Unpacked {
-                        prefix,
-                        middle,
-                        suffix,
-                    } => {
-                        new_dims.extend(prefix.iter().cloned().map(Type::SymInt));
-                        SymIntTuple::unpacked(
-                            new_dims,
-                            middle.clone(),
-                            suffix.iter().cloned().map(Type::SymInt).collect(),
-                        )
-                    }
-                };
-                self.shaped_array_with_shape(shaped_array_type, new_shape)
-                    .to_type()
+                match index_shape_multi(&shaped_array_type.shape(), &[IndexOp::NewAxis], &[], false)
+                {
+                    Ok(shape) => self
+                        .shaped_array_with_shape(shaped_array_type, shape)
+                        .to_type(),
+                    Err(err) => self.error(errors, range, ErrorKind::BadIndex, err.to_string()),
+                }
             }
             // Tuple index: tensor[:, -1, :] - apply each index to corresponding dimension
             Expr::Tuple(ExprTuple { elts, .. }) => {
@@ -3228,8 +3190,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     let Some(idx_dims) = idx_shape.as_concrete() else {
                         return self.shaped_array_shapeless(shaped_array_type).to_type();
                     };
-                    let idx_dims: Vec<_> = idx_dims.iter().cloned().map(Type::SymInt).collect();
-                    match index_shape_tensor(&shaped_array_type.shape(), &idx_dims) {
+                    match index_shape_tensor(&shaped_array_type.shape(), idx_dims) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),

@@ -295,6 +295,8 @@ impl SymIntTuple {
         if prefix.is_empty() && suffix.is_empty() && is_gradual_shape_middle(&middle) {
             Self::shapeless()
         } else {
+            let prefix: Vec<SymInt> = prefix.into_iter().map(canonicalize_symint_dim).collect();
+            let suffix: Vec<SymInt> = suffix.into_iter().map(canonicalize_symint_dim).collect();
             Self(SymIntTupleRepr::Unpacked {
                 prefix,
                 middle: Box::new(middle),
@@ -767,10 +769,7 @@ fn canonicalize_symint_dim(dim: SymInt) -> SymInt {
 }
 
 fn type_to_dim_recover(dim: Type) -> SymInt {
-    match recover_symint_type(dim) {
-        Type::SymInt(dim) => canonicalize_symint_dim(dim),
-        _ => unreachable!("recovering a scalar dimension should produce a SymInt"),
-    }
+    type_to_dim(&dim).unwrap_or(SymInt::Int)
 }
 
 fn dim_to_type(dim: &SymInt) -> Type {
@@ -815,11 +814,8 @@ fn is_valid_internal_symint(expr: &SymInt) -> bool {
     }
 }
 
-fn recover_symint_type(dim: Type) -> Type {
-    match SymInt::from_type(&dim) {
-        Some(expr) if is_valid_internal_symint(&expr) => Type::SymInt(expr),
-        _ => gradual_size(),
-    }
+pub fn type_to_dim(dim: &Type) -> Option<SymInt> {
+    SymInt::from_type(dim).filter(is_valid_internal_symint)
 }
 
 /// Convert a single tuple-carrier element into an internal shape dimension.
@@ -1315,18 +1311,15 @@ pub enum IndexOp {
     /// `start` defaults to 0, `stop` defaults to the dimension size.
     /// `step` defaults to 1 (no stride).
     Slice {
-        start: Option<Type>,
-        stop: Option<Type>,
+        start: Option<SymInt>,
+        stop: Option<SymInt>,
         /// Step/stride for the slice. `None` means step=1 (default).
-        /// Can be a literal `SymInt(Literal(n))`, a symbolic `SymInt(Var(...))`,
-        /// a `SymInt[S]`, or a `Quantified` type variable.
-        step: Option<Type>,
+        step: Option<SymInt>,
     },
     /// Tensor index: replaces dimension with the index tensor's dims
-    ShapedArrayIndex(Vec<Type>),
+    ShapedArrayIndex(Vec<SymInt>),
     /// Tuple/list fancy index: dimension becomes known size or unknown.
-    /// `Some(n)` for concrete tuple of length n, `None` for list/unknown.
-    Fancy(Option<i64>),
+    Fancy(SymInt),
     /// None/np.newaxis index: inserts a new dimension of size 1.
     /// Does not consume a shape dimension.
     NewAxis,
@@ -1361,50 +1354,38 @@ pub fn index_shape_int(shape: &SymIntTuple) -> Result<SymIntTuple, ShapeError> {
 /// With step: `Tensor[100][::2]` -> `Tensor[50]` (ceil_div(100, 2))
 pub fn index_shape_slice(
     shape: &SymIntTuple,
-    start: Option<Type>,
-    stop: Option<Type>,
-    step: Option<Type>,
+    start: Option<SymInt>,
+    stop: Option<SymInt>,
+    step: Option<SymInt>,
 ) -> Result<SymIntTuple, ShapeError> {
     match shape.view() {
         SymIntTupleView::Concrete(dims) => {
             if dims.is_empty() {
                 return Err(ShapeError::ScalarIndex);
             }
-            let start = adjust_negative(
-                start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
-                &dim_to_type(&dims[0]),
-            );
-            let stop = adjust_negative(
-                stop.unwrap_or_else(|| dim_to_type(&dims[0])),
-                &dim_to_type(&dims[0]),
-            );
+            let start = adjust_negative(start.unwrap_or(SymInt::Literal(0)), &dims[0]);
+            let stop = adjust_negative(stop.unwrap_or_else(|| dims[0].clone()), &dims[0]);
             let range_dim = sub_dim(stop, start);
             let new_first_dim = apply_step(range_dim, step);
             let mut new_dims = vec![new_first_dim];
-            new_dims.extend(dims[1..].iter().map(dim_to_type));
-            Ok(SymIntTuple::from_types(new_dims))
+            new_dims.extend_from_slice(&dims[1..]);
+            Ok(SymIntTuple::new(new_dims))
         }
         SymIntTupleView::Unpacked {
             prefix,
             middle,
             suffix,
         } if !prefix.is_empty() => {
-            let start = adjust_negative(
-                start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
-                &dim_to_type(&prefix[0]),
-            );
-            let stop = adjust_negative(
-                stop.unwrap_or_else(|| dim_to_type(&prefix[0])),
-                &dim_to_type(&prefix[0]),
-            );
+            let start = adjust_negative(start.unwrap_or(SymInt::Literal(0)), &prefix[0]);
+            let stop = adjust_negative(stop.unwrap_or_else(|| prefix[0].clone()), &prefix[0]);
             let range_dim = sub_dim(stop, start);
             let new_first_dim = apply_step(range_dim, step);
             let mut new_prefix = vec![new_first_dim];
-            new_prefix.extend(prefix[1..].iter().map(dim_to_type));
-            Ok(SymIntTuple::unpacked(
+            new_prefix.extend_from_slice(&prefix[1..]);
+            Ok(SymIntTuple::unpacked_from_parts(
                 new_prefix,
                 middle.clone(),
-                dims_to_types(suffix),
+                suffix.to_vec(),
             ))
         }
         // Empty prefix: dim0 is hidden in the variadic middle
@@ -1416,7 +1397,7 @@ pub fn index_shape_slice(
 /// E.g. `Tensor[B, D1, D2][Tensor[T]]` -> `Tensor[T, D1, D2]`
 pub fn index_shape_tensor(
     shape: &SymIntTuple,
-    idx_dims: &[Type],
+    idx_dims: &[SymInt],
 ) -> Result<SymIntTuple, ShapeError> {
     match shape.view() {
         SymIntTupleView::Concrete(dims) => {
@@ -1424,8 +1405,8 @@ pub fn index_shape_tensor(
                 return Err(ShapeError::ScalarIndex);
             }
             let mut new_dims = idx_dims.to_vec();
-            new_dims.extend(dims[1..].iter().map(dim_to_type));
-            Ok(SymIntTuple::from_types(new_dims))
+            new_dims.extend_from_slice(&dims[1..]);
+            Ok(SymIntTuple::new(new_dims))
         }
         SymIntTupleView::Unpacked {
             prefix,
@@ -1433,11 +1414,11 @@ pub fn index_shape_tensor(
             suffix,
         } if !prefix.is_empty() => {
             let mut new_prefix = idx_dims.to_vec();
-            new_prefix.extend(prefix[1..].iter().map(dim_to_type));
-            Ok(SymIntTuple::unpacked(
+            new_prefix.extend_from_slice(&prefix[1..]);
+            Ok(SymIntTuple::unpacked_from_parts(
                 new_prefix,
                 middle.clone(),
-                dims_to_types(suffix),
+                suffix.to_vec(),
             ))
         }
         // First dim is in variadic middle; can't determine result
@@ -1475,28 +1456,26 @@ pub fn index_shape_multi(
                 });
             }
 
-            let pre_dims = dims_to_types(&shape_dims[..pre_consumed]);
-            let (pre_result, _) = apply_ops_to_dims(pre_ops, &pre_dims)?;
+            let (pre_result, _) = apply_ops_to_dims(pre_ops, &shape_dims[..pre_consumed])?;
 
             let post_start = if has_ellipsis {
                 shape_dims.len() - post_consumed
             } else {
                 pre_consumed
             };
-            let post_dims = dims_to_types(&shape_dims[post_start..]);
-            let (post_result, _) = apply_ops_to_dims(post_ops, &post_dims)?;
+            let (post_result, _) = apply_ops_to_dims(post_ops, &shape_dims[post_start..])?;
 
             let mut new_dims = pre_result;
             if has_ellipsis {
                 // Preserve ellipsis-covered dims
-                new_dims.extend(shape_dims[pre_consumed..post_start].iter().map(dim_to_type));
+                new_dims.extend_from_slice(&shape_dims[pre_consumed..post_start]);
             } else {
                 // No ellipsis: append remaining unindexed dims
-                new_dims.extend(shape_dims[pre_consumed..].iter().map(dim_to_type));
+                new_dims.extend_from_slice(&shape_dims[pre_consumed..]);
             }
             new_dims.extend(post_result);
 
-            Ok(SymIntTuple::from_types(new_dims))
+            Ok(SymIntTuple::new(new_dims))
         }
         SymIntTupleView::Gradual => {
             let pre_consumed = ops_dims_consumed(pre_ops);
@@ -1507,8 +1486,11 @@ pub fn index_shape_multi(
 
             let (pre_result, _) = apply_ops_to_dims(pre_ops, &[])?;
             let (post_result, _) = apply_ops_to_dims(post_ops, &[])?;
-            let middle = SymIntTuple::shapeless().to_shape_arg_type();
-            Ok(SymIntTuple::unpacked(pre_result, middle, post_result))
+            Ok(SymIntTuple::unpacked_from_parts(
+                pre_result,
+                gradual_shape_middle(),
+                post_result,
+            ))
         }
         SymIntTupleView::Unpacked {
             prefix,
@@ -1521,22 +1503,20 @@ pub fn index_shape_multi(
                 return Ok(shapeless_shape());
             }
 
-            let pre_dims = dims_to_types(&prefix[..pre_consumed]);
-            let (pre_result, _) = apply_ops_to_dims(pre_ops, &pre_dims)?;
+            let (pre_result, _) = apply_ops_to_dims(pre_ops, &prefix[..pre_consumed])?;
 
             let post_suffix_start = suffix.len() - post_consumed;
-            let post_dims = dims_to_types(&suffix[post_suffix_start..]);
-            let (post_result, _) = apply_ops_to_dims(post_ops, &post_dims)?;
+            let (post_result, _) = apply_ops_to_dims(post_ops, &suffix[post_suffix_start..])?;
 
             let remaining_prefix = &prefix[pre_consumed..];
             let remaining_suffix = &suffix[..post_suffix_start];
 
             let mut result_prefix = pre_result;
-            result_prefix.extend(remaining_prefix.iter().map(dim_to_type));
-            let mut result_suffix = dims_to_types(remaining_suffix);
+            result_prefix.extend_from_slice(remaining_prefix);
+            let mut result_suffix = remaining_suffix.to_vec();
             result_suffix.extend(post_result);
 
-            Ok(SymIntTuple::unpacked(
+            Ok(SymIntTuple::unpacked_from_parts(
                 result_prefix,
                 middle.clone(),
                 result_suffix,
@@ -1554,27 +1534,26 @@ fn shapeless_shape() -> SymIntTuple {
 /// E.g. -1 on dim N becomes N + (-1) = N - 1.
 /// Also handles symbolic negation: -1 * X (from unary `-` on a Dim/SymInt expression)
 /// becomes dim_size + (-1 * X) = dim_size - X.
-fn adjust_negative(bound: Type, dim_size: &Type) -> Type {
-    let bound = recover_symint_type(bound);
+fn adjust_negative(bound: SymInt, dim_size: &SymInt) -> SymInt {
     let is_negative = match &bound {
         // Literal negative: -1, -2, etc.
-        Type::SymInt(SymInt::Literal(v)) => *v < 0,
+        SymInt::Literal(v) => *v < 0,
         // Symbolic negation: (-1 * X), (-2 * X), etc. from unary negation
-        Type::SymInt(SymInt::Mul(left, _)) if let SymInt::Literal(v) = left.as_ref() => *v < 0,
+        SymInt::Mul(left, _) if let SymInt::Literal(v) = left.as_ref() => *v < 0,
         _ => false,
     };
     if is_negative {
-        Type::SymInt(SymInt::add(dim_size.clone(), bound))
+        SymInt::Add(Box::new(dim_size.clone()), Box::new(bound))
     } else {
         bound
     }
 }
 
 /// Compute stop - start, simplifying x - 0 to x.
-fn sub_dim(stop: Type, start: Type) -> Type {
+fn sub_dim(stop: SymInt, start: SymInt) -> SymInt {
     match &start {
-        Type::SymInt(SymInt::Literal(0)) => stop,
-        _ => Type::SymInt(SymInt::sub(stop, start)),
+        SymInt::Literal(0) => stop,
+        _ => SymInt::Sub(Box::new(stop), Box::new(start)),
     }
 }
 
@@ -1582,39 +1561,34 @@ fn sub_dim(stop: Type, start: Type) -> Type {
 /// step=None or step=Literal(1) is identity. For literal range and step,
 /// computes the exact integer ceiling division. For symbolic steps (SymInt,
 /// Quantified), builds a symbolic ceil_div expression.
-fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
+fn apply_step(range_dim: SymInt, step: Option<SymInt>) -> SymInt {
     let step = match step {
         None => return range_dim,
-        Some(s) => recover_symint_type(s),
+        Some(s) => s,
     };
     match &step {
         // Literal step: exact arithmetic
-        Type::SymInt(SymInt::Literal(1)) => range_dim,
-        Type::SymInt(SymInt::Literal(s)) if *s > 1 => {
+        SymInt::Literal(1) => range_dim,
+        SymInt::Literal(s) if *s > 1 => {
             let s = *s;
-            if let Type::SymInt(SymInt::Literal(n)) = &range_dim {
-                Type::SymInt(SymInt::Literal((*n + s - 1) / s))
+            if let SymInt::Literal(n) = &range_dim {
+                SymInt::Literal((*n + s - 1) / s)
             } else {
                 // Symbolic range, literal step: ceil_div(range, step)
-                let step_minus_1 = Type::SymInt(SymInt::Literal(s - 1));
-                let numerator = Type::SymInt(SymInt::add(range_dim, step_minus_1));
-                Type::SymInt(SymInt::floor_div(
-                    numerator,
-                    Type::SymInt(SymInt::Literal(s)),
-                ))
+                let numerator = SymInt::Add(Box::new(range_dim), Box::new(SymInt::Literal(s - 1)));
+                SymInt::FloorDiv(Box::new(numerator), Box::new(SymInt::Literal(s)))
             }
         }
-        Type::SymInt(SymInt::Literal(s)) if *s <= 0 => {
+        SymInt::Literal(s) if *s <= 0 => {
             // Negative or zero step: degenerate, return unknown
-            Type::any_implicit()
+            SymInt::Int
         }
         // Symbolic step (SymInt var, Quantified): build ceil_div(range, step) symbolically
         _ => {
             // ceil_div(range, step) = (range + step - 1) // step
-            let step_minus_1 =
-                Type::SymInt(SymInt::sub(step.clone(), Type::SymInt(SymInt::Literal(1))));
-            let numerator = Type::SymInt(SymInt::add(range_dim, step_minus_1));
-            Type::SymInt(SymInt::floor_div(numerator, step))
+            let step_minus_1 = SymInt::Sub(Box::new(step.clone()), Box::new(SymInt::Literal(1)));
+            let numerator = SymInt::Add(Box::new(range_dim), Box::new(step_minus_1));
+            SymInt::FloorDiv(Box::new(numerator), Box::new(step))
         }
     }
 }
@@ -1622,16 +1596,11 @@ fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
 /// Apply a single `IndexOp` to a known dimension.
 /// Returns `Some(new_dim)` for ops that keep the dim, `None` for `Int` (dim removed).
 /// Must not be called with `NewAxis` — that is handled by `apply_ops_to_dims`.
-fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
+fn apply_index_op(op: &IndexOp, dim: &SymInt) -> Option<SymInt> {
     match op {
         IndexOp::Int => None,
         IndexOp::Slice { start, stop, step } => {
-            let start = adjust_negative(
-                start
-                    .clone()
-                    .unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
-                dim,
-            );
+            let start = adjust_negative(start.clone().unwrap_or(SymInt::Literal(0)), dim);
             let stop = adjust_negative(stop.clone().unwrap_or_else(|| dim.clone()), dim);
             let range_dim = sub_dim(stop, start);
             Some(apply_step(range_dim, step.clone()))
@@ -1644,8 +1613,7 @@ fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
                 "ShapedArrayIndex dispatch invariant violated: apply_ops_to_dims must consume grouped tensor-index operations"
             )
         }
-        IndexOp::Fancy(Some(n)) => Some(Type::SymInt(SymInt::Literal(*n))),
-        IndexOp::Fancy(None) => Some(Type::any_implicit()),
+        IndexOp::Fancy(dim) => Some(dim.clone()),
         IndexOp::NewAxis => unreachable!("NewAxis handled by apply_ops_to_dims"),
     }
 }
@@ -1656,14 +1624,14 @@ fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
 /// subsequent ones with the same shape consume a dim without emitting.
 /// Other ops consume one shape dimension each.
 /// Returns (result_dims, number_of_shape_dims_consumed).
-fn apply_ops_to_dims(ops: &[IndexOp], dims: &[Type]) -> Result<(Vec<Type>, usize), ShapeError> {
+fn apply_ops_to_dims(ops: &[IndexOp], dims: &[SymInt]) -> Result<(Vec<SymInt>, usize), ShapeError> {
     let mut new_dims = Vec::new();
     let mut dim_idx = 0;
     let mut tensor_index_emitted = false;
     for op in ops {
         match op {
             IndexOp::NewAxis => {
-                new_dims.push(Type::SymInt(SymInt::Literal(1)));
+                new_dims.push(SymInt::Literal(1));
             }
             IndexOp::ShapedArrayIndex(idx_dims) => {
                 if dim_idx >= dims.len() {
@@ -1865,7 +1833,7 @@ mod tests {
 
     #[test]
     fn grouped_tensor_indices_use_multi_index_dispatch() {
-        let index_shape = vec![size(2), size(3)];
+        let index_shape = vec![dim(2), dim(3)];
         let ops = [
             IndexOp::ShapedArrayIndex(index_shape.clone()),
             IndexOp::ShapedArrayIndex(index_shape),
@@ -1898,25 +1866,166 @@ mod tests {
     }
 
     #[test]
+    fn fancy_index_payload_preserves_output_shape() {
+        let shape = SymIntTuple::new(vec![dim(10), dim(20)]);
+        for (index_dim, expected) in [
+            (SymInt::Literal(3), SymIntTuple::new(vec![dim(3), dim(20)])),
+            (SymInt::Int, SymIntTuple::new(vec![SymInt::Int, dim(20)])),
+        ] {
+            assert_eq!(
+                index_shape_multi(&shape, &[IndexOp::Fancy(index_dim)], &[], false).unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn prewrapped_invalid_slice_symint_recovers_to_gradual() {
         let ordinary = Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar)));
         let invalid = Type::SymInt(SymInt::add(size(1), ordinary));
 
-        assert_eq!(super::recover_symint_type(invalid), gradual_size());
+        assert_eq!(super::type_to_dim(&invalid), None);
     }
 
     #[test]
     fn valid_slice_symint_trees_survive_recursive_recovery() {
         let symbolic_var = Type::SymInt(SymInt::Symbolic(Box::new(Type::Var(Var::ZERO))));
         assert_eq!(
-            super::recover_symint_type(symbolic_var.clone()),
-            symbolic_var
+            super::type_to_dim(&symbolic_var),
+            Some(SymInt::Symbolic(Box::new(Type::Var(Var::ZERO))))
         );
 
         let nested = Type::SymInt(SymInt::Symbolic(Box::new(Type::SymInt(SymInt::Symbolic(
             Box::new(Type::Var(Var::ZERO)),
         )))));
-        assert_eq!(super::recover_symint_type(nested.clone()), nested);
+        assert_eq!(
+            super::type_to_dim(&nested),
+            Some(SymInt::Symbolic(Box::new(Type::SymInt(SymInt::Symbolic(
+                Box::new(Type::Var(Var::ZERO))
+            )))))
+        );
+    }
+
+    #[test]
+    fn tensor_indexing_is_native_across_shape_kinds() {
+        let symbolic = SymInt::Symbolic(Box::new(Type::Var(Var::ZERO)));
+        let index_dims = vec![
+            SymInt::Add(Box::new(dim(1)), Box::new(dim(1))),
+            SymInt::Add(Box::new(symbolic.clone()), Box::new(dim(0))),
+        ];
+        let expected_index_dims = vec![dim(2), symbolic];
+
+        let concrete = SymIntTuple::new(vec![dim(10), dim(20)]);
+        let mut concrete_expected = expected_index_dims.clone();
+        concrete_expected.push(dim(20));
+        assert_eq!(
+            super::index_shape_tensor(&concrete, &index_dims).unwrap(),
+            SymIntTuple::new(concrete_expected)
+        );
+
+        assert_eq!(
+            super::index_shape_tensor(&SymIntTuple::shapeless(), &index_dims).unwrap(),
+            SymIntTuple::shapeless()
+        );
+
+        let middle = Type::Quantified(Box::new(fake_tparam("Ts", QuantifiedKind::TypeVarTuple)));
+        let unpacked =
+            SymIntTuple::unpacked_from_parts(vec![dim(10), dim(20)], middle.clone(), vec![dim(30)]);
+        let mut unpacked_prefix = expected_index_dims;
+        unpacked_prefix.push(dim(20));
+        assert_eq!(
+            super::index_shape_tensor(&unpacked, &index_dims).unwrap(),
+            SymIntTuple::unpacked_from_parts(unpacked_prefix, middle, vec![dim(30)])
+        );
+    }
+
+    #[test]
+    fn slice_steps_and_negative_forms_remain_distinct() {
+        let shape = SymIntTuple::new(vec![dim(10), dim(20)]);
+        assert_eq!(
+            super::index_shape_slice(&shape, None, None, None).unwrap(),
+            shape
+        );
+        assert_eq!(
+            super::index_shape_slice(&shape, None, None, Some(dim(3))).unwrap(),
+            SymIntTuple::new(vec![dim(4), dim(20)])
+        );
+        for step in [dim(0), dim(-1)] {
+            assert_eq!(
+                super::index_shape_slice(&shape, None, None, Some(step)).unwrap(),
+                SymIntTuple::new(vec![SymInt::Int, dim(20)])
+            );
+        }
+
+        let symbolic = SymInt::Symbolic(Box::new(Type::Var(Var::ZERO)));
+        let symbolic_step = SymInt::FloorDiv(
+            Box::new(SymInt::Add(
+                Box::new(dim(10)),
+                Box::new(SymInt::Sub(Box::new(symbolic.clone()), Box::new(dim(1)))),
+            )),
+            Box::new(symbolic.clone()),
+        );
+        assert_eq!(
+            super::index_shape_slice(&shape, None, None, Some(symbolic.clone())).unwrap(),
+            SymIntTuple::new(vec![symbolic_step, dim(20)])
+        );
+
+        let raw_subtraction = SymInt::Sub(Box::new(dim(0)), Box::new(symbolic.clone()));
+        let unary_negation = SymInt::Mul(Box::new(dim(-1)), Box::new(symbolic));
+        assert_eq!(
+            super::adjust_negative(raw_subtraction.clone(), &dim(10)),
+            raw_subtraction
+        );
+        assert_eq!(
+            super::adjust_negative(unary_negation.clone(), &dim(10)),
+            SymInt::Add(Box::new(dim(10)), Box::new(unary_negation))
+        );
+    }
+
+    #[test]
+    fn multi_indexing_preserves_ellipsis_and_unpacked_middle() {
+        let concrete = SymIntTuple::new(vec![dim(10), dim(20), dim(30), dim(40)]);
+        let pre_ops = [
+            IndexOp::Slice {
+                start: Some(dim(1)),
+                stop: Some(dim(9)),
+                step: Some(dim(2)),
+            },
+            IndexOp::NewAxis,
+        ];
+        assert_eq!(
+            index_shape_multi(&concrete, &pre_ops, &[IndexOp::Int], true).unwrap(),
+            SymIntTuple::new(vec![dim(4), dim(1), dim(20), dim(30)])
+        );
+
+        match index_shape_multi(
+            &SymIntTuple::new(vec![dim(10), dim(20)]),
+            &[IndexOp::Int, IndexOp::NewAxis, IndexOp::Int, IndexOp::Int],
+            &[],
+            false,
+        ) {
+            Err(crate::dimension::ShapeError::TooManyIndices { got, max }) => {
+                assert_eq!((got, max), (3, 2));
+            }
+            result => panic!("expected exact TooManyIndices error, got {result:?}"),
+        }
+
+        let middle = Type::Quantified(Box::new(fake_tparam("Ts", QuantifiedKind::TypeVarTuple)));
+        let unpacked = SymIntTuple::unpacked_from_parts(
+            vec![dim(10), dim(20)],
+            middle.clone(),
+            vec![dim(30), dim(40)],
+        );
+        let canonicalized_stop = SymInt::Add(Box::new(dim(4)), Box::new(dim(6)));
+        let slice = IndexOp::Slice {
+            start: None,
+            stop: Some(canonicalized_stop),
+            step: Some(dim(2)),
+        };
+        assert_eq!(
+            index_shape_multi(&unpacked, &[slice], &[IndexOp::Int], true).unwrap(),
+            SymIntTuple::unpacked_from_parts(vec![dim(5), dim(20)], middle, vec![dim(30)],)
+        );
     }
 
     #[test]

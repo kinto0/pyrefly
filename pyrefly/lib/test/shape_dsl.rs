@@ -1783,7 +1783,7 @@ testcase!(
     test_shaped_array_slice_bound_kind_recovery,
     shaped_array_env(),
     r#"
-from typing import reveal_type
+from typing import assert_type, reveal_type
 from shape_extensions import SymInt, SymIntTuple, SymIntVar, shaped_array
 
 @shaped_array(shape="Shape")
@@ -1809,6 +1809,7 @@ def symintvar[N: SymIntVar](x: Array[[10], int], n: SymInt[N]) -> None:
     stop: Array[[N], int] = x[:n]
     step: Array[[(10 + N - 1) // N], int] = x[::n]
     negative: Array[[N + 1], int] = x[-(n + 1):]
+    assert_type(x[::- (n + 1)], Array[[(8 - N) // (-1 * (N + 1))], int])
 "#,
 );
 
