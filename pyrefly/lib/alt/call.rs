@@ -1985,7 +1985,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             && x.arguments.keywords.is_empty()
             && let Expr::Dict(dict) = &x.arguments.args[0]
         {
-            self.infer_polars_schema(dict)
+            self.infer_polars_schema(dict, errors)
         } else {
             None
         };

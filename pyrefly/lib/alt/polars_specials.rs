@@ -18,10 +18,13 @@ use ruff_python_ast::ExprList;
 use ruff_python_ast::ExprNumberLiteral;
 use ruff_python_ast::Number;
 use ruff_python_ast::name::Name;
+use ruff_text_size::Ranged;
 use starlark_map::small_set::SmallSet;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
+use crate::config::error_kind::ErrorKind;
+use crate::error::collector::ErrorCollector;
 use crate::types::class::Class;
 
 pub fn is_polars_dataframe(cls: &Class) -> bool {
@@ -35,7 +38,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Extraction is purely syntactic and never infers the element expressions.
     /// Duplicate keys yield `None`: Python keeps only the last value for a repeated
     /// key, so one column per syntactic entry would misdescribe the runtime schema.
-    pub fn infer_polars_schema(&self, dict: &ExprDict) -> Option<Vec<(Name, Type)>> {
+    pub fn infer_polars_schema(
+        &self,
+        dict: &ExprDict,
+        errors: &ErrorCollector,
+    ) -> Option<Vec<(Name, Type)>> {
         if dict.items.is_empty() {
             return None;
         }
@@ -52,15 +59,23 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let Expr::List(ExprList { elts, .. }) = &item.value else {
                 return None;
             };
-            columns.push((name, self.polars_list_element_type(elts)?));
+            let element = self.polars_list_element_type(&name, elts, errors)?;
+            columns.push((name, element));
         }
         Some(columns)
     }
 
-    /// The modeled element type of a list literal: the one builtin scalar type shared by
-    /// every element, or `None` for an empty, mixed, or non-literal list. `complex` is
-    /// excluded because Polars has no complex dtype.
-    fn polars_list_element_type(&self, elts: &[Expr]) -> Option<Type> {
+    /// The column's modeled element type, or `None` to fall back to plain construction.
+    /// Mirrors Polars: the column takes its first element's dtype, and a later element that
+    /// does not fit is a runtime error we report before falling back. An empty list is
+    /// `Unknown`; a non-literal element falls back silently, as does `complex` since Polars
+    /// has no complex dtype.
+    fn polars_list_element_type(
+        &self,
+        name: &Name,
+        elts: &[Expr],
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
         let scalar = |e: &Expr| match e {
             Expr::NumberLiteral(ExprNumberLiteral {
                 value: Number::Int(_),
@@ -75,8 +90,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Expr::BytesLiteral(_) => Some(self.stdlib.bytes()),
             _ => None,
         };
-        let (first, rest) = elts.split_first()?;
-        let cls = scalar(first)?;
-        (rest.iter().all(|e| scalar(e) == Some(cls))).then(|| self.heap.mk_class_type(cls.clone()))
+        let Some((first, rest)) = elts.split_first() else {
+            return Some(self.heap.mk_any_implicit());
+        };
+        let column = self.heap.mk_class_type(scalar(first)?.clone());
+        for e in rest {
+            let element = self.heap.mk_class_type(scalar(e)?.clone());
+            if !self.is_subset_eq(&element, &column) {
+                self.error(
+                    errors,
+                    e.range(),
+                    ErrorKind::ColumnTypeMismatch,
+                    format!(
+                        "Polars builds column `{name}` with type `{}` from its first element, so a `{}` element does not fit. Use one dtype for the column or pass an explicit `schema`.",
+                        self.for_display(column.clone()),
+                        self.for_display(element.clone()),
+                    ),
+                );
+                return None;
+            }
+        }
+        Some(column)
     }
 }

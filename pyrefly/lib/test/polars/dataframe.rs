@@ -98,12 +98,32 @@ reveal_type(pl.DataFrame({"b": [g()]}))  # E: revealed type: DataFrame
 );
 
 testcase!(
-    test_fallback_mixed_int_and_str,
+    test_construct_incompatible_mix_errors,
     env_with_polars_stubs(),
     r#"
 import polars as pl
 from typing import reveal_type
-reveal_type(pl.DataFrame({"a": [1, "s"]}))  # E: revealed type: DataFrame
+reveal_type(pl.DataFrame({"a": [1, "s"]}))  # E: revealed type: DataFrame # E: Polars builds column `a` with type `int`
+"#,
+);
+
+testcase!(
+    test_construct_int_then_float_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [1, 2.0]}))  # E: revealed type: DataFrame # E: Polars builds column `a` with type `int`
+"#,
+);
+
+testcase!(
+    test_construct_float_then_int_widens_to_float,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [2.0, 1]}))  # E: revealed type: DataFrame[a: float]
 "#,
 );
 
@@ -148,22 +168,55 @@ reveal_type(pl.DataFrame({"a": [1j]}))  # E: revealed type: DataFrame
 );
 
 testcase!(
-    test_fallback_mixed_int_and_bool,
+    test_construct_int_then_bool_is_int,
     env_with_polars_stubs(),
     r#"
 import polars as pl
 from typing import reveal_type
-reveal_type(pl.DataFrame({"a": [1, True]}))  # E: revealed type: DataFrame
+reveal_type(pl.DataFrame({"a": [1, True]}))  # E: revealed type: DataFrame[a: int]
 "#,
 );
 
 testcase!(
-    test_fallback_empty_list,
+    test_construct_bool_then_int_errors,
     env_with_polars_stubs(),
     r#"
 import polars as pl
 from typing import reveal_type
-reveal_type(pl.DataFrame({"a": []}))  # E: revealed type: DataFrame
+reveal_type(pl.DataFrame({"a": [True, 1]}))  # E: revealed type: DataFrame # E: Polars builds column `a` with type `bool`
+"#,
+);
+
+testcase!(
+    test_construct_empty_list_unknown_element,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": []}))  # E: revealed type: DataFrame[a: Unknown]
+"#,
+);
+
+testcase!(
+    test_construct_multi_column_with_uncertain_elements,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+reveal_type(pl.DataFrame({"a": [1], "b": [], "c": [2.0, 1]}))  # E: revealed type: DataFrame[a: int, b: Unknown, c: float]
+"#,
+);
+
+testcase!(
+    test_fallback_mixed_literal_and_non_literal,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+x: int = 1
+reveal_type(pl.DataFrame({"a": [1, x]}))  # E: revealed type: DataFrame
+def g() -> int: ...
+reveal_type(pl.DataFrame({"b": [2, g()]}))  # E: revealed type: DataFrame
 "#,
 );
 
