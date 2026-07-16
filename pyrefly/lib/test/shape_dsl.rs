@@ -557,8 +557,8 @@ def append_dim[S: SymIntTuple, OUT: SymIntVar](
     explicit: Array[SymIntTuple[*Elements[S], OUT], int],
     compact: Array[[*Elements[S], OUT], int],
 ) -> Array[[*Elements[S], OUT], int]:
-    reveal_type(explicit)  # E: revealed type: Array[[*S, OUT], int]
-    reveal_type(compact)  # E: revealed type: Array[[*S, OUT], int]
+    reveal_type(explicit)  # E: revealed type: Array[[*Elements[S], OUT], int]
+    reveal_type(compact)  # E: revealed type: Array[[*Elements[S], OUT], int]
     return explicit
 
 def prepend_and_append[S: SymIntTuple, OUT: SymIntVar](
@@ -577,7 +577,7 @@ def nested_unpack[S0: SymIntTuple, M: SymIntVar, N: SymIntVar](
     source: Array[[4, *Elements[S0], M], int],
     result: Array[[1, 4, *Elements[S0], M, N], int],
 ) -> None:
-    reveal_type(prepend_and_append(source, result))  # E: revealed type: Array[[1, 4, *S0, M, N], int]
+    reveal_type(prepend_and_append(source, result))  # E: revealed type: Array[[1, 4, *Elements[S0], M, N], int]
 
 def gradual_middle(
     result: Array[[1, *Elements[SymIntTuple], 3], int],
@@ -720,7 +720,7 @@ def nested_unbounded_tuple_carrier(
 def tuple_bound_carrier[S: tuple[int, ...], OUT: SymIntVar](
     result: Array[[*Elements[S], OUT], int],
 ) -> None:
-    reveal_type(result)  # E: revealed type: Array[[*S, OUT], int]
+    reveal_type(result)  # E: revealed type: Array[[*Elements[S], OUT], int]
 
 def independent_tuple_bound_carriers[
     S: tuple[int, ...],
@@ -731,13 +731,13 @@ def independent_tuple_bound_carriers[
     left: Array[[*Elements[S], M], int],
     right: Array[[*Elements[Q], N], int],
 ) -> None:
-    reveal_type(left)  # E: revealed type: Array[[*S, M], int]
-    reveal_type(right)  # E: revealed type: Array[[*Q, N], int]
+    reveal_type(left)  # E: revealed type: Array[[*Elements[S], M], int]
+    reveal_type(right)  # E: revealed type: Array[[*Elements[Q], N], int]
 
 def syminttuple_bound_still_works[S: SymIntTuple, OUT: SymIntVar](
     result: Array[[*Elements[S], OUT], int],
 ) -> None:
-    reveal_type(result)  # E: revealed type: Array[[*S, OUT], int]
+    reveal_type(result)  # E: revealed type: Array[[*Elements[S], OUT], int]
 "#,
 );
 
@@ -2584,7 +2584,7 @@ def shape[N: SymIntVar, M: SymIntVar, Shape: SymIntTuple](
 ) -> None:
     reveal_type(n)  # E: revealed type: SymInt[N]
     reveal_type(x)  # E: revealed type: Tensor[[N]]
-    reveal_type(packed)  # E: revealed type: Tensor[[*Shape, N]]
+    reveal_type(packed)  # E: revealed type: Tensor[[*Elements[Shape], N]]
     reveal_type(boxed)  # E: revealed type: SymBox[N]
 
 def default_ok[N: SymIntVar, M: SymIntVar = N](x: SymInt[M]) -> None:
@@ -2603,7 +2603,7 @@ def alias_specialization[N: SymIntVar, ShapeT: SymIntTuple](
     ordinary: OrdinaryAlias[int, N],
 ) -> None:
     reveal_type(x)  # E: revealed type: Tensor[[N]]
-    reveal_type(packed)  # E: revealed type: Tensor[[*ShapeT, N]]
+    reveal_type(packed)  # E: revealed type: Tensor[[*Elements[ShapeT], N]]
     reveal_type(ordinary)  # E: revealed type: tuple[int, SymInt[N]]
 "#,
 );

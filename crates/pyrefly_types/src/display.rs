@@ -481,6 +481,10 @@ impl<'a> TypeDisplayContext<'a> {
                 first = false;
                 if matches!(middle, Type::SymIntTuple(shape) if shape.is_shapeless()) {
                     output.write_str("*tuple[int, ...]")?;
+                } else if is_tuple_carrier_shape_middle(middle) {
+                    output.write_str("*Elements[")?;
+                    self.fmt_helper_generic(middle, false, output)?;
+                    output.write_str("]")?;
                 } else {
                     self.fmt_helper_generic(
                         &Type::Unpack(Box::new(middle.clone())),

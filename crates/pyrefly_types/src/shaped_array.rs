@@ -715,6 +715,7 @@ fn fmt_unpacked_middle(middle: &Type) -> String {
         Type::SymIntTuple(shape) if shape.is_shapeless() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if elt.is_any() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if is_gradual_size(elt) => "tuple[int, ...]".to_owned(),
+        middle if is_tuple_carrier_shape_middle(middle) => format!("Elements[{middle}]"),
         _ => format!("{middle}"),
     }
 }
@@ -2054,6 +2055,28 @@ mod tests {
 
         let whole_shape = SymIntTuple::unpacked(Vec::new(), middle.clone(), Vec::new());
         assert_eq!(shape_to_tuple_carrier_arg(&whole_shape), middle);
+    }
+
+    #[test]
+    fn affixed_tuple_carrier_middle_displays_as_elements_unpack() {
+        let middle = Type::Quantified(Box::new(Quantified::new(
+            QuantifiedIdentity::new(
+                ModuleName::from_str("__test__"),
+                AnchorIndex::first(TextRange::default()),
+                QuantifiedOrigin::Pep695,
+            ),
+            Name::new("S"),
+            QuantifiedKind::TypeVar,
+            None,
+            Restriction::Unrestricted,
+            PreInferenceVariance::Invariant,
+        )));
+
+        assert_eq!(
+            SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]).to_string(),
+            "1, *Elements[S], 2"
+        );
+        assert_eq!(SymIntTuple::shapeless().to_string(), "*SymIntTuple");
     }
 
     #[test]

@@ -304,7 +304,7 @@ def broadcast_different_symint_tuple[Ts: SymIntTuple, Us: SymIntTuple](
 ) -> Tensor[[*Elements[Ts], 3]]:
     """Different SymIntTuples degrade to shapeless batch dims."""
     # E: Returned type `Tensor[[*tuple[int, ...], 3]]` is not assignable
-    #    to declared return type `Tensor[[*Ts, 3]]`
+    #    to declared return type `Tensor[[*Elements[Ts], 3]]`
     return x + y
 
 
