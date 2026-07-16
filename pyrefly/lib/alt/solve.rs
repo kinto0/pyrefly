@@ -6320,7 +6320,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 errors,
                 range,
                 ErrorKind::InvalidAnnotation,
-                format!("`{typevar_name}` must be a `SymIntVar` to be used {error_context}"),
+                format!(
+                    "`{typevar_name}` must be a `SymIntVar` to be used {error_context}. `SymIntVar`s are symbolic variables that represent tensor dimensions; see https://pyrefly.org/en/docs/tensor-shapes/ to learn more."
+                ),
             ),
             _ => ty,
         }
