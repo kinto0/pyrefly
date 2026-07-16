@@ -369,10 +369,14 @@ impl IntTuple {
         tuple
     }
 
+    /// Wrap this shape as the `IntTuple` type argument used to carry a whole
+    /// shape (e.g. the `S` in `Tensor[S]`).
     pub fn to_shape_arg_type(&self) -> Type {
         Type::IntTuple(Box::new(self.clone()))
     }
 
+    /// Recover a shape from an `IntTuple` shape argument, canonicalizing it via
+    /// `normalize`. Returns `None` for any other type.
     pub fn from_shape_arg_type(arg: &Type) -> Option<Self> {
         match arg {
             Type::IntTuple(shape) => Some(shape.normalize()),
@@ -788,6 +792,9 @@ fn is_valid_internal_int(expr: &Int) -> bool {
     }
 }
 
+/// Convert a `Type` into an internal shape dimension, accepting only types that
+/// form a valid `Int` dimension. Returns `None` for anything else, so callers
+/// fail cleanly instead of treating an unrelated type as a dimension.
 pub fn type_to_dim(dim: &Type) -> Option<Int> {
     Int::from_type(dim).filter(is_valid_internal_int)
 }

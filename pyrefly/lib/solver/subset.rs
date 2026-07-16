@@ -21,7 +21,7 @@ use pyrefly_types::dimension::ShapeError;
 use pyrefly_types::dimension::contains_var_in_type;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
-use pyrefly_types::dimension::type_is_gradual;
+use pyrefly_types::dimension::type_is_gradual_fast;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
 use pyrefly_types::shaped_array::IntTuple;
@@ -1845,7 +1845,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 self.solver.expand_with_bounds(&mut got_expanded);
                 self.solver.expand_with_bounds(&mut want_expanded);
 
-                // Gradual-size fast path. `type_is_gradual` is a by-reference
+                // Gradual-size fast path. `type_is_gradual_fast` is a by-reference
                 // equivalent of `is_gradual_size(&canonicalize(..))` for `Int`
                 // types, so we can short-circuit without allocating canonical
                 // copies on the common success path.
@@ -1856,7 +1856,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 // defaults to the gradual size `Int[int]`, so a gradual `got`
                 // (like bare `Int`) flowing into `Int[N]` still resolves to
                 // `Int[int]`. We therefore need not bind N before accepting.
-                if type_is_gradual(&got_expanded) || type_is_gradual(&want_expanded) {
+                if type_is_gradual_fast(&got_expanded) || type_is_gradual_fast(&want_expanded) {
                     return Ok(());
                 }
 

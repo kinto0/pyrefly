@@ -353,7 +353,7 @@ fn canonicalize_inner(ty: Type) -> Type {
 /// For a `Size` type this is equivalent to `is_gradual_size(&canonicalize(ty))`
 /// but avoids allocating a canonicalized copy, so it is cheap to call on a hot
 /// path before deciding whether canonicalization is needed at all.
-pub fn type_is_gradual(ty: &Type) -> bool {
+pub fn type_is_gradual_fast(ty: &Type) -> bool {
     match ty {
         Type::Int(dim) => int_is_gradual(dim),
         Type::Any(AnyStyle::Implicit | AnyStyle::Explicit) => true,
@@ -378,14 +378,14 @@ fn int_is_gradual(dim: &Int) -> bool {
 /// Whether canonicalizing a `Symbolic` leaf yields the gradual size. A builtin
 /// `int` leaf canonicalizes to the gradual size via `canonicalize_symbolic`, so
 /// it must be reported as gradual here even though it is not itself a `Size`.
-/// Every other leaf falls back to `type_is_gradual`, which already matches how
+/// Every other leaf falls back to `type_is_gradual_fast`, which already matches how
 /// `canonicalize` short-circuits gradual (`Any`) and nested `Size` leaves. This
-/// keeps `type_is_gradual` equivalent to
+/// keeps `type_is_gradual_fast` equivalent to
 /// `is_gradual_size(&canonicalize(..))` without allocating a canonical copy.
 fn symbolic_is_gradual(ty: &Type) -> bool {
     match ty {
         Type::ClassType(cls) if cls.is_builtin("int") => true,
-        _ => type_is_gradual(ty),
+        _ => type_is_gradual_fast(ty),
     }
 }
 
@@ -1360,7 +1360,7 @@ mod tests {
     }
 
     #[test]
-    fn type_is_gradual_matches_canonicalized_gradual_check() {
+    fn type_is_gradual_fast_matches_canonicalized_gradual_check() {
         use crate::class::ClassType;
         use crate::display::tests::fake_class;
         use crate::types::TArgs;
@@ -1374,7 +1374,7 @@ mod tests {
             TArgs::default(),
         ));
 
-        // Each case must satisfy `type_is_gradual(x) == is_gradual_size(&canonicalize(x))`.
+        // Each case must satisfy `type_is_gradual_fast(x) == is_gradual_size(&canonicalize(x))`.
         let cases = vec![
             // A symbolic `int` leaf canonicalizes to the gradual size (regression case).
             Type::Int(Int::Symbolic(Box::new(int_class.clone()))),
@@ -1392,7 +1392,7 @@ mod tests {
         ];
         for case in cases {
             assert_eq!(
-                type_is_gradual(&case),
+                type_is_gradual_fast(&case),
                 is_gradual_size(&canonicalize(case.clone())),
                 "mismatch for {case:?}"
             );

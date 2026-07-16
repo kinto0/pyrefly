@@ -103,6 +103,10 @@ pub(crate) fn type_as_intvar_solution(ty: &Type) -> Option<Type> {
         Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
         Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
         Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
+        // An unsolved `Var` becomes a raw symbolic leaf. This is what the
+        // fallback arm below would also produce (`Int::from_type` wraps a `Var`
+        // as `Int::Symbolic`, and `canonicalize` of a bare `Var` leaf is a
+        // no-op), so this arm only skips that redundant canonical rebuild.
         Type::Var(_) => Some(Type::Int(Int::Symbolic(Box::new(ty.clone())))),
         _ => Int::from_type(ty).map(|dim| canonicalize(Type::Int(dim))),
     }
