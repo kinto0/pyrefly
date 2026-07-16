@@ -1,7 +1,7 @@
 ---
 name: add-shape-types-to-torch-model
 description: >
-  Port a PyTorch model to use pyrefly's tensor shape type system (Tensor[B, C, H, W],
+  Port a PyTorch model to use pyrefly's tensor shape type system (Tensor[[B, C, H, W]],
   Int[T]). Use this skill whenever the user wants to add shape annotations
   to a PyTorch model, type a model with tensor dimensions, port a model to use shape
   tracking, or annotate model forward methods with tensor shapes. Also use when the
@@ -70,9 +70,11 @@ Complete these gates before writing any code.
 
 Read `shape_tracking_capabilities.md` (this skill dir). It explains the
 three shape-tracking mechanisms (shape-aware stubs, DSL functions, special
-handlers) and how to check each one. You need this context to make the
-Gate 1 audit meaningful — knowing whether an op exists in a stub is not
-the same as knowing whether its shapes are tracked.
+handlers) and how to check each one, plus the current `shape_extensions` API
+surface (`Int` / `IntVar` / `IntTuple` / `Elements` / `assert_shape` / runtime
+compat) and the double-bracket `Tensor[[...]]` convention. You need this context
+to make the Gate 1 audit meaningful — knowing whether an op exists in a stub is
+not the same as knowing whether its shapes are tracked.
 
 **Do NOT read `style_guide.md` yet.** It is comparison material for the
 verification phase. Reading it now biases you toward known patterns
@@ -96,7 +98,7 @@ function.
 step.** The torch-stubs package and its `_shapes.pyi` DSL
 file are exhaustive for torch shape support. For each op in your list, check
 whether it appears in the relevant stub file and whether it has a precise
-generic signature, `Self`/`Tensor[*S]` return, or `@uses_shape_dsl(...)`
+generic signature, `Self`/`Tensor[S]` (whole-shape `S: IntTuple`) return, or `@uses_shape_dsl(...)`
 decorator that refines a bare declared return. Use targeted file reads or
 repo-approved search scoped to known files/directories, not broad recursive
 shell search. You need to confirm presence and spot missing attributes
@@ -133,7 +135,7 @@ this exact format:
 
 ```python
 # ## Inventory
-# - [ ] ClassName.__init__ — Dims: param1, param2; int: param3
+# - [ ] ClassName.__init__ — Int: param1, param2; int: param3
 # - [ ] ClassName.forward
 # - [ ] function_name — utility, no tensors
 # ...
@@ -212,12 +214,12 @@ If in doubt, make it `Int`. The cost is one more type param; the cost of
   the untracked section to tracked downstream modules. For example, if
   features output feeds a Linear classifier, the Linear's `in_features`
   is a bridge dim — making it a class type param enables annotation
-  fallback to recover a shaped type (e.g., `Tensor[B, LastC]`) that
+  fallback to recover a shaped type (e.g., `Tensor[[B, LastC]]`) that
   then flows naturally through downstream ops. Without it, annotation
   fallback can only recover bare `Tensor` or batch-only shapes.
 
   ```python
-  class Model[NC, LC](nn.Module):
+  class Model[NC: IntVar, LC: IntVar](nn.Module):
       def __init__(self, num_classes: Int[NC] = 1000,
                    last_channel: Int[LC] = 1280):
           ...
@@ -225,7 +227,7 @@ If in doubt, make it `Int`. The cost is one more type param; the cost of
   ```
 
   Here `LC` bridges the untracked feature extractor to the typed
-  classifier, recovering `Tensor[B, NC]` at the output.
+  classifier, recovering `Tensor[[B, NC]]` at the output.
 - **`Int[X] | None` for optional dimensions.** When a parameter is
   `Optional[int]` but flows to tensor shapes when present, type it as
   `Int[X] | None`, not `Optional[int]`. Example:
@@ -255,10 +257,10 @@ If in doubt, make it `Int`. The cost is one more type param; the cost of
               torch.ones(max_seq_len, max_seq_len)
           )
 
-  # Good: causal_mask is Tensor[MS, MS] from declaration
-  class Attention[MS](nn.Module):
+  # Good: causal_mask is Tensor[[MS, MS]] from declaration
+  class Attention[MS: IntVar](nn.Module):
       def __init__(self, max_seq_len: Int[MS], ...):
-          self.causal_mask: Tensor[MS, MS] = torch.zeros(
+          self.causal_mask: Tensor[[MS, MS]] = torch.zeros(
               max_seq_len, max_seq_len
           )
   ```
@@ -271,7 +273,7 @@ If in doubt, make it `Int`. The cost is one more type param; the cost of
 ## Step 2: Type the constructor
 
 Write `__init__` with the `Int` params from Step 1. Construct sub-modules
-using those Dims — they get typed automatically.
+using those Int params — they get typed automatically.
 
 **Default values for Int params:** `Literal[0]` is not assignable to
 `Int[X]` as a default. Use PEP 696 type-parameter defaults instead:
@@ -280,8 +282,8 @@ using those Dims — they get typed automatically.
 # Won't work — Literal[1000] not assignable to Int[NC]:
 def __init__(self, num_classes: Int[NC] = 1000): ...
 
-# Works — NC defaults to 1000 at the type level:
-class Model[NC = 1000](nn.Module):
+# Works — NC defaults to 1000 at the type level (bound + PEP 696 default):
+class Model[NC: IntVar = 1000](nn.Module):
     def __init__(self, num_classes: Int[NC] = 1000): ...
 ```
 
@@ -306,7 +308,7 @@ generic so dims propagate through constructors:
 
 ```python
 @dataclass
-class Config[D, NHead, VocabSize]:
+class Config[D: IntVar, NHead: IntVar, VocabSize: IntVar]:
     dim: Int[D]
     n_head: Int[NHead]
     vocab_size: Int[VocabSize]
@@ -316,7 +318,7 @@ class Config[D, NHead, VocabSize]:
 Modules extract only the params they need using `Any` for the rest:
 
 ```python
-class MLP[D](nn.Module):
+class MLP[D: IntVar](nn.Module):
     def __init__(self, config: Config[D, Any, Any]):
         super().__init__()
         self.fc = nn.Linear(config.dim, 4 * config.dim)
@@ -331,12 +333,22 @@ combine the two patterns above — give the dataclass type params PEP
 
 ```python
 @dataclass
-class Config[D = 768, NHead = 12, VocabSize = 50257]:
-    dim: Int[D] = 768
-    n_head: Int[NHead] = 12
-    vocab_size: Int[VocabSize] = 50257
+class Config[D: IntVar = 768, NHead: IntVar = 12, VocabSize: IntVar = 50257]:
+    dim: Int[D] = 768  # type: ignore[bad-assignment]
+    n_head: Int[NHead] = 12  # type: ignore[bad-assignment]
+    vocab_size: Int[VocabSize] = 50257  # type: ignore[bad-assignment]
     dropout: float = 0.0
 ```
+
+Two different defaults are at play here, and only one is clean:
+- The **PEP 696 defaults on the type params** (`[D: IntVar = 768, ...]`) are
+  what let callers omit dims — those need no ignore.
+- The **dataclass field literal defaults** (`dim: Int[D] = 768`) still need
+  `# type: ignore[bad-assignment]`, because a plain `int` literal is not
+  assignable to `Int[D]`. This is the accepted corpus pattern (see
+  `examples/finalmlp.py`). Note that *constructor*-parameter defaults
+  (`def __init__(self, num_classes: Int[NC] = 1000)`) do **not** need the
+  ignore — only dataclass field defaults do.
 
 Now `Config()` produces `Config[768, 12, 50257]` and
 `Config(dim=1024)` produces `Config[1024, 12, 50257]` — dims
@@ -363,9 +375,9 @@ takes this table as input — if you don't have it, you cannot proceed.
 ```
 # reveal_type results for ClassName.forward:
 # Locals: N (list them: var1, var2, var3)
-# var1 (line N): Tensor[B, C, H, W]  → SHAPED
-# var2 (line M): Tensor               → BARE — investigate in Step 4
-# var3 (line P): Tensor[B, D]         → SHAPED
+# var1 (line N): Tensor[[B, C, H, W]]  → SHAPED
+# var2 (line M): Tensor                 → BARE — investigate in Step 4
+# var3 (line P): Tensor[[B, D]]         → SHAPED
 ```
 
 Verify: does the number of reveal_type entries match the local count?
@@ -488,6 +500,18 @@ which category applies:
   rule, then use annotation fallback to recover the shaped return.
 - **Branch join**: try restructuring first.
 
+Once you've settled the category, use the specific error code (a bare
+`# type: ignore` is rejected). The codes seen across the corpus:
+- `bad-assignment` — a dataclass field literal default (`dim: Int[D] = 768`) or
+  a typed fallback assignment (`x: Tensor[[B, N]] = untracked_result`).
+- `arg-type` — passing a bare/looser value into a shaped parameter (common in
+  init/setup helpers).
+- `assert-type` / `bad-return` — an A1 algebraic gap where the computed shape
+  differs from the `assert_type`/declared-return shape.
+- `bad-argument-type`, `return-value` — the argument/return variants of the
+  above; `return-value` from an untracked sub-section should be fixed upstream
+  (see the bridge-dim bullet), not ignored.
+
 **When an op's shape is wrong.** Everything above handles a *missing* shape (the
 op falls back to bare `Tensor`) — that always degrades gracefully and never
 blocks. The rare hard case is a *wrong* shape: Pyrefly computes a concrete shape
@@ -510,7 +534,7 @@ infer the shape, trace upstream to find where shapes were actually lost.
 **Annotation hierarchy** (most to least desirable):
 1. **`assert_type`** — verifies the checker's inference. Proves the system
    works, not just that you annotated correctly.
-2. **Annotation fallback** — `x: Tensor[B, C, H, W] = unrefined_op(...)`.
+2. **Annotation fallback** — `x: Tensor[[B, C, H, W]] = unrefined_op(...)`.
    Use when the op returns unrefined but you know the shape. Document WHY.
 3. **`type: ignore`** — the checker produces a WRONG type (algebraic gap
    or conditional equality). Last resort. Always include a comment
@@ -525,7 +549,9 @@ Type the forward signature:
   positions BEFORE parameters where they appear inside arithmetic
   expressions. The checker needs to bind the bare params first.
 - **Don't hide known class dims inside variadic params.** If the module
-  has a class-level Int `D`, use `Tensor[*Bs, D]` not `Tensor[*S]`.
+  has a class-level Int `D`, spell the trailing dim out with the variadic
+  batch idiom: `Tensor[[*Elements[Bs], D]]` (with `Bs: IntTuple`), not a
+  whole-shape `Tensor[S]` that swallows `D`. See `examples/tacotron2.py`.
 
 Replace every `reveal_type` with `assert_type` using the recorded types:
 - Shaped `reveal_type` → `assert_type(x, Tensor[...])` with that shape.
@@ -553,7 +579,7 @@ Run the checker. Fix any `assert_type` failures.
 If the counts don't match, you missed some. Go back and add them.
 
 **Step 4 receipt check.** Every bare `assert_type(x, Tensor)` and
-every annotation fallback (`x: Tensor[B, C] = untracked_op(...)`)
+every annotation fallback (`x: Tensor[[B, C]] = untracked_op(...)`)
 must cite the Step 4 receipt that justifies it. If no receipt exists,
 go back to Step 4 — the restructuring attempt was skipped.
 
@@ -571,9 +597,9 @@ Example:
 
 ```python
 model = MyModel(num_classes=10)
-x = torch.randn(2, 3, 32, 32)  # inferred as Tensor[2, 3, 32, 32]
+x = torch.randn(2, 3, 32, 32)  # inferred as Tensor[[2, 3, 32, 32]]
 out = model(x)
-assert_type(out, Tensor[2, 10])  # not: assert out.shape == (2, 10)
+assert_type(out, Tensor[[2, 10]])  # not: assert out.shape == (2, 10)
 ```
 
 ## Step 6: Post-module checklist
@@ -614,13 +640,35 @@ paraphrase — the raw output is the artifact.
 ## Run the actual Pyrefly check
 
 `verify_port.sh` is a heuristic quality gate; it does not type check the port.
-You must also run Pyrefly itself against your port file, with tensor shapes
-enabled (`--tensor-shapes true`) and the shape stubs on the search path. By
-default this is `pyrefly check` — the stubs may already be on the path if they're
-installed in your environment, otherwise add the stub root reported by
-`pyrefly dump-config` to the search path. If a skill invoked this one, it may
-supply a different command (for example, an in-repo build-and-check invocation);
-use that instead.
+You must also run Pyrefly itself against your port file. There is no
+`--tensor-shapes` flag — shape tracking is on whenever the shape stubs and
+`shape_extensions` are on the search path. The single-file check mirrors
+`tensor-shapes/pyrefly-torch-stubs/run_pyrefly.py`:
+
+```bash
+pyrefly check --config /dev/null --python-version 3.13 \
+    --search-path <root containing torch-stubs> \
+    --search-path <root containing shape_extensions> \
+    path/to/your/port.py
+```
+
+The two search roots are separate: `tensor-shapes/pyrefly-torch-stubs` (the
+`torch-stubs` package) and `tensor-shapes/pyrefly-shape-extensions` (the
+`shape_extensions` package). In a Buck checkout you can instead pass the combined
+filegroup `fbcode//pyrefly/tensor-shapes:torch-stubs-search-path` as a
+`--search-path`. If a skill invoked this one, it may supply its own
+build-and-check command; use that instead. `pyrefly dump-config` reports the
+resolved search path when the stubs are already installed in your environment.
+
+**Python version:** the PEP 695/696 generics syntax (`class Net[D: IntVar]`,
+type-param defaults) requires `--python-version 3.12` or later; the corpus runs
+`3.13`.
+
+To type-check the whole corpus (or a stack of edits) at once:
+
+```bash
+python3 tensor-shapes/run_all_shape_tests.py --mode cargo|buck [--include-runtime-tests]
+```
 
 Paste the Pyrefly output. The result must be `0 errors`; `reveal_type` info is
 acceptable only while probing and must not remain in the finished port.
@@ -738,8 +786,8 @@ and the Step 4 receipts.
 
 The `shape_extensions` package bridges pyrefly's type system and Python runtime.
 Importing it patches `torch.Tensor`, `nn.Conv2d`, and other torch classes to
-accept subscript syntax (e.g., `Tensor[B, C, H, W]`) at runtime without
-crashing. It also provides `TypeVar` with arithmetic support (`N + 1`, `N // 2`
+accept subscript syntax (e.g., `Tensor[[B, C, H, W]]`) at runtime without
+crashing. It also provides `IntVar` with arithmetic support (`N + 1`, `N // 2`
 return `self` instead of `TypeError`) and `Int` for binding runtime ints to
 type-level symbols.
 
@@ -751,8 +799,12 @@ fbsource Buck checkout specifically, the runtime package is
 filegroup to pass as a Pyrefly `--search-path` is
 `fbcode//pyrefly/tensor-shapes:torch-stubs-search-path`.
 
-**Type-checking only (recommended for ports):** guard imports so annotations
-are invisible at runtime:
+Pick an import mode based on whether the port file will be **executed**, not
+just type-checked:
+
+*Static-check-only (common case — you only run the checker on the file):* guard
+the shape imports. The file is never executed, so the annotations never evaluate
+and the guarded names need not resolve at runtime.
 
 ```python
 from typing import assert_type, TYPE_CHECKING
@@ -762,8 +814,23 @@ import torch.nn as nn
 
 if TYPE_CHECKING:
     from torch import Tensor
-    from shape_extensions import Int
+    from shape_extensions import Elements, Int, IntTuple, IntVar
 ```
+
+*Runnable (the file is imported/executed):* a guarded import alone will crash,
+because annotations — and PEP 695 type-param bounds — still evaluate at runtime.
+Either:
+- add `from __future__ import annotations` to postpone annotation evaluation,
+  and import the symbols that appear in *runtime-evaluated* positions
+  (`Elements`, plus the bounds `IntVar`/`IntTuple` used in `[Bs: IntTuple]`) at
+  module top — see `examples/runtime/nanogpt_future_annotations_runnable.py`; or
+- import all shape symbols at module top with no guard — see
+  `examples/runtime/gptfast_sym_int_var_runnable.py`.
+
+`Int` binds runtime ints; `IntVar` is the bound for scalar dim params
+(`[D: IntVar]`); `IntTuple` is the bound for variadic/whole-shape params
+(`[Bs: IntTuple]`); `Elements` unpacks a variadic batch
+(`Tensor[[*Elements[Bs], D]]`). Import only the ones a given file uses.
 
 **Runtime-compatible annotations:** if you need annotations to evaluate at
 runtime (e.g., for runtime shape validation), import `shape_extensions` directly
