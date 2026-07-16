@@ -412,7 +412,7 @@ impl TypeConverter<'_> {
                 self.convert_class_type(&t.base_class, TypeFlags::INSTANCE)
             }
 
-            PyreflyType::SymIntTuple(_) => builtin("tuple"),
+            PyreflyType::IntTuple(_) => builtin("tuple"),
 
             // --- NNModule → ClassType from class ---
             PyreflyType::NNModule(m) => self.convert_class_type(&m.class, TypeFlags::INSTANCE),
@@ -466,11 +466,11 @@ impl TypeConverter<'_> {
             // --- KwCall → convert the return type ---
             PyreflyType::KwCall(kw) => self.convert(&kw.return_ty),
 
-            // --- SymInt → the stdlib `int` class (symbolic integers represent dimensions) ---
+            // --- Int → the stdlib `int` class (symbolic integers represent dimensions) ---
             // Emitted as the real class, not `builtin("int")`: the protocol
             // restricts `BuiltInType.name` to a fixed sentinel set that excludes
             // `int`, so a bare builtin surfaces as Unknown on the consumer.
-            PyreflyType::SymInt(_) => {
+            PyreflyType::Int(_) => {
                 self.convert_class_type(self.stdlib.int_type, TypeFlags::INSTANCE)
             }
 
@@ -1244,12 +1244,12 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_symint_is_int_class() {
-        use pyrefly_types::dimension::SymInt;
+    fn test_convert_int_is_int_class() {
+        use pyrefly_types::dimension::Int;
 
-        // A `SymInt` is an integer tensor dimension, emitted as the real `int`
+        // A `Int` is an integer tensor dimension, emitted as the real `int`
         // class rather than an off-spec `int` `BuiltInType`.
-        for ty in [PyreflyType::SymInt(SymInt::literal(6))] {
+        for ty in [PyreflyType::Int(Int::literal(6))] {
             match convert_type(&ty) {
                 TspType::Class(c) => {
                     assert!(c.flags.contains(TypeFlags::INSTANCE));

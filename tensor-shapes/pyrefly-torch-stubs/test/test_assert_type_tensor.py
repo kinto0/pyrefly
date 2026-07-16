@@ -9,23 +9,23 @@ from typing import Any, assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt
+    from shape_extensions import Int
     from torch import Tensor
 
 
-class LinearLayer[N: SymIntVar, M: SymIntVar](nn.Module):
+class LinearLayer[N: IntVar, M: IntVar](nn.Module):
     """A simple linear layer with dimension tracking"""
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
+    def __init__(self, in_features: Int[N], out_features: Int[M]):
         super().__init__()
         self.weight = torch.randn(out_features, in_features)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
         """Forward pass with batch dimension B"""
         weight_t: Tensor[[N, M]] = self.weight.transpose(0, 1)
         return torch.matmul(x, weight_t)
@@ -41,16 +41,16 @@ assert_type(y, Tensor[[16, 10]])
 
 
 # Test nested calls
-class TwoLayer[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
+class TwoLayer[N: IntVar, M: IntVar, K: IntVar](nn.Module):
     layer1: LinearLayer[N, M]
     layer2: LinearLayer[M, K]
 
-    def __init__(self, n: SymInt[N], m: SymInt[M], k: SymInt[K]):
+    def __init__(self, n: Int[N], m: Int[M], k: Int[K]):
         super().__init__()
         self.layer1 = LinearLayer(n, m)
         self.layer2 = LinearLayer(m, k)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         h = self.layer1(x)
         return self.layer2(h)
 
@@ -77,7 +77,7 @@ x8: Tensor[[17, Any]] = x3
 x9: Tensor[[8 + 8, Any]] = x3
 reveal_type(x9)
 
-def symbolic_math[N: SymIntVar](x: Tensor[[N]]) -> Tensor[[N+1]]:
+def symbolic_math[N: IntVar](x: Tensor[[N]]) -> Tensor[[N+1]]:
     return x
 
 answer = symbolic_math(torch.randn(4))

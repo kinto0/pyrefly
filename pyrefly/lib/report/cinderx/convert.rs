@@ -435,9 +435,9 @@ pub(crate) fn type_to_structured(
         | Type::Sentinel(_)
         | Type::ElementOfTypeVarTuple(_)
         | Type::ShapedArray(_)
-        | Type::SymIntTuple(_)
+        | Type::IntTuple(_)
         | Type::NNModule(_)
         | Type::DataFrame(_)
-        | Type::SymInt(_) => insert_simple_other_form("typing.Any", table),
+        | Type::Int(_) => insert_simple_other_form("typing.Any", table),
     }
 }

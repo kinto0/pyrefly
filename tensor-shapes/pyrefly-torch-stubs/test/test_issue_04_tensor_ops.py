@@ -6,26 +6,26 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt
+    from shape_extensions import Int
     from torch import Tensor
 
 
-def test_view[B: SymIntVar, T: SymIntVar, D: SymIntVar, NHead: SymIntVar](
+def test_view[B: IntVar, T: IntVar, D: IntVar, NHead: IntVar](
     x: Tensor[[B, T, D]],
-    bsz: SymInt[B],
-    seqlen: SymInt[T],
-    n_head: SymInt[NHead],
-    head_dim: SymInt[D // NHead],
+    bsz: Int[B],
+    seqlen: Int[T],
+    n_head: Int[NHead],
+    head_dim: Int[D // NHead],
 ) -> None:
     # Test view operation
     result = x.view(bsz, seqlen, n_head, head_dim)
     assert_type(result, Tensor[[B, T, NHead, (D // NHead)]])
 
 
-def test_transpose[B: SymIntVar, T: SymIntVar, NHead: SymIntVar, HeadDim: SymIntVar](
+def test_transpose[B: IntVar, T: IntVar, NHead: IntVar, HeadDim: IntVar](
     q: Tensor[[B, T, NHead, HeadDim]],
 ) -> None:
     # Test transpose operation
@@ -34,15 +34,15 @@ def test_transpose[B: SymIntVar, T: SymIntVar, NHead: SymIntVar, HeadDim: SymInt
 
 
 def test_split[
-    B: SymIntVar,
-    T: SymIntVar,
-    D: SymIntVar,
-    NLocalHeads: SymIntVar,
-    NHead: SymIntVar,
+    B: IntVar,
+    T: IntVar,
+    D: IntVar,
+    NLocalHeads: IntVar,
+    NHead: IntVar,
 ](
     x: Tensor[[B, T, (NHead + 2 * NLocalHeads) * (D // NHead)]],
-    dim: SymInt[D],
-    kv_size: SymInt[NLocalHeads * (D // NHead)],
+    dim: Int[D],
+    kv_size: Int[NLocalHeads * (D // NHead)],
 ) -> None:
     # Test split with tuple (required for meta-shape inference)
     q, k, v = x.split((dim, kv_size, kv_size), dim=-1)
@@ -50,7 +50,7 @@ def test_split[
     assert_type(k, Tensor[[B, T, (NLocalHeads * (D // NHead))]])
 
 
-def test_flatten[B: SymIntVar, T: SymIntVar, NHeads: SymIntVar, HeadDim: SymIntVar](
+def test_flatten[B: IntVar, T: IntVar, NHeads: IntVar, HeadDim: IntVar](
     x: Tensor[[B, T, NHeads, HeadDim // 2, 2]],
 ) -> None:
     # Test flatten operation
@@ -60,7 +60,7 @@ def test_flatten[B: SymIntVar, T: SymIntVar, NHeads: SymIntVar, HeadDim: SymIntV
     assert_type(result, Tensor[[B, T, NHeads, ((HeadDim // 2) * 2)]])
 
 
-def test_stack[SeqLen: SymIntVar, HeadDim: SymIntVar](
+def test_stack[SeqLen: IntVar, HeadDim: IntVar](
     real: Tensor[[SeqLen, HeadDim // 2]],
     imag: Tensor[[SeqLen, HeadDim // 2]],
 ) -> None:

@@ -34,10 +34,10 @@ use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
 use crate::quantified::QuantifiedIdentity;
+use crate::shaped_array::IntTuple;
+use crate::shaped_array::IntTupleView;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
-use crate::shaped_array::SymIntTuple;
-use crate::shaped_array::SymIntTupleView;
 use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
@@ -438,14 +438,14 @@ impl<'a> TypeDisplayContext<'a> {
 
     fn fmt_shape_as_tuple_carrier(
         &self,
-        shape: &SymIntTuple,
+        shape: &IntTuple,
         output: &mut impl TypeOutput,
     ) -> fmt::Result {
         if shape.is_shapeless() {
             return self.fmt_helper_generic(&Type::any_tuple(), false, output);
         }
         match shape.view() {
-            SymIntTupleView::Concrete(dims) => {
+            IntTupleView::Concrete(dims) => {
                 output.write_str("[")?;
                 for (i, dim) in dims.iter().enumerate() {
                     if i > 0 {
@@ -455,10 +455,10 @@ impl<'a> TypeDisplayContext<'a> {
                 }
                 output.write_str("]")
             }
-            SymIntTupleView::Gradual => {
-                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
+            IntTupleView::Gradual => {
+                unreachable!("shaped-array unbounded shapes must be gradual IntTuple")
             }
-            SymIntTupleView::Unpacked {
+            IntTupleView::Unpacked {
                 prefix,
                 middle,
                 suffix,
@@ -479,7 +479,7 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str(", ")?;
                 }
                 first = false;
-                if matches!(middle, Type::SymIntTuple(shape) if shape.is_shapeless()) {
+                if matches!(middle, Type::IntTuple(shape) if shape.is_shapeless()) {
                     output.write_str("*tuple[int, ...]")?;
                 } else if is_tuple_carrier_shape_middle(middle) {
                     output.write_str("*Elements[")?;
@@ -713,12 +713,12 @@ impl<'a> TypeDisplayContext<'a> {
                 }
             },
             Type::ShapedArray(shaped_array) => self.fmt_shaped_array(shaped_array, output),
-            Type::SymIntTuple(symint_tuple) => {
-                if symint_tuple.is_shapeless() {
-                    output.write_str("SymIntTuple")
+            Type::IntTuple(int_tuple) => {
+                if int_tuple.is_shapeless() {
+                    output.write_str("IntTuple")
                 } else {
-                    output.write_str("SymIntTuple[")?;
-                    output.write_str(&symint_tuple.to_string())?;
+                    output.write_str("IntTuple[")?;
+                    output.write_str(&int_tuple.to_string())?;
                     output.write_str("]")
                 }
             }
@@ -744,7 +744,7 @@ impl<'a> TypeDisplayContext<'a> {
                 }
                 Ok(())
             }
-            Type::SymInt(dim) => output.write_str(&format!("SymInt[{dim}]")),
+            Type::Int(dim) => output.write_str(&format!("Int[{dim}]")),
             Type::TypeVar(t) => {
                 let type_var_qname = self.stdlib.map(|s| s.type_var().qname());
                 output.write_builtin("TypeVar", type_var_qname)?;
@@ -1597,7 +1597,7 @@ pub mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::dimension::SymInt;
+    use crate::dimension::Int;
     use crate::literal::Lit;
     use crate::literal::LitEnum;
     use crate::literal::LitStyle;
@@ -1606,8 +1606,8 @@ pub mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::shaped_array::IntTuple;
     use crate::shaped_array::ShapedArrayType;
-    use crate::shaped_array::SymIntTuple;
     use crate::tuple::Tuple;
     use crate::type_alias::TypeAlias;
     use crate::type_alias::TypeAliasData;
@@ -1708,8 +1708,7 @@ pub mod tests {
     fn test_display_shaped_array_type_uses_base_class_name() {
         let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
         let shaped =
-            ShapedArrayType::new(array.clone(), SymIntTuple::new(vec![SymInt::Literal(2)]))
-                .to_type();
+            ShapedArrayType::new(array.clone(), IntTuple::new(vec![Int::Literal(2)])).to_type();
         let shapeless = ShapedArrayType::shapeless(array).to_type();
 
         assert_eq!(shaped.to_string(), "Array[2]");
@@ -1717,38 +1716,38 @@ pub mod tests {
     }
 
     #[test]
-    fn test_display_symint_type_marks_standalone_sizes() {
+    fn test_display_int_type_marks_standalone_sizes() {
         let heap = TypeHeap::new();
-        let n = fake_tparam(0, "N", QuantifiedKind::SymIntVar).to_type(&heap);
-        let m = fake_tparam(1, "M", QuantifiedKind::SymIntVar).to_type(&heap);
+        let n = fake_tparam(0, "N", QuantifiedKind::IntVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::IntVar).to_type(&heap);
 
-        assert_eq!(Type::SymInt(SymInt::Literal(3)).to_string(), "SymInt[3]");
+        assert_eq!(Type::Int(Int::Literal(3)).to_string(), "Int[3]");
         assert_eq!(
-            Type::SymInt(SymInt::Symbolic(Box::new(n.clone()))).to_string(),
-            "SymInt[N]"
+            Type::Int(Int::Symbolic(Box::new(n.clone()))).to_string(),
+            "Int[N]"
         );
         assert_eq!(
-            Type::SymInt(SymInt::Mul(
-                Box::new(SymInt::Symbolic(Box::new(n))),
-                Box::new(SymInt::Symbolic(Box::new(m))),
+            Type::Int(Int::Mul(
+                Box::new(Int::Symbolic(Box::new(n))),
+                Box::new(Int::Symbolic(Box::new(m))),
             ))
             .to_string(),
-            "SymInt[(N * M)]"
+            "Int[(N * M)]"
         );
-        assert_eq!(Type::SymInt(SymInt::Int).to_string(), "SymInt[int]");
+        assert_eq!(Type::Int(Int::Int).to_string(), "Int[int]");
     }
 
     #[test]
     fn test_display_shaped_array_keeps_size_wrapper_out_of_shapes() {
         let heap = TypeHeap::new();
-        let n = fake_tparam(0, "N", QuantifiedKind::SymIntVar).to_type(&heap);
-        let m = fake_tparam(1, "M", QuantifiedKind::SymIntVar).to_type(&heap);
-        let shape = SymIntTuple::new(vec![
-            SymInt::Literal(3),
-            SymInt::Symbolic(Box::new(n.clone())),
-            SymInt::Mul(
-                Box::new(SymInt::Symbolic(Box::new(n))),
-                Box::new(SymInt::Symbolic(Box::new(m))),
+        let n = fake_tparam(0, "N", QuantifiedKind::IntVar).to_type(&heap);
+        let m = fake_tparam(1, "M", QuantifiedKind::IntVar).to_type(&heap);
+        let shape = IntTuple::new(vec![
+            Int::Literal(3),
+            Int::Symbolic(Box::new(n.clone())),
+            Int::Mul(
+                Box::new(Int::Symbolic(Box::new(n))),
+                Box::new(Int::Symbolic(Box::new(m))),
             ),
         ]);
         let array = ClassType::new(fake_class("Array", "arrays", 0), TArgs::default());
@@ -1763,8 +1762,8 @@ pub mod tests {
     fn test_display_tuple_carrier_shape_keeps_size_wrapper_out_of_shapes() {
         let heap = TypeHeap::new();
         let shape_param = fake_tparams(vec![fake_tparam(0, "Shape", QuantifiedKind::TypeVar)]);
-        let n = fake_tparam(1, "N", QuantifiedKind::SymIntVar).to_type(&heap);
-        let shape = SymIntTuple::new(vec![SymInt::Literal(3), SymInt::Symbolic(Box::new(n))]);
+        let n = fake_tparam(1, "N", QuantifiedKind::IntVar).to_type(&heap);
+        let shape = IntTuple::new(vec![Int::Literal(3), Int::Symbolic(Box::new(n))]);
         let array = ClassType::new(
             fake_class("Array", "arrays", 0),
             TArgs::new(shape_param, vec![shape.to_shape_arg_type()]),
@@ -1780,15 +1779,15 @@ pub mod tests {
     }
 
     #[test]
-    fn test_display_symint_tuple_type() {
-        let concrete = Type::SymIntTuple(Box::new(SymIntTuple::new(vec![
-            SymInt::Literal(2),
-            SymInt::Literal(3),
+    fn test_display_int_tuple_type() {
+        let concrete = Type::IntTuple(Box::new(IntTuple::new(vec![
+            Int::Literal(2),
+            Int::Literal(3),
         ])));
-        assert_eq!(concrete.to_string(), "SymIntTuple[2, 3]");
+        assert_eq!(concrete.to_string(), "IntTuple[2, 3]");
 
-        let gradual = Type::SymIntTuple(Box::new(SymIntTuple::shapeless()));
-        assert_eq!(gradual.to_string(), "SymIntTuple");
+        let gradual = Type::IntTuple(Box::new(IntTuple::shapeless()));
+        assert_eq!(gradual.to_string(), "IntTuple");
     }
 
     fn fake_generic_bound_method(

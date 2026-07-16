@@ -6,10 +6,10 @@
 from typing import Any, assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt
+    from shape_extensions import Int
     from torch import Tensor
 
 
@@ -32,11 +32,11 @@ def test_slice_with_typed_bounds():
 
 
 def test_slice_with_symbolic():
-    """Verify SymInt bounds extract the inner type"""
+    """Verify Int bounds extract the inner type"""
     x: Tensor[[10, 20, 30]] = torch.randn(10, 20, 30)
 
-    # SymInt[N] bound - use type variable
-    def with_symbolic[N: SymIntVar](n: SymInt[N]):
+    # Int[N] bound - use type variable
+    def with_symbolic[N: IntVar](n: Int[N]):
         y = x[:n]
         assert_type(y, Tensor[[N, 20, 30]])
 

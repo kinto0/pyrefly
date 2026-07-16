@@ -3,83 +3,83 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Test shape_extensions.SymIntVar for tensor shape dimensions.
+"""Test shape_extensions.IntVar for tensor shape dimensions.
 
-shape_extensions.SymIntVar marks symbolic integer dimensions in pyrefly.
+shape_extensions.IntVar marks symbolic integer dimensions in pyrefly.
 This test verifies that:
-1. SymIntVar("N") works for shape annotations
-2. SymIntTuple carriers work for variadic shapes
-3. Generic works with shape_extensions.SymIntVar for class-level type parameters
+1. IntVar("N") works for shape annotations
+2. IntTuple carriers work for variadic shapes
+3. Generic works with shape_extensions.IntVar for class-level type parameters
 4. Shape arithmetic (N+1, N*2) works in annotations
 """
 
 from typing import assert_type, Generic, TYPE_CHECKING
 
-from shape_extensions import Elements, SymIntTuple, SymIntVar
+from shape_extensions import Elements, IntTuple, IntVar
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-N = SymIntVar("N")
-M = SymIntVar("M")
+N = IntVar("N")
+M = IntVar("M")
 
 
 # ============================================================================
-# Basic SymIntVar usage in function signatures
+# Basic IntVar usage in function signatures
 # ============================================================================
 
 
-def test_symintvar_identity(x: Tensor[[N, M]]) -> Tensor[[N, M]]:
-    """SymIntVar in input and output: same shape"""
+def test_intvar_identity(x: Tensor[[N, M]]) -> Tensor[[N, M]]:
+    """IntVar in input and output: same shape"""
     return x
 
 
-def test_symintvar_single(x: Tensor[[N]]) -> Tensor[[N]]:
-    """Single SymIntVar dimension"""
+def test_intvar_single(x: Tensor[[N]]) -> Tensor[[N]]:
+    """Single IntVar dimension"""
     return x
 
 
-def test_symintvar_inference():
-    """SymIntVar binds to concrete dims via inference"""
+def test_intvar_inference():
+    """IntVar binds to concrete dims via inference"""
     import torch
 
     t: Tensor[[3, 4]] = torch.randn(3, 4)
-    result = test_symintvar_identity(t)
+    result = test_intvar_identity(t)
     assert_type(result, Tensor[[3, 4]])
 
 
 # ============================================================================
-# SymIntVar with arithmetic in shapes
+# IntVar with arithmetic in shapes
 # ============================================================================
 
 
-def test_symintvar_add(x: Tensor[[N, M]]) -> Tensor[[N + 1, M]]:
+def test_intvar_add(x: Tensor[[N, M]]) -> Tensor[[N + 1, M]]:
     """N + 1 in return type"""
     return x  # type: ignore[bad-return]
 
 
-def test_symintvar_mul(x: Tensor[[N, M]]) -> Tensor[[N * 2, M]]:
+def test_intvar_mul(x: Tensor[[N, M]]) -> Tensor[[N * 2, M]]:
     """N * 2 in return type"""
     return x  # type: ignore[bad-return]
 
 
-def test_symintvar_sub(x: Tensor[[N, M]]) -> Tensor[[N - 1, M]]:
+def test_intvar_sub(x: Tensor[[N, M]]) -> Tensor[[N - 1, M]]:
     """N - 1 in return type"""
     return x  # type: ignore[bad-return]
 
 
-def test_symintvar_two_vars(x: Tensor[[N, M]]) -> Tensor[[N + M, 3]]:
+def test_intvar_two_vars(x: Tensor[[N, M]]) -> Tensor[[N + M, 3]]:
     """N + M in return type"""
     return x  # type: ignore[bad-return]
 
 
 # ============================================================================
-# Generic with SymIntVar for class-level type parameters
+# Generic with IntVar for class-level type parameters
 # ============================================================================
 
 
 class SameShapeLayer(Generic[N]):
-    """Class generic over single SymIntVar"""
+    """Class generic over single IntVar"""
 
     def forward(self, x: Tensor[[N]]) -> Tensor[[N]]:
         return x
@@ -96,52 +96,52 @@ def test_class_generic():
 
 
 # ============================================================================
-# SymIntTuple carrier in function signatures
+# IntTuple carrier in function signatures
 # ============================================================================
 
 
-def test_syminttuple_identity[Ns: SymIntTuple](x: Tensor[Ns]) -> Tensor[Ns]:
-    """SymIntTuple carrier preserves shape"""
+def test_inttuple_identity[Ns: IntTuple](x: Tensor[Ns]) -> Tensor[Ns]:
+    """IntTuple carrier preserves shape"""
     return x
 
 
-def test_syminttuple_inference():
-    """SymIntTuple carrier binds to concrete dims via inference"""
+def test_inttuple_inference():
+    """IntTuple carrier binds to concrete dims via inference"""
     import torch
 
     t: Tensor[[10, 20]] = torch.randn(10, 20)
-    result = test_syminttuple_identity(t)
+    result = test_inttuple_identity(t)
     assert_type(result, Tensor[[10, 20]])
 
 
-def test_syminttuple_with_fixed_dim[Ns: SymIntTuple, N: SymIntVar](
+def test_inttuple_with_fixed_dim[Ns: IntTuple, N: IntVar](
     x: Tensor[[*Elements[Ns], N]],
 ) -> Tensor[[*Elements[Ns], N]]:
-    """SymIntTuple carrier mixed with SymIntVar"""
+    """IntTuple carrier mixed with IntVar"""
     return x
 
 
-def test_syminttuple_with_arithmetic[Ns: SymIntTuple, N: SymIntVar](
+def test_inttuple_with_arithmetic[Ns: IntTuple, N: IntVar](
     x: Tensor[[*Elements[Ns], N]],
 ) -> Tensor[[*Elements[Ns], N + 1]]:
-    """SymIntTuple carrier with SymIntVar arithmetic"""
+    """IntTuple carrier with IntVar arithmetic"""
     return x  # type: ignore[bad-return]
 
 
 # ============================================================================
-# SymIntTuple carrier with Generic for class-level shape parameters
+# IntTuple carrier with Generic for class-level shape parameters
 # ============================================================================
 
 
 class VariadicLayer:
-    """Layer with a generic SymIntTuple carrier method"""
+    """Layer with a generic IntTuple carrier method"""
 
-    def forward[Shape: SymIntTuple](self, x: Tensor[Shape]) -> Tensor[Shape]:
+    def forward[Shape: IntTuple](self, x: Tensor[Shape]) -> Tensor[Shape]:
         return x
 
 
-def test_class_syminttuple_carrier():
-    """Generic class with SymIntTuple carrier — shape preserved"""
+def test_class_inttuple_carrier():
+    """Generic class with IntTuple carrier — shape preserved"""
     layer = VariadicLayer()
     import torch
 

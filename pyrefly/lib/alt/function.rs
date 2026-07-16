@@ -22,7 +22,7 @@ use pyrefly_types::callable::Params;
 use pyrefly_types::callable::PlaceholderBodyKind;
 use pyrefly_types::class::Class;
 use pyrefly_types::class::ClassType;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::meta_shape_dsl::ShapeDslFunction;
 use pyrefly_types::meta_shape_dsl::ShapeTransform;
@@ -1132,7 +1132,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let skip_check = matches!(
                     (&param_ty, default),
                     (
-                        Type::SymInt(SymInt::Symbolic(inner)),
+                        Type::Int(Int::Symbolic(inner)),
                         Some(Expr::NumberLiteral(ruff_python_ast::ExprNumberLiteral {
                             value: ruff_python_ast::Number::Int(i),
                             ..

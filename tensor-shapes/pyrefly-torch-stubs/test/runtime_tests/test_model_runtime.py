@@ -10,7 +10,7 @@
 Verifies that the runnable models (with assert_type stripped) can be
 instantiated and run forward passes at Python runtime. Tests both the
 future_annotations variants (which use PEP 563 to defer annotation
-evaluation) and the sym_int_var variants (which use shape_extensions.SymIntVar for
+evaluation) and the sym_int_var variants (which use shape_extensions.IntVar for
 runtime-safe arithmetic without future annotations).
 """
 
@@ -196,7 +196,7 @@ class TestGPTFastFutureAnnotationsRuntime(unittest.TestCase):
         assert_shape(v_out, (2, 4, 64, 8))
 
 
-class TestNanoGPTSymIntVarRuntime(unittest.TestCase):
+class TestNanoGPTIntVarRuntime(unittest.TestCase):
     """Test that nanogpt_sym_int_var_runnable.py can be imported, instantiated, and run."""
 
     def _make_config(self):
@@ -278,7 +278,7 @@ class TestNanoGPTSymIntVarRuntime(unittest.TestCase):
         assert_shape(generated, (batch_size, 4 + 3))
 
 
-class TestGPTFastSymIntVarRuntime(unittest.TestCase):
+class TestGPTFastIntVarRuntime(unittest.TestCase):
     """Test that gptfast_sym_int_var_runnable.py can be imported and sub-modules can run."""
 
     def _make_config(self):

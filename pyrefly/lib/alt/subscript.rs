@@ -9,7 +9,7 @@ use num_traits::ToPrimitive;
 use pyrefly_python::dunder;
 use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::literal::Lit;
-use pyrefly_types::shaped_array::SymIntTuple;
+use pyrefly_types::shaped_array::IntTuple;
 use pyrefly_types::tuple::Tuple;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprSlice;
@@ -55,20 +55,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    pub fn infer_symint_tuple_subscript(
+    pub fn infer_int_tuple_subscript(
         &self,
-        symint_tuple: &SymIntTuple,
+        int_tuple: &IntTuple,
         index: &Expr,
         range: TextRange,
         errors: &ErrorCollector,
         context: Option<&dyn Fn() -> ErrorContext>,
     ) -> Type {
-        let tuple = symint_tuple.to_tuple();
+        let tuple = int_tuple.to_tuple();
         let fallback = || self.infer_tuple_subscript(tuple.clone(), index, range, errors, context);
         match index {
             Expr::Slice(_) => fallback(),
             _ => self
-                .infer_symint_tuple_index(&tuple, index, errors)
+                .infer_int_tuple_index(&tuple, index, errors)
                 .unwrap_or_else(fallback),
         }
     }
@@ -109,7 +109,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn infer_symint_tuple_index(
+    fn infer_int_tuple_index(
         &self,
         tuple: &Tuple,
         index: &Expr,
@@ -120,14 +120,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::Literal(lit) if let Some(idx) = lit.value.as_index_i64() => match tuple {
                 Tuple::Unpacked(f) => {
                     let (prefix, middle, suffix) = &**f;
-                    Some(self.infer_symint_tuple_unpacked_index(prefix, middle, suffix, idx))
+                    Some(self.infer_int_tuple_unpacked_index(prefix, middle, suffix, idx))
                 }
                 _ => self.infer_tuple_index(tuple, index, errors),
             },
             _ => match tuple {
                 Tuple::Unpacked(f) => {
                     let (prefix, middle, suffix) = &**f;
-                    Some(self.symint_tuple_unpacked_element_type(prefix, middle, suffix))
+                    Some(self.int_tuple_unpacked_element_type(prefix, middle, suffix))
                 }
                 _ => None,
             },
@@ -319,7 +319,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn infer_symint_tuple_unpacked_index(
+    fn infer_int_tuple_unpacked_index(
         &self,
         prefix: &[Type],
         middle: &Type,
@@ -331,13 +331,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             prefix
                 .get(elt_idx)
                 .cloned()
-                .unwrap_or_else(|| self.symint_tuple_unpacked_element_type(prefix, middle, suffix))
+                .unwrap_or_else(|| self.int_tuple_unpacked_element_type(prefix, middle, suffix))
         } else {
             let neg_idx = (-idx) as usize;
             if neg_idx > 0 && neg_idx <= suffix.len() {
                 suffix[suffix.len() - neg_idx].clone()
             } else {
-                self.symint_tuple_unpacked_element_type(prefix, middle, suffix)
+                self.int_tuple_unpacked_element_type(prefix, middle, suffix)
             }
         }
     }

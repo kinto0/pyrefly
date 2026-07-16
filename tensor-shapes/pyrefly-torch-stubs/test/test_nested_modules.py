@@ -12,10 +12,10 @@ from typing import assert_type, TYPE_CHECKING
 
 import torch
 import torch.nn as nn
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt
+    from shape_extensions import Int
     from torch import Tensor
 
 # ============================================================================
@@ -23,21 +23,21 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class LinearLayer[N: SymIntVar, M: SymIntVar](nn.Module):
+class LinearLayer[N: IntVar, M: IntVar](nn.Module):
     """Basic linear layer (reusable component)"""
 
     weight: Tensor[[M, N]]
 
-    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
+    def __init__(self, in_features: Int[N], out_features: Int[M]):
         super().__init__()
         self.weight = torch.randn(out_features, in_features)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
         weight_t: Tensor[[N, M]] = self.weight.transpose(0, 1)
         return torch.matmul(x, weight_t)
 
 
-class TwoLayerMLP[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
+class TwoLayerMLP[N: IntVar, M: IntVar, K: IntVar](nn.Module):
     """MLP composed of nested LinearLayer modules"""
 
     # Can we declare typed attributes?
@@ -46,16 +46,16 @@ class TwoLayerMLP[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
 
     def __init__(
         self,
-        in_features: SymInt[N],
-        hidden_features: SymInt[M],
-        out_features: SymInt[K],
+        in_features: Int[N],
+        hidden_features: Int[M],
+        out_features: Int[K],
     ):
         super().__init__()
         # Can we initialize typed modules?
         self.layer1 = LinearLayer(in_features, hidden_features)
         self.layer2 = LinearLayer(hidden_features, out_features)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         # Does calling nested module preserve types?
         h: Tensor[[B, M]] = self.layer1(x)
         h_relu: Tensor[[B, M]] = torch.relu(h)
@@ -77,21 +77,21 @@ def test_basic_nested_modules():
 # ============================================================================
 
 
-class SimpleMLP[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
+class SimpleMLP[N: IntVar, M: IntVar, K: IntVar](nn.Module):
     """MLP without explicit attribute type annotations"""
 
     def __init__(
         self,
-        in_features: SymInt[N],
-        hidden_features: SymInt[M],
-        out_features: SymInt[K],
+        in_features: Int[N],
+        hidden_features: Int[M],
+        out_features: Int[K],
     ):
         super().__init__()
         # Just assign, no type annotation
         self.layer1 = LinearLayer(in_features, hidden_features)
         self.layer2 = LinearLayer(hidden_features, out_features)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         h: Tensor[[B, M]] = self.layer1(x)
         y: Tensor[[B, K]] = self.layer2(h)
         return y
@@ -111,22 +111,22 @@ def test_nested_without_annotations():
 # ============================================================================
 
 
-class Block[N: SymIntVar, M: SymIntVar](nn.Module):
+class Block[N: IntVar, M: IntVar](nn.Module):
     """Block with two layers"""
 
     linear: LinearLayer[N, M]
 
-    def __init__(self, in_features: SymInt[N], out_features: SymInt[M]):
+    def __init__(self, in_features: Int[N], out_features: Int[M]):
         super().__init__()
         self.linear = LinearLayer(in_features, out_features)
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, M]]:
         out: Tensor[[B, M]] = self.linear(x)
         out_relu: Tensor[[B, M]] = torch.relu(out)
         return out_relu
 
 
-class DeepMLP[N: SymIntVar, M: SymIntVar, K: SymIntVar, L: SymIntVar](nn.Module):
+class DeepMLP[N: IntVar, M: IntVar, K: IntVar, L: IntVar](nn.Module):
     """Deep MLP with three-level nesting"""
 
     block1: Block[N, M]
@@ -135,17 +135,17 @@ class DeepMLP[N: SymIntVar, M: SymIntVar, K: SymIntVar, L: SymIntVar](nn.Module)
 
     def __init__(
         self,
-        in_features: SymInt[N],
-        hidden1: SymInt[M],
-        hidden2: SymInt[K],
-        out_features: SymInt[L],
+        in_features: Int[N],
+        hidden1: Int[M],
+        hidden2: Int[K],
+        out_features: Int[L],
     ):
         super().__init__()
         self.block1 = Block(in_features, hidden1)  # N -> M
         self.block2 = Block(hidden1, hidden2)  # M -> K
         self.final_layer = LinearLayer(hidden2, out_features)  # K -> L
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, L]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, L]]:
         h1: Tensor[[B, M]] = self.block1(x)
         h2: Tensor[[B, K]] = self.block2(h1)
         y: Tensor[[B, L]] = self.final_layer(h2)
@@ -166,7 +166,7 @@ def test_three_level_nesting():
 # ============================================================================
 
 
-class HybridModel[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
+class HybridModel[N: IntVar, M: IntVar, K: IntVar](nn.Module):
     """Model mixing nested modules and direct operations"""
 
     encoder: LinearLayer[N, M]
@@ -174,15 +174,15 @@ class HybridModel[N: SymIntVar, M: SymIntVar, K: SymIntVar](nn.Module):
 
     def __init__(
         self,
-        in_features: SymInt[N],
-        hidden_features: SymInt[M],
-        out_features: SymInt[K],
+        in_features: Int[N],
+        hidden_features: Int[M],
+        out_features: Int[K],
     ):
         super().__init__()
         self.encoder = LinearLayer(in_features, hidden_features)  # N -> M
         self.decoder = LinearLayer(hidden_features, out_features)  # M -> K
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         # Nested module
         encoded: Tensor[[B, M]] = self.encoder(x)
 
@@ -209,38 +209,36 @@ def test_hybrid_model():
 # ============================================================================
 
 
-class Projection[D_in: SymIntVar, D_out: SymIntVar](nn.Module):
+class Projection[D_in: IntVar, D_out: IntVar](nn.Module):
     """Projection layer"""
 
     weight: Tensor[[D_out, D_in]]
 
-    def __init__(self, in_dim: SymInt[D_in], out_dim: SymInt[D_out]):
+    def __init__(self, in_dim: Int[D_in], out_dim: Int[D_out]):
         super().__init__()
         self.weight = torch.randn(out_dim, in_dim)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, x: Tensor[[B, T, D_in]]
     ) -> Tensor[[B, T, D_out]]:
         # Simple projection using einsum
         return torch.einsum("btd,od->bto", x, self.weight)
 
 
-class AttentionWithProjections[D: SymIntVar](nn.Module):
+class AttentionWithProjections[D: IntVar](nn.Module):
     """Attention using nested projection modules"""
 
     q_proj: Projection[D, D]
     k_proj: Projection[D, D]
     v_proj: Projection[D, D]
 
-    def __init__(self, d_model: SymInt[D]):
+    def __init__(self, d_model: Int[D]):
         super().__init__()
         self.q_proj = Projection(d_model, d_model)  # D -> D
         self.k_proj = Projection(d_model, d_model)  # D -> D
         self.v_proj = Projection(d_model, d_model)  # D -> D
 
-    def forward[B: SymIntVar, T: SymIntVar](
-        self, x: Tensor[[B, T, D]]
-    ) -> Tensor[[B, T, D]]:
+    def forward[B: IntVar, T: IntVar](self, x: Tensor[[B, T, D]]) -> Tensor[[B, T, D]]:
         # Project to Q, K, V
         q: Tensor[[B, T, D]] = self.q_proj(x)
         k: Tensor[[B, T, D]] = self.k_proj(x)
@@ -266,16 +264,16 @@ def test_attention_with_projections():
 # ============================================================================
 
 
-class ConvBlock[C_in: SymIntVar, C_out: SymIntVar](nn.Module):
+class ConvBlock[C_in: IntVar, C_out: IntVar](nn.Module):
     """Convolutional block"""
 
     weight: Tensor[[C_out, C_in, 3, 3]]
 
-    def __init__(self, in_channels: SymInt[C_in], out_channels: SymInt[C_out]):
+    def __init__(self, in_channels: Int[C_in], out_channels: Int[C_out]):
         super().__init__()
         self.weight = torch.randn(out_channels, in_channels, 3, 3)
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, C_in, H, W]]
     ) -> Tensor[[B, C_out, H, W]]:
         import torch.nn.functional as F
@@ -283,18 +281,18 @@ class ConvBlock[C_in: SymIntVar, C_out: SymIntVar](nn.Module):
         return F.conv2d(x, self.weight, padding=1)
 
 
-class ResBlock[C: SymIntVar](nn.Module):
+class ResBlock[C: IntVar](nn.Module):
     """Residual block with nested conv blocks"""
 
     conv1: ConvBlock[C, C]
     conv2: ConvBlock[C, C]
 
-    def __init__(self, channels: SymInt[C]):
+    def __init__(self, channels: Int[C]):
         super().__init__()
         self.conv1 = ConvBlock(channels, channels)  # C -> C
         self.conv2 = ConvBlock(channels, channels)  # C -> C
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         identity: Tensor[[B, C, H, W]] = x
@@ -322,9 +320,7 @@ def test_resnet_style_block():
 # ============================================================================
 
 
-class ParallelBranches[N: SymIntVar, M1: SymIntVar, M2: SymIntVar, K: SymIntVar](
-    nn.Module
-):
+class ParallelBranches[N: IntVar, M1: IntVar, M2: IntVar, K: IntVar](nn.Module):
     """Model with parallel branches"""
 
     branch1_layer1: LinearLayer[N, M1]
@@ -334,10 +330,10 @@ class ParallelBranches[N: SymIntVar, M1: SymIntVar, M2: SymIntVar, K: SymIntVar]
 
     def __init__(
         self,
-        in_features: SymInt[N],
-        hidden1: SymInt[M1],
-        hidden2: SymInt[M2],
-        out_features: SymInt[K],
+        in_features: Int[N],
+        hidden1: Int[M1],
+        hidden2: Int[M2],
+        out_features: Int[K],
     ):
         super().__init__()
         self.branch1_layer1 = LinearLayer(in_features, hidden1)  # N -> M1
@@ -345,7 +341,7 @@ class ParallelBranches[N: SymIntVar, M1: SymIntVar, M2: SymIntVar, K: SymIntVar]
         self.branch2_layer1 = LinearLayer(in_features, hidden2)  # N -> M2
         self.branch2_layer2 = LinearLayer(hidden2, out_features)  # M2 -> K
 
-    def forward[B: SymIntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
+    def forward[B: IntVar](self, x: Tensor[[B, N]]) -> Tensor[[B, K]]:
         # Branch 1
         h1: Tensor[[B, M1]] = self.branch1_layer1(x)
         out1: Tensor[[B, K]] = self.branch1_layer2(h1)

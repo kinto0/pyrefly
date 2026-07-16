@@ -19,7 +19,7 @@ pub enum SpecialExport {
     TypeAlias,
     TypeAliasType,
     TypeVar,
-    SymIntVar,
+    IntVar,
     ParamSpec,
     TypeVarTuple,
     Annotated,
@@ -91,7 +91,7 @@ impl SpecialExport {
             "classmethod" => Some(Self::ClassMethod),
             "abstractclassmethod" => Some(Self::AbstractClassMethod),
             "TypeVar" => Some(Self::TypeVar),
-            "SymIntVar" => Some(Self::SymIntVar),
+            "IntVar" => Some(Self::IntVar),
             "ParamSpec" => Some(Self::ParamSpec),
             "TypeVarTuple" => Some(Self::TypeVarTuple),
             "Annotated" => Some(Self::Annotated),
@@ -161,7 +161,7 @@ impl SpecialExport {
 
     pub fn defined_in(self, m: ModuleName) -> bool {
         match self {
-            Self::SymIntVar => matches!(m.as_str(), "shape_extensions"),
+            Self::IntVar => matches!(m.as_str(), "shape_extensions"),
             Self::TypeVar => matches!(m.as_str(), "typing" | "typing_extensions"),
             Self::TypeVarTuple => {
                 matches!(

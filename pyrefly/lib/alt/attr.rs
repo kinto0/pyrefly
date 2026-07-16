@@ -2244,13 +2244,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Option<ShapedArrayType> {
         // Cheap syntactic pre-filter, kept before any metadata lookup to preserve
         // laziness: a shaped-array class always carries its shape as a tuple
-        // carrier, a first-class `SymIntTuple`, or an as-yet-unbound shape variable.
+        // carrier, a first-class `IntTuple`, or an as-yet-unbound shape variable.
         // Bailing here for any other class (notably scalar returns like `int`)
         // avoids forcing that class's metadata on every call-return reprojection.
         if !cls.targs().as_slice().iter().any(|arg| {
             matches!(
                 arg,
-                Type::Tuple(_) | Type::SymIntTuple(_) | Type::Quantified(_) | Type::TypeVar(_)
+                Type::Tuple(_) | Type::IntTuple(_) | Type::Quantified(_) | Type::TypeVar(_)
             )
         }) {
             return None;
@@ -2319,12 +2319,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // A DataFrame delegates attribute access to its underlying instance type.
                 self.as_attribute_base1(schema.underlying_type(), acc)
             }
-            Type::SymInt(_) => {
+            Type::Int(_) => {
                 // Dimension values behave like int for attribute access
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.int().clone()))
             }
-            Type::SymIntTuple(symint_tuple) => acc.push(AttributeBase1::ClassInstance(
-                self.erase_tuple_type(symint_tuple.to_tuple()),
+            Type::IntTuple(int_tuple) => acc.push(AttributeBase1::ClassInstance(
+                self.erase_tuple_type(int_tuple.to_tuple()),
             )),
             Type::Tuple(tuple) => {
                 acc.push(AttributeBase1::ClassInstance(self.erase_tuple_type(tuple)))

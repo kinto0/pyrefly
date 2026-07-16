@@ -32,7 +32,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymIntVar
+    from shape_extensions import Int, IntVar
     from torch import Tensor
 
 
@@ -49,9 +49,7 @@ class MaskNetConfig:
     compression_num: int = 0
 
 
-class MaskBlock[InD: SymIntVar, HidD: SymIntVar, RedD: SymIntVar, OutD: SymIntVar](
-    nn.Module
-):
+class MaskBlock[InD: IntVar, HidD: IntVar, RedD: IntVar, OutD: IntVar](nn.Module):
     """Core building block of MaskNet.
 
     Generates an instance-guided mask from V_emb, applies it to V_hidden,
@@ -60,10 +58,10 @@ class MaskBlock[InD: SymIntVar, HidD: SymIntVar, RedD: SymIntVar, OutD: SymIntVa
 
     def __init__(
         self,
-        input_dim: SymInt[InD],
-        hidden_dim: SymInt[HidD],
-        reduced_dim: SymInt[RedD],
-        output_dim: SymInt[OutD],
+        input_dim: Int[InD],
+        hidden_dim: Int[HidD],
+        reduced_dim: Int[RedD],
+        output_dim: Int[OutD],
         hidden_activation: str = "ReLU",
         dropout_rate: float = 0.0,
         layer_norm: bool = True,
@@ -79,7 +77,7 @@ class MaskBlock[InD: SymIntVar, HidD: SymIntVar, RedD: SymIntVar, OutD: SymIntVa
         self.hidden_act: nn.Module = getattr(nn, hidden_activation)()
         self.hidden_dropout = nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None
 
-    def forward[B: SymIntVar](
+    def forward[B: IntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, HidD]]
     ) -> Tensor[[B, OutD]]:
         V_mask = self.mask_layer(V_emb)
@@ -100,13 +98,13 @@ class MaskBlock[InD: SymIntVar, HidD: SymIntVar, RedD: SymIntVar, OutD: SymIntVa
         return v_out
 
 
-class SerialMaskNet[InD: SymIntVar, OutD: SymIntVar](nn.Module):
+class SerialMaskNet[InD: IntVar, OutD: IntVar](nn.Module):
     """Serial MaskNet: chain of MaskBlocks where each block's output feeds the next."""
 
     def __init__(
         self,
-        input_dim: SymInt[InD],
-        output_dim: SymInt[OutD],
+        input_dim: Int[InD],
+        output_dim: Int[OutD],
         hidden_units: list[int],
         hidden_activation: str = "ReLU",
         reduction_ratio: float = 1.0,
@@ -130,7 +128,7 @@ class SerialMaskNet[InD: SymIntVar, OutD: SymIntVar](nn.Module):
             )
         self.output_dim = output_dim
 
-    def forward[B: SymIntVar](
+    def forward[B: IntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, InD]]
     ) -> Tensor[[B, OutD]]:
         v_out: Tensor = V_hidden
@@ -144,17 +142,15 @@ class SerialMaskNet[InD: SymIntVar, OutD: SymIntVar](nn.Module):
         return result
 
 
-class ParallelMaskNet[InD: SymIntVar, BlkD: SymIntVar = 64, OutD: SymIntVar = 64](
-    nn.Module
-):
+class ParallelMaskNet[InD: IntVar, BlkD: IntVar = 64, OutD: IntVar = 64](nn.Module):
     """Parallel MaskNet: multiple independent MaskBlocks, outputs concatenated."""
 
     def __init__(
         self,
-        input_dim: SymInt[InD],
-        output_dim: SymInt[OutD],
+        input_dim: Int[InD],
+        output_dim: Int[OutD],
         num_blocks: int = 1,
-        block_dim: SymInt[BlkD] = 64,
+        block_dim: Int[BlkD] = 64,
         dnn_hidden_units: list[int] | None = None,
         hidden_activation: str = "ReLU",
         reduction_ratio: float = 1.0,
@@ -191,7 +187,7 @@ class ParallelMaskNet[InD: SymIntVar, BlkD: SymIntVar = 64, OutD: SymIntVar = 64
         self.dnn = nn.Sequential(*dnn_layers) if dnn_layers else nn.Identity()
         self.output_dim = output_dim
 
-    def forward[B: SymIntVar](
+    def forward[B: IntVar](
         self, V_emb: Tensor[[B, InD]], V_hidden: Tensor[[B, InD]]
     ) -> Tensor[[B, OutD]]:
         block_out = [
@@ -207,7 +203,7 @@ class ParallelMaskNet[InD: SymIntVar, BlkD: SymIntVar = 64, OutD: SymIntVar = 64
         return result
 
 
-class MaskNetBackbone[F: SymIntVar, D: SymIntVar, OutD: SymIntVar](nn.Module):
+class MaskNetBackbone[F: IntVar, D: IntVar, OutD: IntVar](nn.Module):
     """MaskNet backbone: instance-guided feature masking.
 
     Args:
@@ -219,9 +215,9 @@ class MaskNetBackbone[F: SymIntVar, D: SymIntVar, OutD: SymIntVar](nn.Module):
 
     def __init__(
         self,
-        num_features: SymInt[F],
-        emb_dim: SymInt[D],
-        output_dim: SymInt[OutD],
+        num_features: Int[F],
+        emb_dim: Int[D],
+        output_dim: Int[OutD],
         config: MaskNetConfig | None = None,
     ) -> None:
         super().__init__()
@@ -279,10 +275,10 @@ class MaskNetBackbone[F: SymIntVar, D: SymIntVar, OutD: SymIntVar](nn.Module):
         )
 
     @property
-    def output_dim(self) -> SymInt[OutD]:
+    def output_dim(self) -> Int[OutD]:
         return self._output_dim
 
-    def forward[B: SymIntVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:
+    def forward[B: IntVar](self, input_embs: Tensor[[B, F, D]]) -> Tensor[[B, OutD]]:
         working_embs: Tensor = input_embs
         # LCE compression: [B, F, D] -> [B, compression_num, D]
         if self.lce is not None:

@@ -450,10 +450,10 @@ fn type_kind_name(ty: &Type) -> &'static str {
         Type::Materialization => "materialization",
         Type::Var(_) => "var",
         Type::ShapedArray(_) => "shaped_array",
-        Type::SymIntTuple(_) => "symint_tuple",
+        Type::IntTuple(_) => "int_tuple",
         Type::NNModule(_) => "nn_module",
         Type::DataFrame(_) => "data_frame",
-        Type::SymInt(_) => "symint",
+        Type::Int(_) => "int",
         Type::TypeForm(_) => "type_form",
     }
 }
@@ -653,7 +653,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
         Type::Materialization => named_type_shape_kind("Materialization", Vec::new()),
         Type::Var(_) => named_type_shape_kind("typing.Any", Vec::new()),
         Type::ShapedArray(_) => named_type_shape_kind("Tensor", Vec::new()),
-        Type::SymIntTuple(_) => named_type_shape_kind("SymIntTuple", Vec::new()),
+        Type::IntTuple(_) => named_type_shape_kind("IntTuple", Vec::new()),
         Type::NNModule(module) => {
             let args = module
                 .class
@@ -665,7 +665,7 @@ fn type_shape_kind(context: &TypeShapeContext, ty: &Type) -> TypeShapeKind {
             named_type_shape_kind(qname_to_string(module.class.qname()), args)
         }
         Type::DataFrame(schema) => type_shape_kind(context, &schema.underlying_type()),
-        Type::SymInt(_) => named_type_shape_kind("SymInt", Vec::new()),
+        Type::Int(_) => named_type_shape_kind("Int", Vec::new()),
         Type::TypeForm(inner) => {
             named_type_shape_kind("typing.TypeForm", vec![type_to_shape(context, inner)])
         }

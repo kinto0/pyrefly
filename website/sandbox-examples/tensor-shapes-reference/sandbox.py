@@ -10,16 +10,16 @@ from typing import assert_type, TYPE_CHECKING
 import torch
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt
+    from shape_extensions import Int
     from torch import Tensor
 
 
-# SymInt arithmetic: +, -, *, //
-def dim_math[A, B](a: SymInt[A], b: SymInt[B]) -> None:
-    assert_type(a + b, SymInt[A + B])
-    assert_type(a * b, SymInt[A * B])
-    assert_type(a - b, SymInt[A - B])
-    assert_type(a // b, SymInt[A // B])
+# Int arithmetic: +, -, *, //
+def dim_math[A, B](a: Int[A], b: Int[B]) -> None:
+    assert_type(a + b, Int[A + B])
+    assert_type(a * b, Int[A * B])
+    assert_type(a - b, Int[A - B])
+    assert_type(a // b, Int[A // B])
 
 
 # Tensor with arithmetic in shape annotations

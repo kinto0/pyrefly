@@ -8,13 +8,13 @@
 from typing import assert_type, TYPE_CHECKING
 
 import torch
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-def concat_symbolic[N: SymIntVar, M: SymIntVar](
+def concat_symbolic[N: IntVar, M: IntVar](
     x: Tensor[[N, 3]], y: Tensor[[M, 3]]
 ) -> Tensor[[N + M, 3]]:
     """Concat with symbolic dimension addition: N + M"""
@@ -25,7 +25,7 @@ def concat_symbolic[N: SymIntVar, M: SymIntVar](
     return z
 
 
-def flatten_symbolic[B: SymIntVar, N: SymIntVar, M: SymIntVar](
+def flatten_symbolic[B: IntVar, N: IntVar, M: IntVar](
     x: Tensor[[B, N, M]],
 ) -> Tensor[[B * N * M]]:
     """Flatten with symbolic dimension multiplication"""

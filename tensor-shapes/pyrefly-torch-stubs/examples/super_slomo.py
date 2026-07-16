@@ -16,7 +16,7 @@ Port notes:
 - Uses scale_factor=2 (int) instead of 2.0 (float) for F.interpolate
     (the DSL's interpolate_ir expects int|symint for scale_factor)
 - Uses (k - 1) // 2 instead of int((filterSize - 1) / 2) for padding
-    (equivalent for odd kernel sizes, keeps SymInt type tracking)
+    (equivalent for odd kernel sizes, keeps Int type tracking)
 - Variable reassignment with shape change requires unique variable names
 - backWarp ported as BackWarp[W, H]: added torch.meshgrid, expand_as,
     F.grid_sample stubs; register_buffer → nn.Buffer; variable renames
@@ -31,7 +31,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymIntVar
+    from shape_extensions import Int, IntVar
     from torch import Tensor
 
 
@@ -40,29 +40,27 @@ if TYPE_CHECKING:
 # ============================================================================
 
 
-class Down[InC: SymIntVar, OutC: SymIntVar](nn.Module):
+class Down[InC: IntVar, OutC: IntVar](nn.Module):
     """Average Pooling --> Conv + LeakyReLU --> Conv + LeakyReLU
 
     Halves spatial dims via avg_pool2d(2), transforms channels.
     Conv uses padding=(filterSize-1)//2 to preserve spatial dims after pooling.
 
-    WORKAROUND: filterSize is a plain int (not SymInt[K]) because the padding
+    WORKAROUND: filterSize is a plain int (not Int[K]) because the padding
     expression 2*((K-1)//2) doesn't simplify to K-1 symbolically, causing
     Conv2d spatial formulas to not reduce properly. Using plain int means
     concrete literal values propagate through Conv2d type params at each
     instantiation site.
     """
 
-    def __init__(
-        self, c_in: SymInt[InC], c_out: SymInt[OutC], filter_size: int
-    ) -> None:
+    def __init__(self, c_in: Int[InC], c_out: Int[OutC], filter_size: int) -> None:
         super().__init__()
         padding = (filter_size - 1) // 2
         self.pool = nn.AvgPool2d(2)
         self.conv1 = nn.Conv2d(c_in, c_out, filter_size, stride=1, padding=padding)
         self.conv2 = nn.Conv2d(c_out, c_out, filter_size, stride=1, padding=padding)
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, InC, H, W]]
     ) -> Tensor[[B, OutC, (H - 2) // 2 + 1, (W - 2) // 2 + 1]]:
         x_pooled = self.pool(x)
@@ -76,7 +74,7 @@ class Down[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         return x2
 
 
-class Up[InC: SymIntVar, OutC: SymIntVar](nn.Module):
+class Up[InC: IntVar, OutC: IntVar](nn.Module):
     """Bilinear interpolation --> Conv + LeakyReLU --> Cat + Conv + LeakyReLU
 
     Doubles spatial dims via F.interpolate(scale_factor=2), then concatenates
@@ -86,12 +84,12 @@ class Up[InC: SymIntVar, OutC: SymIntVar](nn.Module):
     conv2: 2*OutC -> OutC (after cat with skip connection of OutC channels)
     """
 
-    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
+    def __init__(self, c_in: Int[InC], c_out: Int[OutC]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(c_in, c_out, 3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(2 * c_out, c_out, 3, stride=1, padding=1)
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, InC, H, W]], skp: Tensor[[B, OutC, H * 2, W * 2]]
     ) -> Tensor[[B, OutC, H * 2, W * 2]]:
         # WORKAROUND: F.interpolate scale_factor=2 (int) not 2.0 (float)
@@ -112,7 +110,7 @@ class Up[InC: SymIntVar, OutC: SymIntVar](nn.Module):
 # ============================================================================
 
 
-class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
+class UNet[InC: IntVar, OutC: IntVar](nn.Module):
     """UNet architecture for Super SloMo.
 
     Used twice in the full model:
@@ -130,7 +128,7 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
     it preserves channels rather than doubling/halving.
     """
 
-    def __init__(self, c_in: SymInt[InC], c_out: SymInt[OutC]) -> None:
+    def __init__(self, c_in: Int[InC], c_out: Int[OutC]) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(c_in, 32, 7, stride=1, padding=3)
         self.conv2 = nn.Conv2d(32, 32, 7, stride=1, padding=3)
@@ -157,7 +155,7 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         self.ups = nn.ModuleList(ups)
         self.conv3 = nn.Conv2d(32, c_out, 3, stride=1, padding=1)
 
-    def _encode[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def _encode[B: IntVar, C: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, C, H, W]], depth: int
     ) -> Tensor[[B, 2 * C, (H - 2) // 2 + 1, (W - 2) // 2 + 1]]:
         """Encode one level: doubles channels, halves spatial via Down[C, 2*C]."""
@@ -165,7 +163,7 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         down: Down[C, 2 * C] = self.downs[idx]
         return down(x)
 
-    def _decode[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def _decode[B: IntVar, C: IntVar, H: IntVar, W: IntVar](
         self,
         skip: Tensor[[B, C, H, W]],
         deep: Tensor[[B, 2 * C, (H - 2) // 2 + 1, (W - 2) // 2 + 1]],
@@ -181,7 +179,7 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         up: Up[2 * C, C] = self.ups[idx]
         return up(deep, skip)  # type: ignore[bad-argument-type]
 
-    def _bottleneck[B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def _bottleneck[B: IntVar, C: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, C, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         """Shape-preserving bottleneck: down5 (512->512) + up1 (512->512).
@@ -197,8 +195,8 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         deep = down(x)
         return up(deep, x)  # type: ignore[bad-argument-type]
 
-    def recurse[I: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
-        self, x: Tensor[[B, C, H, W]], depth: SymInt[I]
+    def recurse[I: IntVar, B: IntVar, C: IntVar, H: IntVar, W: IntVar](
+        self, x: Tensor[[B, C, H, W]], depth: Int[I]
     ) -> Tensor[[B, C, H, W]]:
         """Shape-preserving recursive encoder-decoder.
 
@@ -213,7 +211,7 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
         decoded = self._decode(skip, middle, depth)
         return decoded
 
-    def forward[B: SymIntVar](
+    def forward[B: IntVar](
         self, x: Tensor[[B, InC, 352, 352]]
     ) -> Tensor[[B, OutC, 352, 352]]:
         x0 = F.leaky_relu(self.conv1(x), negative_slope=0.1)
@@ -241,16 +239,14 @@ class UNet[InC: SymIntVar, OutC: SymIntVar](nn.Module):
 # - Variable reassignment x → x_coord, y → y_coord (shape changes)
 
 
-class BackWarp[W: SymIntVar, H: SymIntVar](nn.Module):
+class BackWarp[W: IntVar, H: IntVar](nn.Module):
     """Backwarping module: warps an image using optical flow.
 
     Given optical flow F_0_1 and frame I1, generates I0 via grid_sample.
     Stores precomputed coordinate grids as buffers.
     """
 
-    def __init__(
-        self, width: SymInt[W], height: SymInt[H], device: torch.device
-    ) -> None:
+    def __init__(self, width: Int[W], height: Int[H], device: torch.device) -> None:
         super().__init__()
         self.W = width
         self.H = height
@@ -262,7 +258,7 @@ class BackWarp[W: SymIntVar, H: SymIntVar](nn.Module):
         self.gridX = nn.Buffer(gridX)
         self.gridY = nn.Buffer(gridY)
 
-    def forward[B: SymIntVar, C: SymIntVar](
+    def forward[B: IntVar, C: IntVar](
         self, img: Tensor[[B, C, H, W]], flow: Tensor[[B, 2, H, W]]
     ) -> Tensor[[B, C, H, W]]:
         # Extract horizontal and vertical flows

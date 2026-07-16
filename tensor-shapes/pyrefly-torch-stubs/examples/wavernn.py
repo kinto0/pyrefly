@@ -29,12 +29,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymIntVar
+    from shape_extensions import Int, IntVar
     from torch import Tensor
 
 
-class ResBlock[NF: SymIntVar = 128](nn.Module):
-    def __init__(self, n_freq: SymInt[NF] = 128) -> None:
+class ResBlock[NF: IntVar = 128](nn.Module):
+    def __init__(self, n_freq: Int[NF] = 128) -> None:
         super().__init__()
         self.resblock_model = nn.Sequential(
             nn.Conv1d(
@@ -48,7 +48,7 @@ class ResBlock[NF: SymIntVar = 128](nn.Module):
             nn.BatchNorm1d(n_freq),
         )
 
-    def forward[B: SymIntVar, L: SymIntVar](
+    def forward[B: IntVar, L: IntVar](
         self, specgram: Tensor[[B, NF, L]]
     ) -> Tensor[[B, NF, L]]:
         residual = self.resblock_model(specgram)
@@ -59,18 +59,18 @@ class ResBlock[NF: SymIntVar = 128](nn.Module):
 
 
 class MelResNet[
-    NF: SymIntVar = 128,
-    NH: SymIntVar = 128,
-    NO: SymIntVar = 128,
-    K: SymIntVar = 5,
+    NF: IntVar = 128,
+    NH: IntVar = 128,
+    NO: IntVar = 128,
+    K: IntVar = 5,
 ](nn.Module):
     def __init__(
         self,
         n_res_block: int = 10,
-        n_freq: SymInt[NF] = 128,
-        n_hidden: SymInt[NH] = 128,
-        n_output: SymInt[NO] = 128,
-        kernel_size: SymInt[K] = 5,
+        n_freq: Int[NF] = 128,
+        n_hidden: Int[NH] = 128,
+        n_output: Int[NO] = 128,
+        kernel_size: Int[K] = 5,
     ) -> None:
         super().__init__()
         self.conv_in = nn.Conv1d(
@@ -88,7 +88,7 @@ class MelResNet[
             in_channels=n_hidden, out_channels=n_output, kernel_size=1
         )
 
-    def forward[B: SymIntVar, L: SymIntVar](
+    def forward[B: IntVar, L: IntVar](
         self, specgram: Tensor[[B, NF, L]]
     ) -> Tensor[[B, NO, (1 + L) + (-1 * K)]]:
         x = self.conv_in(specgram)
@@ -105,13 +105,13 @@ class MelResNet[
         return x
 
 
-class Stretch2d[TS: SymIntVar, FS: SymIntVar](nn.Module):
-    def __init__(self, time_scale: SymInt[TS], freq_scale: SymInt[FS]) -> None:
+class Stretch2d[TS: IntVar, FS: IntVar](nn.Module):
+    def __init__(self, time_scale: Int[TS], freq_scale: Int[FS]) -> None:
         super().__init__()
         self.freq_scale = freq_scale
         self.time_scale = time_scale
 
-    def forward[B: SymIntVar, C: SymIntVar, F: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, C: IntVar, F: IntVar, T: IntVar](
         self, specgram: Tensor[[B, C, F, T]]
     ) -> Tensor[[B, C, F * FS, T * TS]]:
         x = specgram.repeat_interleave(self.freq_scale, -2)
@@ -122,19 +122,19 @@ class Stretch2d[TS: SymIntVar, FS: SymIntVar](nn.Module):
 
 
 class UpsampleNetwork[
-    NF: SymIntVar = 128,
-    NH: SymIntVar = 128,
-    NO: SymIntVar = 128,
-    K: SymIntVar = 5,
+    NF: IntVar = 128,
+    NH: IntVar = 128,
+    NO: IntVar = 128,
+    K: IntVar = 5,
 ](nn.Module):
     def __init__(
         self,
         upsample_scales: list[int],
         n_res_block: int = 10,
-        n_freq: SymInt[NF] = 128,
-        n_hidden: SymInt[NH] = 128,
-        n_output: SymInt[NO] = 128,
-        kernel_size: SymInt[K] = 5,
+        n_freq: Int[NF] = 128,
+        n_hidden: Int[NH] = 128,
+        n_output: Int[NO] = 128,
+        kernel_size: Int[K] = 5,
     ) -> None:
         super().__init__()
 
@@ -162,7 +162,7 @@ class UpsampleNetwork[
             up_layers.append(conv)
         self.upsample_layers = nn.Sequential(*up_layers)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, specgram: Tensor[[B, NF, T]]
     ) -> tuple[Tensor[[B, NF, Any]], Tensor[[B, NO, Any]]]:
         resnet_output = self.resnet(specgram)
@@ -190,26 +190,26 @@ class UpsampleNetwork[
 
 
 class WaveRNN[
-    NC: SymIntVar,
-    NR: SymIntVar = 512,
-    NFC: SymIntVar = 512,
-    NF: SymIntVar = 128,
-    NH: SymIntVar = 128,
-    NO: SymIntVar = 128,
-    K: SymIntVar = 5,
+    NC: IntVar,
+    NR: IntVar = 512,
+    NFC: IntVar = 512,
+    NF: IntVar = 128,
+    NH: IntVar = 128,
+    NO: IntVar = 128,
+    K: IntVar = 5,
 ](nn.Module):
     def __init__(
         self,
         upsample_scales: list[int],
-        n_classes: SymInt[NC],
+        n_classes: Int[NC],
         hop_length: int,
         n_res_block: int = 10,
-        n_rnn: SymInt[NR] = 512,
-        n_fc: SymInt[NFC] = 512,
-        kernel_size: SymInt[K] = 5,
-        n_freq: SymInt[NF] = 128,
-        n_hidden: SymInt[NH] = 128,
-        n_output: SymInt[NO] = 128,
+        n_rnn: Int[NR] = 512,
+        n_fc: Int[NFC] = 512,
+        kernel_size: Int[K] = 5,
+        n_freq: Int[NF] = 128,
+        n_hidden: Int[NH] = 128,
+        n_output: Int[NO] = 128,
     ) -> None:
         super().__init__()
 
@@ -244,7 +244,7 @@ class WaveRNN[
         self.fc2 = nn.Linear(n_fc + self.n_aux, n_fc)
         self.fc3 = nn.Linear(n_fc, n_classes)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, waveform: Tensor[[B, 1, T]], specgram: Tensor[[B, 1, NF, Any]]
     ) -> Tensor[[B, 1, T, NC]]:
         if waveform.size(1) != 1:
@@ -333,7 +333,7 @@ class WaveRNN[
         assert_type(result, Tensor[[B, 1, T, NC]])
         return result
 
-    def infer[B: SymIntVar](
+    def infer[B: IntVar](
         self, specgram: Tensor[[B, NF, Any]], lengths: Tensor[[B]] | None = None
     ) -> tuple[Tensor, Tensor[[B]] | None]:
         device = specgram.device

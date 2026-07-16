@@ -48,7 +48,7 @@ use crate::class::ClassKind;
 use crate::class::ClassType;
 use crate::data_frame::DataFrameSchema;
 use crate::dimension;
-use crate::dimension::SymInt;
+use crate::dimension::Int;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::heap::TypeHeap;
@@ -61,8 +61,8 @@ use crate::module::ModuleType;
 use crate::param_spec::ParamSpec;
 use crate::quantified::Quantified;
 use crate::sentinel::Sentinel;
+use crate::shaped_array::IntTuple;
 use crate::shaped_array::ShapedArrayType;
-use crate::shaped_array::SymIntTuple;
 use crate::simplify::unions;
 use crate::special_form::SpecialForm;
 use crate::stdlib::Stdlib;
@@ -659,7 +659,7 @@ impl VisitMut<Type> for Union {
 pub struct NNModuleType {
     /// The underlying nn.Module subclass (e.g., MaxPool2d).
     pub class: ClassType,
-    /// Captured init args (e.g., kernel_size → SymInt(3), stride → None).
+    /// Captured init args (e.g., kernel_size → Int(3), stride → None).
     /// Ordered by constructor parameter order.
     pub fields: SmallMap<Name, Type>,
 }
@@ -790,7 +790,7 @@ pub enum Type {
     /// Example: Tensor[2, 3] represents a 2x3 tensor
     ShapedArray(Box<ShapedArrayType>),
     /// First-class tensor shape tuple.
-    SymIntTuple(Box<SymIntTuple>),
+    IntTuple(Box<IntTuple>),
     /// nn.Module instance with captured constructor arguments.
     /// Wraps a ClassType + field map of init args, enabling DSL forward
     /// functions to access shape-relevant constructor parameters directly.
@@ -801,12 +801,12 @@ pub enum Type {
     DataFrame(Box<DataFrameSchema>),
     /// Dimension value type - represents values that satisfy Dim bound
     /// Examples:
-    ///   - `Type::SymInt(SymInt::Literal(6))` for concrete dimension 6
-    ///   - `Type::SymInt(SymInt::Symbolic(v))` for dimension variables
+    ///   - `Type::Int(Int::Literal(6))` for concrete dimension 6
+    ///   - `Type::Int(Int::Symbolic(v))` for dimension variables
     ///
     /// This is the type-level representation of dimension values, used when
     /// type variables with Dim bound unify with concrete dimension values.
-    SymInt(SymInt),
+    Int(Int),
     Tuple(Tuple),
     Module(ModuleType),
     Forall(Box<Forall<Forallable>>),
@@ -907,10 +907,10 @@ impl Visit for Type {
             Type::TypedDict(x) => x.visit(f),
             Type::PartialTypedDict(x) => x.visit(f),
             Type::ShapedArray(x) => x.visit(f),
-            Type::SymIntTuple(x) => x.visit(f),
+            Type::IntTuple(x) => x.visit(f),
             Type::NNModule(x) => x.visit(f),
             Type::DataFrame(x) => x.visit(f),
-            Type::SymInt(x) => x.visit(f),
+            Type::Int(x) => x.visit(f),
             Type::Tuple(x) => x.visit(f),
             Type::Module(x) => x.visit(f),
             Type::Forall(x) => x.visit(f),
@@ -965,10 +965,10 @@ impl VisitMut for Type {
             Type::TypedDict(x) => x.visit_mut(f),
             Type::PartialTypedDict(x) => x.visit_mut(f),
             Type::ShapedArray(x) => x.visit_mut(f),
-            Type::SymIntTuple(x) => x.visit_mut(f),
+            Type::IntTuple(x) => x.visit_mut(f),
             Type::NNModule(x) => x.visit_mut(f),
             Type::DataFrame(x) => x.visit_mut(f),
-            Type::SymInt(x) => x.visit_mut(f),
+            Type::Int(x) => x.visit_mut(f),
             Type::Tuple(x) => x.visit_mut(f),
             Type::Module(x) => x.visit_mut(f),
             Type::Forall(x) => x.visit_mut(f),
@@ -1900,10 +1900,10 @@ impl Type {
         }
     }
 
-    /// Extract the literal value from a `SymInt::Literal`, if this is one.
+    /// Extract the literal value from a `Int::Literal`, if this is one.
     pub fn as_shape_literal(&self) -> Option<i64> {
         match self {
-            Type::SymInt(SymInt::Literal(n)) => Some(*n),
+            Type::Int(Int::Literal(n)) => Some(*n),
             _ => None,
         }
     }

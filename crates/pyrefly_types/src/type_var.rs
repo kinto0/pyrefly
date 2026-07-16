@@ -71,7 +71,7 @@ impl Restriction {
             Self::Constraints(ts) => unions(ts.clone(), heap),
             Self::Unrestricted => match kind {
                 QuantifiedKind::TypeVar => stdlib.object().clone().to_type(),
-                QuantifiedKind::SymIntVar => gradual_size(),
+                QuantifiedKind::IntVar => gradual_size(),
                 QuantifiedKind::ParamSpec => Type::Ellipsis,
                 QuantifiedKind::TypeVarTuple => Type::any_tuple(),
             },

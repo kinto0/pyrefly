@@ -16,17 +16,17 @@ use itertools::Itertools;
 use itertools::izip;
 use pyrefly_python::dunder;
 use pyrefly_types::callable::Callable;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::ShapeError;
-use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::contains_var_in_type;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::dimension::type_is_gradual;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::read_only::ReadOnlyReason;
+use pyrefly_types::shaped_array::IntTuple;
+use pyrefly_types::shaped_array::IntTupleView;
 use pyrefly_types::shaped_array::ShapedArrayType;
-use pyrefly_types::shaped_array::SymIntTuple;
-use pyrefly_types::shaped_array::SymIntTupleView;
 use pyrefly_types::shaped_array::is_tuple_carrier_shape_middle;
 use pyrefly_types::shaped_array::shape_to_tuple_carrier;
 use pyrefly_types::shaped_array::tuple_carrier_to_shape;
@@ -58,7 +58,7 @@ use crate::solver::solver::SubsetCacheEntry;
 use crate::solver::solver::SubsetError;
 use crate::solver::solver::SubsetWithSnapshotResult;
 use crate::solver::solver::TypedDictSubsetError;
-use crate::solver::solver::type_as_symintvar_solution;
+use crate::solver::solver::type_as_intvar_solution;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Params;
@@ -138,8 +138,8 @@ fn accepts_all_class_objects(ty: &Type) -> bool {
     }
 }
 
-fn is_symint_class_type(cls: &ClassType) -> bool {
-    cls.has_qname("shape_extensions", "SymInt")
+fn is_int_class_type(cls: &ClassType) -> bool {
+    cls.has_qname("shape_extensions", "Int")
 }
 
 /// Check if a param list has both `*args: Any` and `**kwargs: Any`
@@ -204,14 +204,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         size: &Type,
         literal_is_got: bool,
     ) -> Result<(), SubsetError> {
-        let literal_size = Type::SymInt(SymInt::Literal(literal));
+        let literal_size = Type::Int(Int::Literal(literal));
         let result = if literal_is_got {
             self.is_subset_eq(&literal_size, size)
         } else {
             self.is_subset_eq(size, &literal_size)
         };
         // Keep the outer argument diagnostic for the original literal instead
-        // of exposing the recursive structural `SymInt` comparison.
+        // of exposing the recursive structural `Int` comparison.
         result.map_err(|_| SubsetError::Other)
     }
 
@@ -920,16 +920,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
     }
 
-    fn symint_tuple_has_carrier_middle(shape: &SymIntTuple) -> bool {
+    fn int_tuple_has_carrier_middle(shape: &IntTuple) -> bool {
         match shape.view() {
-            SymIntTupleView::Unpacked { middle, .. } => is_tuple_carrier_shape_middle(middle),
-            SymIntTupleView::Concrete(_) | SymIntTupleView::Gradual => false,
+            IntTupleView::Unpacked { middle, .. } => is_tuple_carrier_shape_middle(middle),
+            IntTupleView::Concrete(_) | IntTupleView::Gradual => false,
         }
     }
 
-    fn symint_tuple_as_carrier_middle(shape: &SymIntTuple) -> Option<&Type> {
+    fn int_tuple_as_carrier_middle(shape: &IntTuple) -> Option<&Type> {
         match shape.view() {
-            SymIntTupleView::Unpacked {
+            IntTupleView::Unpacked {
                 prefix,
                 middle,
                 suffix,
@@ -940,43 +940,39 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     None
                 }
             }
-            SymIntTupleView::Concrete(_) | SymIntTupleView::Gradual => None,
+            IntTupleView::Concrete(_) | IntTupleView::Gradual => None,
         }
     }
 
-    fn is_subset_symint_tuple_to_type(
+    fn is_subset_int_tuple_to_type(
         &mut self,
-        got: &SymIntTuple,
+        got: &IntTuple,
         want: &Type,
     ) -> Result<(), SubsetError> {
-        if let Some(carrier) = Self::symint_tuple_as_carrier_middle(got) {
+        if let Some(carrier) = Self::int_tuple_as_carrier_middle(got) {
             self.is_subset_eq(carrier, want)
         } else {
             self.is_subset_eq(&got.to_tuple_type(), want)
         }
     }
 
-    fn is_subset_type_to_symint_tuple(
+    fn is_subset_type_to_int_tuple(
         &mut self,
         got: &Type,
-        want: &SymIntTuple,
+        want: &IntTuple,
     ) -> Result<(), SubsetError> {
-        if let Some(carrier) = Self::symint_tuple_as_carrier_middle(want) {
+        if let Some(carrier) = Self::int_tuple_as_carrier_middle(want) {
             self.is_subset_eq(got, carrier)
         } else {
             self.is_subset_eq(got, &want.to_tuple_type())
         }
     }
 
-    fn is_subset_symint_tuple(
-        &mut self,
-        got: &SymIntTuple,
-        want: &SymIntTuple,
-    ) -> Result<(), SubsetError> {
+    fn is_subset_int_tuple(&mut self, got: &IntTuple, want: &IntTuple) -> Result<(), SubsetError> {
         if got.is_shapeless() || want.is_shapeless() {
             Ok(())
-        } else if Self::symint_tuple_has_carrier_middle(got)
-            || Self::symint_tuple_has_carrier_middle(want)
+        } else if Self::int_tuple_has_carrier_middle(got)
+            || Self::int_tuple_has_carrier_middle(want)
         {
             self.bind_tensor_dimensions(got, want)
         } else {
@@ -984,34 +980,34 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
     }
 
-    fn is_subset_symint_tuple_to_tuple(
+    fn is_subset_int_tuple_to_tuple(
         &mut self,
-        got: &SymIntTuple,
+        got: &IntTuple,
         want: &Tuple,
     ) -> Result<(), SubsetError> {
-        if Self::symint_tuple_has_carrier_middle(got) {
-            self.bind_tensor_dimensions(got, &SymIntTuple::from_tuple(want.clone()))
+        if Self::int_tuple_has_carrier_middle(got) {
+            self.bind_tensor_dimensions(got, &IntTuple::from_tuple(want.clone()))
         } else {
             self.is_subset_eq(&got.to_tuple_type(), &Type::Tuple(want.clone()))
         }
     }
 
-    fn is_subset_tuple_to_symint_tuple(
+    fn is_subset_tuple_to_int_tuple(
         &mut self,
         got: &Tuple,
-        want: &SymIntTuple,
+        want: &IntTuple,
     ) -> Result<(), SubsetError> {
         if matches!(got, Tuple::Unbounded(inner) if !inner.is_any() && !is_gradual_size(inner))
             && matches!(
                 want.view(),
-                SymIntTupleView::Unpacked { prefix, suffix, .. }
+                IntTupleView::Unpacked { prefix, suffix, .. }
                     if !prefix.is_empty() || !suffix.is_empty()
             )
         {
             return Err(SubsetError::Other);
         }
-        if Self::symint_tuple_has_carrier_middle(want) {
-            self.bind_tensor_dimensions(&SymIntTuple::from_tuple(got.clone()), want)
+        if Self::int_tuple_has_carrier_middle(want) {
+            self.bind_tensor_dimensions(&IntTuple::from_tuple(got.clone()), want)
         } else {
             self.is_subset_eq(&Type::Tuple(got.clone()), &want.to_tuple_type())
         }
@@ -1841,25 +1837,25 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (Type::Intersect(l), u) => any(l.0.iter(), |l| self.is_subset_eq(l, u)),
             (Type::Union(l_union), u) => all(l_union.members.iter(), |l| self.is_subset_eq(l, u)),
-            // SymInt <: SymInt - expand bound Vars, canonicalize, and compare for structural equality
-            (Type::SymInt(s1), Type::SymInt(s2)) => {
+            // Int <: Int - expand bound Vars, canonicalize, and compare for structural equality
+            (Type::Int(s1), Type::Int(s2)) => {
                 // Expand any bound Vars in both expressions
-                let mut got_expanded = Type::SymInt(s1.clone());
-                let mut want_expanded = Type::SymInt(s2.clone());
+                let mut got_expanded = Type::Int(s1.clone());
+                let mut want_expanded = Type::Int(s2.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
                 self.solver.expand_with_bounds(&mut want_expanded);
 
                 // Gradual-size fast path. `type_is_gradual` is a by-reference
-                // equivalent of `is_gradual_size(&canonicalize(..))` for `SymInt`
+                // equivalent of `is_gradual_size(&canonicalize(..))` for `Int`
                 // types, so we can short-circuit without allocating canonical
                 // copies on the common success path.
                 //
                 // Short-circuiting here before solving a fresh symbolic `want`
-                // (e.g. `SymInt[N]` for an unconstrained `SymIntVar` N) is safe and
-                // does not leak an unsolved `Var`: an unconstrained `SymIntVar`
-                // defaults to the gradual size `SymInt[int]`, so a gradual `got`
-                // (like bare `SymInt`) flowing into `SymInt[N]` still resolves to
-                // `SymInt[int]`. We therefore need not bind N before accepting.
+                // (e.g. `Int[N]` for an unconstrained `IntVar` N) is safe and
+                // does not leak an unsolved `Var`: an unconstrained `IntVar`
+                // defaults to the gradual size `Int[int]`, so a gradual `got`
+                // (like bare `Int`) flowing into `Int[N]` still resolves to
+                // `Int[int]`. We therefore need not bind N before accepting.
                 if type_is_gradual(&got_expanded) || type_is_gradual(&want_expanded) {
                     return Ok(());
                 }
@@ -1870,20 +1866,20 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     return Ok(());
                 }
 
-                if let Type::SymInt(SymInt::Symbolic(want_symbolic)) = &want_expanded
-                    && !matches!(want_symbolic.as_ref(), Type::SymInt(_))
+                if let Type::Int(Int::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::Int(_))
                 {
                     return self.is_subset_eq(&got_expanded, want_symbolic);
                 }
-                if let Type::SymInt(SymInt::Symbolic(got_symbolic)) = &got_expanded
-                    && !matches!(got_symbolic.as_ref(), Type::SymInt(_))
+                if let Type::Int(Int::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::Int(_))
                 {
                     return self.is_subset_eq(got_symbolic, &want_expanded);
                 }
 
                 // Check if the expanded "want" side contains unbound Vars in nested positions.
                 // Do this after the gradual-size fast path, since any expression containing
-                // `SymInt[int]` canonicalizes to gradual `SymInt` regardless of other leaves.
+                // `Int[int]` canonicalizes to gradual `Int` regardless of other leaves.
                 if contains_var_in_type(&want_expanded) {
                     return Err(SubsetError::Shape(
                         ShapeError::nested_type_var_not_inferred(),
@@ -1896,20 +1892,19 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     want_canonical.to_string(),
                 )))
             }
-            // SymInt <: Quantified - expand, canonicalize SymInt, and compare.
-            // A SymInt like (A + A) // 2 might simplify to A (a Quantified).
-            (Type::SymInt(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::SymIntVar => {
-                let mut got_expanded = Type::SymInt(s.clone());
+            // Int <: Quantified - expand, canonicalize Int, and compare.
+            // A Int like (A + A) // 2 might simplify to A (a Quantified).
+            (Type::Int(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::IntVar => {
+                let mut got_expanded = Type::Int(s.clone());
                 self.solver.expand_with_bounds(&mut got_expanded);
-                if let Type::SymInt(SymInt::Symbolic(got_symbolic)) = &got_expanded
-                    && !matches!(got_symbolic.as_ref(), Type::SymInt(_))
+                if let Type::Int(Int::Symbolic(got_symbolic)) = &got_expanded
+                    && !matches!(got_symbolic.as_ref(), Type::Int(_))
                 {
                     return self.is_subset_eq(got_symbolic, want);
                 }
                 let got_canonical = got_expanded.canonicalize();
                 let want_canonical =
-                    Type::SymInt(SymInt::Symbolic(Box::new(Type::Quantified(q.clone()))))
-                        .canonicalize();
+                    Type::Int(Int::Symbolic(Box::new(Type::Quantified(q.clone())))).canonicalize();
                 if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
                     return Ok(());
                 }
@@ -1917,25 +1912,24 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     Ok(())
                 } else {
                     Err(SubsetError::Shape(ShapeError::structural_mismatch(
-                        Type::SymInt(s.clone()).to_string(),
+                        Type::Int(s.clone()).to_string(),
                         got_canonical.to_string(),
                         Type::Quantified(q.clone()).to_string(),
                         want_canonical.to_string(),
                     )))
                 }
             }
-            // Quantified <: SymInt - expand SymInt, canonicalize, and compare
-            (Type::Quantified(q), Type::SymInt(s)) if q.kind() == QuantifiedKind::SymIntVar => {
-                let mut want_expanded = Type::SymInt(s.clone());
+            // Quantified <: Int - expand Int, canonicalize, and compare
+            (Type::Quantified(q), Type::Int(s)) if q.kind() == QuantifiedKind::IntVar => {
+                let mut want_expanded = Type::Int(s.clone());
                 self.solver.expand_with_bounds(&mut want_expanded);
-                if let Type::SymInt(SymInt::Symbolic(want_symbolic)) = &want_expanded
-                    && !matches!(want_symbolic.as_ref(), Type::SymInt(_))
+                if let Type::Int(Int::Symbolic(want_symbolic)) = &want_expanded
+                    && !matches!(want_symbolic.as_ref(), Type::Int(_))
                 {
                     return self.is_subset_eq(got, want_symbolic);
                 }
                 let got_canonical =
-                    Type::SymInt(SymInt::Symbolic(Box::new(Type::Quantified(q.clone()))))
-                        .canonicalize();
+                    Type::Int(Int::Symbolic(Box::new(Type::Quantified(q.clone())))).canonicalize();
                 let want_canonical = want_expanded.canonicalize();
                 if is_gradual_size(&got_canonical) || is_gradual_size(&want_canonical) {
                     return Ok(());
@@ -1946,16 +1940,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     Err(SubsetError::Shape(ShapeError::structural_mismatch(
                         Type::Quantified(q.clone()).to_string(),
                         got_canonical.to_string(),
-                        Type::SymInt(s.clone()).to_string(),
+                        Type::Int(s.clone()).to_string(),
                         want_canonical.to_string(),
                     )))
                 }
             }
-            (Type::SymIntTuple(got), want @ Type::Quantified(_)) => {
-                self.is_subset_symint_tuple_to_type(got, want)
+            (Type::IntTuple(got), want @ Type::Quantified(_)) => {
+                self.is_subset_int_tuple_to_type(got, want)
             }
-            (got @ Type::Quantified(_), Type::SymIntTuple(want)) => {
-                self.is_subset_type_to_symint_tuple(got, want)
+            (got @ Type::Quantified(_), Type::IntTuple(want)) => {
+                self.is_subset_type_to_int_tuple(got, want)
             }
             (_, Type::Quantified(_)) => Err(SubsetError::Other),
             (l, Type::Intersect(u)) => all(u.0.iter(), |u| self.is_subset_eq(l, u)),
@@ -2197,27 +2191,27 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // both directions.
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
-            // Any exact SymInt expression represents an integer dimension value.
-            (Type::SymInt(_), Type::ClassType(cls))
+            // Any exact Int expression represents an integer dimension value.
+            (Type::Int(_), Type::ClassType(cls))
                 if cls.is_builtin("int") || cls.is_builtin("float") =>
             {
                 Ok(())
             }
-            (Type::ClassType(cls), want @ Type::SymInt(_))
+            (Type::ClassType(cls), want @ Type::Int(_))
                 if cls.is_builtin("int") && is_gradual_size(want) =>
             {
                 Ok(())
             }
-            (Type::ClassType(cls), Type::SymInt(SymInt::Symbolic(inner)))
+            (Type::ClassType(cls), Type::Int(Int::Symbolic(inner)))
                 if cls.is_builtin("int")
                     && matches!(inner.as_ref(), Type::Var(_) | Type::Quantified(_)) =>
             {
                 let mut inner_expanded = (**inner).clone();
                 self.solver.expand_with_bounds(&mut inner_expanded);
-                // `inner` is invariantly a `SymIntVar` dimension variable (or its
-                // bound): `SymInt::Symbolic(Quantified)` is only constructed for
-                // the `SymIntVar` kind (see `SymInt::from_type`), so this arm needs
-                // no `QuantifiedKind` gate, unlike the sibling `SymInt`/`Quantified`
+                // `inner` is invariantly an `IntVar` dimension variable (or its
+                // bound): `Int::Symbolic(Quantified)` is only constructed for
+                // the `IntVar` kind (see `Int::from_type`), so this arm needs
+                // no `QuantifiedKind` gate, unlike the sibling `Int`/`Quantified`
                 // arms above. Once expanded, an `int` argument is compatible when
                 // the dimension resolved to a concrete `int` or a gradual size; a
                 // still-fresh var is pinned gradual (see below); anything else is a
@@ -2225,11 +2219,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 match &inner_expanded {
                     Type::ClassType(inner_cls) if inner_cls.is_builtin("int") => Ok(()),
                     expanded if is_gradual_size(expanded) => Ok(()),
-                    // An `int` argument eagerly pins a still-fresh `SymIntVar` to
-                    // the gradual size. This is order-dependent when the `SymIntVar`
-                    // is repeated (e.g. `f[N: SymIntVar](x: SymInt[N], y: SymInt[N])`):
+                    // An `int` argument eagerly pins a still-fresh `IntVar` to
+                    // the gradual size. This is order-dependent when the `IntVar`
+                    // is repeated (e.g. `f[N: IntVar](x: Int[N], y: Int[N])`):
                     // `f(i, s3)` pins N gradual from the `int` first, so a later
-                    // concrete `SymInt[3]` is accepted, whereas `f(s3, i)` pins
+                    // concrete `Int[3]` is accepted, whereas `f(s3, i)` pins
                     // N=3 first and correctly rejects the `int`. This eager pin
                     // mirrors how Pyrefly's ordinary `TypeVar` inference behaved
                     // circa end of 2025, before it switched to bounds
@@ -2451,17 +2445,15 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             (Type::SelfType(_), Type::SelfType(_)) => Ok(()),
             (Type::SelfType(got), _) => self.is_subset_eq(&Type::ClassType(got.clone()), want),
-            (Type::SymIntTuple(got), Type::SymIntTuple(want)) => {
-                self.is_subset_symint_tuple(got, want)
+            (Type::IntTuple(got), Type::IntTuple(want)) => self.is_subset_int_tuple(got, want),
+            (Type::IntTuple(got), Type::Tuple(want)) => {
+                self.is_subset_int_tuple_to_tuple(got, want)
             }
-            (Type::SymIntTuple(got), Type::Tuple(want)) => {
-                self.is_subset_symint_tuple_to_tuple(got, want)
+            (Type::Tuple(got), Type::IntTuple(want)) => {
+                self.is_subset_tuple_to_int_tuple(got, want)
             }
-            (Type::Tuple(got), Type::SymIntTuple(want)) => {
-                self.is_subset_tuple_to_symint_tuple(got, want)
-            }
-            (Type::SymIntTuple(got), _) => self.is_subset_symint_tuple_to_type(got, want),
-            (got, Type::SymIntTuple(want)) => self.is_subset_type_to_symint_tuple(got, want),
+            (Type::IntTuple(got), _) => self.is_subset_int_tuple_to_type(got, want),
+            (got, Type::IntTuple(want)) => self.is_subset_type_to_int_tuple(got, want),
             (Type::Tuple(l), Type::Tuple(u)) => self.is_subset_tuple(l, u),
             (Type::Tuple(Tuple::Concrete(left_elts)), _) => {
                 let tuple_type = self.solver.heap.mk_class_type(
@@ -2521,25 +2513,25 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 ),
                 t,
             ),
-            // Representable integer literals compare exactly with SymInt expressions in either direction.
-            (Type::Literal(lit), want @ Type::SymInt(_))
+            // Representable integer literals compare exactly with Int expressions in either direction.
+            (Type::Literal(lit), want @ Type::Int(_))
                 if let Lit::Int(n) = &lit.value
                     && let Some(n) = n.as_i64() =>
             {
                 self.is_subset_literal_int_size(n, want, true)
             }
-            (got @ Type::SymInt(_), Type::Literal(lit))
+            (got @ Type::Int(_), Type::Literal(lit))
                 if let Lit::Int(n) = &lit.value
                     && let Some(n) = n.as_i64() =>
             {
                 self.is_subset_literal_int_size(n, got, false)
             }
-            (Type::SymInt(_) | Type::Quantified(_), Type::ClassType(cls))
-                if is_symint_class_type(cls) =>
+            (Type::Int(_) | Type::Quantified(_), Type::ClassType(cls))
+                if is_int_class_type(cls) =>
             {
                 Ok(())
             }
-            (Type::QuantifiedValue(_), Type::ClassType(cls)) if is_symint_class_type(cls) => Ok(()),
+            (Type::QuantifiedValue(_), Type::ClassType(cls)) if is_int_class_type(cls) => Ok(()),
             (Type::Literal(l_lit), Type::Literal(u_lit)) => {
                 ok_or(l_lit.value == u_lit.value, SubsetError::Other)
             }
@@ -2787,9 +2779,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         for (got_arg, want_arg, param) in izip!(got, want, params.iter()) {
             if param.kind() == QuantifiedKind::TypeVarTuple {
                 self.is_consistent(got_arg, want_arg)?;
-            } else if param.kind() == QuantifiedKind::SymIntVar {
-                let got_arg = Self::symintvar_targ_for_compare(got_arg)?;
-                let want_arg = Self::symintvar_targ_for_compare(want_arg)?;
+            } else if param.kind() == QuantifiedKind::IntVar {
+                let got_arg = Self::intvar_targ_for_compare(got_arg)?;
+                let want_arg = Self::intvar_targ_for_compare(want_arg)?;
                 match variances.get(param.name()) {
                     Variance::Covariant => self.is_subset_eq(&got_arg, &want_arg)?,
                     Variance::Contravariant => self.is_subset_eq(&want_arg, &got_arg)?,
@@ -2813,8 +2805,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         Ok(())
     }
 
-    fn symintvar_targ_for_compare(arg: &Type) -> Result<Type, SubsetError> {
-        type_as_symintvar_solution(arg).ok_or(SubsetError::Other)
+    fn intvar_targ_for_compare(arg: &Type) -> Result<Type, SubsetError> {
+        type_as_intvar_solution(arg).ok_or(SubsetError::Other)
     }
 
     fn is_subset_shaped_array(
@@ -2826,7 +2818,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         let (want_param, want_arg) = self.shape_param_and_arg(want)?;
         if !shape_param.is_type_var() {
             return Err(SubsetError::InternalError(
-                "ShapedArrayType registered a non-TypeVar/non-SymIntVar as its shape parameter"
+                "ShapedArrayType registered a non-TypeVar/non-IntVar as its shape parameter"
                     .to_owned(),
             ));
         }
@@ -2858,10 +2850,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
 
         // Check the shape compatibility
-        if SymIntTuple::from_shape_arg_type(got_arg)
+        if IntTuple::from_shape_arg_type(got_arg)
             .or_else(|| tuple_carrier_to_shape(got_arg))
             .is_none()
-            || SymIntTuple::from_shape_arg_type(want_arg)
+            || IntTuple::from_shape_arg_type(want_arg)
                 .or_else(|| tuple_carrier_to_shape(want_arg))
                 .is_none()
         {
@@ -2910,7 +2902,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         let (shape_param, _) = self.shape_param_and_arg(shaped_array)?;
         let shape_arg = match shape_param.kind() {
             QuantifiedKind::TypeVarTuple => shape_to_tuple_carrier(&shaped_array.shape()),
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::IntVar => {
                 shaped_array.shape().to_shape_arg_type()
             }
             QuantifiedKind::ParamSpec => {
@@ -2944,7 +2936,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     ) -> Result<ClassType, SubsetError> {
         let base_class = &shaped_array.base_class;
         let erased_shape_arg = match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Type::any_implicit(),
+            QuantifiedKind::TypeVar | QuantifiedKind::IntVar => Type::any_implicit(),
             QuantifiedKind::TypeVarTuple => {
                 return Err(SubsetError::InternalError(
                     "ShapedArrayType registered a TypeVarTuple as its shape parameter".to_owned(),
@@ -2977,31 +2969,31 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
     /// Delegates to is_subset_eq for each dimension pair.
     fn bind_tensor_dimensions(
         &mut self,
-        got_shape: &SymIntTuple,
-        want_shape: &SymIntTuple,
+        got_shape: &IntTuple,
+        want_shape: &IntTuple,
     ) -> Result<(), SubsetError> {
         // The subset logic only has two real cases: a fixed-rank shape or a shape
         // with a variadic middle. Normalize direct shapeless shapes to the
         // variadic form locally so the case analysis below does not need a third
-        // `Unbounded` axis that behaves the same as `Unpacked([], SymIntTuple, [])`.
+        // `Unbounded` axis that behaves the same as `Unpacked([], IntTuple, [])`.
         enum ShapeView<'a> {
-            Concrete(&'a [SymInt]),
+            Concrete(&'a [Int]),
             Unpacked {
-                prefix: &'a [SymInt],
+                prefix: &'a [Int],
                 middle: Cow<'a, Type>,
-                suffix: &'a [SymInt],
+                suffix: &'a [Int],
             },
         }
 
-        fn shape_view(shape: &SymIntTuple) -> ShapeView<'_> {
+        fn shape_view(shape: &IntTuple) -> ShapeView<'_> {
             match shape.view() {
-                SymIntTupleView::Concrete(dims) => ShapeView::Concrete(dims),
-                SymIntTupleView::Gradual => ShapeView::Unpacked {
+                IntTupleView::Concrete(dims) => ShapeView::Concrete(dims),
+                IntTupleView::Gradual => ShapeView::Unpacked {
                     prefix: &[],
-                    middle: Cow::Owned(SymIntTuple::shapeless().to_shape_arg_type()),
+                    middle: Cow::Owned(IntTuple::shapeless().to_shape_arg_type()),
                     suffix: &[],
                 },
-                SymIntTupleView::Unpacked {
+                IntTupleView::Unpacked {
                     prefix,
                     middle,
                     suffix,
@@ -3013,12 +3005,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
         }
 
-        fn dim_type(dim: &SymInt) -> Type {
-            Type::SymInt(dim.clone())
+        fn dim_type(dim: &Int) -> Type {
+            Type::Int(dim.clone())
         }
 
-        fn pack_middle_slice(dims: &[SymInt]) -> Type {
-            SymIntTuple::new(dims.to_vec()).to_shape_arg_type()
+        fn pack_middle_slice(dims: &[Int]) -> Type {
+            IntTuple::new(dims.to_vec()).to_shape_arg_type()
         }
 
         match (shape_view(got_shape), shape_view(want_shape)) {
@@ -3143,11 +3135,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Fold extras into the middle on whichever side has them.
                 // When a side has no extras, use its middle directly.
-                let fold = |prefix: &[SymInt], middle: &Type, suffix: &[SymInt]| -> Type {
+                let fold = |prefix: &[Int], middle: &Type, suffix: &[Int]| -> Type {
                     if prefix.is_empty() && suffix.is_empty() {
                         middle.clone()
                     } else {
-                        SymIntTuple::unpacked(prefix.to_vec(), middle.clone(), suffix.to_vec())
+                        IntTuple::unpacked(prefix.to_vec(), middle.clone(), suffix.to_vec())
                             .to_shape_arg_type()
                     }
                 };

@@ -34,26 +34,26 @@ from torch.nn.attention.flex_attention import (
 
 
 if TYPE_CHECKING:
-    from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
+    from shape_extensions import Elements, Int, IntTuple, IntVar
     from torch import Tensor
 
 # Module-level type variable declarations
-VocabSize = SymIntVar("VocabSize")
-BlockSize = SymIntVar("BlockSize")
-D = SymIntVar("D")
-NHead = SymIntVar("NHead")
-NLayer = SymIntVar("NLayer")
-IntermediateSize = SymIntVar("IntermediateSize")
-NLocalHeads = SymIntVar("NLocalHeads")
-MaxBatchSize = SymIntVar("MaxBatchSize")
-MaxSeqLen = SymIntVar("MaxSeqLen")
-NHeads = SymIntVar("NHeads")
-HeadDim = SymIntVar("HeadDim")
-B = SymIntVar("B")
-T = SymIntVar("T")
-S = SymIntVar("S")
-SeqLen = SymIntVar("SeqLen")
-Bs = TypeVar("Bs", bound=SymIntTuple)
+VocabSize = IntVar("VocabSize")
+BlockSize = IntVar("BlockSize")
+D = IntVar("D")
+NHead = IntVar("NHead")
+NLayer = IntVar("NLayer")
+IntermediateSize = IntVar("IntermediateSize")
+NLocalHeads = IntVar("NLocalHeads")
+MaxBatchSize = IntVar("MaxBatchSize")
+MaxSeqLen = IntVar("MaxSeqLen")
+NHeads = IntVar("NHeads")
+HeadDim = IntVar("HeadDim")
+B = IntVar("B")
+T = IntVar("T")
+S = IntVar("S")
+SeqLen = IntVar("SeqLen")
+Bs = TypeVar("Bs", bound=IntTuple)
 
 
 class RopeScalingDict(TypedDict, total=False):
@@ -72,14 +72,14 @@ class ModelArgsDict(
 ):
     """Type for transformer configuration dictionaries."""
 
-    block_size: SymInt[BlockSize]
-    vocab_size: SymInt[VocabSize]
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    dim: SymInt[D]
-    intermediate_size: SymInt[IntermediateSize]
-    n_local_heads: SymInt[NLocalHeads]
-    head_dim: SymInt[D // NHead]
+    block_size: Int[BlockSize]
+    vocab_size: Int[VocabSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    dim: Int[D]
+    intermediate_size: Int[IntermediateSize]
+    n_local_heads: Int[NLocalHeads]
+    head_dim: Int[D // NHead]
     rope_base: int
     norm_eps: float
     rope_scaling: RopeScalingDict
@@ -102,14 +102,14 @@ def get_mask_mod(mask_mod: _mask_mod_signature, offset: int | Tensor):
 class ModelArgs(
     Generic[VocabSize, BlockSize, D, NHead, NLayer, IntermediateSize, NLocalHeads]
 ):
-    block_size: SymInt[BlockSize] = 2048  # type: ignore[assignment]
-    vocab_size: SymInt[VocabSize] = 32000  # type: ignore[assignment]
-    n_layer: SymInt[NLayer] = 32  # type: ignore[assignment]
-    n_head: SymInt[NHead] = 32  # type: ignore[assignment]
-    dim: SymInt[D] = 4096  # type: ignore[assignment]
-    intermediate_size: SymInt[IntermediateSize] | None = None
-    n_local_heads: SymInt[NLocalHeads] = -1  # type: ignore[assignment]
-    head_dim: SymInt[D // NHead] = 64  # type: ignore[assignment]
+    block_size: Int[BlockSize] = 2048  # type: ignore[assignment]
+    vocab_size: Int[VocabSize] = 32000  # type: ignore[assignment]
+    n_layer: Int[NLayer] = 32  # type: ignore[assignment]
+    n_head: Int[NHead] = 32  # type: ignore[assignment]
+    dim: Int[D] = 4096  # type: ignore[assignment]
+    intermediate_size: Int[IntermediateSize] | None = None
+    n_local_heads: Int[NLocalHeads] = -1  # type: ignore[assignment]
+    head_dim: Int[D // NHead] = 64  # type: ignore[assignment]
     rope_base: int = 10000
     norm_eps: float = 1e-5
     rope_scaling: RopeScalingDict | None = None
@@ -272,8 +272,8 @@ def apply_rope_scaling(
 
 
 def precompute_freqs_cis(
-    seq_len: SymInt[SeqLen],
-    n_elem: SymInt[HeadDim],
+    seq_len: Int[SeqLen],
+    n_elem: Int[HeadDim],
     base: int = 10000,
     dtype: torch.dtype = torch.bfloat16,
     rope_scaling: RopeScalingDict | None = None,
@@ -325,10 +325,10 @@ class KVCache(nn.Module, Generic[MaxBatchSize, MaxSeqLen, NHeads, HeadDim]):
 
     def __init__(
         self,
-        max_batch_size: SymInt[MaxBatchSize],
-        max_seq_length: SymInt[MaxSeqLen],
-        n_heads: SymInt[NHeads],
-        head_dim: SymInt[HeadDim],
+        max_batch_size: Int[MaxBatchSize],
+        max_seq_length: Int[MaxSeqLen],
+        n_heads: Int[NHeads],
+        head_dim: Int[HeadDim],
         dtype=torch.bfloat16,
     ):
         super().__init__()
@@ -375,7 +375,7 @@ class FeedForward(nn.Module, Generic[D, IntermediateSize]):
 
 
 class RMSNorm(nn.Module, Generic[D]):
-    def __init__(self, dim: SymInt[D], eps: float = 1e-5):
+    def __init__(self, dim: Int[D], eps: float = 1e-5):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
@@ -427,11 +427,11 @@ class Attention(nn.Module, Generic[D, NHead, NLocalHeads]):
         input_pos: Tensor[[T]] | None = None,
     ) -> Tensor[[B, T, D]]:
         bsz, seqlen, _ = x.size()
-        assert_type(bsz, SymInt[B])
-        assert_type(seqlen, SymInt[T])
+        assert_type(bsz, Int[B])
+        assert_type(seqlen, Int[T])
 
         kv_size = self.n_local_heads * self.head_dim
-        assert_type(kv_size, SymInt[NLocalHeads * (D // NHead)])
+        assert_type(kv_size, Int[NLocalHeads * (D // NHead)])
         # Using tuple instead of list to preserve individual element types for meta-shape inference
         q, k, v = self.wqkv(x).split((self.dim, kv_size, kv_size), dim=-1)
         assert_type(q, Tensor[[B, T, D]])

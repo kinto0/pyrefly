@@ -6,10 +6,10 @@
 be a literal (`3`, `64`), a type variable (`B`, `C`), or an arithmetic
 expression (`D // NHead`, `2 * H - 1`, `H * W`).
 
-**`SymInt[X]`** — bridges a runtime integer to a type-level symbol. When a
-function takes `dim: SymInt[D]` and receives `64`, the checker binds `D = 64`.
-All arithmetic on SymInt values produces SymInt results: `dim // 2` is `SymInt[D // 2]`,
-`dim * 3` is `SymInt[D * 3]`, etc. These expressions propagate through constructor
+**`Int[X]`** — bridges a runtime integer to a type-level symbol. When a
+function takes `dim: Int[D]` and receives `64`, the checker binds `D = 64`.
+All arithmetic on Int values produces Int results: `dim // 2` is `Int[D // 2]`,
+`dim * 3` is `Int[D * 3]`, etc. These expressions propagate through constructor
 args, method params, and tensor shapes.
 
 **Type variables model symbolic integers.** A method `forward[B, T]` has two
@@ -99,8 +99,8 @@ not the problem. Trace back:
 
 1. **Is the INPUT already bare?** No op can recover shapes from bare `Tensor`.
    Find where shapes were actually lost — that's the real fix.
-2. **`int` where `SymInt` needed?** Shapes enter as unrefined when a function
-   takes `int` instead of `SymInt[X]`. Fix: change the param type.
+2. **`int` where `Int` needed?** Shapes enter as unrefined when a function
+   takes `int` instead of `Int[X]`. Fix: change the param type.
 3. **`list` where `tuple` needed?** `torch.cat([a, b])` homogenizes element
    types. Fix: `torch.cat((a, b))`.
 4. **Branch join widening?** Two branches produce different types → widening.

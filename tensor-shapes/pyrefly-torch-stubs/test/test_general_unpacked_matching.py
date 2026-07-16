@@ -14,15 +14,15 @@ where:
 
 from typing import assert_type, cast
 
-from shape_extensions import Elements, SymIntTuple, SymIntVar
+from shape_extensions import Elements, IntTuple, IntVar
 from torch import Tensor
 
 
 def accepts_prefix_middle_suffix[
-    P: SymIntVar,
-    Qs: SymIntTuple,
-    R: SymIntVar,
-    S: SymIntVar,
+    P: IntVar,
+    Qs: IntTuple,
+    R: IntVar,
+    S: IntVar,
 ](
     x: Tensor[[P, *Elements[Qs], R, S]],
 ) -> Tensor[[P, *Elements[Qs], R, S]]:
@@ -31,12 +31,12 @@ def accepts_prefix_middle_suffix[
 
 
 def test_general_unpacked_matching[
-    A: SymIntVar,
-    B: SymIntVar,
-    Cs: SymIntTuple,
-    D: SymIntVar,
-    E: SymIntVar,
-    F: SymIntVar,
+    A: IntVar,
+    B: IntVar,
+    Cs: IntTuple,
+    D: IntVar,
+    E: IntVar,
+    F: IntVar,
 ]() -> None:
     """Test that Tensor[[A, B, *Elements[Cs], D, E, F]] matches Tensor[[P, *Elements[Qs], R, S]]."""
     # Create a tensor with more complex unpacked shape
@@ -54,11 +54,11 @@ def test_general_unpacked_matching[
 
 
 def test_general_unpacked_matching_arith[
-    A: SymIntVar,
-    B: SymIntVar,
-    Cs: SymIntTuple,
-    D: SymIntVar,
-    E: SymIntVar,
+    A: IntVar,
+    B: IntVar,
+    Cs: IntTuple,
+    D: IntVar,
+    E: IntVar,
 ]() -> None:
     """Test that Tensor[[A+1, B*2, *Elements[Cs], D, E, F]] matches Tensor[[P, *Elements[Qs], R, S]]."""
     # Create a tensor with more complex unpacked shape

@@ -25,8 +25,8 @@ use itertools::Itertools;
 use pyrefly_python::qname::QName;
 use pyrefly_types::callable_residual::OverloadBranchProjection;
 use pyrefly_types::callable_residual::OverloadResidualIdentity;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::ShapeError;
-use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
@@ -92,19 +92,19 @@ const VAR_LEAK: &str = "Internal error: a variable has leaked from one module to
 /// due to large enums (Type) and lock guards.
 const INITIAL_GAS: Gas = Gas::new(200);
 
-/// Normalize a candidate answer for a `SymIntVar`.
+/// Normalize a candidate answer for an `IntVar`.
 ///
-/// Existing `SymIntVar` leaves stay as bare quantified/type-var values so
-/// substitution preserves source-level spellings like `SymInt[N]`; compound
-/// dimension expressions are canonicalized to `Type::SymInt`.
-pub(crate) fn type_as_symintvar_solution(ty: &Type) -> Option<Type> {
+/// Existing `IntVar` leaves stay as bare quantified/type-var values so
+/// substitution preserves source-level spellings like `Int[N]`; compound
+/// dimension expressions are canonicalized to `Type::Int`.
+pub(crate) fn type_as_intvar_solution(ty: &Type) -> Option<Type> {
     match ty {
         _ if ty.is_error() || ty.is_any() => Some(gradual_size()),
         Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
-        Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
-        Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
-        Type::Var(_) => Some(Type::SymInt(SymInt::Symbolic(Box::new(ty.clone())))),
-        _ => SymInt::from_type(ty).map(|dim| canonicalize(Type::SymInt(dim))),
+        Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
+        Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
+        Type::Var(_) => Some(Type::Int(Int::Symbolic(Box::new(ty.clone())))),
+        _ => Int::from_type(ty).map(|dim| canonicalize(Type::Int(dim))),
     }
 }
 
@@ -145,14 +145,14 @@ mod tests {
     use pyrefly_python::nesting_context::NestingContext;
     use pyrefly_types::class::ClassDefIndex;
     use pyrefly_types::class::ClassType;
-    use pyrefly_types::dimension::SymInt;
+    use pyrefly_types::dimension::Int;
     use pyrefly_types::dimension::gradual_size;
     use pyrefly_types::lit_int::LitInt;
     use pyrefly_types::quantified::AnchorIndex;
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::quantified::QuantifiedOrigin;
+    use pyrefly_types::shaped_array::IntTuple;
     use pyrefly_types::shaped_array::ShapedArrayType;
-    use pyrefly_types::shaped_array::SymIntTuple;
     use pyrefly_types::type_var::PreInferenceVariance;
     use pyrefly_types::types::AnyStyle;
     use pyrefly_types::types::TArgs;
@@ -190,7 +190,7 @@ mod tests {
                 QuantifiedOrigin::SyntheticCallableResidual,
             ),
             Name::new(match kind {
-                QuantifiedKind::SymIntVar => "S",
+                QuantifiedKind::IntVar => "S",
                 QuantifiedKind::TypeVar => "T",
                 QuantifiedKind::ParamSpec | QuantifiedKind::TypeVarTuple => {
                     unreachable!("test only creates scalar quantifieds")
@@ -222,25 +222,19 @@ mod tests {
     }
 
     #[test]
-    fn expand_with_bounds_canonicalizes_solved_symint_literals() {
+    fn expand_with_bounds_canonicalizes_solved_int_literals() {
         let (solver, var) = solver_with_answer(LitInt::new(2).to_implicit_type());
-        let mut ty = Type::SymInt(SymInt::add(
-            Type::Var(var),
-            Type::SymInt(SymInt::Literal(1)),
-        ));
+        let mut ty = Type::Int(Int::add(Type::Var(var), Type::Int(Int::Literal(1))));
 
         solver.expand_with_bounds(&mut ty);
 
-        assert_eq!(ty, Type::SymInt(SymInt::Literal(3)));
+        assert_eq!(ty, Type::Int(Int::Literal(3)));
     }
 
     #[test]
-    fn expand_with_bounds_canonicalizes_solved_gradual_symint() {
+    fn expand_with_bounds_canonicalizes_solved_gradual_int() {
         let (solver, var) = solver_with_answer(Type::Any(AnyStyle::Explicit));
-        let mut ty = Type::SymInt(SymInt::mul(
-            Type::SymInt(SymInt::Literal(2)),
-            Type::Var(var),
-        ));
+        let mut ty = Type::Int(Int::mul(Type::Int(Int::Literal(2)), Type::Var(var)));
 
         solver.expand_with_bounds(&mut ty);
 
@@ -248,38 +242,35 @@ mod tests {
     }
 
     #[test]
-    fn expand_with_bounds_preserves_quantified_symint_leaves() {
-        let cases = [QuantifiedKind::SymIntVar, QuantifiedKind::TypeVar];
+    fn expand_with_bounds_preserves_quantified_int_leaves() {
+        let cases = [QuantifiedKind::IntVar, QuantifiedKind::TypeVar];
         for (index, kind) in cases.into_iter().enumerate() {
             let quantified = quantified(kind, index as u32);
             let quantified_ty = Type::Quantified(Box::new(quantified));
             let (solver, var) = solver_with_answer(quantified_ty.clone());
-            let mut ty = Type::SymInt(SymInt::add(
-                Type::Var(var),
-                Type::SymInt(SymInt::Literal(1)),
-            ));
+            let mut ty = Type::Int(Int::add(Type::Var(var), Type::Int(Int::Literal(1))));
 
             solver.expand_with_bounds(&mut ty);
 
             assert_eq!(
                 ty,
-                Type::SymInt(SymInt::add(Type::SymInt(SymInt::Literal(1)), quantified_ty)),
+                Type::Int(Int::add(Type::Int(Int::Literal(1)), quantified_ty)),
             );
         }
     }
 
     #[test]
-    fn expand_with_bounds_canonicalizes_symint_inside_tuple_splice() {
-        let quantified_ty = Type::Quantified(Box::new(quantified(QuantifiedKind::SymIntVar, 0)));
-        let raw_compound = Type::SymInt(SymInt::add(quantified_ty.clone(), quantified_ty));
+    fn expand_with_bounds_canonicalizes_int_inside_tuple_splice() {
+        let quantified_ty = Type::Quantified(Box::new(quantified(QuantifiedKind::IntVar, 0)));
+        let raw_compound = Type::Int(Int::add(quantified_ty.clone(), quantified_ty));
         let expected_compound = canonicalize(raw_compound.clone());
         assert_ne!(raw_compound, expected_compound);
 
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![raw_compound])));
         let mut ty = Type::Tuple(Tuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![Type::Int(Int::Literal(1))],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(3))],
+            vec![Type::Int(Int::Literal(3))],
         ));
 
         solver.expand_with_bounds(&mut ty);
@@ -287,15 +278,15 @@ mod tests {
         assert_eq!(
             ty,
             Type::Tuple(Tuple::unpacked(
-                vec![Type::SymInt(SymInt::Literal(1))],
+                vec![Type::Int(Int::Literal(1))],
                 Type::Tuple(Tuple::Concrete(vec![expected_compound])),
-                vec![Type::SymInt(SymInt::Literal(3))],
+                vec![Type::Int(Int::Literal(3))],
             ))
         );
     }
 
     #[test]
-    fn expand_with_bounds_does_not_simplify_non_symint_types() {
+    fn expand_with_bounds_does_not_simplify_non_int_types() {
         let union = Type::Union(Box::new(Union {
             members: vec![Type::None, Type::None],
             display_name: None,
@@ -310,13 +301,13 @@ mod tests {
 
     #[test]
     fn simplify_mut_flattens_reachable_concrete_tuple_unpack() {
-        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::SymInt(
-            SymInt::Literal(2),
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::Int(
+            Int::Literal(2),
         )])));
         let mut ty = Type::Tuple(Tuple::unpacked(
-            vec![Type::SymInt(SymInt::Literal(1))],
+            vec![Type::Int(Int::Literal(1))],
             Type::Var(var),
-            vec![Type::SymInt(SymInt::Literal(3))],
+            vec![Type::Int(Int::Literal(3))],
         ));
 
         solver.expand_mut(&mut ty);
@@ -324,63 +315,57 @@ mod tests {
         assert_eq!(
             ty,
             Type::Tuple(Tuple::Concrete(vec![
-                Type::SymInt(SymInt::Literal(1)),
-                Type::SymInt(SymInt::Literal(2)),
-                Type::SymInt(SymInt::Literal(3)),
+                Type::Int(Int::Literal(1)),
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
             ]))
         );
     }
 
     #[test]
-    fn simplify_mut_normalizes_standalone_symint_tuple() {
+    fn simplify_mut_normalizes_standalone_int_tuple() {
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
         ])));
-        let mut ty = SymIntTuple::unpacked(
-            vec![SymInt::Literal(1)],
-            Type::Var(var),
-            vec![SymInt::Literal(4)],
-        )
-        .to_shape_arg_type();
+        let mut ty =
+            IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(4)])
+                .to_shape_arg_type();
 
         solver.expand_mut(&mut ty);
 
         assert_eq!(
             ty,
-            SymIntTuple::from_types(vec![
-                Type::SymInt(SymInt::Literal(1)),
-                Type::SymInt(SymInt::Literal(2)),
-                Type::SymInt(SymInt::Literal(3)),
-                Type::SymInt(SymInt::Literal(4)),
+            IntTuple::from_types(vec![
+                Type::Int(Int::Literal(1)),
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
+                Type::Int(Int::Literal(4)),
             ])
             .to_shape_arg_type()
         );
     }
 
     #[test]
-    fn simplify_mut_flattens_tuple_unpack_in_standalone_symint_tuple() {
+    fn simplify_mut_flattens_tuple_unpack_in_standalone_int_tuple() {
         let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
         ]))));
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
-        let mut ty = SymIntTuple::unpacked(
-            vec![SymInt::Literal(1)],
-            Type::Var(var),
-            vec![SymInt::Literal(4)],
-        )
-        .to_shape_arg_type();
+        let mut ty =
+            IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(4)])
+                .to_shape_arg_type();
 
         solver.expand_mut(&mut ty);
 
         assert_eq!(
             ty,
-            SymIntTuple::from_types(vec![
-                Type::SymInt(SymInt::Literal(1)),
-                Type::SymInt(SymInt::Literal(2)),
-                Type::SymInt(SymInt::Literal(3)),
-                Type::SymInt(SymInt::Literal(4)),
+            IntTuple::from_types(vec![
+                Type::Int(Int::Literal(1)),
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
+                Type::Int(Int::Literal(4)),
             ])
             .to_shape_arg_type()
         );
@@ -388,14 +373,11 @@ mod tests {
 
     #[test]
     fn simplify_mut_normalizes_inline_shaped_array() {
-        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::SymInt(
-            SymInt::Literal(2),
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::Int(
+            Int::Literal(2),
         )])));
-        let shape = SymIntTuple::unpacked(
-            vec![SymInt::Literal(1)],
-            Type::Var(var),
-            vec![SymInt::Literal(3)],
-        );
+        let shape =
+            IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(3)]);
         let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
 
         solver.expand_mut(&mut ty);
@@ -405,10 +387,10 @@ mod tests {
         };
         assert_eq!(
             array.shape(),
-            SymIntTuple::from_types(vec![
-                Type::SymInt(SymInt::Literal(1)),
-                Type::SymInt(SymInt::Literal(2)),
-                Type::SymInt(SymInt::Literal(3)),
+            IntTuple::from_types(vec![
+                Type::Int(Int::Literal(1)),
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
             ])
         );
         assert_eq!(array.tuple_carrier_shape_arg_index(), None);
@@ -417,15 +399,12 @@ mod tests {
     #[test]
     fn simplify_mut_flattens_tuple_unpack_in_inline_shaped_array() {
         let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
         ]))));
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
-        let shape = SymIntTuple::unpacked(
-            vec![SymInt::Literal(1)],
-            Type::Var(var),
-            vec![SymInt::Literal(4)],
-        );
+        let shape =
+            IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(4)]);
         let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
 
         solver.expand_mut(&mut ty);
@@ -435,11 +414,11 @@ mod tests {
         };
         assert_eq!(
             array.shape(),
-            SymIntTuple::from_types(vec![
-                Type::SymInt(SymInt::Literal(1)),
-                Type::SymInt(SymInt::Literal(2)),
-                Type::SymInt(SymInt::Literal(3)),
-                Type::SymInt(SymInt::Literal(4)),
+            IntTuple::from_types(vec![
+                Type::Int(Int::Literal(1)),
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
+                Type::Int(Int::Literal(4)),
             ])
         );
         assert_eq!(array.tuple_carrier_shape_arg_index(), None);
@@ -448,8 +427,8 @@ mod tests {
     #[test]
     fn simplify_mut_normalizes_concrete_tuple_carrier_as_first_class_shape_arg() {
         let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
         ]))));
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
         let shape_param = quantified(QuantifiedKind::TypeVar, 0);
@@ -457,7 +436,7 @@ mod tests {
             Arc::new(TParams::new(vec![shape_param])),
             vec![Type::Var(var)],
         ));
-        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+        let mut ty = ShapedArrayType::new(base_class, IntTuple::shapeless())
             .with_tuple_carrier_shape_arg(0)
             .to_type();
 
@@ -466,10 +445,8 @@ mod tests {
         let Type::ShapedArray(array) = ty else {
             panic!("expected shaped array")
         };
-        let expected = SymIntTuple::from_types(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
-        ]);
+        let expected =
+            IntTuple::from_types(vec![Type::Int(Int::Literal(2)), Type::Int(Int::Literal(3))]);
         assert_eq!(array.shape(), expected);
         assert_eq!(
             array.base_class.targs().as_slice()[0],
@@ -487,7 +464,7 @@ mod tests {
             Arc::new(TParams::new(vec![shape_param])),
             vec![Type::Var(var)],
         ));
-        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+        let mut ty = ShapedArrayType::new(base_class, IntTuple::shapeless())
             .with_tuple_carrier_shape_arg(0)
             .to_type();
 
@@ -496,7 +473,7 @@ mod tests {
         let Type::ShapedArray(array) = ty else {
             panic!("expected shaped array")
         };
-        let expected = SymIntTuple::shapeless();
+        let expected = IntTuple::shapeless();
         assert_eq!(array.shape(), expected);
         assert_eq!(
             array.base_class.targs().as_slice()[0],
@@ -508,20 +485,17 @@ mod tests {
     #[test]
     fn simplify_mut_normalizes_existing_first_class_tuple_carrier() {
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
         ])));
-        let shape = SymIntTuple::unpacked(
-            vec![SymInt::Literal(1)],
-            Type::Var(var),
-            vec![SymInt::Literal(4)],
-        );
+        let shape =
+            IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(4)]);
         let shape_param = quantified(QuantifiedKind::TypeVar, 0);
         let base_class = fake_array(TArgs::new(
             Arc::new(TParams::new(vec![shape_param])),
             vec![shape.to_shape_arg_type()],
         ));
-        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+        let mut ty = ShapedArrayType::new(base_class, IntTuple::shapeless())
             .with_tuple_carrier_shape_arg(0)
             .to_type();
 
@@ -530,11 +504,11 @@ mod tests {
         let Type::ShapedArray(array) = ty else {
             panic!("expected shaped array")
         };
-        let expected = SymIntTuple::from_types(vec![
-            Type::SymInt(SymInt::Literal(1)),
-            Type::SymInt(SymInt::Literal(2)),
-            Type::SymInt(SymInt::Literal(3)),
-            Type::SymInt(SymInt::Literal(4)),
+        let expected = IntTuple::from_types(vec![
+            Type::Int(Int::Literal(1)),
+            Type::Int(Int::Literal(2)),
+            Type::Int(Int::Literal(3)),
+            Type::Int(Int::Literal(4)),
         ]);
         assert_eq!(array.shape(), expected);
         assert_eq!(
@@ -553,7 +527,7 @@ mod tests {
             Arc::new(TParams::new(vec![shape_param])),
             vec![Type::Var(var)],
         ));
-        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+        let mut ty = ShapedArrayType::new(base_class, IntTuple::shapeless())
             .with_tuple_carrier_shape_arg(0)
             .to_type();
 
@@ -562,7 +536,7 @@ mod tests {
         let Type::ShapedArray(array) = ty else {
             panic!("expected shaped array")
         };
-        let expected = SymIntTuple::unpacked(Vec::new(), carrier, Vec::new());
+        let expected = IntTuple::unpacked(Vec::new(), carrier, Vec::new());
         assert_eq!(array.shape(), expected);
         assert_eq!(
             array.base_class.targs().as_slice()[0],
@@ -572,11 +546,11 @@ mod tests {
     }
 
     #[test]
-    fn symintvar_typevar_unification_preserves_symintvar_kind() {
+    fn intvar_typevar_unification_preserves_intvar_kind() {
         let cases = [
             (
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Unrestricted,
                 false,
                 QuantifiedKind::TypeVar,
@@ -587,12 +561,12 @@ mod tests {
                 QuantifiedKind::TypeVar,
                 Restriction::Bound(Type::any_implicit()),
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Unrestricted,
             ),
             (
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Bound(Type::any_implicit()),
                 false,
                 QuantifiedKind::TypeVar,
@@ -603,12 +577,12 @@ mod tests {
                 QuantifiedKind::TypeVar,
                 Restriction::Bound(Type::any_implicit()),
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Bound(Type::any_implicit()),
             ),
             (
                 true,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Unrestricted,
                 false,
                 QuantifiedKind::TypeVar,
@@ -619,12 +593,12 @@ mod tests {
                 QuantifiedKind::TypeVar,
                 Restriction::Bound(Type::any_implicit()),
                 true,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Unrestricted,
             ),
             (
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Bound(Type::any_implicit()),
                 true,
                 QuantifiedKind::TypeVar,
@@ -635,7 +609,7 @@ mod tests {
                 QuantifiedKind::TypeVar,
                 Restriction::Bound(Type::any_implicit()),
                 false,
-                QuantifiedKind::SymIntVar,
+                QuantifiedKind::IntVar,
                 Restriction::Bound(Type::any_implicit()),
             ),
         ];
@@ -672,8 +646,8 @@ mod tests {
             );
             let variable1 = variables.get(v1);
             let variable2 = variables.get(v2);
-            let (x, y) = symintvar_typevar_unify_order(v1, &variable1, v2, &variable2)
-                .expect("case should require SymIntVar-preserving unification");
+            let (x, y) = intvar_typevar_unify_order(v1, &variable1, v2, &variable2)
+                .expect("case should require IntVar-preserving unification");
             drop(variable1);
             drop(variable2);
             variables.unify(x, y);
@@ -682,9 +656,9 @@ mod tests {
                 let current = variables.get(var);
                 assert!(match &*current {
                     Variable::Quantified { quantified, .. } => {
-                        quantified.kind() == QuantifiedKind::SymIntVar
+                        quantified.kind() == QuantifiedKind::IntVar
                     }
-                    Variable::PartialQuantified(q) => q.kind() == QuantifiedKind::SymIntVar,
+                    Variable::PartialQuantified(q) => q.kind() == QuantifiedKind::IntVar,
                     _ => false,
                 });
             }
@@ -1368,7 +1342,7 @@ impl Solver {
 
     /// Finish the type returned from a function call. This entails expanding solved variables,
     /// erasing unsolved variables without defaults from unions, and canonicalizing dimension
-    /// expressions so that all-literal `SymInt` trees fold to single literals.
+    /// expressions so that all-literal `Int` trees fold to single literals.
     pub fn for_return_boundary(&self, mut t: Type) -> Type {
         self.resolve_vars(&mut t, VarExpansionPolicy::Expand, &VarRecurser::new());
         t = t.finalize_callable_residuals_at_boundary(&self.heap, true);
@@ -1515,12 +1489,12 @@ impl Solver {
             VarExpansionPolicy::ExpandWithBounds,
             &VarRecurser::new(),
         );
-        Self::canonicalize_only_symints_mut(dim_ty);
+        Self::canonicalize_only_ints_mut(dim_ty);
     }
 
-    fn canonicalize_only_symints_mut(t: &mut Type) {
+    fn canonicalize_only_ints_mut(t: &mut Type) {
         t.transform_mut(&mut |x| {
-            if let Type::SymInt(_) = x {
+            if let Type::Int(_) = x {
                 let simplified = canonicalize(x.clone());
                 if &simplified != x {
                     *x = simplified;
@@ -1586,7 +1560,7 @@ impl Solver {
                     .heap
                     .mk_tuple(simplify_tuples(mem::take(tuple), &self.heap));
             }
-            if let Type::SymIntTuple(shape) = x {
+            if let Type::IntTuple(shape) = x {
                 **shape = shape.normalize();
             }
             if let Type::ShapedArray(tensor) = x {
@@ -1594,7 +1568,7 @@ impl Solver {
                     Some(index)
                         if !matches!(
                             tensor.base_class.targs().as_slice().get(index),
-                            Some(Type::SymIntTuple(_))
+                            Some(Type::IntTuple(_))
                         ) =>
                     {
                         let shape = tensor.shape();
@@ -1605,7 +1579,7 @@ impl Solver {
                         tensor.set_shape(shape);
                     }
                     // `transform_mut` is post-order, so this first-class carrier was normalized
-                    // by the `SymIntTuple` arm before its containing shaped array.
+                    // by the `IntTuple` arm before its containing shaped array.
                     Some(_) => {}
                 }
             }
@@ -1688,7 +1662,7 @@ impl Solver {
             }
             // Simplify dimension expressions
             // This ensures Tensor[(10 * 20)] becomes Tensor[200]
-            if let Type::SymInt(_) = x {
+            if let Type::Int(_) = x {
                 let simplified = canonicalize(x.clone());
                 if &simplified != x {
                     *x = simplified;
@@ -1965,7 +1939,7 @@ impl Solver {
         existing_bounds: &Vec<Type>,
         kind: QuantifiedKind,
     ) -> Result<(), SubsetError> {
-        if kind == QuantifiedKind::SymIntVar && type_as_symintvar_solution(bound).is_none() {
+        if kind == QuantifiedKind::IntVar && type_as_intvar_solution(bound).is_none() {
             return Err(SubsetError::Other);
         }
         if kind == QuantifiedKind::TypeVarTuple
@@ -2023,19 +1997,19 @@ impl Solver {
             upper_bound.map_or(Ok(()), |upper_bound| is_subset(&bound, &upper_bound))
         });
         let new_bound = match (res.is_ok(), quantified_kind) {
-            (true, Some(QuantifiedKind::SymIntVar)) => Some(
+            (true, Some(QuantifiedKind::IntVar)) => Some(
                 self.get_new_bound(
                     first_bound,
                     // `validate_bound_consistency` accepted this bound, so the
-                    // same SymIntVar normalization must succeed before storing it.
-                    type_as_symintvar_solution(&bound)
-                        .expect("successful SymIntVar lower-bound check must normalize"),
+                    // same IntVar normalization must succeed before storing it.
+                    type_as_intvar_solution(&bound)
+                        .expect("successful IntVar lower-bound check must normalize"),
                     false,
                     is_subset,
                 ),
             ),
             (true, _) => Some(self.get_new_bound(first_bound, bound, false, is_subset)),
-            (false, Some(QuantifiedKind::SymIntVar)) => None,
+            (false, Some(QuantifiedKind::IntVar)) => None,
             (false, _) => {
                 // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
                 Some(NewBound::AddBound(Type::any_error()))
@@ -2090,19 +2064,19 @@ impl Solver {
             lower_bound.map_or(Ok(()), |lower_bound| is_subset(&lower_bound, &bound))
         });
         let new_bound = match (res.is_ok(), quantified_kind) {
-            (true, Some(QuantifiedKind::SymIntVar)) => Some(
+            (true, Some(QuantifiedKind::IntVar)) => Some(
                 self.get_new_bound(
                     first_bound,
                     // `validate_bound_consistency` accepted this bound, so the
-                    // same SymIntVar normalization must succeed before storing it.
-                    type_as_symintvar_solution(&bound)
-                        .expect("successful SymIntVar upper-bound check must normalize"),
+                    // same IntVar normalization must succeed before storing it.
+                    type_as_intvar_solution(&bound)
+                        .expect("successful IntVar upper-bound check must normalize"),
                     true,
                     is_subset,
                 ),
             ),
             (true, _) => Some(self.get_new_bound(first_bound, bound, true, is_subset)),
-            (false, Some(QuantifiedKind::SymIntVar)) => None,
+            (false, Some(QuantifiedKind::IntVar)) => None,
             (false, _) => {
                 // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
                 Some(NewBound::AddBound(Type::any_error()))
@@ -2275,8 +2249,8 @@ impl Solver {
                     && is_subset(solved_ty, branch_ty).is_ok();
             }
             Variable::PartialQuantified(q) => {
-                let answer = if q.kind() == QuantifiedKind::SymIntVar {
-                    type_as_symintvar_solution(solved_ty).unwrap_or_else(gradual_size)
+                let answer = if q.kind() == QuantifiedKind::IntVar {
+                    type_as_intvar_solution(solved_ty).unwrap_or_else(gradual_size)
                 } else {
                     solved_ty.clone()
                 };
@@ -2287,7 +2261,7 @@ impl Solver {
                 // During the overload branch probe, the captured Quantified var
                 // was unified with a partial/recursive var. Pin it to the solved
                 // type so downstream materialization sees a concrete answer. These
-                // vars do not retain a QuantifiedKind, so any SymIntVar answer was
+                // vars do not retain a QuantifiedKind, so any IntVar answer was
                 // already normalized before capture.
                 *branch_value = Variable::Answer(solved_ty.clone());
                 return true;
@@ -4060,7 +4034,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     self.is_subset_eq(&t1, want)
                 } else {
                     if let Some((x, y)) =
-                        symintvar_typevar_unify_order(*v1, &variable1, *v2, &variable2)
+                        intvar_typevar_unify_order(*v1, &variable1, *v2, &variable2)
                     {
                         drop(variable1);
                         drop(variable2);
@@ -4202,12 +4176,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         // For constrained TypeVars, promote to the matching constraint type
                         // rather than pinning to the raw argument type.
                         if let Restriction::Constraints(constraints) = restriction {
-                            // Source-created SymIntVars are represented with an
+                            // Source-created IntVars are represented with an
                             // unrestricted marker, not constraints; keep this
                             // defensive path normalized in case an internal
                             // quantified value is constructed with constraints.
-                            let answer = if kind == QuantifiedKind::SymIntVar {
-                                type_as_symintvar_solution(t2).unwrap_or_else(gradual_size)
+                            let answer = if kind == QuantifiedKind::IntVar {
+                                type_as_intvar_solution(t2).unwrap_or_else(gradual_size)
                             } else {
                                 t2.clone()
                             };
@@ -4227,9 +4201,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             } else if let Some(constraint) =
                                 self.find_matching_constraint(t2, &constraints)
                             {
-                                let constraint = if kind == QuantifiedKind::SymIntVar {
-                                    type_as_symintvar_solution(constraint)
-                                        .unwrap_or_else(gradual_size)
+                                let constraint = if kind == QuantifiedKind::IntVar {
+                                    type_as_intvar_solution(constraint).unwrap_or_else(gradual_size)
                                 } else {
                                     constraint.clone()
                                 };
@@ -4248,8 +4221,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                                 );
                             }
                         } else {
-                            let answer = if kind == QuantifiedKind::SymIntVar {
-                                type_as_symintvar_solution(t2).unwrap_or_else(gradual_size)
+                            let answer = if kind == QuantifiedKind::IntVar {
+                                type_as_intvar_solution(t2).unwrap_or_else(gradual_size)
                             } else {
                                 t2.clone()
                             };
@@ -4348,8 +4321,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             //
                             // TODO(https://github.com/facebook/pyrefly/issues/105): figure out
                             // what to do with ParamSpec.
-                            let answer = if q.kind() == QuantifiedKind::SymIntVar {
-                                type_as_symintvar_solution(&answer).unwrap_or_else(gradual_size)
+                            let answer = if q.kind() == QuantifiedKind::IntVar {
+                                type_as_intvar_solution(&answer).unwrap_or_else(gradual_size)
                             } else {
                                 answer
                             };
@@ -4370,8 +4343,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         drop(variables);
                         let (answer, specialization_error) =
                             self.is_subset_eq_quantified(t1, &q, None);
-                        let answer = if q.kind() == QuantifiedKind::SymIntVar {
-                            type_as_symintvar_solution(&answer).unwrap_or_else(gradual_size)
+                        let answer = if q.kind() == QuantifiedKind::IntVar {
+                            type_as_intvar_solution(&answer).unwrap_or_else(gradual_size)
                         } else {
                             answer
                         };
@@ -4439,23 +4412,23 @@ fn quantified_kind_for_unification(variable: &Variable) -> Option<QuantifiedKind
     }
 }
 
-fn symintvar_typevar_unify_order(
+fn intvar_typevar_unify_order(
     v1: Var,
     variable1: &Variable,
     v2: Var,
     variable2: &Variable,
 ) -> Option<(Var, Var)> {
     // `unify(x, y)` preserves `y`'s variable data. If a symbolic-int variable
-    // meets an ordinary type variable, preserve the SymIntVar kind even if the
-    // ordinary TypeVar has a bound or constraints: later SymIntVar answers must
+    // meets an ordinary type variable, preserve the IntVar kind even if the
+    // ordinary TypeVar has a bound or constraints: later IntVar answers must
     // remain symbolic integers, and any ordinary TypeVar restriction has already
     // been checked when bounds were admitted.
     match (
         quantified_kind_for_unification(variable1),
         quantified_kind_for_unification(variable2),
     ) {
-        (Some(QuantifiedKind::SymIntVar), Some(QuantifiedKind::TypeVar)) => Some((v2, v1)),
-        (Some(QuantifiedKind::TypeVar), Some(QuantifiedKind::SymIntVar)) => Some((v1, v2)),
+        (Some(QuantifiedKind::IntVar), Some(QuantifiedKind::TypeVar)) => Some((v2, v1)),
+        (Some(QuantifiedKind::TypeVar), Some(QuantifiedKind::IntVar)) => Some((v1, v2)),
         _ => None,
     }
 }

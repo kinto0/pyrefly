@@ -7,24 +7,24 @@
 
 from typing import assert_type, TYPE_CHECKING
 
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-def simple_identity[D: SymIntVar](x: Tensor[[D]]) -> Tensor[[D]]:
+def simple_identity[D: IntVar](x: Tensor[[D]]) -> Tensor[[D]]:
     """Simple identity function with Dim-bounded type parameter"""
     return x
 
 
-def test_simple[N: SymIntVar](x: Tensor[[(N * 2)]]):
+def test_simple[N: IntVar](x: Tensor[[(N * 2)]]):
     # Should bind D to (N * 2) and return Tensor[[N * 2]]
     y = simple_identity(x)
     assert_type(y, Tensor[[(N * 2)]])
 
 
-def generic_func[D1: SymIntVar, D2: SymIntVar](
+def generic_func[D1: IntVar, D2: IntVar](
     x: Tensor[[D1]],
     y: Tensor[[D2]],
 ) -> Tensor[[D1, D2]]:
@@ -32,7 +32,7 @@ def generic_func[D1: SymIntVar, D2: SymIntVar](
     ...
 
 
-def test_two_params[N: SymIntVar](
+def test_two_params[N: IntVar](
     a: Tensor[[N]],
     b: Tensor[[(N * 2)]],
 ):

@@ -5,7 +5,7 @@
 
 from typing import assert_type, TYPE_CHECKING
 
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 
 if TYPE_CHECKING:
@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
 
 def test_ellipsis_indexing[
-    B: SymIntVar,
-    T: SymIntVar,
-    NHeads: SymIntVar,
-    HeadDim: SymIntVar,
+    B: IntVar,
+    T: IntVar,
+    NHeads: IntVar,
+    HeadDim: IntVar,
 ](
     x: Tensor[[B, T, NHeads, HeadDim, 2]],
 ) -> None:
@@ -30,10 +30,10 @@ def test_ellipsis_indexing[
 
 
 def test_ellipsis_multiple_indices[
-    B: SymIntVar,
-    T: SymIntVar,
-    NHeads: SymIntVar,
-    HeadDim: SymIntVar,
+    B: IntVar,
+    T: IntVar,
+    NHeads: IntVar,
+    HeadDim: IntVar,
 ](
     x: Tensor[[B, T, NHeads, HeadDim, 2]],
 ) -> None:

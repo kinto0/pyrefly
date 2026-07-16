@@ -1817,7 +1817,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// extending the DSL grammar. The DSL function declares them as regular parameters
     /// with defaults, and this method resolves them from `self`'s class fields.
     ///
-    /// For fields typed as `SymInt[T]`, unwraps to `T` so the DSL's `extract_dsl_val`
+    /// For fields typed as `Int[T]`, unwraps to `T` so the DSL's `extract_dsl_val`
     /// can handle them as plain literal ints.
     fn inject_module_attrs(
         &self,
@@ -1827,7 +1827,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) {
         // For NNModule instances, inject captured fields directly into bound_args.
         // The NNModule's fields already contain plain Type values from the constructor,
-        // so no SymInt[T] unwrapping is needed.
+        // so no Int[T] unwrapping is needed.
         if let Some(Type::NNModule(module)) = bound_args.get("self") {
             let module = module.clone();
             for param_name in meta_shape_func.param_names() {
@@ -1860,7 +1860,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 None => continue,
             };
 
-            // Substitute type parameters (e.g., _Dim[S] with S=1 → SymInt[1]).
+            // Substitute type parameters (e.g., _Dim[S] with S=1 → Int[1]).
             let field_ty = cls.targs().substitution().substitute_into(field.ty());
 
             // For optional dimension fields, if the dimension is unbound (Any), resolve to None;
@@ -1873,7 +1873,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             let unwrapped = match field_ty {
                 Type::Union(ref u) => {
                     let size = u.members.iter().find_map(|m| match m {
-                        Type::SymInt(_) => Some(m.clone()),
+                        Type::Int(_) => Some(m.clone()),
                         _ => None,
                     });
                     match size {

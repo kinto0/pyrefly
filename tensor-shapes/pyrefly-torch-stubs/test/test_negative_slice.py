@@ -7,14 +7,14 @@
 
 from typing import assert_type, TYPE_CHECKING
 
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-def test_negative_slice[B: SymIntVar, T: SymIntVar, V: SymIntVar](
+def test_negative_slice[B: IntVar, T: IntVar, V: IntVar](
     logits: Tensor[[B, T, V]],
 ):
     """Test slicing with negative index"""

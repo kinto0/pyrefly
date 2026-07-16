@@ -30,7 +30,7 @@ use crate::callable::Params;
 use crate::callable::PrefixParam;
 use crate::class::Class;
 use crate::class::ClassType;
-use crate::dimension::SymInt;
+use crate::dimension::Int;
 use crate::keywords::KwCall;
 use crate::literal::LitStyle;
 use crate::literal::Literal;
@@ -38,8 +38,8 @@ use crate::module::ModuleType;
 use crate::param_spec::ParamSpec;
 use crate::quantified::Quantified;
 use crate::sentinel::Sentinel;
+use crate::shaped_array::IntTuple;
 use crate::shaped_array::ShapedArrayType;
-use crate::shaped_array::SymIntTuple;
 use crate::special_form::SpecialForm;
 use crate::tuple::Tuple;
 use crate::type_alias::TypeAliasData;
@@ -441,9 +441,9 @@ impl TypeHeap {
         Type::Never(style)
     }
 
-    /// Create a `Type::SymInt` from a symbolic integer expression.
-    pub fn mk_symint(&self, symint: SymInt) -> Type {
-        Type::SymInt(symint)
+    /// Create a `Type::Int` from a symbolic integer expression.
+    pub fn mk_int(&self, symint: Int) -> Type {
+        Type::Int(symint)
     }
 
     /// Create a `Type::ShapedArray` from a ShapedArrayType.
@@ -451,9 +451,9 @@ impl TypeHeap {
         Type::ShapedArray(Box::new(shaped_array))
     }
 
-    /// Create a `Type::SymIntTuple` from a SymIntTuple.
-    pub fn mk_symint_tuple(&self, symint_tuple: SymIntTuple) -> Type {
-        Type::SymIntTuple(Box::new(symint_tuple))
+    /// Create a `Type::IntTuple` from a IntTuple.
+    pub fn mk_int_tuple(&self, int_tuple: IntTuple) -> Type {
+        Type::IntTuple(Box::new(int_tuple))
     }
 
     /// Create a `Type::NNModule` from an NNModuleType.

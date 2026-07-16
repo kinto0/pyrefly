@@ -6,27 +6,27 @@
 from typing import Literal, overload
 
 from numpy._shapes import svd_reduced_2d_ir
-from shape_extensions import SymIntVar, uses_shape_dsl
+from shape_extensions import IntVar, uses_shape_dsl
 
 from .. import ndarray
 
 # MVP shape surface only; NumPy dtype promotion is intentionally not modeled.
 @overload
-def solve[N: SymIntVar, DType](
+def solve[N: IntVar, DType](
     a: ndarray[[N, N], DType],
     b: ndarray[[N]],
 ) -> ndarray[[N], DType]: ...
 @overload
-def solve[N: SymIntVar, K: SymIntVar, DType](
+def solve[N: IntVar, K: IntVar, DType](
     a: ndarray[[N, N], DType],
     b: ndarray[[N, K]],
 ) -> ndarray[[N, K], DType]: ...
-def norm[N: SymIntVar, M: SymIntVar, DType](
+def norm[N: IntVar, M: IntVar, DType](
     x: ndarray[[N, M, 3], DType],
     axis: Literal[-1],
     keepdims: Literal[True],
 ) -> ndarray[[N, M, 1], DType]: ...
-def eigh[N: SymIntVar, DType](
+def eigh[N: IntVar, DType](
     a: ndarray[[N, N], DType],
 ) -> tuple[ndarray[[N], DType], ndarray[[N, N], DType]]: ...
 @uses_shape_dsl(svd_reduced_2d_ir)

@@ -16,11 +16,11 @@ use pyrefly_python::ast::Ast;
 use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::short_identifier::ShortIdentifier;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::facet::FacetKind;
+use pyrefly_types::shaped_array::IntTuple;
 use pyrefly_types::shaped_array::ShapedArrayType;
-use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_alias::TypeAliasIndex;
 use pyrefly_types::type_alias::TypeAliasRef;
@@ -208,7 +208,7 @@ pub enum TypeFormContext {
     TypeVarConstraint,
     /// Default values for each kind of type variable
     TypeVarDefault,
-    SymIntVarDefault,
+    IntVarDefault,
     ParamSpecDefault,
     TypeVarTupleDefault,
     /// A type being aliased
@@ -220,7 +220,7 @@ pub enum TypeFormContext {
 
 /// The position in which a value is being interpreted as a type, used by
 /// `untype` to tailor the error when a quantified variable's kind is not legal
-/// there (e.g. a `SymIntVar` used as an ordinary type, or a `TypeVar` used in shape
+/// there (e.g. an `IntVar` used as an ordinary type, or a `TypeVar` used in shape
 /// arithmetic).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum UntypeContext {
@@ -230,7 +230,7 @@ pub(crate) enum UntypeContext {
     GenericBase,
     /// A symbolic-integer dimension position. Carries a human-readable
     /// description of the context (e.g. `"in shape arithmetic"`) used in the
-    /// error message when a non-`SymIntVar` is used here.
+    /// error message when a non-`IntVar` is used here.
     SymbolicInt(&'static str),
 }
 
@@ -238,7 +238,7 @@ impl TypeFormContext {
     pub fn quantified_kind_default(x: QuantifiedKind) -> Self {
         match x {
             QuantifiedKind::TypeVar => TypeFormContext::TypeVarDefault,
-            QuantifiedKind::SymIntVar => TypeFormContext::SymIntVarDefault,
+            QuantifiedKind::IntVar => TypeFormContext::IntVarDefault,
             QuantifiedKind::ParamSpec => TypeFormContext::ParamSpecDefault,
             QuantifiedKind::TypeVarTuple => TypeFormContext::TypeVarTupleDefault,
         }
@@ -303,7 +303,7 @@ pub enum Iterable {
 }
 
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
-    pub(crate) fn symint_tuple_unpacked_element_type(
+    pub(crate) fn int_tuple_unpacked_element_type(
         &self,
         prefix: &[Type],
         middle: &Type,
@@ -314,7 +314,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::Tuple(Tuple::Unbounded(elt)) => (**elt).clone(),
             Type::Tuple(Tuple::Unpacked(unpacked)) => {
                 let (prefix, middle, suffix) = &**unpacked;
-                self.symint_tuple_unpacked_element_type(prefix, middle, suffix)
+                self.int_tuple_unpacked_element_type(prefix, middle, suffix)
             }
             _ => self
                 .unwrap_iterable(middle)
@@ -330,9 +330,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn iterate_symint_tuple(&self, symint_tuple: &SymIntTuple) -> Vec<Iterable> {
-        let Type::Tuple(tuple) = symint_tuple.to_tuple_type() else {
-            unreachable!("SymIntTuple always projects to a tuple")
+    fn iterate_int_tuple(&self, int_tuple: &IntTuple) -> Vec<Iterable> {
+        let Type::Tuple(tuple) = int_tuple.to_tuple_type() else {
+            unreachable!("IntTuple always projects to a tuple")
         };
         match tuple {
             Tuple::Concrete(elts) => vec![Iterable::FixedLen(elts)],
@@ -340,7 +340,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Tuple::Unpacked(unpacked) => {
                 let (prefix, middle, suffix) = *unpacked;
                 vec![Iterable::Unpacked {
-                    middle: self.symint_tuple_unpacked_element_type(&prefix, &middle, &suffix),
+                    middle: self.int_tuple_unpacked_element_type(&prefix, &middle, &suffix),
                     prefix,
                     suffix,
                 }]
@@ -970,7 +970,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             Type::ClassType(cls) if let Some(Tuple::Concrete(elts)) = self.as_tuple(cls) => {
                 vec![Iterable::FixedLen(elts.clone())]
             }
-            Type::SymIntTuple(symint_tuple) => self.iterate_symint_tuple(symint_tuple),
+            Type::IntTuple(int_tuple) => self.iterate_int_tuple(int_tuple),
             Type::Tuple(Tuple::Concrete(elts)) => vec![Iterable::FixedLen(elts.clone())],
             Type::Tuple(Tuple::Unbounded(elt)) => vec![Iterable::OfType((**elt).clone())],
             Type::Tuple(Tuple::Unpacked(f)) if f.0.is_empty() && f.2.is_empty() => {
@@ -2023,7 +2023,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
     ) -> Quantified {
         let kind = tp.kind;
-        let restriction = if matches!(kind, QuantifiedKind::SymIntVar) {
+        let restriction = if matches!(kind, QuantifiedKind::IntVar) {
             Restriction::Unrestricted
         } else if let Some(bound) = &tp.bound {
             let bound_ty = self.expr_untype(bound, TypeFormContext::TypeVarConstraint, errors);
@@ -2053,8 +2053,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let mut default_ty = None;
         if let Some(default_expr) = &tp.default {
             let is_size_bound = |ty: &Type| {
-                matches!(ty, Type::SymInt(_))
-                    || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "SymInt"))
+                matches!(ty, Type::Int(_))
+                    || matches!(ty, Type::ClassType(cls) if cls.has_qname("shape_extensions", "Int"))
             };
             let default = if self.solver().tensor_shapes
                 && matches!(&restriction, Restriction::Bound(bound) if is_size_bound(bound))
@@ -2063,7 +2063,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 && let ruff_python_ast::Number::Int(i) = value
                 && let Some(n) = i.as_i64()
             {
-                Type::SymInt(SymInt::Literal(n))
+                Type::Int(Int::Literal(n))
             } else {
                 self.expr_untype(
                     default_expr,
@@ -3255,7 +3255,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         fn quantified_error(kind: QuantifiedKind) -> ErrorKind {
             match kind {
-                QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => ErrorKind::InvalidTypeVar,
+                QuantifiedKind::TypeVar | QuantifiedKind::IntVar => ErrorKind::InvalidTypeVar,
                 QuantifiedKind::ParamSpec => ErrorKind::InvalidParamSpec,
                 QuantifiedKind::TypeVarTuple => ErrorKind::InvalidTypeVarTuple,
             }
@@ -3353,7 +3353,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     self.heap.mk_any_error()
                 }
             }
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::IntVar => {
                 if default.is_kind_param_spec() || default.is_kind_type_var_tuple() {
                     self.error(
                         errors,
@@ -4579,7 +4579,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         let result = self.expr_check(e, None, errors);
         match special_export {
-            Some(special @ (SpecialExport::TypeVar | SpecialExport::SymIntVar)) => {
+            Some(special @ (SpecialExport::TypeVar | SpecialExport::IntVar)) => {
                 self.error(
                     errors,
                     e.range(),
@@ -4588,7 +4588,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         "{} must be assigned to a variable",
                         match special {
                             SpecialExport::TypeVar => "TypeVar",
-                            SpecialExport::SymIntVar => "SymIntVar",
+                            SpecialExport::IntVar => "IntVar",
                             _ => unreachable!("guarded by outer match"),
                         }
                     ),
@@ -6073,11 +6073,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    pub(crate) fn is_symint_tuple_class(&self, cls: &Class) -> bool {
-        cls.has_toplevel_qname("shape_extensions", "SymIntTuple")
+    pub(crate) fn is_int_tuple_class(&self, cls: &Class) -> bool {
+        cls.has_toplevel_qname("shape_extensions", "IntTuple")
     }
 
-    pub(crate) fn bare_symint_tuple_carrier(&self) -> Type {
+    pub(crate) fn bare_int_tuple_carrier(&self) -> Type {
         self.heap.mk_tuple(Tuple::Unbounded(Box::new(
             self.heap.mk_class_type(self.stdlib.int().clone()),
         )))
@@ -6174,12 +6174,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Type::Type(t) => {
                 if let Type::ClassType(cls) = t.as_ref()
-                    && self.is_symint_tuple_class(cls.class_object())
+                    && self.is_int_tuple_class(cls.class_object())
                 {
-                    return Some(self.heap.mk_symint_tuple(SymIntTuple::shapeless()));
+                    return Some(self.heap.mk_int_tuple(IntTuple::shapeless()));
                 }
                 if let Type::ClassType(cls) = t.as_ref()
-                    && cls.has_qname("shape_extensions", "SymInt")
+                    && cls.has_qname("shape_extensions", "Int")
                 {
                     return Some(gradual_size());
                 }
@@ -6249,7 +6249,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     context,
                 )
             }
-            // A quantified *value* (e.g. a `SymIntVar` used in value position) is
+            // A quantified *value* (e.g. an `IntVar` used in value position) is
             // validated like its type form: convert via `to_type` so the same
             // kind check applies.
             Type::QuantifiedValue(q) => Some(self.validate_untyped_type_var_context(
@@ -6260,9 +6260,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             )),
             Type::ArgsValue(q) => Some(self.heap.mk_args(*q)),
             Type::KwargsValue(q) => Some(self.heap.mk_kwargs(*q)),
-            // SymInt and Tensor are already type forms.
-            ty @ Type::SymInt(_) => Some(ty),
-            ty @ Type::SymIntTuple(_) => Some(ty),
+            // Int and Tensor are already type forms.
+            ty @ Type::Int(_) => Some(ty),
+            ty @ Type::IntTuple(_) => Some(ty),
             ty @ Type::ShapedArray(_) => Some(ty),
             ty @ Type::NNModule(_) => Some(ty),
             ty @ Type::DataFrame(_) => Some(ty),
@@ -6300,12 +6300,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             _ => None,
         };
         match (quantified_kind_and_name, context) {
-            (Some((QuantifiedKind::SymIntVar, symintvar_name)), UntypeContext::Type) => self.error(
+            (Some((QuantifiedKind::IntVar, intvar_name)), UntypeContext::Type) => self.error(
                 errors,
                 range,
                 ErrorKind::InvalidAnnotation,
                 format!(
-                    "`{symintvar_name}` is a `SymIntVar` and cannot be used as an ordinary type"
+                    "`{intvar_name}` is an `IntVar` and cannot be used as an ordinary type"
                 ),
             ),
             (
@@ -6321,7 +6321,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 range,
                 ErrorKind::InvalidAnnotation,
                 format!(
-                    "`{typevar_name}` must be a `SymIntVar` to be used {error_context}. `SymIntVar`s are symbolic variables that represent tensor dimensions; see https://pyrefly.org/en/docs/tensor-shapes/ to learn more."
+                    "`{typevar_name}` must be an `IntVar` to be used {error_context}. `IntVar`s are symbolic variables that represent tensor dimensions; see https://pyrefly.org/en/docs/tensor-shapes/ to learn more."
                 ),
             ),
             _ => ty,
@@ -6676,9 +6676,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             {
                 ty
             }
-            // A `SymIntVar`'s default (e.g. `N = 3`) is a dimension expression, not
+            // A `IntVar`'s default (e.g. `N = 3`) is a dimension expression, not
             // an ordinary type, so route it through the dimension parser.
-            _ if type_form_context == TypeFormContext::SymIntVarDefault => self
+            _ if type_form_context == TypeFormContext::IntVarDefault => self
                 .parse_dimension_list(slice::from_ref(x), errors)
                 .and_then(|dims| dims.into_iter().next())
                 .unwrap_or_else(Type::any_error),

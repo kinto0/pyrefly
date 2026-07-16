@@ -10,7 +10,7 @@ use std::sync::Arc;
 use dupe::Dupe;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::Function;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::display::count;
@@ -27,7 +27,7 @@ use crate::error::collector::ErrorCollector;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::solver::solver::QuantifiedHandle;
-use crate::solver::solver::type_as_symintvar_solution;
+use crate::solver::solver::type_as_intvar_solution;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
@@ -476,8 +476,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             errors,
                         ));
                     }
-                    QuantifiedKind::SymIntVar => {
-                        checked_targs.push(self.create_next_symintvar_arg(
+                    QuantifiedKind::IntVar => {
+                        checked_targs.push(self.create_next_intvar_arg(
                             param,
                             targs_cursor.consume_for_typevar_arg(),
                             range,
@@ -659,12 +659,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 } else {
                     let restriction = param.restriction();
                     let arg =
-                        if matches!(param.upper_bound(self.stdlib, self.heap), Type::SymInt(_))
+                        if matches!(param.upper_bound(self.stdlib, self.heap), Type::Int(_))
                             && let Type::Literal(lit) = arg
                             && let Lit::Int(i) = &lit.value
                         {
-                            Type::SymInt(i.as_i64().map(SymInt::Literal).unwrap_or_else(|| {
-                                SymInt::Symbolic(Box::new(Type::Literal(lit.clone())))
+                            Type::Int(i.as_i64().map(Int::Literal).unwrap_or_else(|| {
+                                Int::Symbolic(Box::new(Type::Literal(lit.clone())))
                             }))
                         } else {
                             arg.clone()
@@ -699,7 +699,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn create_next_symintvar_arg(
+    fn create_next_intvar_arg(
         &self,
         param: &Quantified,
         arg: &Type,
@@ -721,7 +721,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 );
                 gradual_size()
             }
-            _ => type_as_symintvar_solution(arg).unwrap_or_else(|| {
+            _ => type_as_intvar_solution(arg).unwrap_or_else(|| {
                 // Shape argument parsing normally rejects concrete source errors
                 // first; this is the class-targ recovery path for invalid values
                 // that reach specialization directly.
@@ -730,7 +730,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     range,
                     ErrorKind::BadSpecialization,
                     format!(
-                        "Expected a valid SymInt expression for type parameter `{}`, got `{}`",
+                        "Expected a valid Int expression for type parameter `{}`, got `{}`",
                         param.name(),
                         self.for_display(arg.clone())
                     ),

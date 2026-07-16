@@ -8,9 +8,9 @@
 use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
 use pyrefly_python::dunder;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::canonicalize;
-use pyrefly_types::dimension::symint_type_is_provably_nonnegative;
+use pyrefly_types::dimension::int_type_is_provably_nonnegative;
 use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::quantified::Quantified;
@@ -88,7 +88,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
     /// Try to handle binary operations on symbolic integer types.
     /// Returns Some(result_type) if the operation was handled, None otherwise.
-    fn try_symint_binop(&self, op: Operator, lhs: &Type, rhs: &Type) -> Option<Type> {
+    fn try_int_binop(&self, op: Operator, lhs: &Type, rhs: &Type) -> Option<Type> {
         // Only handle if tensor shapes feature is enabled
         if !self.solver().tensor_shapes {
             return None;
@@ -105,9 +105,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // Literal integers are allowed as the non-shape side of dimension arithmetic, but
         // ordinary literal arithmetic should keep the normal integer operator behavior.
         let is_shape_operand = |ty: &Type| match ty {
-            Type::SymInt(_) => true,
-            Type::Quantified(q) => q.kind() == QuantifiedKind::SymIntVar,
-            Type::TypeVar(tv) => tv.kind() == QuantifiedKind::SymIntVar,
+            Type::Int(_) => true,
+            Type::Quantified(q) => q.kind() == QuantifiedKind::IntVar,
+            Type::TypeVar(tv) => tv.kind() == QuantifiedKind::IntVar,
             _ => false,
         };
         if !is_shape_operand(lhs) && !is_shape_operand(rhs) {
@@ -124,11 +124,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if base < 0 {
                         return None;
                     }
-                    self.heap.mk_symint(SymInt::Literal(base))
+                    self.heap.mk_int(Int::Literal(base))
                 }
-                Type::SymInt(_) => lhs.clone(),
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => lhs.clone(),
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => lhs.clone(),
+                Type::Int(_) => lhs.clone(),
+                Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => lhs.clone(),
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => lhs.clone(),
                 _ => return None,
             };
             let exponent = match rhs {
@@ -140,20 +140,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if exp < 0 {
                         return Some(self.heap.mk_class_type(self.stdlib.float().clone()));
                     }
-                    self.heap.mk_symint(SymInt::Literal(exp))
+                    self.heap.mk_int(Int::Literal(exp))
                 }
-                Type::SymInt(SymInt::Literal(exp)) => {
+                Type::Int(Int::Literal(exp)) => {
                     if *exp < 0 {
                         return Some(self.heap.mk_class_type(self.stdlib.float().clone()));
                     }
                     rhs.clone()
                 }
-                Type::SymInt(_) if symint_type_is_provably_nonnegative(rhs) => rhs.clone(),
-                Type::SymInt(_) => return Some(self.heap.mk_any_implicit()),
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => {
+                Type::Int(_) if int_type_is_provably_nonnegative(rhs) => rhs.clone(),
+                Type::Int(_) => return Some(self.heap.mk_any_implicit()),
+                Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => {
                     return Some(self.heap.mk_any_implicit());
                 }
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => {
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => {
                     return Some(self.heap.mk_any_implicit());
                 }
                 Type::ClassType(cls) if cls.is_builtin("int") => {
@@ -169,25 +169,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 _ => return None,
             };
-            return Some(canonicalize(
-                self.heap.mk_symint(SymInt::pow(base, exponent)),
-            ));
+            return Some(canonicalize(self.heap.mk_int(Int::pow(base, exponent))));
         }
 
-        // Extract the dimension type from SymInt or an integer literal paired with one.
+        // Extract the dimension type from Int or an integer literal paired with one.
         let to_dim_type = |ty: &Type| -> Option<Type> {
             match ty {
                 Type::Literal(f) if let Lit::Int(n) = &f.value => {
-                    // Convert literal to `SymInt`.
-                    n.as_i64()
-                        .map(|val| self.heap.mk_symint(SymInt::Literal(val)))
+                    // Convert literal to `Int`.
+                    n.as_i64().map(|val| self.heap.mk_int(Int::Literal(val)))
                 }
-                Type::SymInt(_) => {
-                    // `SymInt` is already a dimension type.
+                Type::Int(_) => {
+                    // `Int` is already a dimension type.
                     Some(ty.clone())
                 }
-                Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
-                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
+                Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
+                Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
                 _ => None,
             }
         };
@@ -196,12 +193,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
         // Perform the operation on the dimension types
         let result_ty = match op {
-            Operator::Add => canonicalize(self.heap.mk_symint(SymInt::add(l_type, r_type))),
-            Operator::Sub => canonicalize(self.heap.mk_symint(SymInt::sub(l_type, r_type))),
-            Operator::Mult => canonicalize(self.heap.mk_symint(SymInt::mul(l_type, r_type))),
-            Operator::FloorDiv => {
-                canonicalize(self.heap.mk_symint(SymInt::floor_div(l_type, r_type)))
-            }
+            Operator::Add => canonicalize(self.heap.mk_int(Int::add(l_type, r_type))),
+            Operator::Sub => canonicalize(self.heap.mk_int(Int::sub(l_type, r_type))),
+            Operator::Mult => canonicalize(self.heap.mk_int(Int::mul(l_type, r_type))),
+            Operator::FloorDiv => canonicalize(self.heap.mk_int(Int::floor_div(l_type, r_type))),
             _ => unreachable!(),
         };
 
@@ -608,7 +603,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         x.range,
                         errors,
                     )
-                } else if let Some(result) = self.try_symint_binop(x.op, lhs, rhs) {
+                } else if let Some(result) = self.try_int_binop(x.op, lhs, rhs) {
                     result
                 } else if x.op == Operator::Pow
                     && self.is_subset_eq(lhs, &self.heap.mk_class_type(self.stdlib.int().clone()))
@@ -717,7 +712,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     && let Type::Tuple(r) = rhs
                 {
                     self.tuple_concat(l, r)
-                } else if let Some(result) = self.try_symint_binop(x.op, lhs, rhs) {
+                } else if let Some(result) = self.try_int_binop(x.op, lhs, rhs) {
                     result
                 } else {
                     binop_call(x.op, lhs, rhs, x.range)
@@ -913,7 +908,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             match t {
                 Type::Literal(lit) if let Some(ret) = f(&lit.value) => ret,
                 Type::ClassType(_)
-                | Type::SymInt(_)
+                | Type::Int(_)
                 | Type::SelfType(_)
                 | Type::Quantified(_)
                 | Type::ShapedArray(_)

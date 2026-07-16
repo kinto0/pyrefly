@@ -24,7 +24,7 @@ import torch
 import torch.nn as nn
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymIntVar
+    from shape_extensions import Int, IntVar
     from torch import Tensor
 
 
@@ -38,9 +38,7 @@ def _make_divisible(v: float, divisor: int, min_value: int | None = None) -> int
     return new_value
 
 
-class InvertedResidual[Inp: SymIntVar, Oup: SymIntVar, ER: SymIntVar, S: SymIntVar](
-    nn.Module
-):
+class InvertedResidual[Inp: IntVar, Oup: IntVar, ER: IntVar, S: IntVar](nn.Module):
     """MobileNetV2 inverted residual block.
 
     Restructured from nn.Sequential(*layers) to individual nn.Sequential
@@ -49,16 +47,16 @@ class InvertedResidual[Inp: SymIntVar, Oup: SymIntVar, ER: SymIntVar, S: SymIntV
 
     def __init__(
         self,
-        inp: SymInt[Inp],
-        oup: SymInt[Oup],
-        stride: SymInt[S],
-        expand_ratio: SymInt[ER],
+        inp: Int[Inp],
+        oup: Int[Oup],
+        stride: Int[S],
+        expand_ratio: Int[ER],
     ) -> None:
         super().__init__()
         if stride not in [1, 2]:
             raise ValueError(f"stride should be 1 or 2 instead of {stride}")
 
-        # removed int(round(...)) — no-op on ints, kills SymInt tracking
+        # removed int(round(...)) — no-op on ints, kills Int tracking
         hidden_dim = inp * expand_ratio
         self.use_res_connect: bool = stride == 1 and inp == oup
         self.expand_ratio = expand_ratio
@@ -92,7 +90,7 @@ class InvertedResidual[Inp: SymIntVar, Oup: SymIntVar, ER: SymIntVar, S: SymIntV
         self.out_channels = oup
         self._is_cn: bool = stride > 1
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, Inp, H, W]]
     ) -> Tensor[[B, Oup, H, W]]:
         out: Tensor[[B, Inp * ER, H, W]]
@@ -110,7 +108,7 @@ class InvertedResidual[Inp: SymIntVar, Oup: SymIntVar, ER: SymIntVar, S: SymIntV
         return out3
 
 
-class MobileNetV2[NC: SymIntVar = 1000, LC: SymIntVar = 1280](nn.Module):
+class MobileNetV2[NC: IntVar = 1000, LC: IntVar = 1280](nn.Module):
     """MobileNet V2 main class.
 
     Bridge dim LC (last_channel) connects the untracked feature extractor
@@ -120,12 +118,12 @@ class MobileNetV2[NC: SymIntVar = 1000, LC: SymIntVar = 1280](nn.Module):
 
     def __init__(
         self,
-        num_classes: SymInt[NC] = 1000,
+        num_classes: Int[NC] = 1000,
         width_mult: float = 1.0,
         inverted_residual_setting: list[list[int]] | None = None,
         round_nearest: int = 8,
         dropout: float = 0.2,
-        last_channel: SymInt[LC] = 1280,
+        last_channel: Int[LC] = 1280,
     ) -> None:
         super().__init__()
 
@@ -203,7 +201,7 @@ class MobileNetV2[NC: SymIntVar = 1000, LC: SymIntVar = 1280](nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)  # type: ignore[arg-type]
 
-    def _forward_impl[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def _forward_impl[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[[B, NC]]:
         feat = self.features(x)
@@ -217,7 +215,7 @@ class MobileNetV2[NC: SymIntVar = 1000, LC: SymIntVar = 1280](nn.Module):
         assert_type(out, Tensor[[B, NC]])
         return out
 
-    def forward[B: SymIntVar, H: SymIntVar, W: SymIntVar](
+    def forward[B: IntVar, H: IntVar, W: IntVar](
         self, x: Tensor[[B, 3, H, W]]
     ) -> Tensor[[B, NC]]:
         return self._forward_impl(x)

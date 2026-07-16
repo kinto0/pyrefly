@@ -68,10 +68,10 @@ def _patch_torch_if_available() -> None:
 _patch_torch_if_available()
 
 
-class SymIntTuple:
+class IntTuple:
     """Tuple-valued shape annotation surface.
 
-    In type positions, Pyrefly treats `SymIntTuple` as the shape carrier for
+    In type positions, Pyrefly treats `IntTuple` as the shape carrier for
     `tuple[int, ...]`. At runtime, calling it coerces any iterable to a plain
     tuple.
     """
@@ -84,10 +84,10 @@ class SymIntTuple:
 
 
 class Elements:
-    """Inverse of ``tuple[Unpack[S]]``: extracts the element sequence from a SymIntTuple carrier.
+    """Inverse of ``tuple[Unpack[S]]``: extracts the element sequence from a IntTuple carrier.
 
     In the Python typing spec, ``tuple[Unpack[Ts]]`` wraps a ``TypeVarTuple`` into a
-    concrete tuple type. ``Elements[S]`` is the conceptual inverse: given a ``SymIntTuple``
+    concrete tuple type. ``Elements[S]`` is the conceptual inverse: given a ``IntTuple``
     carrier ``S``, ``*Elements[S]`` splices its element sequence into a shape position,
     e.g. ``Array[[*Elements[S], OUT], DType]``.
 
@@ -110,7 +110,7 @@ class Elements:
         return f"Elements[{self.carrier!r}]"
 
 
-class SymInt[T]:
+class Int[T]:
     """Symbolic integer type for dimension values.
 
     At runtime this is a no-op generic class. The type checker uses the
@@ -133,7 +133,7 @@ def enable_torchscript_runtime_compat() -> None:
     paths. It intentionally has no disable API for production callers.
     """
 
-    SymInt.__class_getitem__ = classmethod(_return_int)
+    Int.__class_getitem__ = classmethod(_return_int)
 
 
 @dataclass(frozen=True)
@@ -257,7 +257,7 @@ def shaped_array(*, shape: str) -> typing.Callable[[type], type]:
     return decorator
 
 
-class SymIntVar:
+class IntVar:
     """Symbolic variable with arithmetic support for tensor shape dimensions.
 
     Like typing.TypeVar but arithmetic operations (N + 1, N * 2, etc.)
@@ -265,7 +265,7 @@ class SymIntVar:
     __class__ = typing.TypeVar makes isinstance(x, typing.TypeVar)
     return True, so Generic[N] and TypedDict + Generic[N] both work.
 
-    In pyrefly, shape_extensions.SymIntVar marks symbolic integer dimensions.
+    In pyrefly, shape_extensions.IntVar marks symbolic integer dimensions.
     """
 
     __class__ = typing.TypeVar

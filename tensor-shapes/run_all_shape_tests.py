@@ -24,16 +24,16 @@ RUST_TEST_FILTERS: tuple[str, ...] = (
     "shaped_array",
     "shape_dsl",
     "jaxtyping",
-    "test_symintvar_type_parameter_marker_imports_are_used",
+    "test_intvar_type_parameter_marker_imports_are_used",
     "test_tensor_shapes",
     "pytorch_efficiency_lint",
     "expand_with_bounds",
 )
 
 # `pyrefly_types` shape tests live in modules and under names that do not all
-# contain "shape" (e.g. the `dimension` canonicalization module and `symint`
+# contain "shape" (e.g. the `dimension` canonicalization module and `int`
 # display tests), so match on several substrings rather than "shape" alone.
-TYPES_TEST_FILTERS: tuple[str, ...] = ("shape", "symint", "dimension")
+TYPES_TEST_FILTERS: tuple[str, ...] = ("shape", "int", "dimension")
 
 BUCK_TYPES_TARGET: str = "fbcode//pyrefly/crates/pyrefly_types:pyrefly_types"
 BUCK_RUST_TARGET: str = "pyrefly:pyrefly_library"

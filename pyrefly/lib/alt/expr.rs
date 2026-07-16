@@ -19,15 +19,15 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::callable::FunctionKind;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::dimension::gradual_size;
-use pyrefly_types::dimension::symint_type_is_provably_negative;
+use pyrefly_types::dimension::int_type_is_provably_negative;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::shaped_array::IndexOp;
+use pyrefly_types::shaped_array::IntTuple;
+use pyrefly_types::shaped_array::IntTupleView;
 use pyrefly_types::shaped_array::ShapedArrayType;
-use pyrefly_types::shaped_array::SymIntTuple;
-use pyrefly_types::shaped_array::SymIntTupleView;
 use pyrefly_types::shaped_array::index_shape_int;
 use pyrefly_types::shaped_array::index_shape_multi;
 use pyrefly_types::shaped_array::index_shape_slice;
@@ -127,8 +127,8 @@ pub enum TypeOrExpr<'a> {
 
 /// Where a dimension expression appears, which controls whether a plain
 /// `TypeVar` is accepted. Shape arithmetic (e.g. `N + 1`) needs the
-/// symbolic-integer semantics of a `SymIntVar`, so an operand of an arithmetic
-/// expression must be a `SymIntVar`; a dimension used on its own accepts any type
+/// symbolic-integer semantics of an `IntVar`, so an operand of an arithmetic
+/// expression must be an `IntVar`; a dimension used on its own accepts any type
 /// variable kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DimensionExprContext {
@@ -136,7 +136,7 @@ enum DimensionExprContext {
     /// variable kind is allowed.
     Bare,
     /// An operand of shape arithmetic, e.g. the `N` in `Tensor[N + 1]`. Only a
-    /// `SymIntVar` is allowed; a plain `TypeVar` is rejected.
+    /// `IntVar` is allowed; a plain `TypeVar` is rejected.
     Arithmetic,
 }
 
@@ -309,7 +309,7 @@ fn is_integer_index_scalar_type(ty: &Type) -> bool {
     match ty {
         Type::Literal(lit) => matches!(lit.value, Lit::Int(_)),
         Type::ClassType(cls) => cls.is_builtin("int"),
-        Type::SymInt(_) => true,
+        Type::Int(_) => true,
         Type::Union(union) => {
             !union.members.is_empty() && union.members.iter().all(is_integer_index_scalar_type)
         }
@@ -342,13 +342,13 @@ fn classify_shaped_array_index_type(ty: &Type) -> Option<IndexOp> {
         Type::Tuple(Tuple::Concrete(elements))
             if elements.iter().all(is_integer_index_scalar_type) =>
         {
-            Some(IndexOp::Fancy(SymInt::Literal(elements.len() as i64)))
+            Some(IndexOp::Fancy(Int::Literal(elements.len() as i64)))
         }
         Type::Tuple(Tuple::Unbounded(element)) if is_integer_index_scalar_type(element) => {
-            Some(IndexOp::Fancy(SymInt::Int))
+            Some(IndexOp::Fancy(Int::Int))
         }
         Type::ClassType(cls) if cls.has_qname("builtins", "list") => match cls.targs().as_slice() {
-            [element] if is_integer_index_scalar_type(element) => Some(IndexOp::Fancy(SymInt::Int)),
+            [element] if is_integer_index_scalar_type(element) => Some(IndexOp::Fancy(Int::Int)),
             _ => None,
         },
         _ if is_integer_index_scalar_type(ty) => Some(IndexOp::Int),
@@ -2703,11 +2703,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::ClassDef(ref cls) if self.is_shaped_array_class(cls) => {
                     Type::type_of(self.parse_registered_shaped_array_type(cls, xs, range, errors))
                 }
-                Type::ClassDef(ref cls) if self.is_symint_tuple_class(cls) => {
-                    self.parse_symint_tuple_type(xs, errors)
+                Type::ClassDef(ref cls) if self.is_int_tuple_class(cls) => {
+                    self.parse_int_tuple_type(xs, errors)
                 }
-                Type::ClassDef(ref cls) if self.is_symint_class(cls) => {
-                    self.parse_symint_type(xs, range, errors)
+                Type::ClassDef(ref cls) if self.is_int_class(cls) => {
+                    self.parse_int_type(xs, range, errors)
                 }
                 Type::ClassDef(ref cls)
                     if cls.has_toplevel_qname("shape_extensions", "ProxyMethod") =>
@@ -2814,8 +2814,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
                 ),
-                Type::SymIntTuple(ref symint_tuple) => self.infer_symint_tuple_subscript(
-                    symint_tuple,
+                Type::IntTuple(ref int_tuple) => self.infer_int_tuple_subscript(
+                    int_tuple,
                     slice,
                     range,
                     errors,
@@ -3073,27 +3073,27 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // For unary negation (-expr), we preserve the Mul(-1, ...) wrapper
         // without canonicalizing, so adjust_negative can detect negative bounds
         // even after the distributive law would otherwise distribute -1 across sums.
-        let to_dim = |expr: &Expr| -> SymInt {
+        let to_dim = |expr: &Expr| -> Int {
             // Detect syntactic unary minus: -(inner)
             if let Expr::UnaryOp(x) = expr
                 && x.op == UnaryOp::USub
             {
                 let inner_ty = self.expr_infer(&x.operand, errors);
                 let inner_dim = match type_to_dim(&inner_ty) {
-                    Some(SymInt::Literal(val)) => {
+                    Some(Int::Literal(val)) => {
                         // Literal negation: just negate the value directly
-                        return SymInt::Literal(-val);
+                        return Int::Literal(-val);
                     }
                     Some(dim) => dim,
-                    None => return SymInt::Int,
+                    None => return Int::Int,
                 };
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
-                // The final canonicalization happens in `SymIntTuple`.
-                return SymInt::Mul(Box::new(SymInt::Literal(-1)), Box::new(inner_dim));
+                // The final canonicalization happens in `IntTuple`.
+                return Int::Mul(Box::new(Int::Literal(-1)), Box::new(inner_dim));
             }
             let ty = self.expr_infer(expr, errors);
-            type_to_dim(&ty).unwrap_or(SymInt::Int)
+            type_to_dim(&ty).unwrap_or(Int::Int)
         };
 
         let classify = |expr: &Expr, inferred: Option<&Type>| -> Option<IndexOp> {
@@ -3119,7 +3119,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             )
                         }) =>
                 {
-                    Some(IndexOp::Fancy(SymInt::Literal(elts.len() as i64)))
+                    Some(IndexOp::Fancy(Int::Literal(elts.len() as i64)))
                 }
                 _ => match inferred {
                     Some(ty) => classify_shaped_array_index_type(ty),
@@ -3290,8 +3290,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         Some(shape_arg)
     }
 
-    pub(crate) fn shaped_array_shape_arg_to_shape(&self, shape_arg: &Type) -> Option<SymIntTuple> {
-        SymIntTuple::from_shape_arg_type(shape_arg)
+    pub(crate) fn shaped_array_shape_arg_to_shape(&self, shape_arg: &Type) -> Option<IntTuple> {
+        IntTuple::from_shape_arg_type(shape_arg)
             .or_else(|| tuple_carrier_to_shape(shape_arg))
             .or_else(|| {
                 let upper_bound = match shape_arg {
@@ -3300,8 +3300,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     _ => return None,
                 };
                 let int_type = self.stdlib.int().clone().to_type();
-                Self::is_symint_tuple_carrier_bound(&upper_bound, &int_type)
-                    .then(|| SymIntTuple::unpacked(Vec::new(), shape_arg.clone(), Vec::new()))
+                Self::is_int_tuple_carrier_bound(&upper_bound, &int_type)
+                    .then(|| IntTuple::unpacked(Vec::new(), shape_arg.clone(), Vec::new()))
             })
     }
 
@@ -3328,10 +3328,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .clone();
         self.expand_mut(&mut shape_arg);
         match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
+            QuantifiedKind::TypeVar | QuantifiedKind::IntVar => {
                 let shape = self
                     .shaped_array_shape_arg_to_shape(&shape_arg)
-                    .unwrap_or_else(SymIntTuple::shapeless);
+                    .unwrap_or_else(IntTuple::shapeless);
                 let mut base_class = cls.clone();
                 let shape_arg = base_class
                     .targs_mut()
@@ -3358,11 +3358,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     pub(crate) fn shaped_array_with_shape(
         &self,
         tensor: &ShapedArrayType,
-        shape: SymIntTuple,
+        shape: IntTuple,
     ) -> ShapedArrayType {
         match self.shaped_array_shape_for_class_type(&tensor.base_class) {
             Some(shape_param) => match shape_param.kind() {
-                QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
+                QuantifiedKind::TypeVar | QuantifiedKind::IntVar => {
                     let shape_idx = self
                         .shaped_array_shape_arg_index(&tensor.base_class)
                         .expect("shaped-array metadata should refer to a class type parameter");
@@ -3407,12 +3407,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// pre-operation shape. Routing through `shaped_array_with_shape` rewrites the
     /// carrier to the shapeless form too.
     fn shaped_array_shapeless(&self, tensor: &ShapedArrayType) -> ShapedArrayType {
-        self.shaped_array_with_shape(tensor, SymIntTuple::shapeless())
+        self.shaped_array_with_shape(tensor, IntTuple::shapeless())
     }
 
-    /// Check if a class is a SymInt class (shape_extensions.SymInt)
-    fn is_symint_class(&self, cls: &Class) -> bool {
-        cls.has_toplevel_qname("shape_extensions", "SymInt")
+    /// Check if a class is a Int class (shape_extensions.Int)
+    fn is_int_class(&self, cls: &Class) -> bool {
+        cls.has_toplevel_qname("shape_extensions", "Int")
     }
 
     /// Check if a class is the shape arithmetic wrapper (shape_extensions.D)
@@ -3502,7 +3502,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if let Some(value) = int_val.as_i64() {
                         // Allow any integer value during parsing - validation happens later
                         // This allows expressions like N + 0 where 0 is part of an expression
-                        Some(self.heap.mk_symint(SymInt::literal(value)))
+                        Some(self.heap.mk_int(Int::literal(value)))
                     } else {
                         self.error(
                             errors,
@@ -3542,7 +3542,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             errors,
                             UntypeContext::SymbolicInt(context.error_context()),
                         ) {
-                            Some(Type::Quantified(q)) if q.kind() == QuantifiedKind::SymIntVar => {
+                            Some(Type::Quantified(q)) if q.kind() == QuantifiedKind::IntVar => {
                                 Some(Type::Quantified(q))
                             }
                             Some(ty @ Type::TypeVar(_)) => Some(ty),
@@ -3572,19 +3572,19 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 )?;
                 Some(
                     self.heap
-                        .mk_symint(SymInt::sub(self.heap.mk_symint(SymInt::Literal(0)), inner)),
+                        .mk_int(Int::sub(self.heap.mk_int(Int::Literal(0)), inner)),
                 )
             }
             // Binary operations: N + M, N * M, etc.
             Expr::BinOp(ExprBinOp {
                 left, op, right, ..
             }) => {
-                let make_symint = match op {
-                    Operator::Add => SymInt::add,
-                    Operator::Sub => SymInt::sub,
-                    Operator::Mult => SymInt::mul,
-                    Operator::FloorDiv => SymInt::floor_div,
-                    Operator::Pow => SymInt::pow,
+                let make_int = match op {
+                    Operator::Add => Int::add,
+                    Operator::Sub => Int::sub,
+                    Operator::Mult => Int::mul,
+                    Operator::FloorDiv => Int::floor_div,
+                    Operator::Pow => Int::pow,
                     _ => {
                         self.error(
                             errors,
@@ -3610,8 +3610,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 )?;
                 if *op == Operator::Pow {
                     let right_dim_canon = canonicalize(right_dim.clone());
-                    if symint_type_is_provably_negative(&right_dim)
-                        || symint_type_is_provably_negative(&right_dim_canon)
+                    if int_type_is_provably_negative(&right_dim)
+                        || int_type_is_provably_negative(&right_dim_canon)
                     {
                         self.error(
                             errors,
@@ -3622,10 +3622,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         return None;
                     }
                     return Some(canonicalize(
-                        self.heap.mk_symint(SymInt::pow(left_dim, right_dim_canon)),
+                        self.heap.mk_int(Int::pow(left_dim, right_dim_canon)),
                     ));
                 }
-                Some(self.heap.mk_symint(make_symint(left_dim, right_dim)))
+                Some(self.heap.mk_int(make_int(left_dim, right_dim)))
             }
             // Anything else is an error
             _ => {
@@ -3657,7 +3657,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let simplified = canonicalize(dim);
 
                 // Validate that literal dimensions are positive
-                if let Type::SymInt(SymInt::Literal(value)) = &simplified
+                if let Type::Int(Int::Literal(value)) = &simplified
                     && value <= &0
                 {
                     self.error(
@@ -3681,11 +3681,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         &self,
         expr: &Expr,
         errors: &ErrorCollector,
-    ) -> Option<SymIntTuple> {
+    ) -> Option<IntTuple> {
         match expr {
             Expr::Tuple(ExprTuple { elts, .. }) => self
                 .parse_dimension_list(elts, errors)
-                .map(SymIntTuple::from_types),
+                .map(IntTuple::from_types),
             _ => {
                 self.error(
                     errors,
@@ -3838,21 +3838,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .enumerate()
             .map(|(idx, arg)| {
                 if let Some(param) = param_for_arg(idx) {
-                    if !matches!(arg, Expr::Starred(_)) && param.kind() == QuantifiedKind::SymIntVar
-                    {
+                    if !matches!(arg, Expr::Starred(_)) && param.kind() == QuantifiedKind::IntVar {
                         return self
                             .parse_dimension_expr(arg, errors)
                             .unwrap_or_else(Type::any_error);
                     }
                     if param.kind() == QuantifiedKind::TypeVar
                         && let Expr::List(ExprList { elts, .. }) = arg
-                        && Self::is_symint_tuple_carrier_bound(
+                        && Self::is_int_tuple_carrier_bound(
                             &param.upper_bound(self.stdlib, self.heap),
                             &int_type,
                         )
                     {
                         return self
-                            .parse_symint_tuple_shape_args(elts, errors)
+                            .parse_int_tuple_shape_args(elts, errors)
                             .map(|shape| shape.to_shape_arg_type())
                             .unwrap_or_else(Type::any_error);
                     }
@@ -3862,14 +3861,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .collect()
     }
 
-    /// Returns whether `ty` is the normalized upper bound for a bare `SymIntTuple`
+    /// Returns whether `ty` is the normalized upper bound for a bare `IntTuple`
     /// carrier `TypeVar`.
     ///
     /// Other tuple bounds are ordinary type bounds and must not enable compact
     /// shape-list parsing.
-    fn is_symint_tuple_carrier_bound(ty: &Type, int_type: &Type) -> bool {
+    fn is_int_tuple_carrier_bound(ty: &Type, int_type: &Type) -> bool {
         match ty {
-            Type::SymIntTuple(_) => true,
+            Type::IntTuple(_) => true,
             Type::Tuple(Tuple::Unbounded(inner)) => inner.as_ref() == int_type,
             _ => false,
         }
@@ -3878,16 +3877,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Returns whether `ty` can legally be the argument inside `Elements[...]`.
     ///
     /// Valid carriers are concrete tuple types, type aliases (which normalize to
-    /// tuples), and `TypeVar`s whose upper bound is a `SymIntTuple` (i.e., a tuple type).
-    fn is_symint_tuple_elements_carrier(&self, ty: &Type) -> bool {
+    /// tuples), and `TypeVar`s whose upper bound is an `IntTuple` (i.e., a tuple type).
+    fn is_int_tuple_elements_carrier(&self, ty: &Type) -> bool {
         let upper_bound = match ty {
-            Type::Tuple(_) | Type::SymIntTuple(_) | Type::UntypedAlias(_) => return true,
+            Type::Tuple(_) | Type::IntTuple(_) | Type::UntypedAlias(_) => return true,
             Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
             Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
             _ => return false,
         };
         let int_type = self.stdlib.int().clone().to_type();
-        Self::is_symint_tuple_carrier_bound(&upper_bound, &int_type)
+        Self::is_int_tuple_carrier_bound(&upper_bound, &int_type)
     }
 
     fn is_shape_elements_class(&self, cls: &Class) -> bool {
@@ -3898,11 +3897,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ///
     /// `Elements` is the conceptual inverse of `tuple[Unpack[Ts]]`: whereas
     /// `tuple[Unpack[Ts]]` wraps a `TypeVarTuple` into a concrete tuple type,
-    /// `Elements[S]` extracts the element sequence from a `SymIntTuple` carrier `S`.
+    /// `Elements[S]` extracts the element sequence from an `IntTuple` carrier `S`.
     /// This fills a gap in the typing spec — there is no standard way to decompose
     /// a variadic carrier without a `TypeVarTuple` — letting callers write
     /// `Array[[*Elements[S], OUT], DType]` instead of needing a `TypeVarTuple`.
-    fn parse_symint_tuple_elements_projection(
+    fn parse_int_tuple_elements_projection(
         &self,
         value: &Expr,
         errors: &ErrorCollector,
@@ -3922,28 +3921,28 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             [arg] => {
                 let carrier = self.expr_untype(arg, TypeFormContext::TypeArgument, errors);
                 match carrier {
-                    Type::SymIntTuple(shape) => match shape.view() {
-                        SymIntTupleView::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
-                        SymIntTupleView::Gradual => Ok(Some(self.bare_symint_tuple_carrier())),
-                        SymIntTupleView::Unpacked { .. } => {
+                    Type::IntTuple(shape) => match shape.view() {
+                        IntTupleView::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
+                        IntTupleView::Gradual => Ok(Some(self.bare_int_tuple_carrier())),
+                        IntTupleView::Unpacked { .. } => {
                             self.error(
                                 errors,
                                 arg.range(),
                                 ErrorKind::InvalidAnnotation,
-                                "`Elements[...]` only supports concrete `SymIntTuple[...]` values or shape carriers"
+                                "`Elements[...]` only supports concrete `IntTuple[...]` values or shape carriers"
                                     .to_owned(),
                             );
                             Err(())
                         }
                     },
-                    carrier if self.is_symint_tuple_elements_carrier(&carrier) => Ok(Some(carrier)),
+                    carrier if self.is_int_tuple_elements_carrier(&carrier) => Ok(Some(carrier)),
                     carrier => {
                         self.error(
                             errors,
                             arg.range(),
                             ErrorKind::InvalidAnnotation,
                             format!(
-                                "`Elements[...]` requires a `SymIntTuple` carrier, got `{}`",
+                                "`Elements[...]` requires an `IntTuple` carrier, got `{}`",
                                 self.for_display(carrier)
                             ),
                         );
@@ -3979,11 +3978,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         }
     }
 
-    fn parse_symint_tuple_shape_args(
+    fn parse_int_tuple_shape_args(
         &self,
         args: &[Expr],
         errors: &ErrorCollector,
-    ) -> Option<SymIntTuple> {
+    ) -> Option<IntTuple> {
         let star = args
             .iter()
             .enumerate()
@@ -3998,14 +3997,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     second.range(),
                     ErrorKind::InvalidAnnotation,
-                    "`SymIntTuple` can have at most one unpacked shape carrier".to_owned(),
+                    "`IntTuple` can have at most one unpacked shape carrier".to_owned(),
                 );
                 return None;
             }
 
             let prefix = self.parse_dimension_list(&args[..star_idx], errors)?;
             let suffix = self.parse_dimension_list(&args[star_idx + 1..], errors)?;
-            let middle_ty = match self.parse_symint_tuple_elements_projection(value, errors) {
+            let middle_ty = match self.parse_int_tuple_elements_projection(value, errors) {
                 Ok(Some(middle_ty)) => middle_ty,
                 Ok(None) => {
                     let got = self.expr_untype(value, TypeFormContext::TypeArgument, errors);
@@ -4014,7 +4013,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         value.range(),
                         ErrorKind::InvalidAnnotation,
                         format!(
-                            "Unpacked type in `SymIntTuple` must use `Elements[...]`, got `{}`",
+                            "Unpacked type in `IntTuple` must use `Elements[...]`, got `{}`",
                             self.for_display(got)
                         ),
                     );
@@ -4024,13 +4023,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             };
             if let Type::Tuple(Tuple::Concrete(middle)) = middle_ty {
                 let dims = prefix.into_iter().chain(middle).chain(suffix).collect();
-                return Some(SymIntTuple::from_types(dims));
+                return Some(IntTuple::from_types(dims));
             }
-            return Some(SymIntTuple::unpacked_from_types(prefix, middle_ty, suffix));
+            return Some(IntTuple::unpacked_from_types(prefix, middle_ty, suffix));
         }
 
         self.parse_dimension_list(args, errors)
-            .map(SymIntTuple::from_types)
+            .map(IntTuple::from_types)
     }
 
     /// Parse a registered shaped-array annotation.
@@ -4056,7 +4055,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .position(|param| param == &shape_param)
             .expect("shaped-array metadata should refer to a class type parameter");
         match shape_param.kind() {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {}
+            QuantifiedKind::TypeVar | QuantifiedKind::IntVar => {}
             QuantifiedKind::TypeVarTuple => unreachable!(
                 "shaped-array metadata validation rejects TypeVarTuple shape parameters"
             ),
@@ -4065,13 +4064,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
         let validate_shape_slot = shape_idx < args.len() && args.len() <= tparams.len();
-        let shape_param_accepts_symint_tuple = matches!(
+        let shape_param_accepts_int_tuple = matches!(
             shape_param.upper_bound(self.stdlib, self.heap),
-            Type::SymIntTuple(_)
+            Type::IntTuple(_)
         );
         let shape_validation_arg = |carrier: &Type| {
-            if shape_param_accepts_symint_tuple {
-                self.heap.mk_symint_tuple(SymIntTuple::shapeless())
+            if shape_param_accepts_int_tuple {
+                self.heap.mk_int_tuple(IntTuple::shapeless())
             } else {
                 carrier.clone()
             }
@@ -4082,7 +4081,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .enumerate()
             .map(|(i, arg)| match arg {
                 Expr::List(ExprList { elts, .. }) if i == shape_idx => {
-                    match self.parse_symint_tuple_shape_args(elts, errors) {
+                    match self.parse_int_tuple_shape_args(elts, errors) {
                         Some(shape) => {
                             let carrier = shape_to_tuple_carrier(&shape);
                             shape_arg_carrier = Some(shape.to_shape_arg_type());
@@ -4094,16 +4093,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 _ => {
                     if i == shape_idx
                         && let Type::ClassDef(cls) = self.expr_infer(arg, &self.error_swallower())
-                        && self.is_symint_tuple_class(&cls)
+                        && self.is_int_tuple_class(&cls)
                     {
-                        let carrier = self.bare_symint_tuple_carrier();
-                        shape_arg_carrier = Some(SymIntTuple::shapeless().to_shape_arg_type());
+                        let carrier = self.bare_int_tuple_carrier();
+                        shape_arg_carrier = Some(IntTuple::shapeless().to_shape_arg_type());
                         shape_validation_arg(&carrier)
                     } else {
                         match self.expr_untype(arg, TypeFormContext::TypeArgument, errors) {
-                            Type::SymIntTuple(shape) if i == shape_idx => {
+                            Type::IntTuple(shape) if i == shape_idx => {
                                 let carrier = if shape.is_shapeless() {
-                                    self.bare_symint_tuple_carrier()
+                                    self.bare_int_tuple_carrier()
                                 } else {
                                     shape_to_tuple_carrier(&shape)
                                 };
@@ -4159,14 +4158,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_type()
     }
 
-    fn parse_symint_tuple_type(&self, args: &[Expr], errors: &ErrorCollector) -> Type {
-        let Some(shape) = self.parse_symint_tuple_shape_args(args, errors) else {
+    fn parse_int_tuple_type(&self, args: &[Expr], errors: &ErrorCollector) -> Type {
+        let Some(shape) = self.parse_int_tuple_shape_args(args, errors) else {
             return self.heap.mk_type_of(Type::any_error());
         };
-        self.heap.mk_type_of(self.heap.mk_symint_tuple(shape))
+        self.heap.mk_type_of(self.heap.mk_int_tuple(shape))
     }
 
-    fn parse_single_symint_type(
+    fn parse_single_int_type(
         &self,
         spelling: &str,
         args: &[Expr],
@@ -4197,16 +4196,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if matches!(dim, Type::Any(_)) {
             return dim;
         }
-        let Some(symint) = SymInt::from_type(&dim) else {
-            unreachable!("SymInt::from_type failed on non-Any dimension: {:?}", dim);
+        let Some(symint) = Int::from_type(&dim) else {
+            unreachable!("Int::from_type failed on non-Any dimension: {:?}", dim);
         };
-        let size = canonicalize(self.heap.mk_symint(symint));
+        let size = canonicalize(self.heap.mk_int(symint));
         self.heap.mk_type_of(size)
     }
 
-    /// Parse SymInt[3], SymInt[N], SymInt[N+1] into `Type::SymInt(...)`.
-    fn parse_symint_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
-        self.parse_single_symint_type("SymInt", args, range, errors)
+    /// Parse Int[3], Int[N], Int[N+1] into `Type::Int(...)`.
+    fn parse_int_type(&self, args: &[Expr], range: TextRange, errors: &ErrorCollector) -> Type {
+        self.parse_single_int_type("Int", args, range, errors)
     }
 
     /// Return the reason why we think `ty` is suspicious to use as a branching condition

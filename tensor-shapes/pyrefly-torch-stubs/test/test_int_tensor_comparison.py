@@ -6,25 +6,25 @@
 from typing import assert_type
 
 import torch
-from shape_extensions import SymInt, SymIntVar
+from shape_extensions import Int, IntVar
 from torch import Tensor
 
 
 # Dim tests
-def numel_returns_implicit_symint[N: SymIntVar, M: SymIntVar](x: Tensor[[N, M]]):
+def numel_returns_implicit_int[N: IntVar, M: IntVar](x: Tensor[[N, M]]):
     s = x.numel()
-    assert_type(s, SymInt[N * M])
+    assert_type(s, Int[N * M])
     return s
 
 
-def test_numel_returns_implicit_symint():
-    n = numel_returns_implicit_symint(torch.randn(3, 4))
+def test_numel_returns_implicit_int():
+    n = numel_returns_implicit_int(torch.randn(3, 4))
     # Should infer: Literal[12] (3*4=12)
-    assert_type(n, SymInt[12])
+    assert_type(n, Int[12])
 
 
 # Tensor tests
-def view_returns_implicit_tensor[N: SymIntVar, M: SymIntVar](x: Tensor[[N, M]]):
+def view_returns_implicit_tensor[N: IntVar, M: IntVar](x: Tensor[[N, M]]):
     v = x.view(-1)
     assert_type(v, Tensor[[N * M]])
     return v

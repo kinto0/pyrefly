@@ -14,10 +14,10 @@ use dupe::Dupe;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::dunder;
-use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::heap::TypeHeap;
-use pyrefly_types::shaped_array::SymIntTupleView;
+use pyrefly_types::shaped_array::IntTupleView;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
@@ -144,24 +144,24 @@ fn handle_tuple_type(
     }
 }
 
-fn on_symint(
-    dim: &SymInt,
+fn on_int(
+    dim: &Int,
     inj: bool,
     on_edge: &mut impl FnMut(&Class) -> InferenceMap,
     on_var: &mut impl FnMut(&Name, Variance, bool, PreInferenceVariance),
 ) {
     match dim {
-        SymInt::Literal(_) | SymInt::Int => {}
-        SymInt::Symbolic(ty) => {
+        Int::Literal(_) | Int::Int => {}
+        Int::Symbolic(ty) => {
             on_type(Variance::Invariant, inj, ty, on_edge, on_var);
         }
-        SymInt::Add(left, right)
-        | SymInt::Sub(left, right)
-        | SymInt::Mul(left, right)
-        | SymInt::FloorDiv(left, right)
-        | SymInt::Pow(left, right) => {
-            on_symint(left, inj, on_edge, on_var);
-            on_symint(right, inj, on_edge, on_var);
+        Int::Add(left, right)
+        | Int::Sub(left, right)
+        | Int::Mul(left, right)
+        | Int::FloorDiv(left, right)
+        | Int::Pow(left, right) => {
+            on_int(left, inj, on_edge, on_var);
+            on_int(right, inj, on_edge, on_var);
         }
     }
 }
@@ -227,26 +227,26 @@ fn on_type(
                 on_type(Variance::Invariant, inj, ty, on_edge, on_var);
             };
             match tensor.shape().view() {
-                SymIntTupleView::Concrete(dims) => {
+                IntTupleView::Concrete(dims) => {
                     for dim in dims {
-                        visit_dim(&Type::SymInt(dim.clone()));
+                        visit_dim(&Type::Int(dim.clone()));
                     }
                 }
-                SymIntTupleView::Gradual => {
+                IntTupleView::Gradual => {
                     let middle = gradual_size();
                     visit_dim(&middle);
                 }
-                SymIntTupleView::Unpacked {
+                IntTupleView::Unpacked {
                     prefix,
                     middle,
                     suffix,
                 } => {
                     for dim in prefix {
-                        visit_dim(&Type::SymInt(dim.clone()));
+                        visit_dim(&Type::Int(dim.clone()));
                     }
                     visit_dim(middle);
                     for dim in suffix {
-                        visit_dim(&Type::SymInt(dim.clone()));
+                        visit_dim(&Type::Int(dim.clone()));
                     }
                 }
             }
@@ -267,9 +267,9 @@ fn on_type(
         Type::Tuple(t) => {
             handle_tuple_type(t, variance, inj, on_edge, on_var);
         }
-        Type::SymInt(dim) => {
+        Type::Int(dim) => {
             // Symbolic integer expressions contain types, all invariant.
-            on_symint(dim, inj, on_edge, on_var);
+            on_int(dim, inj, on_edge, on_var);
         }
         _ => {}
     }

@@ -25,23 +25,23 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 import torch.optim
-from shape_extensions import Elements, SymIntTuple
+from shape_extensions import Elements, IntTuple
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import SymInt, SymIntVar
+    from shape_extensions import Int, IntVar
     from torch import Tensor
 
 
-class LayerNorm[M: SymIntVar](nn.Module):
+class LayerNorm[M: IntVar](nn.Module):
     """LayerNorm but with an optional bias. Generic over normalized dimension size."""
 
-    def __init__(self, ndim: SymInt[M], bias: bool):
+    def __init__(self, ndim: Int[M], bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
 
-    def forward[Bs: SymIntTuple](
+    def forward[Bs: IntTuple](
         self, input: Tensor[[*Elements[Bs], M]]
     ) -> Tensor[[*Elements[Bs], M]]:
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
@@ -49,27 +49,27 @@ class LayerNorm[M: SymIntVar](nn.Module):
 
 @dataclass
 class GPTConfig[
-    VocabSize: SymIntVar,
-    BlockSize: SymIntVar,
-    NEmbedding: SymIntVar,
-    NHead: SymIntVar,
-    NLayer: SymIntVar,
+    VocabSize: IntVar,
+    BlockSize: IntVar,
+    NEmbedding: IntVar,
+    NHead: IntVar,
+    NLayer: IntVar,
 ]:
     """Configuration for GPT model, generic over key dimensions"""
 
-    block_size: SymInt[BlockSize]
-    vocab_size: SymInt[VocabSize]
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
+    block_size: Int[BlockSize]
+    vocab_size: Int[VocabSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
 
 class CausalSelfAttention[
-    NEmbedding: SymIntVar,
-    NHead: SymIntVar,
-    BlockSize: SymIntVar,
+    NEmbedding: IntVar,
+    NHead: IntVar,
+    BlockSize: IntVar,
 ](nn.Module):
     """Multi-head causal self-attention. Generic over embedding dim, num heads, and block size."""
 
@@ -99,7 +99,7 @@ class CausalSelfAttention[
                 )
             )
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, x: Tensor[[B, T, NEmbedding]]
     ) -> Tensor[[B, T, NEmbedding]]:
         b, t, c = (
@@ -149,7 +149,7 @@ class CausalSelfAttention[
         return y
 
 
-class MLP[NEmbedding: SymIntVar](nn.Module):
+class MLP[NEmbedding: IntVar](nn.Module):
     """Multi-layer perceptron. Generic over embedding dimension."""
 
     def __init__(self, config: GPTConfig[Any, Any, NEmbedding, Any, Any]):
@@ -159,7 +159,7 @@ class MLP[NEmbedding: SymIntVar](nn.Module):
         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, x: Tensor[[B, T, NEmbedding]]
     ) -> Tensor[[B, T, NEmbedding]]:
         h = self.c_fc(x)
@@ -169,7 +169,7 @@ class MLP[NEmbedding: SymIntVar](nn.Module):
         return x
 
 
-class Block[NEmbedding: SymIntVar, NHead: SymIntVar, BlockSize: SymIntVar](nn.Module):
+class Block[NEmbedding: IntVar, NHead: IntVar, BlockSize: IntVar](nn.Module):
     """Transformer block with self-attention and MLP. Generic over embedding dim, num heads, and block size."""
 
     def __init__(self, config: GPTConfig[Any, BlockSize, NEmbedding, NHead, Any]):
@@ -179,7 +179,7 @@ class Block[NEmbedding: SymIntVar, NHead: SymIntVar, BlockSize: SymIntVar](nn.Mo
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, x: Tensor[[B, T, NEmbedding]]
     ) -> Tensor[[B, T, NEmbedding]]:
         x = x + self.attn(self.ln_1(x))
@@ -188,28 +188,28 @@ class Block[NEmbedding: SymIntVar, NHead: SymIntVar, BlockSize: SymIntVar](nn.Mo
 
 
 class GPTConfigArgs[
-    VocabSize: SymIntVar,
-    BlockSize: SymIntVar,
-    NEmbedding: SymIntVar,
-    NHead: SymIntVar,
-    NLayer: SymIntVar,
+    VocabSize: IntVar,
+    BlockSize: IntVar,
+    NEmbedding: IntVar,
+    NHead: IntVar,
+    NLayer: IntVar,
 ](TypedDict):
     """TypedDict for GPTConfig constructor arguments, generic over key dimensions"""
 
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
-    vocab_size: SymInt[VocabSize]
-    block_size: SymInt[BlockSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
+    vocab_size: Int[VocabSize]
+    block_size: Int[BlockSize]
     bias: bool
     dropout: float
 
 
 class TransformerModules[
-    VocabSize: SymIntVar,
-    BlockSize: SymIntVar,
-    NEmbedding: SymIntVar,
-    NHead: SymIntVar,
+    VocabSize: IntVar,
+    BlockSize: IntVar,
+    NEmbedding: IntVar,
+    NHead: IntVar,
 ](TypedDict):
     """TypedDict defining the structure of GPT transformer modules. Generic over key dimensions."""
 
@@ -221,11 +221,11 @@ class TransformerModules[
 
 
 class GPT[
-    VocabSize: SymIntVar,
-    BlockSize: SymIntVar,
-    NEmbedding: SymIntVar,
-    NHead: SymIntVar,
-    NLayer: SymIntVar,
+    VocabSize: IntVar,
+    BlockSize: IntVar,
+    NEmbedding: IntVar,
+    NHead: IntVar,
+    NLayer: IntVar,
 ](nn.Module):
     """GPT Language Model. Generic over vocabulary size, block size, embedding dim, num heads, and num layers."""
 
@@ -270,8 +270,8 @@ class GPT[
 
     # TODO(rechen): the type of `n_params` used to be inferred as `Unknown`.
     # After D95667476, it is the more precise
-    # `Literal[0] | SymInt[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
-    # errors like "`/` is not supported between `SymInt[((-1 * BlockSize) * NEmbedding)]` and `float`"
+    # `Literal[0] | Int[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
+    # errors like "`/` is not supported between `Int[((-1 * BlockSize) * NEmbedding)]` and `float`"
     def get_num_params(self, non_embedding=True) -> Any:
         """
         Return the number of parameters in the model.
@@ -292,7 +292,7 @@ class GPT[
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward[B: SymIntVar, T: SymIntVar](
+    def forward[B: IntVar, T: IntVar](
         self, idx: Tensor[[B, T]], targets: Tensor[[B, T]] | None = None
     ) -> tuple[
         Tensor[[B, T, VocabSize]] | Tensor[[B, 1, VocabSize]], Tensor[[]] | None
@@ -455,7 +455,7 @@ class GPT[
         return mfu
 
     @torch.no_grad()
-    def generate[B: SymIntVar](
+    def generate[B: IntVar](
         self,
         idx: Tensor[[B, Any]],
         max_new_tokens: int,

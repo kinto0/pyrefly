@@ -24,26 +24,26 @@ import torch
 import torch.nn as nn
 import torch.nn.init
 import torch.optim
-from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
+from shape_extensions import Elements, Int, IntTuple, IntVar
 from torch import Tensor
 from torch.nn import functional as F
 
 # Module-level type variable declarations
-M = SymIntVar("M")
-VocabSize = SymIntVar("VocabSize")
-BlockSize = SymIntVar("BlockSize")
-NEmbedding = SymIntVar("NEmbedding")
-NHead = SymIntVar("NHead")
-NLayer = SymIntVar("NLayer")
-B = SymIntVar("B")
-T = SymIntVar("T")
-Bs = TypeVar("Bs", bound=SymIntTuple)
+M = IntVar("M")
+VocabSize = IntVar("VocabSize")
+BlockSize = IntVar("BlockSize")
+NEmbedding = IntVar("NEmbedding")
+NHead = IntVar("NHead")
+NLayer = IntVar("NLayer")
+B = IntVar("B")
+T = IntVar("T")
+Bs = TypeVar("Bs", bound=IntTuple)
 
 
 class LayerNorm(nn.Module, Generic[M]):
     """LayerNorm but with an optional bias. Generic over normalized dimension size."""
 
-    def __init__(self, ndim: SymInt[M], bias: bool):
+    def __init__(self, ndim: Int[M], bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         self.bias = nn.Parameter(torch.zeros(ndim)) if bias else None
@@ -56,11 +56,11 @@ class LayerNorm(nn.Module, Generic[M]):
 class GPTConfig(Generic[VocabSize, BlockSize, NEmbedding, NHead, NLayer]):
     """Configuration for GPT model, generic over key dimensions"""
 
-    block_size: SymInt[BlockSize]
-    vocab_size: SymInt[VocabSize]
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
+    block_size: Int[BlockSize]
+    vocab_size: Int[VocabSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -181,11 +181,11 @@ class GPTConfigArgs(
 ):
     """TypedDict for GPTConfig constructor arguments, generic over key dimensions"""
 
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
-    vocab_size: SymInt[VocabSize]
-    block_size: SymInt[BlockSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
+    vocab_size: Int[VocabSize]
+    block_size: Int[BlockSize]
     bias: bool
     dropout: float
 
@@ -244,8 +244,8 @@ class GPT(nn.Module, Generic[VocabSize, BlockSize, NEmbedding, NHead, NLayer]):
 
     # TODO(rechen): the type of `n_params` used to be inferred as `Unknown`.
     # After D95667476, it is the more precise
-    # `Literal[0] | SymInt[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
-    # errors like "`/` is not supported between `SymInt[((-1 * BlockSize) * NEmbedding)]` and `float`"
+    # `Literal[0] | Int[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
+    # errors like "`/` is not supported between `Int[((-1 * BlockSize) * NEmbedding)]` and `float`"
     def get_num_params(self, non_embedding=True) -> Any:
         """
         Return the number of parameters in the model.

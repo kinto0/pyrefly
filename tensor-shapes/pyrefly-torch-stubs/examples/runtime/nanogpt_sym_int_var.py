@@ -27,25 +27,25 @@ import torch.optim
 from torch.nn import functional as F
 
 if TYPE_CHECKING:
-    from shape_extensions import Elements, SymInt, SymIntTuple, SymIntVar
+    from shape_extensions import Elements, Int, IntTuple, IntVar
     from torch import Tensor
 
 # Module-level type variable declarations
-M = SymIntVar("M")
-VocabSize = SymIntVar("VocabSize")
-BlockSize = SymIntVar("BlockSize")
-NEmbedding = SymIntVar("NEmbedding")
-NHead = SymIntVar("NHead")
-NLayer = SymIntVar("NLayer")
-B = SymIntVar("B")
-T = SymIntVar("T")
-Bs = TypeVar("Bs", bound=SymIntTuple)
+M = IntVar("M")
+VocabSize = IntVar("VocabSize")
+BlockSize = IntVar("BlockSize")
+NEmbedding = IntVar("NEmbedding")
+NHead = IntVar("NHead")
+NLayer = IntVar("NLayer")
+B = IntVar("B")
+T = IntVar("T")
+Bs = TypeVar("Bs", bound=IntTuple)
 
 
 class LayerNorm(nn.Module, Generic[M]):
     """LayerNorm but with an optional bias. Generic over normalized dimension size."""
 
-    def __init__(self, ndim: SymInt[M], bias: bool):
+    def __init__(self, ndim: Int[M], bias: bool):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(ndim))
         assert_type(self.weight, Tensor[[M]])
@@ -60,11 +60,11 @@ class LayerNorm(nn.Module, Generic[M]):
 class GPTConfig(Generic[VocabSize, BlockSize, NEmbedding, NHead, NLayer]):
     """Configuration for GPT model, generic over key dimensions"""
 
-    block_size: SymInt[BlockSize]
-    vocab_size: SymInt[VocabSize]
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
+    block_size: Int[BlockSize]
+    vocab_size: Int[VocabSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
     dropout: float = 0.0
     bias: bool = True  # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -105,16 +105,16 @@ class CausalSelfAttention(nn.Module, Generic[NEmbedding, NHead, BlockSize]):
         b, t, c = (
             x.size()
         )  # batch size, sequence length, embedding dimensionality (n_embd)
-        assert_type(b, SymInt[B])
-        assert_type(t, SymInt[T])
-        assert_type(c, SymInt[NEmbedding])
+        assert_type(b, Int[B])
+        assert_type(t, Int[T])
+        assert_type(c, Int[NEmbedding])
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
         assert_type(x, Tensor[[B, T, NEmbedding]])
         c_attn = self.c_attn(x)
         assert_type(c_attn, Tensor[[B, T, (3 * NEmbedding)]])
         split = c_attn.split(self.n_embd, dim=2)
-        assert_type(self.n_embd, SymInt[NEmbedding])
+        assert_type(self.n_embd, Int[NEmbedding])
         assert_type(
             split,
             tuple[
@@ -228,11 +228,11 @@ class GPTConfigArgs(
 ):
     """TypedDict for GPTConfig constructor arguments, generic over key dimensions"""
 
-    n_layer: SymInt[NLayer]
-    n_head: SymInt[NHead]
-    n_embd: SymInt[NEmbedding]
-    vocab_size: SymInt[VocabSize]
-    block_size: SymInt[BlockSize]
+    n_layer: Int[NLayer]
+    n_head: Int[NHead]
+    n_embd: Int[NEmbedding]
+    vocab_size: Int[VocabSize]
+    block_size: Int[BlockSize]
     bias: bool
     dropout: float
 
@@ -296,8 +296,8 @@ class GPT(nn.Module, Generic[VocabSize, BlockSize, NEmbedding, NHead, NLayer]):
 
     # TODO(rechen): the type of `n_params` used to be inferred as `Unknown`.
     # After D95667476, it is the more precise
-    # `Literal[0] | SymInt[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
-    # errors like "`/` is not supported between `SymInt[((-1 * BlockSize) * NEmbedding)]` and `float`"
+    # `Literal[0] | Int[(-1 * (BlockSize * NEmbedding))] | Unknown`, which leads to follow-on
+    # errors like "`/` is not supported between `Int[((-1 * BlockSize) * NEmbedding)]` and `float`"
     def get_num_params(self, non_embedding=True) -> Any:
         """
         Return the number of parameters in the model.
@@ -326,8 +326,8 @@ class GPT(nn.Module, Generic[VocabSize, BlockSize, NEmbedding, NHead, NLayer]):
     ]:
         device = idx.device
         b, t = idx.size()
-        assert_type(b, SymInt[B])
-        assert_type(t, SymInt[T])
+        assert_type(b, Int[B])
+        assert_type(t, Int[T])
         assert t <= self.config.block_size, (
             f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         )

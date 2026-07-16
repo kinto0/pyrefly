@@ -7,14 +7,14 @@
 
 from typing import assert_type, TYPE_CHECKING
 
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-def test_simple_index[B: SymIntVar, T: SymIntVar, V: SymIntVar](
+def test_simple_index[B: IntVar, T: IntVar, V: IntVar](
     logits: Tensor[[B, T, V]],
 ):
     """Test slicing with positive index"""
@@ -22,7 +22,7 @@ def test_simple_index[B: SymIntVar, T: SymIntVar, V: SymIntVar](
     assert_type(temp, Tensor[[B, V]])
 
 
-def test_slice_only[B: SymIntVar, T: SymIntVar, V: SymIntVar](
+def test_slice_only[B: IntVar, T: IntVar, V: IntVar](
     logits: Tensor[[B, T, V]],
 ):
     """Test slicing without index"""

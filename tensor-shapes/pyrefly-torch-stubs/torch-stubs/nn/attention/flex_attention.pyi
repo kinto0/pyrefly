@@ -7,7 +7,7 @@
 
 from typing import Any, Callable
 
-from shape_extensions import SymIntVar
+from shape_extensions import IntVar
 from torch import Tensor
 
 # Type alias for mask modification functions
@@ -34,12 +34,12 @@ class BlockMask:
     ) -> None: ...
 
 def flex_attention[
-    B: SymIntVar,
-    H: SymIntVar,
-    H_kv: SymIntVar,
-    Tq: SymIntVar,
-    Tkv: SymIntVar,
-    D: SymIntVar,
+    B: IntVar,
+    H: IntVar,
+    H_kv: IntVar,
+    Tq: IntVar,
+    Tkv: IntVar,
+    D: IntVar,
 ](
     query: Tensor[[B, H, Tq, D]],
     key: Tensor[[B, H_kv, Tkv, D]],
