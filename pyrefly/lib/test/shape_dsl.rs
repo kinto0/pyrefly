@@ -592,6 +592,45 @@ def concrete_elements_middle(
 );
 
 testcase!(
+    test_shaped_array_elements_tuple_carriers_rfc,
+    shaped_array_env(),
+    r#"
+from typing import Literal, reveal_type
+from shape_extensions import Elements, SymIntTuple, SymIntVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]: ...
+
+def concrete_tuple_carrier(
+    result: Array[[1, *Elements[tuple[Literal[2], Literal[3]]], 4], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4], int]
+
+def tuple_bound_carrier[S: tuple[int, ...], OUT: SymIntVar](
+    result: Array[[*Elements[S], OUT], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[*S, OUT], int]
+
+def independent_tuple_bound_carriers[
+    S: tuple[int, ...],
+    Q: tuple[int, ...],
+    M: SymIntVar,
+    N: SymIntVar,
+](
+    left: Array[[*Elements[S], M], int],
+    right: Array[[*Elements[Q], N], int],
+) -> None:
+    reveal_type(left)  # E: revealed type: Array[[*S, M], int]
+    reveal_type(right)  # E: revealed type: Array[[*Q, N], int]
+
+def syminttuple_bound_still_works[S: SymIntTuple, OUT: SymIntVar](
+    result: Array[[*Elements[S], OUT], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[*S, OUT], int]
+"#,
+);
+
+testcase!(
     test_shaped_array_syminttuple_shape_arg_return_reprojection,
     shaped_array_env(),
     r#"
