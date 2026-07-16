@@ -2868,6 +2868,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 )
                                 .emit();
                         }
+                    } else if let Expr::List(ExprList { elts, .. }) = slice
+                        && let Some(narrowed) =
+                            self.polars_select_columns(&schema, elts, errors)
+                    {
+                        return narrowed;
                     }
                     self.subscript_infer_for_type_with_key_present(
                         &schema.underlying_type(),

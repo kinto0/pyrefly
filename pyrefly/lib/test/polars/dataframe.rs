@@ -12,15 +12,19 @@ use crate::testcase;
 /// re-exported from `polars`, and its column-access methods return an opaque type.
 fn env_with_polars_stubs() -> TestEnv {
     let mut env = TestEnv::new();
-    env.add(
+    env.add_with_path(
         "polars.dataframe.frame",
+        "polars/dataframe/frame.pyi",
         r#"
-from typing import Iterator
+from typing import Iterator, overload
 class Series: ...
 class DataFrame:
     columns: list[str]
     def __init__(self, data: object = None, schema: object = None) -> None: ...
+    @overload
     def __getitem__(self, key: str) -> Series: ...
+    @overload
+    def __getitem__(self, key: list[str] | list[int]) -> "DataFrame": ...
     def __iter__(self) -> Iterator[Series]: ...
     def __contains__(self, key: str) -> bool: ...
     def head(self, n: int = 5) -> "DataFrame": ...
@@ -427,5 +431,72 @@ import polars as pl
 from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type("a" in df)  # E: revealed type: bool
+"#,
+);
+
+testcase!(
+    test_select_list_narrows_schema,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"], "c": [1.0]})
+reveal_type(df[["c", "a"]])  # E: revealed type: DataFrame[c: float, a: int]
+"#,
+);
+
+testcase!(
+    test_select_list_unknown_column_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df[["a", "missing"]])  # E: Column `missing` is not in the DataFrame schema # E: revealed type: DataFrame[a: int]
+"#,
+);
+
+testcase!(
+    test_select_list_non_literal_element_delegates,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+k = "a"
+reveal_type(df[[k]])  # E: revealed type: DataFrame
+reveal_type(df[[1]])  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_select_list_unknown_column_suppressible,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+df = pl.DataFrame({"a": [1]})
+df[["a", "b"]]  # pyrefly: ignore[unknown-column]
+"#,
+);
+
+testcase!(
+    test_select_list_duplicate_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df[["a", "a"]])  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_select_empty_list_narrows_to_empty,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df[[]])  # E: revealed type: DataFrame[]
 "#,
 );

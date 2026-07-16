@@ -11,6 +11,7 @@
 //! `Type::DataFrame` carrying an inferred column schema when a DataFrame is built
 //! from a dict literal. This is the entry point for column-aware checking.
 
+use pyrefly_types::data_frame::DataFrameSchema;
 use pyrefly_types::types::Type;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprDict;
@@ -111,5 +112,55 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
         Some(column)
+    }
+
+    /// Narrow a schema to the columns named in a `df[[...]]` list literal, keeping list order.
+    /// Falls back with `None` when an element is not a string literal or when a name repeats,
+    /// since Polars rejects duplicate column selection at runtime. An absent name reports the
+    /// same `UnknownColumn` error as a single-column read.
+    pub fn polars_select_columns(
+        &self,
+        schema: &DataFrameSchema,
+        elts: &[Expr],
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let mut names = Vec::with_capacity(elts.len());
+        let mut seen = SmallSet::new();
+        for elt in elts {
+            let Expr::StringLiteral(key) = elt else {
+                return None;
+            };
+            let name = Name::new(key.value.to_str());
+            if !seen.insert(name.clone()) {
+                return None;
+            }
+            names.push((name, elt.range()));
+        }
+        let columns = names
+            .into_iter()
+            .filter_map(
+                |(name, range)| match schema.columns.iter().find(|(c, _)| *c == name) {
+                    Some((_, ty)) => Some((name, ty.clone())),
+                    None => {
+                        errors
+                            .error_builder(
+                                range,
+                                ErrorKind::UnknownColumn,
+                                format!("Column `{name}` is not in the DataFrame schema"),
+                            )
+                            .emit();
+                        None
+                    }
+                },
+            )
+            .collect();
+        Some(
+            DataFrameSchema {
+                underlying: schema.underlying.clone(),
+                columns,
+                completeness: schema.completeness.clone(),
+            }
+            .to_type(),
+        )
     }
 }
