@@ -262,54 +262,54 @@ def broadcast_scalar_with_unpacked[Ts: SymIntTuple](
 def broadcast_concrete_exceeds_suffix[Ts: SymIntTuple](
     x: Tensor[[5, 10, 20]], y: Tensor[[*Elements[Ts], 20]]
 ) -> Tensor[[5, 10, 20]]:
-    """Leftover concrete dims cannot align with the TypeVarTuple middle."""
+    """Leftover concrete dims cannot align with the SymIntTuple middle."""
     # E: Cannot broadcast tensor shapes:
     #    Cannot broadcast concrete dims with variadic shape
     return x + y
 
 
 # ============================================================================
-# Broadcasting Unpacked + Unpacked (same TypeVarTuple)
+# Broadcasting Unpacked + Unpacked (same SymIntTuple)
 # ============================================================================
 
 
-def broadcast_same_tvt[Ts: SymIntTuple](
+def broadcast_same_symint_tuple[Ts: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Ts], 3]]
 ) -> None:
-    """Same TypeVarTuple, same suffix → cancel middles, result preserves shape"""
+    """Same SymIntTuple, same suffix → cancel middles, result preserves shape"""
     assert_type(x + y, Tensor[[*Elements[Ts], 3]])
 
 
-def broadcast_same_tvt_prefix[Ts: SymIntTuple](
+def broadcast_same_symint_tuple_prefix[Ts: SymIntTuple](
     x: Tensor[[5, *Elements[Ts]]], y: Tensor[[1, *Elements[Ts]]]
 ) -> None:
-    """Same TypeVarTuple, broadcast prefixes (1 broadcasts to 5)"""
+    """Same SymIntTuple, broadcast prefixes (1 broadcasts to 5)"""
     assert_type(x + y, Tensor[[5, *Elements[Ts]]])
 
 
-def broadcast_same_tvt_prefix_extension[Ts: SymIntTuple](
+def broadcast_same_symint_tuple_prefix_extension[Ts: SymIntTuple](
     x: Tensor[[5, 6, *Elements[Ts]]], y: Tensor[[6, *Elements[Ts]]]
 ) -> None:
-    """Same TypeVarTuple, left prefix extends right (right padded with implicit 1)"""
+    """Same SymIntTuple, left prefix extends right (right padded with implicit 1)"""
     assert_type(x + y, Tensor[[5, 6, *Elements[Ts]]])
 
 
 # ============================================================================
-# Broadcasting Unpacked + Unpacked with Different TypeVarTuples
+# Broadcasting Unpacked + Unpacked with Different SymIntTuples
 # ============================================================================
 
 
-def broadcast_different_tvt[Ts: SymIntTuple, Us: SymIntTuple](
+def broadcast_different_symint_tuple[Ts: SymIntTuple, Us: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Us], 3]]
 ) -> Tensor[[*Elements[Ts], 3]]:
-    """Different TypeVarTuples degrade to shapeless batch dims."""
+    """Different SymIntTuples degrade to shapeless batch dims."""
     # E: Returned type `Tensor[[*tuple[int, ...], 3]]` is not assignable
     #    to declared return type `Tensor[[*Ts, 3]]`
     return x + y
 
 
-def broadcast_different_tvt_any_batch[Ts: SymIntTuple, Us: SymIntTuple](
+def broadcast_different_symint_tuple_any_batch[Ts: SymIntTuple, Us: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Us], 3]]
 ) -> Tensor[[*Elements[SymIntTuple], 3]]:
-    """Different TypeVarTuples are accepted with unbounded batch dims."""
+    """Different SymIntTuples are accepted with unbounded batch dims."""
     return x + y
