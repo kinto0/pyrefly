@@ -274,6 +274,23 @@ impl SymIntTuple {
         ))
     }
 
+    /// Rebuild this shape through the canonical constructors.
+    pub fn normalize(&self) -> Self {
+        match &self.0 {
+            SymIntTupleRepr::Concrete(dims) => Self::from_symints(dims.clone()),
+            SymIntTupleRepr::Gradual => Self::shapeless(),
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => Self::unpacked(
+                dims_to_types(prefix),
+                middle.as_ref().clone(),
+                dims_to_types(suffix),
+            ),
+        }
+    }
+
     fn unpacked_from_parts(prefix: Vec<SymInt>, middle: Type, suffix: Vec<SymInt>) -> Self {
         if prefix.is_empty() && suffix.is_empty() && is_gradual_shape_middle(&middle) {
             Self::shapeless()
@@ -357,29 +374,13 @@ impl SymIntTuple {
         tuple
     }
 
-    pub fn to_simplification_tuple(&self) -> Tuple {
-        match &self.0 {
-            SymIntTupleRepr::Concrete(dims) => Tuple::Concrete(dims_to_types(dims)),
-            SymIntTupleRepr::Gradual => Tuple::Unbounded(Box::new(gradual_size())),
-            SymIntTupleRepr::Unpacked {
-                prefix,
-                middle,
-                suffix,
-            } => Tuple::Unpacked(Box::new((
-                dims_to_types(prefix),
-                middle.as_ref().clone(),
-                dims_to_types(suffix),
-            ))),
-        }
-    }
-
     pub fn to_shape_arg_type(&self) -> Type {
         Type::SymIntTuple(Box::new(self.clone()))
     }
 
     pub fn from_shape_arg_type(arg: &Type) -> Option<Self> {
         match arg {
-            Type::SymIntTuple(shape) => Some((**shape).clone()),
+            Type::SymIntTuple(shape) => Some(shape.normalize()),
             _ => None,
         }
     }
@@ -2182,6 +2183,44 @@ mod tests {
     }
 
     #[test]
+    fn normalize_rebuilds_raw_representations_and_preserves_middle() {
+        let raw_concrete = SymIntTuple(SymIntTupleRepr::Concrete(vec![SymInt::add(
+            size(1),
+            size(2),
+        )]));
+        let concrete = SymIntTuple::from_types(vec![size(3)]);
+        assert_ne!(raw_concrete, concrete);
+        assert_eq!(raw_concrete.normalize(), concrete);
+        assert_eq!(
+            SymIntTuple::from_shape_arg_type(&Type::SymIntTuple(Box::new(raw_concrete))),
+            Some(concrete.clone())
+        );
+
+        let gradual = SymIntTuple(SymIntTupleRepr::Gradual).normalize();
+        assert_eq!(gradual, SymIntTuple::shapeless());
+
+        let middle = Type::Var(Var::ZERO);
+        let raw_unpacked = SymIntTuple(SymIntTupleRepr::Unpacked {
+            prefix: vec![SymInt::add(size(1), size(2))],
+            middle: Box::new(middle.clone()),
+            suffix: vec![SymInt::add(size(3), size(4))],
+        });
+        let unpacked = raw_unpacked.normalize();
+        assert_eq!(
+            unpacked,
+            SymIntTuple::unpacked(vec![size(3)], middle.clone(), vec![size(7)])
+        );
+        assert!(matches!(
+            unpacked.view(),
+            SymIntTupleView::Unpacked { middle: stored, .. } if stored == &middle
+        ));
+
+        for normalized in [concrete, gradual, unpacked] {
+            assert_eq!(normalized.normalize(), normalized);
+        }
+    }
+
+    #[test]
     fn registered_shape_projects_from_first_class_shape_arg() {
         let projected = SymIntTuple::from_types(vec![size(2), size(3)]);
         let tensor = registered_array_shape_arg(projected.to_shape_arg_type());
@@ -2253,10 +2292,14 @@ mod tests {
     }
 
     #[test]
-    fn nested_shape_arg_type_canonicalizes() {
+    fn from_shape_arg_type_normalizes_raw_nested_symint_tuple() {
         let inner = SymIntTuple::from_types(vec![size(2), size(3)]);
-        let nested = SymIntTuple::unpacked(Vec::new(), inner.to_shape_arg_type(), Vec::new())
-            .to_shape_arg_type();
+        let nested = SymIntTuple(SymIntTupleRepr::Unpacked {
+            prefix: Vec::new(),
+            middle: Box::new(inner.to_shape_arg_type()),
+            suffix: Vec::new(),
+        })
+        .to_shape_arg_type();
         assert_eq!(SymIntTuple::from_shape_arg_type(&nested), Some(inner));
     }
 

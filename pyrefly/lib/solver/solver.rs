@@ -33,7 +33,6 @@ use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
-use pyrefly_types::shaped_array::SymIntTuple;
 use pyrefly_types::simplify::intersect;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::tuple::Tuple;
@@ -138,16 +137,29 @@ impl Bounds {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
+    use pyrefly_python::module_path::ModulePath;
+    use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_types::class::ClassDefIndex;
+    use pyrefly_types::class::ClassType;
     use pyrefly_types::dimension::SymInt;
     use pyrefly_types::dimension::gradual_size;
     use pyrefly_types::lit_int::LitInt;
     use pyrefly_types::quantified::AnchorIndex;
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::quantified::QuantifiedOrigin;
+    use pyrefly_types::shaped_array::ShapedArrayType;
+    use pyrefly_types::shaped_array::SymIntTuple;
     use pyrefly_types::type_var::PreInferenceVariance;
     use pyrefly_types::types::AnyStyle;
+    use pyrefly_types::types::TArgs;
+    use pyrefly_types::types::TParams;
     use pyrefly_types::types::Union;
+    use ruff_python_ast::Identifier;
+    use ruff_text_size::TextSize;
 
     use super::*;
 
@@ -188,6 +200,24 @@ mod tests {
             None,
             restriction,
             PreInferenceVariance::Invariant,
+        )
+    }
+
+    fn fake_array(targs: TArgs) -> ClassType {
+        let module = Module::new(
+            ModuleName::from_str("test"),
+            ModulePath::filesystem(PathBuf::from("test")),
+            Arc::new("fake module contents".to_owned()),
+        );
+        ClassType::new(
+            Class::new(
+                ClassDefIndex(0),
+                Identifier::new(Name::new("Array"), TextRange::empty(TextSize::new(0))),
+                NestingContext::toplevel(),
+                module,
+                None,
+            ),
+            targs,
         )
     }
 
@@ -276,6 +306,269 @@ mod tests {
         solver.expand_with_bounds(&mut ty);
 
         assert_eq!(ty, union);
+    }
+
+    #[test]
+    fn simplify_mut_flattens_reachable_concrete_tuple_unpack() {
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::SymInt(
+            SymInt::Literal(2),
+        )])));
+        let mut ty = Type::Tuple(Tuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(3))],
+        ));
+
+        solver.expand_mut(&mut ty);
+
+        assert_eq!(
+            ty,
+            Type::Tuple(Tuple::Concrete(vec![
+                Type::SymInt(SymInt::Literal(1)),
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+            ]))
+        );
+    }
+
+    #[test]
+    fn simplify_mut_normalizes_standalone_symint_tuple() {
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ])));
+        let mut ty = SymIntTuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(4))],
+        )
+        .to_shape_arg_type();
+
+        solver.expand_mut(&mut ty);
+
+        assert_eq!(
+            ty,
+            SymIntTuple::from_types(vec![
+                Type::SymInt(SymInt::Literal(1)),
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+                Type::SymInt(SymInt::Literal(4)),
+            ])
+            .to_shape_arg_type()
+        );
+    }
+
+    #[test]
+    fn simplify_mut_flattens_tuple_unpack_in_standalone_symint_tuple() {
+        let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ]))));
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
+        let mut ty = SymIntTuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(4))],
+        )
+        .to_shape_arg_type();
+
+        solver.expand_mut(&mut ty);
+
+        assert_eq!(
+            ty,
+            SymIntTuple::from_types(vec![
+                Type::SymInt(SymInt::Literal(1)),
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+                Type::SymInt(SymInt::Literal(4)),
+            ])
+            .to_shape_arg_type()
+        );
+    }
+
+    #[test]
+    fn simplify_mut_normalizes_inline_shaped_array() {
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![Type::SymInt(
+            SymInt::Literal(2),
+        )])));
+        let shape = SymIntTuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(3))],
+        );
+        let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        assert_eq!(
+            array.shape(),
+            SymIntTuple::from_types(vec![
+                Type::SymInt(SymInt::Literal(1)),
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+            ])
+        );
+        assert_eq!(array.tuple_carrier_shape_arg_index(), None);
+    }
+
+    #[test]
+    fn simplify_mut_flattens_tuple_unpack_in_inline_shaped_array() {
+        let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ]))));
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
+        let shape = SymIntTuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(4))],
+        );
+        let mut ty = ShapedArrayType::new(fake_array(TArgs::default()), shape).to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        assert_eq!(
+            array.shape(),
+            SymIntTuple::from_types(vec![
+                Type::SymInt(SymInt::Literal(1)),
+                Type::SymInt(SymInt::Literal(2)),
+                Type::SymInt(SymInt::Literal(3)),
+                Type::SymInt(SymInt::Literal(4)),
+            ])
+        );
+        assert_eq!(array.tuple_carrier_shape_arg_index(), None);
+    }
+
+    #[test]
+    fn simplify_mut_normalizes_concrete_tuple_carrier_as_first_class_shape_arg() {
+        let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ]))));
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
+        let shape_param = quantified(QuantifiedKind::TypeVar, 0);
+        let base_class = fake_array(TArgs::new(
+            Arc::new(TParams::new(vec![shape_param])),
+            vec![Type::Var(var)],
+        ));
+        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+            .with_tuple_carrier_shape_arg(0)
+            .to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        let expected = SymIntTuple::from_types(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ]);
+        assert_eq!(array.shape(), expected);
+        assert_eq!(
+            array.base_class.targs().as_slice()[0],
+            expected.to_shape_arg_type()
+        );
+        assert_eq!(array.tuple_carrier_shape_arg_index(), Some(0));
+    }
+
+    #[test]
+    fn simplify_mut_normalizes_gradual_tuple_carrier_as_first_class_shape_arg() {
+        let (solver, var) =
+            solver_with_answer(Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))));
+        let shape_param = quantified(QuantifiedKind::TypeVar, 0);
+        let base_class = fake_array(TArgs::new(
+            Arc::new(TParams::new(vec![shape_param])),
+            vec![Type::Var(var)],
+        ));
+        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+            .with_tuple_carrier_shape_arg(0)
+            .to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        let expected = SymIntTuple::shapeless();
+        assert_eq!(array.shape(), expected);
+        assert_eq!(
+            array.base_class.targs().as_slice()[0],
+            expected.to_shape_arg_type()
+        );
+        assert_eq!(array.tuple_carrier_shape_arg_index(), Some(0));
+    }
+
+    #[test]
+    fn simplify_mut_normalizes_existing_first_class_tuple_carrier() {
+        let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+        ])));
+        let shape = SymIntTuple::unpacked(
+            vec![Type::SymInt(SymInt::Literal(1))],
+            Type::Var(var),
+            vec![Type::SymInt(SymInt::Literal(4))],
+        );
+        let shape_param = quantified(QuantifiedKind::TypeVar, 0);
+        let base_class = fake_array(TArgs::new(
+            Arc::new(TParams::new(vec![shape_param])),
+            vec![shape.to_shape_arg_type()],
+        ));
+        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+            .with_tuple_carrier_shape_arg(0)
+            .to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        let expected = SymIntTuple::from_types(vec![
+            Type::SymInt(SymInt::Literal(1)),
+            Type::SymInt(SymInt::Literal(2)),
+            Type::SymInt(SymInt::Literal(3)),
+            Type::SymInt(SymInt::Literal(4)),
+        ]);
+        assert_eq!(array.shape(), expected);
+        assert_eq!(
+            array.base_class.targs().as_slice()[0],
+            expected.to_shape_arg_type()
+        );
+        assert_eq!(array.tuple_carrier_shape_arg_index(), Some(0));
+    }
+
+    #[test]
+    fn simplify_mut_preserves_whole_shape_typevar_carrier_as_first_class_shape_arg() {
+        let carrier = Type::Quantified(Box::new(quantified(QuantifiedKind::TypeVar, 1)));
+        let (solver, var) = solver_with_answer(carrier.clone());
+        let shape_param = quantified(QuantifiedKind::TypeVar, 0);
+        let base_class = fake_array(TArgs::new(
+            Arc::new(TParams::new(vec![shape_param])),
+            vec![Type::Var(var)],
+        ));
+        let mut ty = ShapedArrayType::new(base_class, SymIntTuple::shapeless())
+            .with_tuple_carrier_shape_arg(0)
+            .to_type();
+
+        solver.expand_mut(&mut ty);
+
+        let Type::ShapedArray(array) = ty else {
+            panic!("expected shaped array")
+        };
+        let expected = SymIntTuple::unpacked(Vec::new(), carrier, Vec::new());
+        assert_eq!(array.shape(), expected);
+        assert_eq!(
+            array.base_class.targs().as_slice()[0],
+            expected.to_shape_arg_type()
+        );
+        assert_eq!(array.to_string(), "Array[T]");
     }
 
     #[test]
@@ -1293,14 +1586,28 @@ impl Solver {
                     .heap
                     .mk_tuple(simplify_tuples(mem::take(tuple), &self.heap));
             }
+            if let Type::SymIntTuple(shape) = x {
+                **shape = shape.normalize();
+            }
             if let Type::ShapedArray(tensor) = x {
-                // Reuse tuple simplification for unpack flattening at the
-                // internal shape boundary, then rebuild the shape-specific storage.
-                let shape = SymIntTuple::from_tuple(simplify_tuples(
-                    tensor.shape().to_simplification_tuple(),
-                    &self.heap,
-                ));
-                tensor.set_shape(shape);
+                match tensor.tuple_carrier_shape_arg_index() {
+                    Some(index)
+                        if !matches!(
+                            tensor.base_class.targs().as_slice().get(index),
+                            Some(Type::SymIntTuple(_))
+                        ) =>
+                    {
+                        let shape = tensor.shape();
+                        tensor.set_shape(shape);
+                    }
+                    None => {
+                        let shape = tensor.shape().normalize();
+                        tensor.set_shape(shape);
+                    }
+                    // `transform_mut` is post-order, so this first-class carrier was normalized
+                    // by the `SymIntTuple` arm before its containing shaped array.
+                    Some(_) => {}
+                }
             }
             // When a param spec is resolved, collapse any Concatenate and Callable types that use it
             if let Type::Concatenate(ts, inner) = x
