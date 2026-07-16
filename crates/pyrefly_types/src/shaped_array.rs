@@ -627,10 +627,6 @@ impl IntTuple {
     }
 }
 
-pub(crate) fn fmt_shape_dim(d: &Int) -> String {
-    format!("{d}")
-}
-
 /// Format an `Int` in jaxtyping syntax (no parens, no spaces around operators).
 fn fmt_jaxtyping_int(expr: &Int) -> String {
     match expr {
@@ -662,7 +658,7 @@ impl Display for IntTuple {
                 if dims.is_empty() {
                     write!(f, "()") // Scalar tensor: Tensor[()]
                 } else {
-                    write!(f, "{}", commas_iter(|| dims.iter().map(fmt_shape_dim)))
+                    write!(f, "{}", commas_iter(|| dims.iter()))
                 }
             }
             IntTupleRepr::Gradual => write!(f, "*IntTuple"),
@@ -674,12 +670,12 @@ impl Display for IntTuple {
                 let prefix_str = if prefix.is_empty() {
                     "".to_owned()
                 } else {
-                    format!("{}, ", commas_iter(|| prefix.iter().map(fmt_shape_dim)))
+                    format!("{}, ", commas_iter(|| prefix.iter()))
                 };
                 let suffix_str = if suffix.is_empty() {
                     "".to_owned()
                 } else {
-                    format!(", {}", commas_iter(|| suffix.iter().map(fmt_shape_dim)))
+                    format!(", {}", commas_iter(|| suffix.iter()))
                 };
                 write!(
                     f,
@@ -706,7 +702,7 @@ fn fmt_unpacked_middle(middle: &Type) -> String {
 fn fmt_tuple_carrier(shape: &IntTuple) -> String {
     match shape.view() {
         IntTupleView::Concrete(dims) => {
-            format!("[{}]", commas_iter(|| dims.iter().map(fmt_shape_dim)))
+            format!("[{}]", commas_iter(|| dims.iter()))
         }
         IntTupleView::Gradual => {
             // No unbounded shape reaches here: the only caller (`Display`) handles
@@ -721,9 +717,9 @@ fn fmt_tuple_carrier(shape: &IntTuple) -> String {
             if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
                 return middle.to_string();
             }
-            let mut parts: Vec<String> = prefix.iter().map(fmt_shape_dim).collect();
+            let mut parts: Vec<String> = prefix.iter().map(|d| d.to_string()).collect();
             parts.push(format!("*{}", fmt_unpacked_middle(middle)));
-            parts.extend(suffix.iter().map(fmt_shape_dim));
+            parts.extend(suffix.iter().map(|d| d.to_string()));
             format!("[{}]", parts.join(", "))
         }
     }

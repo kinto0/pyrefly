@@ -30,8 +30,12 @@ use crate::types::Type;
 /// - Symbolic expressions: N, N+1, N*M in `Tensor[N, N+1]`, `Tensor[N*M]`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Int {
-    /// Concrete dimension: Tensor[2, 3]
-    /// Only positive integers are allowed
+    /// A concrete integer leaf: the `2` and `3` in `Tensor[2, 3]`, but also any
+    /// integer appearing inside a larger expression (e.g. canonicalization
+    /// rewrites `N - 1` as `Add(Literal(-1), N)`). We make no positivity claim:
+    /// negative literals are a normal part of the expression tree. A *top-level*
+    /// dimension is expected to usually be positive, but we do not currently
+    /// reason over such restrictions in the logic of integers.
     Literal(i64),
 
     /// The gradual integer size: bare `Int`, `Int[int]`, or `Any` in a shape

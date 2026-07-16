@@ -38,7 +38,6 @@ use crate::shaped_array::IntTuple;
 use crate::shaped_array::IntTupleView;
 use crate::shaped_array::ShapedArraySyntax;
 use crate::shaped_array::ShapedArrayType;
-use crate::shaped_array::fmt_shape_dim;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
@@ -446,14 +445,7 @@ impl<'a> TypeDisplayContext<'a> {
         }
         match shape.view() {
             IntTupleView::Concrete(dims) => {
-                output.write_str("[")?;
-                for (i, dim) in dims.iter().enumerate() {
-                    if i > 0 {
-                        output.write_str(", ")?;
-                    }
-                    output.write_str(&fmt_shape_dim(dim))?;
-                }
-                output.write_str("]")
+                write!(output, "[{}]", commas_iter(|| dims.iter()))
             }
             IntTupleView::Gradual => {
                 unreachable!("shaped-array unbounded shapes must be gradual IntTuple")
@@ -473,7 +465,7 @@ impl<'a> TypeDisplayContext<'a> {
                         output.write_str(", ")?;
                     }
                     first = false;
-                    output.write_str(&fmt_shape_dim(dim))?;
+                    write!(output, "{dim}")?;
                 }
                 if !first {
                     output.write_str(", ")?;
@@ -497,7 +489,7 @@ impl<'a> TypeDisplayContext<'a> {
                         output.write_str(", ")?;
                     }
                     first = false;
-                    output.write_str(&fmt_shape_dim(dim))?;
+                    write!(output, "{dim}")?;
                 }
                 output.write_str("]")
             }

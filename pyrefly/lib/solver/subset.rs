@@ -2191,7 +2191,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             // both directions.
             (Type::DataFrame(schema), _) => self.is_subset_eq(&schema.underlying_type(), want),
             (_, Type::DataFrame(schema)) => self.is_subset_eq(got, &schema.underlying_type()),
-            // Any exact Int expression represents an integer dimension value.
+            // Any Int expression represents an integer dimension value, whether it is a
+            // concrete literal (`Int[3]`) or symbolic (`Int[N]`, `Int[N + 1]`).
             (Type::Int(_), Type::ClassType(cls))
                 if cls.is_builtin("int") || cls.is_builtin("float") =>
             {
