@@ -178,13 +178,9 @@ fn class_fqn(
     }
 }
 
-/// The module name with a trailing `.`, or empty for the unknown module; prefixed to symbol FQNs.
+/// The module name with a trailing `.`, prefixed to symbol FQNs.
 fn module_prefix(module: &Module) -> String {
-    if module.name() != ModuleName::unknown() {
-        format!("{}.", module.name())
-    } else {
-        String::new()
-    }
+    format!("{}.", module.name())
 }
 
 /// Merge overloads with the same qualified name into one entry,
@@ -2873,6 +2869,75 @@ def g(x: int) -> int:
         assert_eq!(report.symbols.n_method_params, 2);
         assert_eq!(report.symbols.n_classes, 1);
         assert_eq!(report.symbols.n_attrs, 0);
+    }
+
+    /// A config-less file whose path can't form a valid module name falls back to
+    /// `__unknown__`. Its symbol FQNs must carry the `__unknown__.` prefix, or
+    /// `--public-only` filtering (which rebuilds that prefix from the report name)
+    /// drops every symbol and reports "0 of N typable".
+    #[test]
+    fn test_unknown_module_public_only_keeps_symbols() {
+        let code = "def bar() -> int:\n    return 1\n";
+        let (state, handle_fn) = TestEnv::one_with_path("__unknown__", "__unknown__.py", code)
+            .with_default_require_level(Require::Everything)
+            .to_state();
+        let handle = handle_fn("__unknown__");
+        assert_eq!(handle.module(), ModuleName::unknown());
+
+        let transaction = state.transaction();
+        let symbols = ModuleSymbols::collect(&transaction, &handle, false).unwrap();
+        // The bug lives in symbol construction: FQNs must be prefixed with the module name.
+        assert_eq!(symbols.functions[0].name, "__unknown__.bar");
+
+        let (public_fqns, _) = compute_public_fqns(std::slice::from_ref(&handle), &transaction);
+        let mut report = build_module_report(
+            "__unknown__".to_owned(),
+            "__unknown__.py".to_owned(),
+            "__unknown__",
+            symbols.line_count(),
+            &symbols.functions,
+            &symbols.variables,
+            &symbols.classes,
+            symbols.suppressions,
+        );
+        filter_module_report_to_public(&mut report, &public_fqns);
+
+        assert!(
+            report.names.iter().any(|n| n == "__unknown__.bar"),
+            "public symbols in an __unknown__ module must survive --public-only filtering"
+        );
+    }
+
+    /// The `check`/untyped-error path (`collect_untyped_errors`) is the *other*
+    /// `--public-only` consumer: it rebuilds the `__unknown__.` prefix and matches
+    /// it against symbol FQNs. With bare FQNs an untyped public symbol in an
+    /// `__unknown__` module is silently never flagged, so the fix must reach this
+    /// path too — not just the report filter above.
+    #[test]
+    fn test_unknown_module_public_only_flags_untyped() {
+        let code = "def bar(x):\n    return x\n";
+        let (state, handle_fn) = TestEnv::one_with_path("__unknown__", "__unknown__.py", code)
+            .with_default_require_level(Require::Everything)
+            .to_state();
+        let handle = handle_fn("__unknown__");
+        let transaction = state.transaction();
+        let symbols = ModuleSymbols::collect(&transaction, &handle, false).unwrap();
+
+        let (public_fqns, _) = compute_public_fqns(std::slice::from_ref(&handle), &transaction);
+        let mut errors = Vec::new();
+        collect_untyped_errors(
+            &mut errors,
+            &symbols.module,
+            &symbols.functions,
+            &symbols.variables,
+            false,
+            Some(&public_fqns),
+        );
+
+        assert!(
+            !errors.is_empty(),
+            "an untyped public symbol in an __unknown__ module must be flagged under --public-only"
+        );
     }
 
     #[test]
