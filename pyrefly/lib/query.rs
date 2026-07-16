@@ -112,6 +112,11 @@ use crate::types::display::LspDisplayMode;
 use crate::types::display::TypeDisplayContext;
 
 mod type_table;
+pub use ruff_python_ast::Decorator as TypeQueryDecorator;
+pub use ruff_python_ast::Expr as TypeQueryExpr;
+pub use ruff_python_ast::Stmt as TypeQueryStmt;
+pub use ruff_python_ast::StmtClassDef as TypeQueryStmtClassDef;
+pub use ruff_python_ast::StmtFunctionDef as TypeQueryStmtFunctionDef;
 pub use type_table::IndexedTypeShapeKind;
 pub use type_table::LocatedTypeTableRef;
 pub use type_table::SerializedTypeTableEntry;
@@ -171,6 +176,9 @@ const CALLEE_KIND_FUNCTION: &str = "function";
 const CALLEE_KIND_METHOD: &str = "method";
 const CALLEE_KIND_CLASSMETHOD: &str = "classmethod";
 const CALLEE_KIND_STATICMETHOD: &str = "staticmethod";
+
+pub type TypeQueryExprVisitor<'a> = dyn FnMut(&'a Expr, Option<&'a Expr>) + 'a;
+pub type TypeQueryStmtWalker = dyn for<'a> Fn(&'a [Stmt], &mut TypeQueryExprVisitor<'a>);
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub struct Callee {
@@ -1827,7 +1835,7 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
     ) -> Option<Vec<(PythonASTRange, String)>> {
-        self.get_types_in_file_transformed(name, path, true, |_context, _ty, display| display)
+        self.get_types_in_file_transformed(name, path, true, None, |_context, _ty, display| display)
     }
 
     pub fn get_type_shapes_in_file(
@@ -1835,7 +1843,16 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
     ) -> Option<Vec<(PythonASTRange, TypeShape)>> {
-        self.get_types_in_file_transformed(name, path, true, type_shape_from)
+        self.get_type_shapes_in_file_filtered(name, path, None)
+    }
+
+    pub fn get_type_shapes_in_file_filtered(
+        &self,
+        name: ModuleName,
+        path: ModulePath,
+        walker: Option<&TypeQueryStmtWalker>,
+    ) -> Option<Vec<(PythonASTRange, TypeShape)>> {
+        self.get_types_in_file_transformed(name, path, true, walker, type_shape_from)
     }
 
     pub fn get_type_shapes_in_file_with_timing(
@@ -1843,7 +1860,16 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
     ) -> Option<(Vec<(PythonASTRange, TypeShape)>, TypeQueryTiming)> {
-        self.get_types_in_file_with_timing(name, path, true, type_shape_from)
+        self.get_type_shapes_in_file_with_timing_filtered(name, path, None)
+    }
+
+    pub fn get_type_shapes_in_file_with_timing_filtered(
+        &self,
+        name: ModuleName,
+        path: ModulePath,
+        walker: Option<&TypeQueryStmtWalker>,
+    ) -> Option<(Vec<(PythonASTRange, TypeShape)>, TypeQueryTiming)> {
+        self.get_types_in_file_with_timing(name, path, true, walker, type_shape_from)
     }
 
     /// `include_display` controls whether each located type carries its display
@@ -1856,11 +1882,22 @@ impl Query {
         path: ModulePath,
         include_display: bool,
     ) -> Option<TypeTableResponseData> {
+        self.get_type_table_in_file_filtered(name, path, include_display, None)
+    }
+
+    pub fn get_type_table_in_file_filtered(
+        &self,
+        name: ModuleName,
+        path: ModulePath,
+        include_display: bool,
+        walker: Option<&TypeQueryStmtWalker>,
+    ) -> Option<TypeTableResponseData> {
         let type_table = RefCell::new(TypeTableBuilder::new());
         let types = self.get_types_in_file_transformed(
             name,
             path,
             include_display,
+            walker,
             |context, ty, display| {
                 let type_index = type_to_indexed_shape(context, ty, &mut type_table.borrow_mut());
                 (type_index, display)
@@ -1878,11 +1915,22 @@ impl Query {
         path: ModulePath,
         include_display: bool,
     ) -> Option<(TypeTableResponseData, TypeQueryTiming)> {
+        self.get_type_table_in_file_with_timing_filtered(name, path, include_display, None)
+    }
+
+    pub fn get_type_table_in_file_with_timing_filtered(
+        &self,
+        name: ModuleName,
+        path: ModulePath,
+        include_display: bool,
+        walker: Option<&TypeQueryStmtWalker>,
+    ) -> Option<(TypeTableResponseData, TypeQueryTiming)> {
         let type_table = RefCell::new(TypeTableBuilder::new());
         let (types, timing) = self.get_types_in_file_with_timing(
             name,
             path,
             include_display,
+            walker,
             |context, ty, display| {
                 let type_index = type_to_indexed_shape(context, ty, &mut type_table.borrow_mut());
                 (type_index, display)
@@ -1902,12 +1950,20 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
         include_display: bool,
+        walker: Option<&TypeQueryStmtWalker>,
         transform: F,
     ) -> Option<Vec<(PythonASTRange, T)>>
     where
         F: Fn(&TypeShapeContext, &Type, String) -> T,
     {
-        self.get_types_in_file_with_optional_timing(name, path, include_display, transform, None)
+        self.get_types_in_file_with_optional_timing(
+            name,
+            path,
+            include_display,
+            walker,
+            transform,
+            None,
+        )
     }
 
     fn get_types_in_file_with_timing<T, F>(
@@ -1915,6 +1971,7 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
         include_display: bool,
+        walker: Option<&TypeQueryStmtWalker>,
         transform: F,
     ) -> Option<(Vec<(PythonASTRange, T)>, TypeQueryTiming)>
     where
@@ -1926,6 +1983,7 @@ impl Query {
             name,
             path,
             include_display,
+            walker,
             transform,
             Some(&mut timing),
         )?;
@@ -1938,6 +1996,7 @@ impl Query {
         name: ModuleName,
         path: ModulePath,
         include_display: bool,
+        walker: Option<&TypeQueryStmtWalker>,
         transform: F,
         mut timing: Option<&mut TypeQueryTiming>,
     ) -> Option<Vec<(PythonASTRange, T)>>
@@ -2098,10 +2157,10 @@ impl Query {
         }
 
         let mut res = Vec::new();
-        ast.visit(&mut |x| {
+        let mut visit_expr = |x: &Expr, parent: Option<&Expr>| {
             f(
                 x,
-                None,
+                parent,
                 &module_info,
                 &answers,
                 &bindings,
@@ -2112,7 +2171,14 @@ impl Query {
                 include_display,
                 &mut timing,
             )
-        });
+        };
+        if let Some(walker) = walker {
+            walker(&ast.body, &mut visit_expr);
+        } else {
+            for stmt in &ast.body {
+                stmt.visit(&mut |x| visit_expr(x, None));
+            }
+        }
         if let (Some(timing), Some(profile)) = (timing, profile) {
             timing.shape_profiles = profile.into_inner();
         }
