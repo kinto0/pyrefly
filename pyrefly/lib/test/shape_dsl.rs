@@ -890,6 +890,24 @@ def from_size[T](s: SymInt) -> T:
 );
 
 testcase!(
+    test_module_level_symintvar_dimension_does_not_panic,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymIntVar
+
+# A legacy module-level `SymIntVar` used raw as a dimension resolves to a raw
+# `Type::TypeVar` of `SymIntVar` kind (not a scoped `Quantified`). This must be
+# reported gracefully as an out-of-scope type variable rather than panicking the
+# checker (previously `SymInt::from_type` returned `None` here, hitting an
+# `unreachable!`).
+N = SymIntVar("N")
+
+class C:
+    x: SymInt[N]  # E: Type variable `N` is not in scope
+"#,
+);
+
+testcase!(
     test_tensor_shapes_explicit_symint_int_display,
     shaped_array_env(),
     r#"

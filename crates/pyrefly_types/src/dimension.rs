@@ -122,6 +122,13 @@ impl SymInt {
             Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => {
                 Some(SymInt::Symbolic(Box::new(ty.clone())))
             }
+            // A legacy module-level `SymIntVar` used raw as a dimension (e.g.
+            // `N = SymIntVar("N"); x: SymInt[N]`) resolves to a `Type::TypeVar`
+            // of `SymIntVar` kind rather than a `Quantified`; treat it as a
+            // symbolic leaf too, mirroring the `Quantified` arm above.
+            Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => {
+                Some(SymInt::Symbolic(Box::new(ty.clone())))
+            }
             Type::Var(_) => Some(SymInt::Symbolic(Box::new(ty.clone()))),
             _ => None,
         }
