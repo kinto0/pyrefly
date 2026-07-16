@@ -33,6 +33,20 @@ class DataFrame:
     env
 }
 
+/// Polars stubs plus a module whose top-level `df` carries an inferred schema, so
+/// tests can pin that the schema survives the import boundary.
+fn env_cross_file() -> TestEnv {
+    let mut env = env_with_polars_stubs();
+    env.add(
+        "defs",
+        r#"
+import polars as pl
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+"#,
+    );
+    env
+}
+
 testcase!(
     test_construct_int_and_str_columns,
     env_with_polars_stubs(),
@@ -321,6 +335,75 @@ import polars as pl
 from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type(df["a"])  # E: revealed type: Series
+"#,
+);
+
+testcase!(
+    test_known_column_read_no_error,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df["a"])  # E: revealed type: Series
+reveal_type(df["b"])  # E: revealed type: Series
+"#,
+);
+
+testcase!(
+    test_unknown_column_read_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df["b"])  # E: Column `b` is not in the DataFrame schema # E: revealed type: Series
+"#,
+);
+
+testcase!(
+    test_non_literal_key_no_unknown_column_error,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+k = "b"
+reveal_type(df[k])  # E: revealed type: Series
+def key() -> str: ...
+reveal_type(df[key()])  # E: revealed type: Series
+"#,
+);
+
+testcase!(
+    test_no_schema_no_unknown_column_error,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": 1})
+reveal_type(df["missing"])  # E: revealed type: Series
+"#,
+);
+
+testcase!(
+    test_unknown_column_is_suppressible,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+df = pl.DataFrame({"a": [1]})
+df["b"]  # pyrefly: ignore[unknown-column]
+"#,
+);
+
+testcase!(
+    test_unknown_column_across_import,
+    env_cross_file(),
+    r#"
+from defs import df
+df["a"]
+df["b"]
+df["missing"]  # E: Column `missing` is not in the DataFrame schema
 "#,
 );
 

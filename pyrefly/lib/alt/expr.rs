@@ -2854,14 +2854,29 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
                 ),
-                // A DataFrame delegates subscription to its underlying instance type.
-                Type::DataFrame(schema) => self.subscript_infer_for_type_with_key_present(
-                    &schema.underlying_type(),
-                    slice,
-                    range,
-                    errors,
-                    key_present,
-                ),
+                // A string-literal read of a column absent from the schema is a static
+                // error, since the inferred column set is complete and the name cannot exist.
+                Type::DataFrame(schema) => {
+                    if let Expr::StringLiteral(key) = slice {
+                        let name = key.value.to_str();
+                        if !schema.columns.iter().any(|(c, _)| c.as_str() == name) {
+                            errors
+                                .error_builder(
+                                    slice.range(),
+                                    ErrorKind::UnknownColumn,
+                                    format!("Column `{name}` is not in the DataFrame schema"),
+                                )
+                                .emit();
+                        }
+                    }
+                    self.subscript_infer_for_type_with_key_present(
+                        &schema.underlying_type(),
+                        slice,
+                        range,
+                        errors,
+                        key_present,
+                    )
+                }
                 Type::Quantified(ref q) if q.is_type_var() && q.restriction().is_restricted() => {
                     match q.restriction() {
                         Restriction::Bound(bound) => self
