@@ -515,7 +515,7 @@ testcase!(
     shaped_array_env(),
     r#"
 from typing import Any, Literal, reveal_type
-from shape_extensions import SymInt, Elements, SymIntTuple, SymIntVar, shaped_array
+from shape_extensions import SymInt, Elements, SymIntTuple, SymIntVar, assert_shape, shaped_array
 
 type _Shape = SymIntTuple
 type _AnyShape = tuple[Any, ...]
@@ -544,7 +544,7 @@ def f[N: SymIntVar](
     reveal_type(bare_dim)  # E: revealed type: SymInt[N]
     reveal_type(bare_list)  # E: revealed type: Array[[N], int]
     reveal_type(bare_symint_tuple)  # E: revealed type: Array[[N], int]
-    reveal_type(any_dim)  # E: revealed type: Array[[Any], int]
+    reveal_type(any_dim)  # E: revealed type: Array[[int], int]
     reveal_type(carrier)  # E: revealed type: SymIntTuple[2, 3]
     reveal_type(mixed_carrier)  # E: revealed type: SymIntTuple[2, 3, N]
     reveal_type(unbounded)  # E: revealed type: SymIntTuple
@@ -588,6 +588,9 @@ def concrete_elements_middle(
     result: Array[[1, *Elements[SymIntTuple[2, 3]], 4], int],
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4], int]
+
+def assert_single_dim(x: Array[[3], int]) -> None:
+    reveal_type(assert_shape(x, (3,)))  # E: revealed type: Array[[3], int]
 "#,
 );
 
@@ -704,6 +707,16 @@ def concrete_tuple_carrier(
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4], int]
 
+def nested_concrete_tuple_carrier(
+    result: Array[[1, *Elements[tuple[Literal[2], *tuple[Literal[3]], Literal[4]]], 5], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[1, 2, 3, 4, 5], int]
+
+def nested_unbounded_tuple_carrier(
+    result: Array[[1, *Elements[tuple[Literal[2], *tuple[int, ...], Literal[4]]], 5], int],
+) -> None:
+    reveal_type(result)  # E: revealed type: Array[[1, 2, *tuple[int, ...], 4, 5], int]
+
 def tuple_bound_carrier[S: tuple[int, ...], OUT: SymIntVar](
     result: Array[[*Elements[S], OUT], int],
 ) -> None:
@@ -725,6 +738,31 @@ def syminttuple_bound_still_works[S: SymIntTuple, OUT: SymIntVar](
     result: Array[[*Elements[S], OUT], int],
 ) -> None:
     reveal_type(result)  # E: revealed type: Array[[*S, OUT], int]
+"#,
+);
+
+testcase!(
+    test_shaped_array_unpacked_middle_solver_round_trip,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import Elements, SymInt, SymIntTuple, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def identity[Shape: SymIntTuple](x: Array[Shape, int]) -> Array[Shape, int]:
+    return x
+
+def gradual_middle(
+    x: Array[[1, *Elements[SymIntTuple], 4], int],
+) -> None:
+    reveal_type(identity(x))  # E: revealed type: Array[[1, *tuple[int, ...], 4], int]
+
+def shapeful_unbounded_middle(
+    x: Array[[1, *Elements[tuple[SymInt[5], ...]], 4], int],
+) -> None:
+    reveal_type(identity(x))  # E: revealed type: Array[[1, *tuple[SymInt[5], ...], 4], int]
 "#,
 );
 
@@ -863,11 +901,17 @@ def bad[S: SymIntTuple, N: SymIntVar](
     int_pair: tuple[int, int],
     ints: tuple[int, ...],
     symints: tuple[SymInt, ...],
+    literal_symints: tuple[SymInt[5], ...],
+    legacy_literals: tuple[Literal[5], ...],
 ) -> None:
     takes_fixed_shape(shape_24)  # E: Shape dimension mismatch
     takes_fixed_shape(int_pair)  # E: is not assignable
     takes_unpacked_shape(ints)  # E: is not assignable
     takes_unpacked_shape(symints)
+    takes_unpacked_shape(literal_symints)  # E: is not assignable
+    takes_unpacked_shape(legacy_literals)  # E: is not assignable
+    takes_symint_tuple(literal_symints)
+    takes_symint_tuple(legacy_literals)
 "#,
 );
 
@@ -1536,6 +1580,25 @@ def f(shape: tuple[str, str]) -> None:
     x = make(shape)
     reveal_type(x)  # E: revealed type: Array[[2, int, int, 4], int]
     reveal_type(x[0])  # E: revealed type: Array[[int, int, 4], int]
+"#,
+);
+
+testcase!(
+    test_shaped_array_renormalizes_solved_concrete_unpacked_middle,
+    shaped_array_env(),
+    r#"
+from typing import Literal, reveal_type
+from shape_extensions import shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]: ...
+
+def make[*S](shape: tuple[*S]) -> Array[tuple[Literal[1], *S, Literal[4]], int]: ...
+
+def f(shape: tuple[Literal[2], Literal[3]]) -> None:
+    x = make(shape)
+    reveal_type(x)  # E: revealed type: Array[[1, 2, 3, 4], int]
+    reveal_type(x[0])  # E: revealed type: Array[[2, 3, 4], int]
 "#,
 );
 

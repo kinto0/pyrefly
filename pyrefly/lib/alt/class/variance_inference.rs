@@ -229,7 +229,7 @@ fn on_type(
             match tensor.shape().view() {
                 SymIntTupleView::Concrete(dims) => {
                     for dim in dims {
-                        visit_dim(dim);
+                        visit_dim(&Type::SymInt(dim.clone()));
                     }
                 }
                 SymIntTupleView::Gradual => {
@@ -242,11 +242,11 @@ fn on_type(
                     suffix,
                 } => {
                     for dim in prefix {
-                        visit_dim(dim);
+                        visit_dim(&Type::SymInt(dim.clone()));
                     }
                     visit_dim(middle);
                     for dim in suffix {
-                        visit_dim(dim);
+                        visit_dim(&Type::SymInt(dim.clone()));
                     }
                 }
             }

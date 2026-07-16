@@ -3077,7 +3077,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             if let Type::ShapedArray(ref idx_shaped_array) = idx_ty {
                 if let Some(dims) = idx_shaped_array.shape().as_concrete() {
-                    return Some(IndexOp::ShapedArrayIndex(dims.to_vec()));
+                    return Some(IndexOp::ShapedArrayIndex(
+                        dims.iter().cloned().map(Type::SymInt).collect(),
+                    ));
                 }
                 return None; // shapeless index tensor → bail
             }
@@ -3140,7 +3142,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let mut new_dims = vec![one];
                 let new_shape = match shaped_array_type.shape().view() {
                     SymIntTupleView::Concrete(dims) => {
-                        new_dims.extend(dims.iter().cloned());
+                        new_dims.extend(dims.iter().cloned().map(Type::SymInt));
                         SymIntTuple::from_types(new_dims)
                     }
                     SymIntTupleView::Gradual => SymIntTuple::unpacked(
@@ -3153,8 +3155,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         middle,
                         suffix,
                     } => {
-                        new_dims.extend(prefix.iter().cloned());
-                        SymIntTuple::unpacked(new_dims, middle.clone(), suffix.to_vec())
+                        new_dims.extend(prefix.iter().cloned().map(Type::SymInt));
+                        SymIntTuple::unpacked(
+                            new_dims,
+                            middle.clone(),
+                            suffix.iter().cloned().map(Type::SymInt).collect(),
+                        )
                     }
                 };
                 self.shaped_array_with_shape(shaped_array_type, new_shape)
@@ -3222,7 +3228,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     let Some(idx_dims) = idx_shape.as_concrete() else {
                         return self.shaped_array_shapeless(shaped_array_type).to_type();
                     };
-                    match index_shape_tensor(&shaped_array_type.shape(), idx_dims) {
+                    let idx_dims: Vec<_> = idx_dims.iter().cloned().map(Type::SymInt).collect();
+                    match index_shape_tensor(&shaped_array_type.shape(), &idx_dims) {
                         Ok(shape) => self
                             .shaped_array_with_shape(shaped_array_type, shape)
                             .to_type(),

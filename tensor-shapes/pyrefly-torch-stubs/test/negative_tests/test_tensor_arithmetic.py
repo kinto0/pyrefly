@@ -303,7 +303,7 @@ def broadcast_different_tvt[Ts: SymIntTuple, Us: SymIntTuple](
     x: Tensor[[*Elements[Ts], 3]], y: Tensor[[*Elements[Us], 3]]
 ) -> Tensor[[*Elements[Ts], 3]]:
     """Different TypeVarTuples degrade to shapeless batch dims."""
-    # E: Returned type `Tensor[[*SymIntTuple, 3]]` is not assignable
+    # E: Returned type `Tensor[[*tuple[int, ...], 3]]` is not assignable
     #    to declared return type `Tensor[[*Ts, 3]]`
     return x + y
 

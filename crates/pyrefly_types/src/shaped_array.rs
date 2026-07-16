@@ -225,31 +225,39 @@ impl Display for ShapedArrayType {
 
 /// Shape of a shaped array.
 ///
-/// This is a tuple-shaped representation with shape-specific invariants:
-/// concrete tuple elements are internal dimension types, while unbounded tuples
-/// are only used for the gradual shape `SymIntTuple`.
+/// The storage is deliberately not a `Tuple`: fixed dimensions are always
+/// canonical `SymInt`s, while variadic middles carry the original tuple/type
+/// variable shape carrier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut, TypeEq)]
-pub struct SymIntTuple(Tuple);
+pub struct SymIntTuple(SymIntTupleRepr);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Visit, VisitMut, TypeEq)]
+enum SymIntTupleRepr {
+    Concrete(Vec<SymInt>),
+    Gradual,
+    Unpacked {
+        prefix: Vec<SymInt>,
+        middle: Box<Type>,
+        suffix: Vec<SymInt>,
+    },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymIntTupleView<'a> {
-    Concrete(&'a [Type]),
+    Concrete(&'a [SymInt]),
     Gradual,
     Unpacked {
-        prefix: &'a [Type],
+        prefix: &'a [SymInt],
         middle: &'a Type,
-        suffix: &'a [Type],
+        suffix: &'a [SymInt],
     },
 }
 
 impl SymIntTuple {
     pub fn new(dims: Vec<SymInt>) -> Self {
-        Self(Tuple::Concrete(
-            dims.into_iter()
-                .map(|d| canonicalize(Type::SymInt(d)))
-                .collect(),
-        ))
+        Self::from_symints(dims)
     }
 
     /// Create from Vec<Type> directly (for when dims are already wrapped)
@@ -257,9 +265,25 @@ impl SymIntTuple {
     /// - Canonicalizes `SymInt` expressions (e.g., 2+3 -> 5, N+0 -> N)
     /// - Wraps scalar symbolic dimensions in `SymInt::Symbolic`
     pub fn from_types(dims: Vec<Type>) -> Self {
-        Self(Tuple::Concrete(
-            dims.into_iter().map(canonicalize_dim).collect(),
+        Self::from_symints(dims.into_iter().map(type_to_dim_recover).collect())
+    }
+
+    fn from_symints(dims: Vec<SymInt>) -> Self {
+        Self(SymIntTupleRepr::Concrete(
+            dims.into_iter().map(canonicalize_symint_dim).collect(),
         ))
+    }
+
+    fn unpacked_from_parts(prefix: Vec<SymInt>, middle: Type, suffix: Vec<SymInt>) -> Self {
+        if prefix.is_empty() && suffix.is_empty() && is_gradual_shape_middle(&middle) {
+            Self::shapeless()
+        } else {
+            Self(SymIntTupleRepr::Unpacked {
+                prefix,
+                middle: Box::new(middle),
+                suffix,
+            })
+        }
     }
 
     pub fn from_tuple(tuple: Tuple) -> Self {
@@ -277,56 +301,50 @@ impl SymIntTuple {
     }
 
     pub fn shapeless() -> Self {
-        Self(Tuple::Unbounded(Box::new(gradual_size())))
+        Self(SymIntTupleRepr::Gradual)
     }
 
     pub fn is_shapeless(&self) -> bool {
         is_shapeless(self)
     }
 
-    pub fn as_tuple(&self) -> &Tuple {
-        &self.0
-    }
-
     pub fn view(&self) -> SymIntTupleView<'_> {
         match &self.0 {
-            Tuple::Concrete(dims) => SymIntTupleView::Concrete(dims),
-            Tuple::Unbounded(t) if is_gradual_size(t) => SymIntTupleView::Gradual,
-            Tuple::Unbounded(_) => {
-                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
-            }
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
-                SymIntTupleView::Unpacked {
-                    prefix,
-                    middle,
-                    suffix,
-                }
-            }
+            SymIntTupleRepr::Concrete(dims) => SymIntTupleView::Concrete(dims),
+            SymIntTupleRepr::Gradual => SymIntTupleView::Gradual,
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => SymIntTupleView::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            },
         }
     }
 
     /// Project this shape to the ordinary tuple type it denotes.
     pub fn to_tuple_type(&self) -> Type {
         match &self.0 {
-            Tuple::Unbounded(t) if is_gradual_size(t) => Type::Tuple(Tuple::Unbounded(t.clone())),
-            Tuple::Unbounded(_) => {
-                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
-            }
-            Tuple::Concrete(_) => Type::Tuple(self.0.clone()),
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
-                let middle = match middle {
+            SymIntTupleRepr::Concrete(dims) => Type::Tuple(Tuple::Concrete(dims_to_types(dims))),
+            SymIntTupleRepr::Gradual => Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => {
+                let middle = match middle.as_ref() {
                     Type::SymIntTuple(shape) => shape.to_tuple_type(),
                     middle if is_tuple_carrier_shape_middle(middle) => {
                         Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
                     }
-                    _ => middle.clone(),
+                    middle => middle.clone(),
                 };
                 Type::Tuple(Tuple::Unpacked(Box::new((
-                    prefix.clone(),
+                    dims_to_types(prefix),
                     middle,
-                    suffix.clone(),
+                    dims_to_types(suffix),
                 ))))
             }
         }
@@ -339,13 +357,29 @@ impl SymIntTuple {
         tuple
     }
 
+    pub fn to_simplification_tuple(&self) -> Tuple {
+        match &self.0 {
+            SymIntTupleRepr::Concrete(dims) => Tuple::Concrete(dims_to_types(dims)),
+            SymIntTupleRepr::Gradual => Tuple::Unbounded(Box::new(gradual_size())),
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => Tuple::Unpacked(Box::new((
+                dims_to_types(prefix),
+                middle.as_ref().clone(),
+                dims_to_types(suffix),
+            ))),
+        }
+    }
+
     pub fn to_shape_arg_type(&self) -> Type {
         Type::SymIntTuple(Box::new(self.clone()))
     }
 
     pub fn from_shape_arg_type(arg: &Type) -> Option<Self> {
         match arg {
-            Type::SymIntTuple(shape) => Some(Self::from_tuple(shape.as_tuple().clone())),
+            Type::SymIntTuple(shape) => Some((**shape).clone()),
             _ => None,
         }
     }
@@ -353,106 +387,71 @@ impl SymIntTuple {
     /// Create variadic shape with unpacked TypeVarTuple: Tensor[2, *Shape, 4]
     pub fn unpacked(prefix: Vec<Type>, middle: Type, suffix: Vec<Type>) -> Self {
         // Canonicalize all dimensions
-        let mut prefix: Vec<Type> = prefix.into_iter().map(canonicalize_dim).collect();
-        let mut suffix: Vec<Type> = suffix.into_iter().map(canonicalize_dim).collect();
+        let mut prefix: Vec<SymInt> = prefix.into_iter().map(type_to_dim_recover).collect();
+        let mut suffix: Vec<SymInt> = suffix.into_iter().map(type_to_dim_recover).collect();
 
         if let Type::SymIntTuple(shape) = &middle {
-            if let Tuple::Unbounded(elt) = shape.as_tuple()
-                && !is_gradual_size(elt)
-            {
-                let dim = unbounded_middle_element_to_dim(elt);
-                if is_gradual_size(&dim) {
-                    if prefix.is_empty() && suffix.is_empty() {
-                        return Self::shapeless();
-                    }
-                    return Self(Tuple::Unpacked(Box::new((
-                        prefix,
-                        gradual_shape_middle(),
-                        suffix,
-                    ))));
-                }
-                let middle = Type::Tuple(Tuple::Unbounded(Box::new(dim)));
-                return Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))));
-            }
             match shape.view() {
                 SymIntTupleView::Concrete(dims) => {
-                    prefix.extend(dims.iter().cloned());
+                    prefix.extend_from_slice(dims);
                     prefix.extend(suffix);
-                    return Self::from_types(prefix);
+                    return Self::from_symints(prefix);
                 }
                 SymIntTupleView::Gradual => {
-                    if prefix.is_empty() && suffix.is_empty() {
-                        return Self::shapeless();
-                    }
-                    return Self(Tuple::Unpacked(Box::new((
-                        prefix,
-                        gradual_shape_middle(),
-                        suffix,
-                    ))));
+                    return Self::unpacked_from_parts(prefix, gradual_shape_middle(), suffix);
                 }
                 SymIntTupleView::Unpacked {
                     prefix: inner_prefix,
                     middle: inner_middle,
                     suffix: inner_suffix,
                 } => {
-                    prefix.extend(inner_prefix.iter().cloned());
+                    prefix.extend_from_slice(inner_prefix);
                     let mut combined_suffix = inner_suffix.to_vec();
                     combined_suffix.append(&mut suffix);
-                    return Self::unpacked(prefix, inner_middle.clone(), combined_suffix);
+                    return Self::unpacked(
+                        dims_to_types(&prefix),
+                        inner_middle.clone(),
+                        dims_to_types(&combined_suffix),
+                    );
                 }
             }
         }
 
         if let Type::Tuple(Tuple::Concrete(dims)) = &middle {
-            let dims = dims
-                .iter()
-                .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size));
+            let dims = dims.iter().map(carrier_element_to_dim_recover);
             prefix.extend(dims);
             prefix.extend(suffix);
-            return Self::from_types(prefix);
+            return Self::from_symints(prefix);
         }
 
         if let Type::Tuple(Tuple::Unpacked(unpacked)) = &middle {
             let (inner_prefix, inner_middle, inner_suffix) = &**unpacked;
-            prefix.extend(
-                inner_prefix
-                    .iter()
-                    .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size)),
-            );
-            let mut combined_suffix: Vec<Type> = inner_suffix
+            prefix.extend(inner_prefix.iter().map(carrier_element_to_dim_recover));
+            let mut combined_suffix: Vec<SymInt> = inner_suffix
                 .iter()
-                .map(|dim| carrier_element_to_dim(dim).unwrap_or_else(gradual_size))
+                .map(carrier_element_to_dim_recover)
                 .collect();
             combined_suffix.append(&mut suffix);
-            return Self::unpacked(prefix, inner_middle.clone(), combined_suffix);
+            return Self::unpacked(
+                dims_to_types(&prefix),
+                inner_middle.clone(),
+                dims_to_types(&combined_suffix),
+            );
         }
 
         match middle {
             Type::Tuple(Tuple::Unbounded(elt)) => {
                 let dim = unbounded_middle_element_to_dim(&elt);
-                if prefix.is_empty() && suffix.is_empty() && is_gradual_size(&dim) {
-                    Self::shapeless()
-                } else if is_gradual_size(&dim) {
-                    Self(Tuple::Unpacked(Box::new((
-                        prefix,
-                        gradual_shape_middle(),
-                        suffix,
-                    ))))
+                if matches!(dim, SymInt::Int) {
+                    Self::unpacked_from_parts(prefix, gradual_shape_middle(), suffix)
                 } else {
-                    let middle = Type::Tuple(Tuple::Unbounded(Box::new(dim)));
-                    Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+                    let middle = Type::Tuple(Tuple::Unbounded(Box::new(dim_to_type(&dim))));
+                    Self::unpacked_from_parts(prefix, middle, suffix)
                 }
             }
-            Type::Any(_) => {
-                if prefix.is_empty() && suffix.is_empty() {
-                    Self::shapeless()
-                } else {
-                    let middle = gradual_shape_middle();
-                    Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
-                }
-            }
+            Type::Any(_) => Self::unpacked_from_parts(prefix, gradual_shape_middle(), suffix),
             middle if is_unresolved_shape_middle(&middle) => {
-                Self(Tuple::Unpacked(Box::new((prefix, middle, suffix))))
+                Self::unpacked_from_parts(prefix, middle, suffix)
             }
             _ => Self::shapeless(),
         }
@@ -460,8 +459,8 @@ impl SymIntTuple {
 
     pub fn rank(&self) -> usize {
         match &self.0 {
-            Tuple::Concrete(dims) => dims.len(),
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => {
+            SymIntTupleRepr::Concrete(dims) => dims.len(),
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => {
                 // For unpacked shapes, rank is unknown at parse time
                 // This should not be called for variadic shapes
                 panic!("Cannot determine rank of variadic tensor shape")
@@ -471,35 +470,35 @@ impl SymIntTuple {
 
     pub fn is_empty(&self) -> bool {
         match &self.0 {
-            Tuple::Concrete(dims) => dims.is_empty(),
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => false, // Variadic shapes are never empty
+            SymIntTupleRepr::Concrete(dims) => dims.is_empty(),
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => false,
         }
     }
 
     /// Get a slice of dimensions (only valid for concrete shapes)
-    pub fn dims_slice(&self) -> &[Type] {
+    pub fn dims_slice(&self) -> &[SymInt] {
         match &self.0 {
-            Tuple::Concrete(dims) => dims,
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => {
+            SymIntTupleRepr::Concrete(dims) => dims,
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => {
                 panic!("Cannot get dims_slice for variadic tensor shape")
             }
         }
     }
 
     /// Get the concrete dims if this is a concrete shape.
-    pub fn as_concrete(&self) -> Option<&[Type]> {
+    pub fn as_concrete(&self) -> Option<&[SymInt]> {
         match &self.0 {
-            Tuple::Concrete(dims) => Some(dims),
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => None,
+            SymIntTupleRepr::Concrete(dims) => Some(dims),
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => None,
         }
     }
 
     /// Get a mutable reference to concrete dims (for meta-shape operations)
     /// Panics if called on Unpacked shape
-    pub fn dims_mut(&mut self) -> &mut Vec<Type> {
+    pub fn dims_mut(&mut self) -> &mut Vec<SymInt> {
         match &mut self.0 {
-            Tuple::Concrete(dims) => dims,
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => {
+            SymIntTupleRepr::Concrete(dims) => dims,
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => {
                 panic!("Cannot get mutable dims for variadic tensor shape")
             }
         }
@@ -507,10 +506,10 @@ impl SymIntTuple {
 
     /// Get dims as a Vec for concrete shapes, panics for unpacked
     /// This is used by meta-shape code that doesn't support variadic shapes yet
-    pub fn dims(&self) -> &Vec<Type> {
+    pub fn dims(&self) -> &Vec<SymInt> {
         match &self.0 {
-            Tuple::Concrete(dims) => dims,
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => {
+            SymIntTupleRepr::Concrete(dims) => dims,
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => {
                 panic!("Meta-shape operations do not yet support variadic tensor shapes")
             }
         }
@@ -520,10 +519,10 @@ impl SymIntTuple {
     /// Returns false for variadic shapes
     pub fn all_literal(&self) -> bool {
         match &self.0 {
-            Tuple::Concrete(dims) => dims
-                .iter()
-                .all(|ty| matches!(ty, Type::SymInt(SymInt::Literal(_)))),
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => false,
+            SymIntTupleRepr::Concrete(dims) => {
+                dims.iter().all(|dim| matches!(dim, SymInt::Literal(_)))
+            }
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => false,
         }
     }
 
@@ -531,14 +530,11 @@ impl SymIntTuple {
     /// Returns None for variadic shapes
     pub fn as_literals(&self) -> Option<Vec<i64>> {
         match &self.0 {
-            Tuple::Concrete(dims) if self.all_literal() => Some(
+            SymIntTupleRepr::Concrete(dims) if self.all_literal() => Some(
                 dims.iter()
-                    .filter_map(|ty| {
-                        if let Type::SymInt(SymInt::Literal(n)) = ty {
-                            Some(*n)
-                        } else {
-                            None
-                        }
+                    .map(|dim| match dim {
+                        SymInt::Literal(n) => *n,
+                        _ => unreachable!("all_literal checked every concrete dimension"),
                     })
                     .collect(),
             ),
@@ -549,8 +545,8 @@ impl SymIntTuple {
     /// Get a dimension by index (only for concrete shapes)
     pub fn get_dim(&self, index: usize) -> Type {
         match &self.0 {
-            Tuple::Concrete(dims) => dims.get(index).unwrap().clone(),
-            Tuple::Unbounded(_) | Tuple::Unpacked(_) => {
+            SymIntTupleRepr::Concrete(dims) => dim_to_type(dims.get(index).unwrap()),
+            SymIntTupleRepr::Gradual | SymIntTupleRepr::Unpacked { .. } => {
                 panic!("Cannot get dimension by index for variadic tensor shape")
             }
         }
@@ -562,7 +558,7 @@ impl SymIntTuple {
     /// Returns an error if the index is out of range.
     pub fn normalize_dim(&self, dim: i64) -> Result<usize, ShapeError> {
         // Check for variadic shape first - cannot normalize dims for unpacked shapes
-        if !matches!(self.0, Tuple::Concrete(_)) {
+        if !matches!(self.0, SymIntTupleRepr::Concrete(_)) {
             return Err(ShapeError::InvalidDimension {
                 value: dim,
                 reason: "Cannot normalize dimension index for variadic tensor shape".to_owned(),
@@ -607,23 +603,23 @@ impl SymIntTuple {
     /// - Unpacked with TypeVarTuple middle → `*name`
     pub fn fmt_jaxtyping(&self) -> String {
         match &self.0 {
-            Tuple::Concrete(dims) => {
+            SymIntTupleRepr::Concrete(dims) => {
                 if dims.is_empty() {
                     String::new() // Scalar: empty string inside quotes
                 } else {
                     dims.iter()
-                        .map(fmt_jaxtyping_dim)
+                        .map(fmt_jaxtyping_symint)
                         .collect::<Vec<_>>()
                         .join(" ")
                 }
             }
-            Tuple::Unbounded(t) if is_gradual_size(t) => "...".to_owned(),
-            Tuple::Unbounded(_) => {
-                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
-            }
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
-                let mut parts: Vec<String> = prefix.iter().map(fmt_jaxtyping_dim).collect();
+            SymIntTupleRepr::Gradual => "...".to_owned(),
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => {
+                let mut parts: Vec<String> = prefix.iter().map(fmt_jaxtyping_symint).collect();
 
                 // Ellipsis: a gradual `SymIntTuple` middle renders as "..."
                 // Named TypeVarTuple renders as "*name"
@@ -633,33 +629,15 @@ impl SymIntTuple {
                     parts.push(format!("*{middle}"));
                 }
 
-                parts.extend(suffix.iter().map(fmt_jaxtyping_dim));
+                parts.extend(suffix.iter().map(fmt_jaxtyping_symint));
                 parts.join(" ")
             }
         }
     }
 }
 
-/// Format a single dimension type in jaxtyping syntax.
-///
-/// Jaxtyping uses different rendering than native tensor syntax:
-/// - `Type::Any(_)` → `_` (anonymous dim, not "Any")
-/// - `SymInt::Add/Sub` → `a+b` / `a-b` (no parens, no spaces)
-/// - Negative literal in Add → rendered as subtraction: `Add(-1, n)` → `n-1`
-/// - All other types use their default Display
-fn fmt_jaxtyping_dim(d: &Type) -> String {
-    match d {
-        Type::Any(_) => "_".to_owned(),
-        Type::SymInt(expr) => fmt_jaxtyping_symint(expr),
-        _ => format!("{d}"),
-    }
-}
-
-pub(crate) fn fmt_shape_dim(d: &Type) -> String {
-    match d {
-        Type::SymInt(expr) => format!("{expr}"),
-        _ => format!("{d}"),
-    }
+pub(crate) fn fmt_shape_dim(d: &SymInt) -> String {
+    format!("{d}")
 }
 
 /// Format a `SymInt` in jaxtyping syntax (no parens, no spaces around operators).
@@ -667,7 +645,7 @@ fn fmt_jaxtyping_symint(expr: &SymInt) -> String {
     match expr {
         SymInt::Literal(n) => n.to_string(),
         SymInt::Int => "_".to_owned(),
-        SymInt::Symbolic(ty) => fmt_jaxtyping_dim(ty),
+        SymInt::Symbolic(ty) => format!("{ty}"),
         SymInt::Add(left, right) => {
             // After canonicalization, Sub(a,b) becomes Add(Literal(-b), a).
             // Detect this and render as subtraction: Add(-n, x) → x-n
@@ -697,19 +675,19 @@ fn fmt_jaxtyping_symint(expr: &SymInt) -> String {
 impl Display for SymIntTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
-            Tuple::Concrete(dims) => {
+            SymIntTupleRepr::Concrete(dims) => {
                 if dims.is_empty() {
                     write!(f, "()") // Scalar tensor: Tensor[()]
                 } else {
                     write!(f, "{}", commas_iter(|| dims.iter().map(fmt_shape_dim)))
                 }
             }
-            Tuple::Unbounded(t) if is_gradual_size(t) => write!(f, "*SymIntTuple"),
-            Tuple::Unbounded(_) => {
-                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
-            }
-            Tuple::Unpacked(unpacked) => {
-                let (prefix, middle, suffix) = &**unpacked;
+            SymIntTupleRepr::Gradual => write!(f, "*SymIntTuple"),
+            SymIntTupleRepr::Unpacked {
+                prefix,
+                middle,
+                suffix,
+            } => {
                 let prefix_str = if prefix.is_empty() {
                     "".to_owned()
                 } else {
@@ -734,7 +712,7 @@ impl Display for SymIntTuple {
 
 fn fmt_unpacked_middle(middle: &Type) -> String {
     match middle {
-        Type::SymIntTuple(shape) if shape.is_shapeless() => "SymIntTuple".to_owned(),
+        Type::SymIntTuple(shape) if shape.is_shapeless() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if elt.is_any() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if is_gradual_size(elt) => "tuple[int, ...]".to_owned(),
         _ => format!("{middle}"),
@@ -779,23 +757,34 @@ fn fmt_tuple_carrier(shape: &SymIntTuple) -> String {
 // type. These helpers canonicalize between the two representations so the rest
 // of the type checker only ever deals with the internal form.
 
-fn canonicalize_dim(dim: Type) -> Type {
+fn canonicalize_symint_dim(dim: SymInt) -> SymInt {
+    match canonicalize(Type::SymInt(dim)) {
+        Type::SymInt(dim) => dim,
+        _ => unreachable!("canonicalizing a SymInt dimension should produce a SymInt"),
+    }
+}
+
+fn type_to_dim_recover(dim: Type) -> SymInt {
     SymInt::from_type(&dim)
-        .map(Type::SymInt)
-        .map(canonicalize)
-        .unwrap_or_else(|| canonicalize(dim))
+        .map(canonicalize_symint_dim)
+        .unwrap_or(SymInt::Int)
+}
+
+fn dim_to_type(dim: &SymInt) -> Type {
+    Type::SymInt(dim.clone())
+}
+
+fn dims_to_types(dims: &[SymInt]) -> Vec<Type> {
+    dims.iter().map(dim_to_type).collect()
 }
 
 /// Convert an internal shape dimension into its tuple-carrier element.
 /// Literal dimensions become `Literal[n]`; other dimensions remain in their
 /// canonical internal representation.
-fn dim_to_carrier_element(dim: &Type) -> Type {
+fn dim_to_carrier_element(dim: &SymInt) -> Type {
     match dim {
-        Type::SymInt(SymInt::Literal(n)) => LitInt::new(*n).to_explicit_type(),
-        Type::Any(_) => dim.clone(),
-        _ => SymInt::from_type(dim)
-            .map(Type::SymInt)
-            .unwrap_or_else(|| Type::SymInt(SymInt::Symbolic(Box::new(dim.clone())))),
+        SymInt::Literal(n) => LitInt::new(*n).to_explicit_type(),
+        _ => dim_to_type(dim),
     }
 }
 
@@ -828,41 +817,46 @@ fn is_valid_internal_symint(expr: &SymInt) -> bool {
 /// Returns `None` for elements that are not valid dimensions (e.g. non-int
 /// literals or arbitrary class types) so that conversion fails cleanly instead
 /// of silently treating an unrelated type as a dimension.
-fn carrier_element_to_dim(carrier: &Type) -> Option<Type> {
+fn carrier_element_to_dim(carrier: &Type) -> Option<SymInt> {
     match carrier {
         // `Literal[n]` (int) -> internal literal dimension.
         Type::Literal(lit) => match &lit.value {
-            Lit::Int(i) => i.as_i64().map(|n| Type::SymInt(SymInt::Literal(n))),
+            Lit::Int(i) => i.as_i64().map(SymInt::Literal),
             _ => None,
         },
         // Dimensions already in internal form pass through unchanged.
         Type::SymInt(expr) if is_valid_internal_symint(expr) => {
-            Some(canonicalize_dim(carrier.clone()))
+            Some(canonicalize_symint_dim(expr.clone()))
         }
         Type::Quantified(q) if q.kind == QuantifiedKind::SymIntVar => {
-            Some(canonicalize_dim(carrier.clone()))
+            Some(type_to_dim_recover(carrier.clone()))
         }
         Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => {
-            Some(canonicalize_dim(carrier.clone()))
+            Some(type_to_dim_recover(carrier.clone()))
         }
-        Type::Var(_) | Type::Any(_) => Some(canonicalize_dim(carrier.clone())),
-        Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
+        Type::Var(_) => Some(SymInt::Int),
+        Type::Any(_) => Some(SymInt::Int),
+        Type::ClassType(cls) if cls.is_builtin("int") => Some(SymInt::Int),
         _ => None,
     }
 }
 
+fn carrier_element_to_dim_recover(carrier: &Type) -> SymInt {
+    carrier_element_to_dim(carrier).unwrap_or(SymInt::Int)
+}
+
 /// Convert a `SymIntTuple` into the equivalent tuple-carrier `Type`.
 pub fn shape_to_tuple_carrier(shape: &SymIntTuple) -> Type {
-    match shape.as_tuple() {
-        Tuple::Concrete(dims) => Type::Tuple(Tuple::Concrete(
+    match shape.view() {
+        SymIntTupleView::Concrete(dims) => Type::Tuple(Tuple::Concrete(
             dims.iter().map(dim_to_carrier_element).collect(),
         )),
-        Tuple::Unbounded(t) if is_gradual_size(t) => Type::any_tuple(),
-        Tuple::Unbounded(_) => {
-            unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
-        }
-        Tuple::Unpacked(unpacked) => {
-            let (prefix, middle, suffix) = &**unpacked;
+        SymIntTupleView::Gradual => Type::any_tuple(),
+        SymIntTupleView::Unpacked {
+            prefix,
+            middle,
+            suffix,
+        } => {
             let middle = match middle {
                 Type::SymIntTuple(shape) => shape_to_tuple_carrier(shape),
                 _ => middle.clone(),
@@ -896,13 +890,11 @@ fn is_unresolved_shape_middle(ty: &Type) -> bool {
         || is_tuple_carrier_shape_middle(ty)
 }
 
-fn unbounded_middle_element_to_dim(elt: &Type) -> Type {
-    if elt.is_any() {
-        gradual_size()
-    } else if matches!(elt, Type::ClassType(cls) if cls.is_builtin("int")) {
-        elt.clone()
+fn unbounded_middle_element_to_dim(elt: &Type) -> SymInt {
+    if elt.is_any() || matches!(elt, Type::ClassType(cls) if cls.is_builtin("int")) {
+        SymInt::Int
     } else {
-        carrier_element_to_dim(elt).unwrap_or_else(gradual_size)
+        carrier_element_to_dim(elt).unwrap_or(SymInt::Int)
     }
 }
 
@@ -912,9 +904,12 @@ fn unbounded_middle_element_to_dim(elt: &Type) -> Type {
 /// DType]` projects to `Unpacked([], S, [])` but must round-trip back to `S`,
 /// not `tuple[*S]`.
 pub fn shape_to_tuple_carrier_arg(shape: &SymIntTuple) -> Type {
-    match shape.as_tuple() {
-        Tuple::Unpacked(unpacked) => {
-            let (prefix, middle, suffix) = &**unpacked;
+    match shape.view() {
+        SymIntTupleView::Unpacked {
+            prefix,
+            middle,
+            suffix,
+        } => {
             if prefix.is_empty() && suffix.is_empty() && is_tuple_carrier_shape_middle(middle) {
                 middle.clone()
             } else {
@@ -940,7 +935,7 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
                 .iter()
                 .map(carrier_element_to_dim)
                 .collect::<Option<Vec<_>>>()?;
-            Some(SymIntTuple::from_types(dims))
+            Some(SymIntTuple::from_symints(dims))
         }
         Type::Tuple(Tuple::Unpacked(unpacked)) => {
             let (prefix, middle, suffix) = &**unpacked;
@@ -952,8 +947,20 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
                 .iter()
                 .map(carrier_element_to_dim)
                 .collect::<Option<Vec<_>>>()?;
+            if matches!(middle, Type::Tuple(Tuple::Unbounded(_))) {
+                return Some(SymIntTuple::unpacked(
+                    dims_to_types(&prefix),
+                    gradual_shape_middle(),
+                    dims_to_types(&suffix),
+                ));
+            }
             validate_tuple_carrier_unpacked_middle(middle)?;
-            Some(SymIntTuple::unpacked(prefix, middle.clone(), suffix))
+            let middle = recover_unbounded_tuple_carrier_middle(middle.clone());
+            Some(SymIntTuple::unpacked(
+                dims_to_types(&prefix),
+                middle,
+                dims_to_types(&suffix),
+            ))
         }
         Type::Tuple(Tuple::Unbounded(_)) => Some(shapeless_shape()),
         _ if is_tuple_carrier_shape_middle(carrier) => Some(SymIntTuple::unpacked(
@@ -962,6 +969,21 @@ pub fn tuple_carrier_to_shape(carrier: &Type) -> Option<SymIntTuple> {
             Vec::new(),
         )),
         _ => None,
+    }
+}
+
+fn recover_unbounded_tuple_carrier_middle(middle: Type) -> Type {
+    match middle {
+        Type::Tuple(Tuple::Unpacked(unpacked)) => {
+            let (prefix, middle, suffix) = *unpacked;
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                prefix,
+                recover_unbounded_tuple_carrier_middle(middle),
+                suffix,
+            ))))
+        }
+        Type::Tuple(Tuple::Unbounded(_)) => gradual_shape_middle(),
+        middle => middle,
     }
 }
 
@@ -985,7 +1007,7 @@ fn validate_tuple_carrier_unpacked_middle(middle: &Type) -> Option<()> {
                 .collect::<Option<Vec<_>>>()?;
             validate_tuple_carrier_unpacked_middle(middle)
         }
-        Type::Tuple(Tuple::Unbounded(_)) => None,
+        Type::Tuple(Tuple::Unbounded(_)) => Some(()),
         middle if is_unresolved_shape_middle(middle) => Some(()),
         Type::SymIntTuple(_) => Some(()),
         _ => None,
@@ -1102,10 +1124,10 @@ pub fn broadcast_shapes(a: &SymIntTuple, b: &SymIntTuple) -> Result<SymIntTuple,
 /// - If concrete dims remain and middle is gradual: result middle is gradual `SymIntTuple`.
 /// - If concrete dims remain and middle is TypeVarTuple: error.
 fn broadcast_concrete_with_unpacked(
-    concrete: &[Type],
-    prefix: &[Type],
+    concrete: &[SymInt],
+    prefix: &[SymInt],
     middle: &Type,
-    suffix: &[Type],
+    suffix: &[SymInt],
 ) -> Result<SymIntTuple, ShapeError> {
     let matched = concrete.len().min(suffix.len());
 
@@ -1123,14 +1145,14 @@ fn broadcast_concrete_with_unpacked(
 
     if remaining.is_empty() {
         // All concrete dims consumed → preserve prefix + middle
-        Ok(SymIntTuple::unpacked(
+        Ok(SymIntTuple::unpacked_from_parts(
             prefix.to_vec(),
             middle.clone(),
             result_suffix,
         ))
     } else if is_gradual_shape_middle(middle) {
         // Can't align remaining concrete with gradual shapeless middle.
-        Ok(SymIntTuple::unpacked(
+        Ok(SymIntTuple::unpacked_from_parts(
             vec![],
             gradual_shape_middle(),
             result_suffix,
@@ -1150,12 +1172,12 @@ fn broadcast_concrete_with_unpacked(
 /// - Either middle is gradual: result is shapeless + broadcast suffix.
 /// - Otherwise: error.
 fn broadcast_unpacked_with_unpacked(
-    ap: &[Type],
+    ap: &[SymInt],
     am: &Type,
-    a_suf: &[Type],
-    bp: &[Type],
+    a_suf: &[SymInt],
+    bp: &[SymInt],
     bm: &Type,
-    b_suf: &[Type],
+    b_suf: &[SymInt],
 ) -> Result<SymIntTuple, ShapeError> {
     let matched = a_suf.len().min(b_suf.len());
 
@@ -1181,10 +1203,14 @@ fn broadcast_unpacked_with_unpacked(
             .as_concrete()
             .expect("broadcast_concrete returns a concrete shape")
             .to_vec();
-        Ok(SymIntTuple::unpacked(prefix, am.clone(), result_suffix))
+        Ok(SymIntTuple::unpacked_from_parts(
+            prefix,
+            am.clone(),
+            result_suffix,
+        ))
     } else if is_gradual_shape_middle(am) || is_gradual_shape_middle(bm) {
         // At least one gradual shapeless middle → can't determine alignment.
-        Ok(SymIntTuple::unpacked(
+        Ok(SymIntTuple::unpacked_from_parts(
             vec![],
             gradual_shape_middle(),
             result_suffix,
@@ -1194,7 +1220,7 @@ fn broadcast_unpacked_with_unpacked(
         // batch dims rather than producing a hard error. At runtime the middles
         // are often identical (e.g. two Linear.forward calls on the same batch)
         // but the checker can't prove it.
-        Ok(SymIntTuple::unpacked(
+        Ok(SymIntTuple::unpacked_from_parts(
             vec![],
             gradual_shape_middle(),
             result_suffix,
@@ -1204,7 +1230,7 @@ fn broadcast_unpacked_with_unpacked(
 
 /// Broadcast two concrete dimension lists following NumPy/PyTorch rules.
 /// Returns a Concrete SymIntTuple.
-fn broadcast_concrete(a_dims: &[Type], b_dims: &[Type]) -> Result<SymIntTuple, ShapeError> {
+fn broadcast_concrete(a_dims: &[SymInt], b_dims: &[SymInt]) -> Result<SymIntTuple, ShapeError> {
     let max_rank = a_dims.len().max(b_dims.len());
     let mut result_dims = Vec::with_capacity(max_rank);
 
@@ -1237,30 +1263,30 @@ fn broadcast_concrete(a_dims: &[Type], b_dims: &[Type]) -> Result<SymIntTuple, S
 
     // Reverse to get left-to-right order
     result_dims.reverse();
-    Ok(SymIntTuple::from_types(result_dims))
+    Ok(SymIntTuple::from_symints(result_dims))
 }
 
 /// Broadcast a single pair of dimensions.
 /// Canonicalizes both sides so symbolic expressions that reduce to literals are caught.
-fn broadcast_dim(a_ty: &Type, b_ty: &Type, position: usize) -> Result<Type, ShapeError> {
-    let a_ty = canonicalize(a_ty.clone());
-    let b_ty = canonicalize(b_ty.clone());
+fn broadcast_dim(a_ty: &SymInt, b_ty: &SymInt, position: usize) -> Result<SymInt, ShapeError> {
+    let a_ty = canonicalize_symint_dim(a_ty.clone());
+    let b_ty = canonicalize_symint_dim(b_ty.clone());
     match (&a_ty, &b_ty) {
-        // Any and gradual SymInt are compatible with anything; prefer the more precise side.
-        (Type::Any(_), _) => Ok(b_ty.clone()),
-        (_, Type::Any(_)) => Ok(a_ty.clone()),
-        _ if is_gradual_size(&a_ty) => Ok(b_ty.clone()),
-        _ if is_gradual_size(&b_ty) => Ok(a_ty.clone()),
+        // Gradual SymInt is compatible with anything; prefer the more precise side.
+        (SymInt::Int, _) => Ok(b_ty.clone()),
+        (_, SymInt::Int) => Ok(a_ty.clone()),
         // Equal dimensions (after canonicalization): compatible
         _ if a_ty == b_ty => Ok(a_ty.clone()),
         // SymInt(1) broadcasts to anything
-        (Type::SymInt(SymInt::Literal(1)), _) => Ok(b_ty.clone()),
-        (_, Type::SymInt(SymInt::Literal(1))) => Ok(a_ty.clone()),
+        (SymInt::Literal(1), _) => Ok(b_ty.clone()),
+        (_, SymInt::Literal(1)) => Ok(a_ty.clone()),
         // Different non-broadcastable types: incompatible
         _ => Err(ShapeError::ShapeComputation {
             message: format!(
                 "Cannot broadcast dimension {} with dimension {} at position {}",
-                a_ty, b_ty, position
+                dim_to_type(&a_ty),
+                dim_to_type(&b_ty),
+                position
             ),
         }),
     }
@@ -1304,13 +1330,13 @@ pub fn index_shape_int(shape: &SymIntTuple) -> Result<SymIntTuple, ShapeError> {
             if dims.is_empty() {
                 return Err(ShapeError::ScalarIndex);
             }
-            Ok(SymIntTuple::from_types(dims[1..].to_vec()))
+            Ok(SymIntTuple::from_symints(dims[1..].to_vec()))
         }
         SymIntTupleView::Unpacked {
             prefix,
             middle,
             suffix,
-        } if !prefix.is_empty() => Ok(SymIntTuple::unpacked(
+        } if !prefix.is_empty() => Ok(SymIntTuple::unpacked_from_parts(
             prefix[1..].to_vec(),
             middle.clone(),
             suffix.to_vec(),
@@ -1336,13 +1362,16 @@ pub fn index_shape_slice(
             }
             let start = adjust_negative(
                 start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
-                &dims[0],
+                &dim_to_type(&dims[0]),
             );
-            let stop = adjust_negative(stop.unwrap_or_else(|| dims[0].clone()), &dims[0]);
+            let stop = adjust_negative(
+                stop.unwrap_or_else(|| dim_to_type(&dims[0])),
+                &dim_to_type(&dims[0]),
+            );
             let range_dim = sub_dim(stop, start);
             let new_first_dim = apply_step(range_dim, step);
             let mut new_dims = vec![new_first_dim];
-            new_dims.extend_from_slice(&dims[1..]);
+            new_dims.extend(dims[1..].iter().map(dim_to_type));
             Ok(SymIntTuple::from_types(new_dims))
         }
         SymIntTupleView::Unpacked {
@@ -1352,17 +1381,20 @@ pub fn index_shape_slice(
         } if !prefix.is_empty() => {
             let start = adjust_negative(
                 start.unwrap_or_else(|| Type::SymInt(SymInt::Literal(0))),
-                &prefix[0],
+                &dim_to_type(&prefix[0]),
             );
-            let stop = adjust_negative(stop.unwrap_or_else(|| prefix[0].clone()), &prefix[0]);
+            let stop = adjust_negative(
+                stop.unwrap_or_else(|| dim_to_type(&prefix[0])),
+                &dim_to_type(&prefix[0]),
+            );
             let range_dim = sub_dim(stop, start);
             let new_first_dim = apply_step(range_dim, step);
             let mut new_prefix = vec![new_first_dim];
-            new_prefix.extend_from_slice(&prefix[1..]);
+            new_prefix.extend(prefix[1..].iter().map(dim_to_type));
             Ok(SymIntTuple::unpacked(
                 new_prefix,
                 middle.clone(),
-                suffix.to_vec(),
+                dims_to_types(suffix),
             ))
         }
         // Empty prefix: dim0 is hidden in the variadic middle
@@ -1382,7 +1414,7 @@ pub fn index_shape_tensor(
                 return Err(ShapeError::ScalarIndex);
             }
             let mut new_dims = idx_dims.to_vec();
-            new_dims.extend_from_slice(&dims[1..]);
+            new_dims.extend(dims[1..].iter().map(dim_to_type));
             Ok(SymIntTuple::from_types(new_dims))
         }
         SymIntTupleView::Unpacked {
@@ -1391,11 +1423,11 @@ pub fn index_shape_tensor(
             suffix,
         } if !prefix.is_empty() => {
             let mut new_prefix = idx_dims.to_vec();
-            new_prefix.extend_from_slice(&prefix[1..]);
+            new_prefix.extend(prefix[1..].iter().map(dim_to_type));
             Ok(SymIntTuple::unpacked(
                 new_prefix,
                 middle.clone(),
-                suffix.to_vec(),
+                dims_to_types(suffix),
             ))
         }
         // First dim is in variadic middle; can't determine result
@@ -1433,22 +1465,24 @@ pub fn index_shape_multi(
                 });
             }
 
-            let (pre_result, _) = apply_ops_to_dims(pre_ops, &shape_dims[..pre_consumed])?;
+            let pre_dims = dims_to_types(&shape_dims[..pre_consumed]);
+            let (pre_result, _) = apply_ops_to_dims(pre_ops, &pre_dims)?;
 
             let post_start = if has_ellipsis {
                 shape_dims.len() - post_consumed
             } else {
                 pre_consumed
             };
-            let (post_result, _) = apply_ops_to_dims(post_ops, &shape_dims[post_start..])?;
+            let post_dims = dims_to_types(&shape_dims[post_start..]);
+            let (post_result, _) = apply_ops_to_dims(post_ops, &post_dims)?;
 
             let mut new_dims = pre_result;
             if has_ellipsis {
                 // Preserve ellipsis-covered dims
-                new_dims.extend_from_slice(&shape_dims[pre_consumed..post_start]);
+                new_dims.extend(shape_dims[pre_consumed..post_start].iter().map(dim_to_type));
             } else {
                 // No ellipsis: append remaining unindexed dims
-                new_dims.extend_from_slice(&shape_dims[pre_consumed..]);
+                new_dims.extend(shape_dims[pre_consumed..].iter().map(dim_to_type));
             }
             new_dims.extend(post_result);
 
@@ -1477,17 +1511,19 @@ pub fn index_shape_multi(
                 return Ok(shapeless_shape());
             }
 
-            let (pre_result, _) = apply_ops_to_dims(pre_ops, &prefix[..pre_consumed])?;
+            let pre_dims = dims_to_types(&prefix[..pre_consumed]);
+            let (pre_result, _) = apply_ops_to_dims(pre_ops, &pre_dims)?;
 
             let post_suffix_start = suffix.len() - post_consumed;
-            let (post_result, _) = apply_ops_to_dims(post_ops, &suffix[post_suffix_start..])?;
+            let post_dims = dims_to_types(&suffix[post_suffix_start..]);
+            let (post_result, _) = apply_ops_to_dims(post_ops, &post_dims)?;
 
             let remaining_prefix = &prefix[pre_consumed..];
             let remaining_suffix = &suffix[..post_suffix_start];
 
             let mut result_prefix = pre_result;
-            result_prefix.extend_from_slice(remaining_prefix);
-            let mut result_suffix = remaining_suffix.to_vec();
+            result_prefix.extend(remaining_prefix.iter().map(dim_to_type));
+            let mut result_suffix = dims_to_types(remaining_suffix);
             result_suffix.extend(post_result);
 
             Ok(SymIntTuple::unpacked(
@@ -1684,9 +1720,11 @@ mod tests {
     use crate::quantified::QuantifiedOrigin;
     use crate::shaped_array::ShapedArrayType;
     use crate::shaped_array::SymIntTuple;
+    use crate::shaped_array::SymIntTupleRepr;
     use crate::shaped_array::SymIntTupleView;
     use crate::shaped_array::broadcast_shapes;
     use crate::shaped_array::gradual_shape_middle;
+    use crate::shaped_array::is_tuple_carrier_shape_middle;
     use crate::shaped_array::shape_to_tuple_carrier;
     use crate::shaped_array::shape_to_tuple_carrier_arg;
     use crate::shaped_array::tuple_carrier_to_shape;
@@ -1704,6 +1742,10 @@ mod tests {
     /// Internal literal dimension `n` (`Type::SymInt(SymInt::Literal(n))`).
     fn size(n: i64) -> Type {
         Type::SymInt(SymInt::Literal(n))
+    }
+
+    fn dim(n: i64) -> SymInt {
+        SymInt::Literal(n)
     }
 
     /// User-facing `Literal[n]` carrier element.
@@ -1814,22 +1856,19 @@ mod tests {
     #[test]
     fn shapeless_projects_to_gradual_symint_tuple() {
         let shape = SymIntTuple::shapeless();
-        assert_eq!(
-            shape.as_tuple(),
-            &Tuple::Unbounded(Box::new(gradual_size()))
-        );
         assert!(shape.is_shapeless());
         assert_eq!(
             shape.to_tuple_type(),
             Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
         );
+        assert_eq!(shape.to_tuple(), Tuple::Unbounded(Box::new(gradual_size())));
     }
 
     #[test]
     fn symint_tuple_view_borrows_shape_structure() {
         let concrete = SymIntTuple::from_types(vec![size(2), size(3)]);
         match concrete.view() {
-            SymIntTupleView::Concrete(dims) => assert_eq!(dims, &[size(2), size(3)]),
+            SymIntTupleView::Concrete(dims) => assert_eq!(dims, &[dim(2), dim(3)]),
             _ => panic!("expected concrete shape view"),
         }
 
@@ -1845,9 +1884,9 @@ mod tests {
                 middle: view_middle,
                 suffix,
             } => {
-                assert_eq!(prefix, &[size(1)]);
+                assert_eq!(prefix, &[dim(1)]);
                 assert_eq!(view_middle, &middle);
-                assert_eq!(suffix, &[size(4)]);
+                assert_eq!(suffix, &[dim(4)]);
             }
             _ => panic!("expected unpacked shape view"),
         }
@@ -1889,60 +1928,39 @@ mod tests {
     }
 
     #[test]
-    fn unpacked_nested_unbounded_syminttuple_middle_normalizes() {
+    fn unpacked_invalid_unbounded_middle_recovers_to_gradual() {
         let elt = Type::ClassType(fake_class_type("torch", "Materialization"));
-        let shape = SymIntTuple::unpacked(
-            vec![size(1)],
-            Type::SymIntTuple(Box::new(SymIntTuple(Tuple::Unbounded(Box::new(
-                elt.clone(),
-            ))))),
-            vec![size(2)],
-        );
+        let shape = SymIntTuple::from_tuple(Tuple::Unbounded(Box::new(elt)));
 
-        assert_eq!(
-            shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                vec![size(1)],
-                SymIntTuple::shapeless().to_shape_arg_type(),
-                vec![size(2)],
-            ))))
-        );
+        assert_eq!(shape, SymIntTuple::shapeless());
     }
 
     #[test]
-    fn unpacked_nested_valid_unbounded_syminttuple_middle_projects_as_tuple_carrier() {
-        let shape = SymIntTuple::unpacked(
-            Vec::new(),
-            Type::SymIntTuple(Box::new(SymIntTuple(Tuple::Unbounded(Box::new(size(5)))))),
-            Vec::new(),
-        );
+    fn from_tuple_valid_unbounded_middle_projects_as_tuple_carrier() {
+        let shape = SymIntTuple::from_tuple(Tuple::Unbounded(Box::new(size(5))));
 
         assert_eq!(
             shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
+            SymIntTuple::unpacked(
                 Vec::new(),
                 Type::Tuple(Tuple::Unbounded(Box::new(size(5)))),
                 Vec::new(),
-            ))))
+            )
         );
     }
 
     #[test]
     fn broadcast_accepts_raw_gradual_tuple_middle() {
-        let unnormalized = SymIntTuple(Tuple::Unpacked(Box::new((
-            vec![size(2)],
-            Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
-            vec![size(3)],
-        ))));
+        let unnormalized = SymIntTuple(SymIntTupleRepr::Unpacked {
+            prefix: vec![dim(2)],
+            middle: Box::new(Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))),
+            suffix: vec![dim(3)],
+        });
         let concrete = SymIntTuple::from_types(vec![size(4), size(3)]);
 
         assert_eq!(
             broadcast_shapes(&concrete, &unnormalized).unwrap(),
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                Vec::new(),
-                gradual_shape_middle(),
-                vec![size(3)],
-            ))))
+            SymIntTuple::unpacked(Vec::new(), gradual_shape_middle(), vec![size(3)],)
         );
     }
 
@@ -2013,6 +2031,32 @@ mod tests {
     }
 
     #[test]
+    fn affixed_tuple_carrier_middle_projects_to_gradual_tuple_boundary() {
+        let middle = Type::Var(Var::ZERO);
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle.clone(), vec![size(2)]);
+
+        assert_eq!(
+            shape.to_tuple_type(),
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                vec![size(1)],
+                Type::Tuple(Tuple::Unbounded(Box::new(gradual_size()))),
+                vec![size(2)],
+            ))))
+        );
+        assert_eq!(
+            SymIntTuple::from_tuple(shape.to_tuple()),
+            SymIntTuple::unpacked(vec![size(1)], gradual_shape_middle(), vec![size(2)])
+        );
+        assert_eq!(
+            shape_to_tuple_carrier_arg(&shape),
+            shape_to_tuple_carrier(&shape)
+        );
+
+        let whole_shape = SymIntTuple::unpacked(Vec::new(), middle.clone(), Vec::new());
+        assert_eq!(shape_to_tuple_carrier_arg(&whole_shape), middle);
+    }
+
+    #[test]
     fn literal_carrier_to_concrete_shape() {
         let carrier = concrete_carrier(vec![literal(3), literal(4), literal(5)]);
         assert_eq!(
@@ -2033,20 +2077,20 @@ mod tests {
     }
 
     #[test]
-    fn explicit_any_internal_dimension_stays_any_carrier() {
+    fn explicit_any_internal_dimension_becomes_gradual_symint_carrier() {
         let shape = SymIntTuple::from_types(vec![Type::Any(AnyStyle::Explicit)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
-            concrete_carrier(vec![Type::Any(AnyStyle::Explicit)])
+            concrete_carrier(vec![gradual_size()])
         );
     }
 
     #[test]
-    fn error_any_internal_dimension_preserves_error_style_in_carrier() {
+    fn error_any_internal_dimension_becomes_gradual_symint_carrier() {
         let shape = SymIntTuple::from_types(vec![Type::Any(AnyStyle::Error)]);
         assert_eq!(
             shape_to_tuple_carrier(&shape),
-            concrete_carrier(vec![Type::Any(AnyStyle::Error)])
+            concrete_carrier(vec![gradual_size()])
         );
     }
 
@@ -2061,14 +2105,9 @@ mod tests {
     }
 
     #[test]
-    fn raw_internal_carrier_elements_pass_through() {
+    fn raw_internal_symintvar_carrier_elements_pass_through() {
         let quantified = Type::Quantified(Box::new(fake_tparam("N", QuantifiedKind::SymIntVar)));
-        let dims = vec![
-            size(8),
-            Type::Any(AnyStyle::Explicit),
-            Type::Var(Var::ZERO),
-            quantified,
-        ];
+        let dims = vec![size(8), Type::Any(AnyStyle::Explicit), quantified];
 
         assert_eq!(
             tuple_carrier_to_shape(&concrete_carrier(dims.clone())),
@@ -2193,11 +2232,8 @@ mod tests {
     #[test]
     fn nested_shape_arg_type_canonicalizes() {
         let inner = SymIntTuple::from_types(vec![size(2), size(3)]);
-        let nested = Type::SymIntTuple(Box::new(SymIntTuple(Tuple::Unpacked(Box::new((
-            Vec::new(),
-            inner.to_shape_arg_type(),
-            Vec::new(),
-        ))))));
+        let nested = SymIntTuple::unpacked(Vec::new(), inner.to_shape_arg_type(), Vec::new())
+            .to_shape_arg_type();
         assert_eq!(SymIntTuple::from_shape_arg_type(&nested), Some(inner));
     }
 
@@ -2237,10 +2273,10 @@ mod tests {
             size(4),
         ]);
 
-        assert!(matches!(shape.as_tuple(), Tuple::Concrete(_)));
+        assert!(matches!(shape.view(), SymIntTupleView::Concrete(_)));
         assert_eq!(shape, expected);
         assert_eq!(shape.to_tuple_type(), expected.to_tuple_type());
-        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
     }
 
     #[test]
@@ -2253,7 +2289,7 @@ mod tests {
             shape.to_tuple_type(),
             Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
         );
-        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
     }
 
     #[test]
@@ -2267,13 +2303,13 @@ mod tests {
 
         assert_eq!(
             shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
+            SymIntTuple::unpacked(
                 vec![size(1)],
                 SymIntTuple::shapeless().to_shape_arg_type(),
                 vec![size(2)],
-            ))))
+            )
         );
-        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
     }
 
     #[test]
@@ -2285,13 +2321,13 @@ mod tests {
 
         assert_eq!(
             shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
+            SymIntTuple::unpacked(
                 vec![size(1)],
                 SymIntTuple::shapeless().to_shape_arg_type(),
                 vec![size(2)],
-            ))))
+            )
         );
-        assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+        assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
     }
 
     #[test]
@@ -2308,13 +2344,13 @@ mod tests {
 
             assert_eq!(
                 shape,
-                SymIntTuple(Tuple::Unpacked(Box::new((
+                SymIntTuple::unpacked(
                     vec![size(1)],
                     SymIntTuple::shapeless().to_shape_arg_type(),
                     vec![size(2)],
-                ))))
+                )
             );
-            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+            assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
         }
     }
 
@@ -2326,7 +2362,7 @@ mod tests {
         for (elt, expected) in [
             (literal(5), size(5)),
             (Type::Any(AnyStyle::Explicit), gradual_size()),
-            (int_type.clone(), int_type),
+            (int_type, gradual_size()),
             (
                 quantified.clone(),
                 Type::SymInt(SymInt::Symbolic(Box::new(quantified))),
@@ -2335,7 +2371,6 @@ mod tests {
                 type_var.clone(),
                 Type::SymInt(SymInt::Symbolic(Box::new(type_var))),
             ),
-            (Type::Var(Var::ZERO), Type::Var(Var::ZERO)),
             (
                 Type::SymInt(SymInt::add(size(1), size(2))),
                 Type::SymInt(SymInt::Literal(3)),
@@ -2352,8 +2387,24 @@ mod tests {
                     vec![size(2)],
                 )
             );
-            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+            assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
         }
+    }
+
+    #[test]
+    fn ordinary_var_unbounded_middle_element_recovers_to_gradual() {
+        let middle = Type::Tuple(Tuple::Unbounded(Box::new(Type::Var(Var::ZERO))));
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+        assert_eq!(
+            shape,
+            SymIntTuple::unpacked(
+                vec![size(1)],
+                SymIntTuple::shapeless().to_shape_arg_type(),
+                vec![size(2)],
+            )
+        );
+        assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
     }
 
     #[test]
@@ -2363,7 +2414,7 @@ mod tests {
             let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
 
             assert_eq!(shape, SymIntTuple::shapeless());
-            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+            assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
         }
     }
 
@@ -2373,41 +2424,25 @@ mod tests {
         let whole_shape = SymIntTuple::unpacked(Vec::new(), quantified.clone(), Vec::new());
         assert_eq!(
             whole_shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                Vec::new(),
-                quantified.clone(),
-                Vec::new(),
-            ))))
+            SymIntTuple::unpacked(Vec::new(), quantified.clone(), Vec::new(),)
         );
 
         let affixed = SymIntTuple::unpacked(vec![size(1)], quantified.clone(), vec![size(2)]);
         assert_eq!(
             affixed,
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                vec![size(1)],
-                quantified,
-                vec![size(2)],
-            ))))
+            SymIntTuple::unpacked(vec![size(1)], quantified, vec![size(2)],)
         );
 
         let direct = Type::TypeVar(fake_type_var("Shape", QuantifiedKind::TypeVar));
         let whole_shape = SymIntTuple::unpacked(Vec::new(), direct.clone(), Vec::new());
         assert_eq!(
             whole_shape,
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                Vec::new(),
-                direct.clone(),
-                Vec::new(),
-            ))))
+            SymIntTuple::unpacked(Vec::new(), direct.clone(), Vec::new(),)
         );
         let affixed = SymIntTuple::unpacked(vec![size(1)], direct.clone(), vec![size(2)]);
         assert_eq!(
             affixed,
-            SymIntTuple(Tuple::Unpacked(Box::new((
-                vec![size(1)],
-                direct,
-                vec![size(2)],
-            ))))
+            SymIntTuple::unpacked(vec![size(1)], direct, vec![size(2)],)
         );
     }
 
@@ -2422,13 +2457,19 @@ mod tests {
 
             assert_eq!(
                 shape,
-                SymIntTuple(Tuple::Unpacked(Box::new((
-                    vec![size(1)],
-                    middle,
-                    vec![size(2)],
-                ))))
+                SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)],)
             );
-            assert_eq!(SymIntTuple::from_tuple(shape.as_tuple().clone()), shape);
+            if is_tuple_carrier_shape_middle(match shape.view() {
+                SymIntTupleView::Unpacked { middle, .. } => middle,
+                _ => unreachable!("test constructs unpacked shapes"),
+            }) {
+                assert_eq!(
+                    SymIntTuple::from_tuple(shape.to_tuple()),
+                    SymIntTuple::unpacked(vec![size(1)], gradual_shape_middle(), vec![size(2)])
+                );
+            } else {
+                assert_eq!(SymIntTuple::from_tuple(shape.to_tuple()), shape);
+            }
         }
     }
 
@@ -2490,6 +2531,96 @@ mod tests {
             vec![literal(2)],
         ))));
         assert_eq!(tuple_carrier_to_shape(&invalid), None);
+    }
+
+    #[test]
+    fn nested_concrete_tuple_carrier_middle_is_recursively_flattened() {
+        let carrier = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![literal(1)],
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                vec![literal(2)],
+                Type::Tuple(Tuple::Concrete(vec![literal(3)])),
+                vec![literal(4)],
+            )))),
+            vec![literal(5)],
+        ))));
+
+        assert_eq!(
+            tuple_carrier_to_shape(&carrier),
+            Some(SymIntTuple::from_types(vec![
+                size(1),
+                size(2),
+                size(3),
+                size(4),
+                size(5),
+            ]))
+        );
+    }
+
+    #[test]
+    fn nested_unbounded_tuple_carrier_middle_recovers_to_gradual() {
+        let carrier = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![literal(1)],
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                vec![literal(2)],
+                Type::Tuple(Tuple::Unbounded(Box::new(literal(3)))),
+                vec![literal(4)],
+            )))),
+            vec![literal(5)],
+        ))));
+
+        assert_eq!(
+            tuple_carrier_to_shape(&carrier),
+            Some(SymIntTuple::unpacked(
+                vec![size(1), size(2)],
+                gradual_shape_middle(),
+                vec![size(4), size(5)],
+            ))
+        );
+    }
+
+    #[test]
+    fn unpacked_tuple_carrier_unbounded_middle_recovers_to_gradual() {
+        let carrier = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![literal(1)],
+            Type::Tuple(Tuple::Unbounded(Box::new(literal(5)))),
+            vec![literal(2)],
+        ))));
+
+        assert_eq!(
+            tuple_carrier_to_shape(&carrier),
+            Some(SymIntTuple::unpacked(
+                vec![size(1)],
+                gradual_shape_middle(),
+                vec![size(2)],
+            ))
+        );
+
+        let invalid_prefix = Type::Tuple(Tuple::Unpacked(Box::new((
+            vec![Type::ClassType(fake_class_type("builtins", "str"))],
+            Type::Tuple(Tuple::Unbounded(Box::new(literal(5)))),
+            vec![literal(2)],
+        ))));
+        assert_eq!(tuple_carrier_to_shape(&invalid_prefix), None);
+    }
+
+    #[test]
+    fn bare_var_internal_tuple_middle_scalar_position_recovers_to_gradual_dim() {
+        let middle = Type::Tuple(Tuple::Concrete(vec![Type::Var(Var::ZERO)]));
+        let shape = SymIntTuple::unpacked(vec![size(1)], middle, vec![size(2)]);
+
+        assert_eq!(
+            shape,
+            SymIntTuple::from_types(vec![size(1), gradual_size(), size(2)])
+        );
+    }
+
+    #[test]
+    fn bare_var_tuple_carrier_scalar_position_recovers_to_gradual_dim() {
+        assert_eq!(
+            tuple_carrier_to_shape(&concrete_carrier(vec![Type::Var(Var::ZERO)])),
+            Some(SymIntTuple::from_types(vec![gradual_size()]))
+        );
     }
 
     #[test]

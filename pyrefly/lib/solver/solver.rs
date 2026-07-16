@@ -1294,18 +1294,10 @@ impl Solver {
                     .mk_tuple(simplify_tuples(mem::take(tuple), &self.heap));
             }
             if let Type::ShapedArray(tensor) = x {
-                // Reuse tuple simplification for unpack flattening, then restore
-                // the shaped-array invariant that only gradual `SymIntTuple` is
-                // stored as a direct unbounded tuple.
-                //
-                // This re-simplifies the cached `shape` field only; the first-class
-                // `SymIntTuple` argument on `base_class` is still the pre-simplified
-                // copy during this migration step. The two are reconciled once the
-                // duplicate cached field is removed (D111461675) and reads/writes go
-                // through the accessor, at which point this write updates the single
-                // authoritative representation.
+                // Reuse tuple simplification for unpack flattening at the
+                // internal shape boundary, then rebuild the shape-specific storage.
                 let shape = SymIntTuple::from_tuple(simplify_tuples(
-                    tensor.shape().as_tuple().clone(),
+                    tensor.shape().to_simplification_tuple(),
                     &self.heap,
                 ));
                 tensor.set_shape(shape);

@@ -1001,6 +1001,15 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         got: &Tuple,
         want: &SymIntTuple,
     ) -> Result<(), SubsetError> {
+        if matches!(got, Tuple::Unbounded(inner) if !inner.is_any() && !is_gradual_size(inner))
+            && matches!(
+                want.view(),
+                SymIntTupleView::Unpacked { prefix, suffix, .. }
+                    if !prefix.is_empty() || !suffix.is_empty()
+            )
+        {
+            return Err(SubsetError::Other);
+        }
         if Self::symint_tuple_has_carrier_middle(want) {
             self.bind_tensor_dimensions(&SymIntTuple::from_tuple(got.clone()), want)
         } else {
@@ -2976,11 +2985,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         // variadic form locally so the case analysis below does not need a third
         // `Unbounded` axis that behaves the same as `Unpacked([], SymIntTuple, [])`.
         enum ShapeView<'a> {
-            Concrete(&'a [Type]),
+            Concrete(&'a [SymInt]),
             Unpacked {
-                prefix: &'a [Type],
+                prefix: &'a [SymInt],
                 middle: Cow<'a, Type>,
-                suffix: &'a [Type],
+                suffix: &'a [SymInt],
             },
         }
 
@@ -3004,8 +3013,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
         }
 
-        fn pack_middle_slice(dims: &[Type]) -> Type {
-            SymIntTuple::from_types(dims.to_vec()).to_shape_arg_type()
+        fn dim_type(dim: &SymInt) -> Type {
+            Type::SymInt(dim.clone())
+        }
+
+        fn pack_middle_slice(dims: &[SymInt]) -> Type {
+            SymIntTuple::new(dims.to_vec()).to_shape_arg_type()
         }
 
         match (shape_view(got_shape), shape_view(want_shape)) {
@@ -3018,7 +3031,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     )));
                 }
                 for (got_dim, want_dim) in got_dims.iter().zip(want_dims.iter()) {
-                    self.is_subset_eq(got_dim, want_dim)?;
+                    self.is_subset_eq(&dim_type(got_dim), &dim_type(want_dim))?;
                 }
             }
             // Concrete got, Unpacked want: bind the variadic middle to the corresponding slice
@@ -3044,13 +3057,13 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Bind prefix dimensions
                 for (got_dim, want_dim) in got_dims.iter().zip(want_prefix.iter()) {
-                    self.is_subset_eq(got_dim, want_dim)?;
+                    self.is_subset_eq(&dim_type(got_dim), &dim_type(want_dim))?;
                 }
 
                 // Bind suffix dimensions
                 let suffix_start = got_dims.len().saturating_sub(want_suffix.len());
                 for (got_dim, want_dim) in got_dims[suffix_start..].iter().zip(want_suffix.iter()) {
-                    self.is_subset_eq(got_dim, want_dim)?;
+                    self.is_subset_eq(&dim_type(got_dim), &dim_type(want_dim))?;
                 }
 
                 // Bind the variadic middle to the middle slice
@@ -3098,14 +3111,14 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Bind matched prefix dims pairwise
                 for i in 0..matched_prefix {
-                    self.is_subset_eq(&got_prefix[i], &want_prefix[i])?;
+                    self.is_subset_eq(&dim_type(&got_prefix[i]), &dim_type(&want_prefix[i]))?;
                 }
 
                 // Bind matched suffix dims pairwise (from the end)
                 for i in 0..matched_suffix {
                     let gi = got_suffix.len() - matched_suffix + i;
                     let wi = want_suffix.len() - matched_suffix + i;
-                    self.is_subset_eq(&got_suffix[gi], &want_suffix[wi])?;
+                    self.is_subset_eq(&dim_type(&got_suffix[gi]), &dim_type(&want_suffix[wi]))?;
                 }
 
                 // Compute each side's remaining structural dims after matching.
@@ -3130,12 +3143,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Fold extras into the middle on whichever side has them.
                 // When a side has no extras, use its middle directly.
-                let fold = |prefix: &[Type], middle: &Type, suffix: &[Type]| -> Type {
+                let fold = |prefix: &[SymInt], middle: &Type, suffix: &[SymInt]| -> Type {
                     if prefix.is_empty() && suffix.is_empty() {
                         middle.clone()
                     } else {
-                        SymIntTuple::unpacked(prefix.to_vec(), middle.clone(), suffix.to_vec())
-                            .to_shape_arg_type()
+                        SymIntTuple::unpacked(
+                            prefix.iter().map(dim_type).collect(),
+                            middle.clone(),
+                            suffix.iter().map(dim_type).collect(),
+                        )
+                        .to_shape_arg_type()
                     }
                 };
 
@@ -3173,13 +3190,13 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                 // Bind prefix dimensions
                 for (got_dim, want_dim) in got_prefix.iter().zip(want_dims.iter()) {
-                    self.is_subset_eq(got_dim, want_dim)?;
+                    self.is_subset_eq(&dim_type(got_dim), &dim_type(want_dim))?;
                 }
 
                 // Bind suffix dimensions
                 let suffix_start = want_dims.len() - got_suffix.len();
                 for (got_dim, want_dim) in got_suffix.iter().zip(want_dims[suffix_start..].iter()) {
-                    self.is_subset_eq(got_dim, want_dim)?;
+                    self.is_subset_eq(&dim_type(got_dim), &dim_type(want_dim))?;
                 }
 
                 // Bind the variadic middle to the remaining want dimensions

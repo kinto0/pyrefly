@@ -479,7 +479,15 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str(", ")?;
                 }
                 first = false;
-                self.fmt_helper_generic(&Type::Unpack(Box::new(middle.clone())), false, output)?;
+                if matches!(middle, Type::SymIntTuple(shape) if shape.is_shapeless()) {
+                    output.write_str("*tuple[int, ...]")?;
+                } else {
+                    self.fmt_helper_generic(
+                        &Type::Unpack(Box::new(middle.clone())),
+                        false,
+                        output,
+                    )?;
+                }
                 for dim in suffix {
                     if !first {
                         output.write_str(", ")?;

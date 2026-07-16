@@ -2600,7 +2600,10 @@ fn eval_dsl_expr(
                     // Use dim_val to convert concrete
                     // Type::SymInt(SymInt::Literal(n)) to Val::Int(n) so comparisons
                     // against literal ints (e.g., `d != 1` in squeeze) work naturally.
-                    let vals: Vec<Val> = dims.iter().map(|d| dim_val(d.clone())).collect();
+                    let vals: Vec<Val> = dims
+                        .iter()
+                        .map(|d| dim_val(Type::SymInt(d.clone())))
+                        .collect();
                     Ok(Val::List(vals))
                 }
                 SymIntTupleView::Gradual => Ok(Val::Unpacked {
@@ -2613,9 +2616,15 @@ fn eval_dsl_expr(
                     middle,
                     suffix,
                 } => Ok(Val::Unpacked {
-                    prefix: prefix.iter().map(|d| dim_val(d.clone())).collect(),
+                    prefix: prefix
+                        .iter()
+                        .map(|d| dim_val(Type::SymInt(d.clone())))
+                        .collect(),
                     middle: middle.clone(),
-                    suffix: suffix.iter().map(|d| dim_val(d.clone())).collect(),
+                    suffix: suffix
+                        .iter()
+                        .map(|d| dim_val(Type::SymInt(d.clone())))
+                        .collect(),
                 }),
             }
         }
