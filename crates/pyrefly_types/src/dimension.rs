@@ -26,10 +26,8 @@ use crate::types::Type;
 /// A dimension expression in a tensor shape.
 ///
 /// Dimensions can be:
-/// - Concrete literals: `Tensor[2, 3]`
-/// - Symbolic expressions: `Tensor[N, N+1]`, `Tensor[N*M]`
-///
-/// Type variables and solver variables are represented as symbolic leaves.
+/// - Concrete literals: 2 and 3 in `Tensor[2, 3]`
+/// - Symbolic expressions: N, N+1, N*M in `Tensor[N, N+1]`, `Tensor[N*M]`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Int {
     /// Concrete dimension: Tensor[2, 3]
