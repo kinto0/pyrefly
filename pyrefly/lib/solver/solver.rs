@@ -99,12 +99,27 @@ const INITIAL_GAS: Gas = Gas::new(200);
 /// dimension expressions are canonicalized to `Type::Int`.
 pub(crate) fn type_as_intvar_solution(ty: &Type) -> Option<Type> {
     match ty {
-        _ if ty.is_error() || ty.is_any() => Some(gradual_size()),
+        _ if ty.is_any() => Some(gradual_size()),
         Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
         Type::Quantified(q) if q.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
         Type::TypeVar(tv) if tv.kind() == QuantifiedKind::IntVar => Some(ty.clone()),
         Type::Var(_) => Some(Type::Int(Int::Symbolic(Box::new(ty.clone())))),
         _ => Int::from_type(ty).map(|dim| canonicalize(Type::Int(dim))),
+    }
+}
+
+/// Pin a solver answer for a variable of the given `kind`.
+///
+/// `IntVar` answers are normalized into dimension space, falling back to a
+/// gradual size when the candidate is not a valid dimension. Answers for every
+/// other kind are used as-is. This is distinct from the `.expect(...)` sites
+/// that pin a *bound* already validated by `validate_bound_consistency`, where a
+/// failed normalization is an invariant violation rather than a fallback.
+fn normalize_answer_for_kind(kind: QuantifiedKind, ty: &Type) -> Type {
+    if kind == QuantifiedKind::IntVar {
+        type_as_intvar_solution(ty).unwrap_or_else(gradual_size)
+    } else {
+        ty.clone()
     }
 }
 
@@ -2249,11 +2264,7 @@ impl Solver {
                     && is_subset(solved_ty, branch_ty).is_ok();
             }
             Variable::PartialQuantified(q) => {
-                let answer = if q.kind() == QuantifiedKind::IntVar {
-                    type_as_intvar_solution(solved_ty).unwrap_or_else(gradual_size)
-                } else {
-                    solved_ty.clone()
-                };
+                let answer = normalize_answer_for_kind(q.kind(), solved_ty);
                 *branch_value = Variable::Answer(answer);
                 return true;
             }
@@ -4180,11 +4191,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             // unrestricted marker, not constraints; keep this
                             // defensive path normalized in case an internal
                             // quantified value is constructed with constraints.
-                            let answer = if kind == QuantifiedKind::IntVar {
-                                type_as_intvar_solution(t2).unwrap_or_else(gradual_size)
-                            } else {
-                                t2.clone()
-                            };
+                            let answer = normalize_answer_for_kind(kind, t2);
                             variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if let Type::Quantified(q_t2) = t2 {
@@ -4201,11 +4208,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             } else if let Some(constraint) =
                                 self.find_matching_constraint(t2, &constraints)
                             {
-                                let constraint = if kind == QuantifiedKind::IntVar {
-                                    type_as_intvar_solution(constraint).unwrap_or_else(gradual_size)
-                                } else {
-                                    constraint.clone()
-                                };
+                                let constraint = normalize_answer_for_kind(kind, constraint);
                                 self.solver
                                     .variables
                                     .lock()
@@ -4221,11 +4224,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                                 );
                             }
                         } else {
-                            let answer = if kind == QuantifiedKind::IntVar {
-                                type_as_intvar_solution(t2).unwrap_or_else(gradual_size)
-                            } else {
-                                t2.clone()
-                            };
+                            let answer = normalize_answer_for_kind(kind, t2);
                             variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if self.is_subset_eq(t2, &bound).is_err() {
@@ -4321,11 +4320,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             //
                             // TODO(https://github.com/facebook/pyrefly/issues/105): figure out
                             // what to do with ParamSpec.
-                            let answer = if q.kind() == QuantifiedKind::IntVar {
-                                type_as_intvar_solution(&answer).unwrap_or_else(gradual_size)
-                            } else {
-                                answer
-                            };
+                            let answer = normalize_answer_for_kind(q.kind(), &answer);
                             self.solver
                                 .variables
                                 .lock()
@@ -4343,11 +4338,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         drop(variables);
                         let (answer, specialization_error) =
                             self.is_subset_eq_quantified(t1, &q, None);
-                        let answer = if q.kind() == QuantifiedKind::IntVar {
-                            type_as_intvar_solution(&answer).unwrap_or_else(gradual_size)
-                        } else {
-                            answer
-                        };
+                        let answer = normalize_answer_for_kind(q.kind(), &answer);
                         if let Some(specialization_error) = specialization_error {
                             self.solver
                                 .instantiation_errors
