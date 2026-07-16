@@ -1699,6 +1699,7 @@ mod tests {
     use crate::shaped_array::SymIntTuple;
     use crate::shaped_array::SymIntTupleRepr;
     use crate::shaped_array::SymIntTupleView;
+    use crate::shaped_array::broadcast_dim;
     use crate::shaped_array::broadcast_shapes;
     use crate::shaped_array::gradual_shape_middle;
     use crate::shaped_array::index_shape_multi;
@@ -1789,6 +1790,18 @@ mod tests {
             Restriction::Unrestricted,
             PreInferenceVariance::Invariant,
         )
+    }
+
+    fn scalar_symbol(name: &str) -> SymInt {
+        SymInt::from_type(&Type::TypeVar(fake_type_var(
+            name,
+            QuantifiedKind::SymIntVar,
+        )))
+        .expect("SymIntVar should construct a symbolic dimension")
+    }
+
+    fn shape_carrier(name: &str) -> Type {
+        Type::TypeVar(fake_type_var(name, QuantifiedKind::TypeVar))
     }
 
     fn registered_array_shape_arg(shape_arg: Type) -> ShapedArrayType {
@@ -2137,6 +2150,168 @@ mod tests {
             broadcast_shapes(&concrete, &unnormalized).unwrap(),
             SymIntTuple::unpacked(Vec::new(), gradual_shape_middle(), vec![size(3)],)
         );
+    }
+
+    #[test]
+    fn broadcast_missing_leading_dimensions_in_both_orders() {
+        let shorter = SymIntTuple::new(vec![dim(3)]);
+        let longer = SymIntTuple::new(vec![dim(2), dim(3)]);
+
+        for (left, right) in [(&shorter, &longer), (&longer, &shorter)] {
+            assert_eq!(broadcast_shapes(left, right).unwrap(), longer);
+        }
+    }
+
+    #[test]
+    fn broadcast_literal_one_with_symbolic_dimensions() {
+        let n = scalar_symbol("N");
+        let left = SymIntTuple::new(vec![dim(1), n.clone()]);
+        let right = SymIntTuple::new(vec![n.clone(), dim(1)]);
+
+        assert_eq!(
+            broadcast_shapes(&left, &right).unwrap(),
+            SymIntTuple::new(vec![n.clone(), n])
+        );
+    }
+
+    #[test]
+    fn broadcast_gradual_dimension_with_known_non_one_in_both_orders() {
+        let gradual = SymIntTuple::new(vec![SymInt::Int]);
+        let known = SymIntTuple::new(vec![dim(7)]);
+
+        for (left, right) in [(&gradual, &known), (&known, &gradual)] {
+            assert_eq!(broadcast_shapes(left, right).unwrap(), known);
+        }
+    }
+
+    #[test]
+    fn broadcast_whole_gradual_shape_dispatch_arms() {
+        let gradual = SymIntTuple::shapeless();
+        let concrete = SymIntTuple::new(vec![dim(2), dim(3)]);
+        let unpacked = SymIntTuple::unpacked(vec![size(2)], shape_carrier("Shape"), vec![size(3)]);
+
+        for (case, left, right) in [
+            ("gradual and concrete", &gradual, &concrete),
+            ("concrete and gradual", &concrete, &gradual),
+            ("gradual and gradual", &gradual, &gradual),
+            ("gradual and unpacked", &gradual, &unpacked),
+            ("unpacked and gradual", &unpacked, &gradual),
+        ] {
+            assert_eq!(broadcast_shapes(left, right).unwrap(), gradual, "{case}");
+        }
+    }
+
+    #[test]
+    fn broadcast_canonicalizes_arithmetic_dimensions() {
+        let n = scalar_symbol("N");
+        let cases = [
+            (
+                SymInt::Add(Box::new(dim(2)), Box::new(dim(3))),
+                dim(5),
+                dim(5),
+            ),
+            (
+                SymInt::Add(Box::new(n.clone()), Box::new(dim(0))),
+                n.clone(),
+                n,
+            ),
+        ];
+
+        for (left, right, expected) in cases {
+            assert_eq!(broadcast_dim(&left, &right, 0).unwrap(), expected);
+            assert_eq!(broadcast_dim(&right, &left, 0).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn broadcast_fixed_rank_mismatch_reports_absolute_position() {
+        let left = SymIntTuple::new(vec![dim(2), dim(3), dim(4)]);
+        let right = SymIntTuple::new(vec![dim(5), dim(4)]);
+
+        assert_eq!(
+            broadcast_shapes(&left, &right).unwrap_err().to_string(),
+            "Cannot broadcast dimension SymInt[3] with dimension SymInt[5] at position 1"
+        );
+    }
+
+    #[test]
+    fn broadcast_concrete_shorter_than_unpacked_suffix_preserves_leading_suffix() {
+        let concrete = SymIntTuple::new(vec![dim(4)]);
+        let middle = shape_carrier("Shape");
+        let unpacked = SymIntTuple::unpacked(vec![size(2)], middle.clone(), vec![size(3), size(1)]);
+        let expected = SymIntTuple::unpacked(vec![size(2)], middle, vec![size(3), size(4)]);
+
+        for (left, right) in [(&concrete, &unpacked), (&unpacked, &concrete)] {
+            assert_eq!(broadcast_shapes(left, right).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn broadcast_concrete_with_whole_shape_carrier_is_ambiguous() {
+        let concrete = SymIntTuple::new(vec![dim(2), dim(3)]);
+        let unpacked = SymIntTuple::unpacked(vec![size(9)], shape_carrier("Shape"), vec![size(3)]);
+
+        for (left, right) in [(&concrete, &unpacked), (&unpacked, &concrete)] {
+            assert_eq!(
+                broadcast_shapes(left, right).unwrap_err().to_string(),
+                "Cannot broadcast concrete dims with variadic shape: alignment is ambiguous"
+            );
+        }
+    }
+
+    #[test]
+    fn broadcast_unpacked_same_middle_combines_prefixes_and_suffixes() {
+        let middle = shape_carrier("Shape");
+        let left = SymIntTuple::unpacked(
+            vec![size(1), size(3)],
+            middle.clone(),
+            vec![size(1), size(5)],
+        );
+        let right = SymIntTuple::unpacked(
+            vec![size(2), size(1)],
+            middle.clone(),
+            vec![size(4), size(1)],
+        );
+
+        assert_eq!(
+            broadcast_shapes(&left, &right).unwrap(),
+            SymIntTuple::unpacked(vec![size(2), size(3)], middle, vec![size(4), size(5)],)
+        );
+    }
+
+    #[test]
+    fn broadcast_unpacked_different_middles_degrade_to_gradual() {
+        let left = SymIntTuple::unpacked(
+            vec![size(2)],
+            shape_carrier("LeftShape"),
+            vec![size(1), size(5)],
+        );
+        let right = SymIntTuple::unpacked(
+            vec![size(4)],
+            shape_carrier("RightShape"),
+            vec![size(3), size(1)],
+        );
+
+        assert_eq!(
+            broadcast_shapes(&left, &right).unwrap(),
+            SymIntTuple::unpacked(Vec::new(), gradual_shape_middle(), vec![size(3), size(5)],)
+        );
+    }
+
+    #[test]
+    fn broadcast_gradual_middle_absorbs_unmatched_concrete_dimensions() {
+        let concrete = SymIntTuple::new(vec![dim(8), dim(6), dim(2), dim(3)]);
+        let unpacked = SymIntTuple::unpacked(
+            vec![size(7)],
+            gradual_shape_middle(),
+            vec![size(1), size(3)],
+        );
+        let expected =
+            SymIntTuple::unpacked(Vec::new(), gradual_shape_middle(), vec![size(2), size(3)]);
+
+        for (left, right) in [(&concrete, &unpacked), (&unpacked, &concrete)] {
+            assert_eq!(broadcast_shapes(left, right).unwrap(), expected);
+        }
     }
 
     #[test]
