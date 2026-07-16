@@ -628,6 +628,32 @@ def f[Shape: SymIntTuple](x: Array[SymIntTuple[1], Shape, int]) -> None:
 );
 
 testcase!(
+    test_shaped_array_syminttuple_nonzero_shape_arg_display_projection_and_subset,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymIntTuple, shaped_array
+from typing import reveal_type
+
+@shaped_array(shape="Shape")
+class DTypeFirstArray[DType, Shape: SymIntTuple]:
+    shape: Shape
+    def dtype(self) -> DType: ...
+
+def want_2_3(x: DTypeFirstArray[int, [2, 3]]) -> None: ...
+
+def f(
+    x: DTypeFirstArray[int, [2, 3]],
+    y: DTypeFirstArray[int, [2, 4]],
+) -> None:
+    reveal_type(x)  # E: revealed type: DTypeFirstArray[int, [2, 3]]
+    reveal_type(x.shape)  # E: revealed type: SymIntTuple[2, 3]
+    reveal_type(x.dtype())  # E: revealed type: int
+    want_2_3(x)
+    want_2_3(y)  # E: Argument `DTypeFirstArray[int, [2, 4]]` is not assignable to parameter `x` with type `DTypeFirstArray[int, [2, 3]]`
+"#,
+);
+
+testcase!(
     test_symbolic_size_subset_delegates_to_symbolic_leaf,
     shaped_array_env(),
     r#"

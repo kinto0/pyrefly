@@ -764,6 +764,10 @@ pub fn shape_to_tuple_carrier(shape: &SymIntTuple) -> Type {
 /// Detects a tuple-carrier shape variable occupying the variadic middle of an
 /// unpacked shape.
 pub fn is_tuple_carrier_shape_middle(ty: &Type) -> bool {
+    // An ordinary TypeVar is legal here only as a whole-shape carrier from
+    // tuple-carrier syntax, e.g. `Array[S, DType]` -> `Unpacked([], S, [])`.
+    // Scalar symbolic dimensions use `SymInt`/`SymIntVar` and must not reach
+    // this fallback as bare TypeVars.
     matches!(ty, Type::Var(_) | Type::TypeVar(_))
         || matches!(ty, Type::Quantified(q) if q.is_type_var())
 }
@@ -1563,6 +1567,62 @@ mod tests {
         assert_eq!(
             SymIntTuple::shapeless().to_tuple_type(),
             Type::Tuple(Tuple::Unbounded(Box::new(gradual_size())))
+        );
+    }
+
+    #[test]
+    fn from_tuple_wraps_valid_unbounded_shape_middle() {
+        let elt = Type::ClassType(fake_class_type("torch", "Materialization"));
+        let shape = SymIntTuple::from_tuple(Tuple::Unbounded(Box::new(elt.clone())));
+
+        assert_eq!(
+            shape,
+            SymIntTuple::unpacked(
+                Vec::new(),
+                Type::Tuple(Tuple::Unbounded(Box::new(elt.clone()))),
+                Vec::new(),
+            )
+        );
+        assert_eq!(
+            shape.to_tuple_type(),
+            Type::Tuple(Tuple::Unpacked(Box::new((
+                Vec::new(),
+                Type::Tuple(Tuple::Unbounded(Box::new(elt))),
+                Vec::new(),
+            ))))
+        );
+    }
+
+    #[test]
+    fn unpacked_nested_shapeless_syminttuple_middle_flattens() {
+        assert_eq!(
+            SymIntTuple::unpacked(
+                Vec::new(),
+                SymIntTuple::shapeless().to_shape_arg_type(),
+                Vec::new(),
+            ),
+            SymIntTuple::shapeless()
+        );
+    }
+
+    #[test]
+    fn unpacked_nested_unbounded_syminttuple_middle_normalizes() {
+        let elt = Type::ClassType(fake_class_type("torch", "Materialization"));
+        let shape = SymIntTuple::unpacked(
+            vec![size(1)],
+            Type::SymIntTuple(Box::new(SymIntTuple(Tuple::Unbounded(Box::new(
+                elt.clone(),
+            ))))),
+            vec![size(2)],
+        );
+
+        assert_eq!(
+            shape,
+            SymIntTuple::unpacked(
+                vec![size(1)],
+                Type::Tuple(Tuple::Unbounded(Box::new(elt))),
+                vec![size(2)],
+            )
         );
     }
 

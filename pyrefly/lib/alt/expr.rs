@@ -4072,7 +4072,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         && self.is_symint_tuple_class(&cls)
                     {
                         let carrier = self.bare_symint_tuple_carrier();
-                        shape_arg_carrier = Some(self.heap.mk_symint_tuple(SymIntTuple::shapeless()));
+                        shape_arg_carrier = Some(SymIntTuple::shapeless().to_shape_arg_type());
                         shape_validation_arg(&carrier)
                     } else {
                         match self.expr_untype(arg, TypeFormContext::TypeArgument, errors) {
