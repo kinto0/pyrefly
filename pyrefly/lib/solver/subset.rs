@@ -56,6 +56,7 @@ use crate::solver::solver::SubsetCacheEntry;
 use crate::solver::solver::SubsetError;
 use crate::solver::solver::SubsetWithSnapshotResult;
 use crate::solver::solver::TypedDictSubsetError;
+use crate::solver::solver::type_as_symintvar_solution;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Params;
@@ -2775,6 +2776,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         for (got_arg, want_arg, param) in izip!(got, want, params.iter()) {
             if param.kind() == QuantifiedKind::TypeVarTuple {
                 self.is_consistent(got_arg, want_arg)?;
+            } else if param.kind() == QuantifiedKind::SymIntVar {
+                let got_arg = Self::symintvar_targ_for_compare(got_arg)?;
+                let want_arg = Self::symintvar_targ_for_compare(want_arg)?;
+                match variances.get(param.name()) {
+                    Variance::Covariant => self.is_subset_eq(&got_arg, &want_arg)?,
+                    Variance::Contravariant => self.is_subset_eq(&want_arg, &got_arg)?,
+                    Variance::Invariant | Variance::Bivariant => {
+                        self.is_consistent(&got_arg, &want_arg)?
+                    }
+                }
             } else {
                 match variances.get(param.name()) {
                     Variance::Covariant => self.is_subset_eq(got_arg, want_arg)?,
@@ -2789,6 +2800,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
         }
         Ok(())
+    }
+
+    fn symintvar_targ_for_compare(arg: &Type) -> Result<Type, SubsetError> {
+        type_as_symintvar_solution(arg).ok_or(SubsetError::Other)
     }
 
     fn is_subset_shaped_array(

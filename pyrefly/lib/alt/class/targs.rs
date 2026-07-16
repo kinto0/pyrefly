@@ -11,6 +11,7 @@ use dupe::Dupe;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::Function;
 use pyrefly_types::dimension::SymInt;
+use pyrefly_types::dimension::gradual_size;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::display::count;
 use pyrefly_util::prelude::SliceExt;
@@ -26,6 +27,7 @@ use crate::error::collector::ErrorCollector;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::solver::solver::QuantifiedHandle;
+use crate::solver::solver::type_as_symintvar_solution;
 use crate::types::callable::Param;
 use crate::types::callable::ParamList;
 use crate::types::callable::Required;
@@ -465,12 +467,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             errors,
                         ));
                     }
-                    QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => {
+                    QuantifiedKind::TypeVar => {
                         checked_targs.push(self.create_next_typevar_arg(
                             param,
                             targs_cursor.consume_for_typevar_arg(),
                             range,
                             validate_restriction,
+                            errors,
+                        ));
+                    }
+                    QuantifiedKind::SymIntVar => {
+                        checked_targs.push(self.create_next_symintvar_arg(
+                            param,
+                            targs_cursor.consume_for_typevar_arg(),
+                            range,
                             errors,
                         ));
                     }
@@ -686,6 +696,47 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     arg
                 }
             }
+        }
+    }
+
+    fn create_next_symintvar_arg(
+        &self,
+        param: &Quantified,
+        arg: &Type,
+        range: TextRange,
+        errors: &ErrorCollector,
+    ) -> Type {
+        match arg {
+            Type::Unpack(_) => {
+                // Shape argument parsing normally rejects this first; keep the
+                // targ-level recovery path for callers that bypass that parser.
+                self.error(
+                    errors,
+                    range,
+                    ErrorKind::BadUnpacking,
+                    format!(
+                        "Unpacked argument cannot be used for type parameter {}",
+                        param.name()
+                    ),
+                );
+                gradual_size()
+            }
+            _ => type_as_symintvar_solution(arg).unwrap_or_else(|| {
+                // Shape argument parsing normally rejects concrete source errors
+                // first; this is the class-targ recovery path for invalid values
+                // that reach specialization directly.
+                self.error(
+                    errors,
+                    range,
+                    ErrorKind::BadSpecialization,
+                    format!(
+                        "Expected a valid SymInt expression for type parameter `{}`, got `{}`",
+                        param.name(),
+                        self.for_display(arg.clone())
+                    ),
+                );
+                gradual_size()
+            }),
         }
     }
 

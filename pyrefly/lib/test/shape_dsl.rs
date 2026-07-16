@@ -592,6 +592,104 @@ def concrete_elements_middle(
 );
 
 testcase!(
+    test_symintvar_rejects_non_symint_specialization_with_symint_recovery,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntVar
+
+class Box[N: SymIntVar]:
+    dim: SymInt[N]
+
+type Dim[N: SymIntVar] = SymInt[N]
+
+def explicit_class(bad: Box[str]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables
+    reveal_type(bad.dim)  # E: revealed type: SymInt[int]
+
+def explicit_class_non_shape_arg(bad: Box[list[int]]) -> None:  # E: Tensor shape dimensions must be positive integer literals, string literals, type variables, or expressions
+    reveal_type(bad.dim)  # E: revealed type: SymInt[int]
+
+def explicit_alias(x: Dim[str]) -> None:  # E: Tensor shape dimensions must be integer literals or type variables
+    reveal_type(x)  # E: revealed type: SymInt[int]
+"#,
+);
+
+testcase!(
+    test_symintvar_bad_call_bound_recovers_to_symint_gradual,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntVar
+
+def takes_dim[N: SymIntVar](x: SymInt[N]) -> SymInt[N]:
+    return x
+
+def bad_call(x: str) -> None:
+    y = takes_dim(x)  # E: Argument `str` is not assignable to parameter `x`
+    reveal_type(y)  # E: revealed type: SymInt[int]
+
+def bad_upper_bound() -> None:
+    y: str = takes_dim(3)  # E: `SymInt[3]` is not assignable to `str`
+    reveal_type(y)  # E: revealed type: str
+"#,
+);
+
+testcase!(
+    test_ordinary_typevar_still_solves_to_symint,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntVar
+
+def identity[T](x: T) -> T:
+    return x
+
+def f[N: SymIntVar](x: SymInt[N]) -> None:
+    reveal_type(identity(x))  # E: revealed type: SymInt[N]
+"#,
+);
+
+testcase!(
+    test_symintvar_inference_chains_without_losing_kind,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntVar
+
+def identity[T](x: T) -> T:
+    return x
+
+def same_dim[N: SymIntVar](x: SymInt[N]) -> SymInt[N]:
+    return x
+
+def f[N: SymIntVar](x: SymInt[N], s: str) -> None:
+    reveal_type(same_dim(same_dim(x)))  # E: revealed type: SymInt[N]
+    reveal_type(same_dim(identity(x)))  # E: revealed type: SymInt[N]
+    reveal_type(identity(same_dim(x)))  # E: revealed type: SymInt[N]
+    same_dim(identity(s))  # E: Argument `str` is not assignable to parameter `x`
+"#,
+);
+
+testcase!(
+    test_symintvar_inference_with_bounded_typevar_keeps_symint_kind,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntVar
+
+def bounded_identity[T: object](x: T) -> T:
+    return x
+
+def same_dim[N: SymIntVar](x: SymInt[N]) -> SymInt[N]:
+    return x
+
+def f[N: SymIntVar](x: SymInt[N], s: str) -> None:
+    reveal_type(same_dim(bounded_identity(x)))  # E: revealed type: SymInt[N]
+    same_dim(bounded_identity(s))  # E: Argument `str` is not assignable to parameter `x`
+"#,
+);
+
+testcase!(
     test_shaped_array_elements_tuple_carriers_rfc,
     shaped_array_env(),
     r#"
@@ -1174,6 +1272,40 @@ def dense_chain[I: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIn
     layer: Layer,
     depth: SymInt[I],
 ) -> Tensor[[B, C + 32, H, W]] | Tensor[[B, C + I * 32, H, W]]: ...
+"#,
+);
+
+testcase!(
+    test_shaped_array_overload_impl_accepts_symbolic_size_return_with_generic_block,
+    shaped_array_env(),
+    r#"
+from shape_extensions import SymInt, SymIntVar, shaped_array
+from typing import Any, overload
+
+@shaped_array(shape="Shape")
+class Tensor[Shape]: ...
+
+class Block[C: SymIntVar, GR: SymIntVar, BnC: SymIntVar]: ...
+
+@overload
+def dense_chain[GR: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    block: Block[Any, GR, Any],
+    x: Tensor[[B, C, H, W]],
+    depth: SymInt[1],
+) -> Tensor[[B, C + GR, H, W]]: ...
+
+@overload
+def dense_chain[I: SymIntVar, GR: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    block: Block[Any, GR, Any],
+    x: Tensor[[B, C, H, W]],
+    depth: SymInt[I],
+) -> Tensor[[B, C + I * GR, H, W]]: ...
+
+def dense_chain[I: SymIntVar, GR: SymIntVar, B: SymIntVar, C: SymIntVar, H: SymIntVar, W: SymIntVar](
+    block: Block[Any, GR, Any],
+    x: Tensor[[B, C, H, W]],
+    depth: SymInt[I],
+) -> Tensor[[B, C + GR, H, W]] | Tensor[[B, C + I * GR, H, W]]: ...
 "#,
 );
 

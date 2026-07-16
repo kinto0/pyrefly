@@ -23,6 +23,7 @@ use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
 
 use crate::class::ClassType;
+use crate::dimension::gradual_size;
 use crate::heap::TypeHeap;
 use crate::stdlib::Stdlib;
 use crate::type_var::PreInferenceVariance;
@@ -214,7 +215,8 @@ pub enum QuantifiedKind {
 impl QuantifiedKind {
     fn empty_value(self) -> Type {
         match self {
-            QuantifiedKind::TypeVar | QuantifiedKind::SymIntVar => Type::any_implicit(),
+            QuantifiedKind::TypeVar => Type::any_implicit(),
+            QuantifiedKind::SymIntVar => gradual_size(),
             QuantifiedKind::ParamSpec => Type::Ellipsis,
             QuantifiedKind::TypeVarTuple => Type::any_tuple(),
         }

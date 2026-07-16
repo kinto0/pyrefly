@@ -26,7 +26,9 @@ use pyrefly_python::qname::QName;
 use pyrefly_types::callable_residual::OverloadBranchProjection;
 use pyrefly_types::callable_residual::OverloadResidualIdentity;
 use pyrefly_types::dimension::ShapeError;
+use pyrefly_types::dimension::SymInt;
 use pyrefly_types::dimension::canonicalize;
+use pyrefly_types::dimension::gradual_size;
 use pyrefly_types::dimension::is_gradual_size;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::quantified::Quantified;
@@ -90,6 +92,23 @@ const VAR_LEAK: &str = "Internal error: a variable has leaked from one module to
 /// and each recursive call to is_subset_eq can use several KB of stack space
 /// due to large enums (Type) and lock guards.
 const INITIAL_GAS: Gas = Gas::new(200);
+
+/// Normalize a candidate answer for a `SymIntVar`.
+///
+/// Existing `SymIntVar` leaves stay as bare quantified/type-var values so
+/// substitution preserves source-level spellings like `SymInt[N]`; compound
+/// dimension expressions are canonicalized to `Type::SymInt`.
+pub(crate) fn type_as_symintvar_solution(ty: &Type) -> Option<Type> {
+    match ty {
+        _ if ty.is_error() || ty.is_any() => Some(gradual_size()),
+        Type::ClassType(cls) if cls.is_builtin("int") => Some(gradual_size()),
+        Type::Quantified(q) if q.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
+        Type::TypeVar(tv) if tv.kind() == QuantifiedKind::SymIntVar => Some(ty.clone()),
+        Type::Var(_) => Some(Type::SymInt(SymInt::Symbolic(Box::new(ty.clone())))),
+        _ => SymInt::from_type(ty).map(|dim| canonicalize(Type::SymInt(dim))),
+    }
+}
+
 /// Accumulated bounds for a solver variable.
 #[derive(Clone, Debug, Default)]
 struct Bounds {
@@ -144,6 +163,14 @@ mod tests {
     }
 
     fn quantified(kind: QuantifiedKind, index: u32) -> Quantified {
+        quantified_with_restriction(kind, index, Restriction::Unrestricted)
+    }
+
+    fn quantified_with_restriction(
+        kind: QuantifiedKind,
+        index: u32,
+        restriction: Restriction,
+    ) -> Quantified {
         Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("test"),
@@ -159,7 +186,7 @@ mod tests {
             }),
             kind,
             None,
-            Restriction::Unrestricted,
+            restriction,
             PreInferenceVariance::Invariant,
         )
     }
@@ -249,6 +276,126 @@ mod tests {
         solver.expand_with_bounds(&mut ty);
 
         assert_eq!(ty, union);
+    }
+
+    #[test]
+    fn symintvar_typevar_unification_preserves_symintvar_kind() {
+        let cases = [
+            (
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Unrestricted,
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+            (
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Unrestricted,
+            ),
+            (
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Bound(Type::any_implicit()),
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+            (
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+            (
+                true,
+                QuantifiedKind::SymIntVar,
+                Restriction::Unrestricted,
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+            (
+                false,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+                true,
+                QuantifiedKind::SymIntVar,
+                Restriction::Unrestricted,
+            ),
+            (
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Bound(Type::any_implicit()),
+                true,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+            (
+                true,
+                QuantifiedKind::TypeVar,
+                Restriction::Bound(Type::any_implicit()),
+                false,
+                QuantifiedKind::SymIntVar,
+                Restriction::Bound(Type::any_implicit()),
+            ),
+        ];
+        for (index, (v1_quantified, k1, r1, v2_quantified, k2, r2)) in cases.into_iter().enumerate()
+        {
+            let solver = Solver::new(false, true, false, false, false);
+            let uniques = UniqueFactory::new();
+            let v1 = Var::new(&uniques);
+            let v2 = Var::new(&uniques);
+            let q1 = quantified_with_restriction(k1, (index * 2) as u32, r1);
+            let q2 = quantified_with_restriction(k2, (index * 2 + 1) as u32, r2);
+            let mut variables = solver.variables.lock();
+            variables.insert_fresh(
+                v1,
+                if v1_quantified {
+                    Variable::Quantified {
+                        quantified: q1,
+                        bounds: Bounds::new(),
+                    }
+                } else {
+                    Variable::PartialQuantified(q1)
+                },
+            );
+            variables.insert_fresh(
+                v2,
+                if v2_quantified {
+                    Variable::Quantified {
+                        quantified: q2,
+                        bounds: Bounds::new(),
+                    }
+                } else {
+                    Variable::PartialQuantified(q2)
+                },
+            );
+            let variable1 = variables.get(v1);
+            let variable2 = variables.get(v2);
+            let (x, y) = symintvar_typevar_unify_order(v1, &variable1, v2, &variable2)
+                .expect("case should require SymIntVar-preserving unification");
+            drop(variable1);
+            drop(variable2);
+            variables.unify(x, y);
+
+            for var in [v1, v2] {
+                let current = variables.get(var);
+                assert!(match &*current {
+                    Variable::Quantified { quantified, .. } => {
+                        quantified.kind() == QuantifiedKind::SymIntVar
+                    }
+                    Variable::PartialQuantified(q) => q.kind() == QuantifiedKind::SymIntVar,
+                    _ => false,
+                });
+            }
+        }
     }
 }
 
@@ -1519,6 +1666,9 @@ impl Solver {
         existing_bounds: &Vec<Type>,
         kind: QuantifiedKind,
     ) -> Result<(), SubsetError> {
+        if kind == QuantifiedKind::SymIntVar && type_as_symintvar_solution(bound).is_none() {
+            return Err(SubsetError::Other);
+        }
         if kind == QuantifiedKind::TypeVarTuple
             && let Type::Tuple(Tuple::Concrete(elts)) = bound
         {
@@ -1547,7 +1697,7 @@ impl Solver {
     ) -> Result<(), SubsetError> {
         let lock = self.variables.lock();
         let e = lock.get(v);
-        let (first_bound, upper_bound, res) = match &*e {
+        let (first_bound, upper_bound, res, quantified_kind) = match &*e {
             Variable::Quantified {
                 quantified: _,
                 bounds,
@@ -1560,6 +1710,11 @@ impl Solver {
                 } else {
                     Ok(())
                 },
+                if let Variable::Quantified { quantified, .. } = &*e {
+                    Some(quantified.kind())
+                } else {
+                    None
+                },
             ),
             _ => return Ok(()),
         };
@@ -1568,20 +1723,35 @@ impl Solver {
         let res = res.and_then(|_| {
             upper_bound.map_or(Ok(()), |upper_bound| is_subset(&bound, &upper_bound))
         });
-        let new_bound = if res.is_ok() {
-            self.get_new_bound(first_bound, bound, false, is_subset)
-        } else {
-            // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
-            NewBound::AddBound(Type::any_error())
+        let new_bound = match (res.is_ok(), quantified_kind) {
+            (true, Some(QuantifiedKind::SymIntVar)) => Some(
+                self.get_new_bound(
+                    first_bound,
+                    // `validate_bound_consistency` accepted this bound, so the
+                    // same SymIntVar normalization must succeed before storing it.
+                    type_as_symintvar_solution(&bound)
+                        .expect("successful SymIntVar lower-bound check must normalize"),
+                    false,
+                    is_subset,
+                ),
+            ),
+            (true, _) => Some(self.get_new_bound(first_bound, bound, false, is_subset)),
+            (false, Some(QuantifiedKind::SymIntVar)) => None,
+            (false, _) => {
+                // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
+                Some(NewBound::AddBound(Type::any_error()))
+            }
         };
         let lock = self.variables.lock();
-        match &mut *lock.get_mut(v) {
-            Variable::Quantified {
-                quantified: _,
-                bounds,
+        if let Some(new_bound) = new_bound {
+            match &mut *lock.get_mut(v) {
+                Variable::Quantified {
+                    quantified: _,
+                    bounds,
+                }
+                | Variable::Unwrap(bounds) => self.add_bound(&mut bounds.lower, new_bound),
+                _ => {}
             }
-            | Variable::Unwrap(bounds) => self.add_bound(&mut bounds.lower, new_bound),
-            _ => {}
         }
         res
     }
@@ -1594,7 +1764,7 @@ impl Solver {
     ) -> Result<(), SubsetError> {
         let lock = self.variables.lock();
         let e = lock.get(v);
-        let (first_bound, lower_bound, res) = match &*e {
+        let (first_bound, lower_bound, res, quantified_kind) = match &*e {
             Variable::Quantified {
                 quantified: _,
                 bounds,
@@ -1607,6 +1777,11 @@ impl Solver {
                 } else {
                     Ok(())
                 },
+                if let Variable::Quantified { quantified, .. } = &*e {
+                    Some(quantified.kind())
+                } else {
+                    None
+                },
             ),
             _ => return Ok(()),
         };
@@ -1615,20 +1790,35 @@ impl Solver {
         let res = res.and_then(|_| {
             lower_bound.map_or(Ok(()), |lower_bound| is_subset(&lower_bound, &bound))
         });
-        let new_bound = if res.is_ok() {
-            self.get_new_bound(first_bound, bound, true, is_subset)
-        } else {
-            // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
-            NewBound::AddBound(Type::any_error())
+        let new_bound = match (res.is_ok(), quantified_kind) {
+            (true, Some(QuantifiedKind::SymIntVar)) => Some(
+                self.get_new_bound(
+                    first_bound,
+                    // `validate_bound_consistency` accepted this bound, so the
+                    // same SymIntVar normalization must succeed before storing it.
+                    type_as_symintvar_solution(&bound)
+                        .expect("successful SymIntVar upper-bound check must normalize"),
+                    true,
+                    is_subset,
+                ),
+            ),
+            (true, _) => Some(self.get_new_bound(first_bound, bound, true, is_subset)),
+            (false, Some(QuantifiedKind::SymIntVar)) => None,
+            (false, _) => {
+                // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
+                Some(NewBound::AddBound(Type::any_error()))
+            }
         };
         let lock = self.variables.lock();
-        match &mut *lock.get_mut(v) {
-            Variable::Quantified {
-                quantified: _,
-                bounds,
+        if let Some(new_bound) = new_bound {
+            match &mut *lock.get_mut(v) {
+                Variable::Quantified {
+                    quantified: _,
+                    bounds,
+                }
+                | Variable::Unwrap(bounds) => self.add_bound(&mut bounds.upper, new_bound),
+                _ => {}
             }
-            | Variable::Unwrap(bounds) => self.add_bound(&mut bounds.upper, new_bound),
-            _ => {}
         }
         res
     }
@@ -1785,12 +1975,21 @@ impl Solver {
                 return is_subset(branch_ty, solved_ty).is_ok()
                     && is_subset(solved_ty, branch_ty).is_ok();
             }
-            Variable::PartialQuantified(_)
-            | Variable::PartialContained(_)
-            | Variable::Recursive => {
+            Variable::PartialQuantified(q) => {
+                let answer = if q.kind() == QuantifiedKind::SymIntVar {
+                    type_as_symintvar_solution(solved_ty).unwrap_or_else(gradual_size)
+                } else {
+                    solved_ty.clone()
+                };
+                *branch_value = Variable::Answer(answer);
+                return true;
+            }
+            Variable::PartialContained(_) | Variable::Recursive => {
                 // During the overload branch probe, the captured Quantified var
                 // was unified with a partial/recursive var. Pin it to the solved
-                // type so downstream materialization sees a concrete answer.
+                // type so downstream materialization sees a concrete answer. These
+                // vars do not retain a QuantifiedKind, so any SymIntVar answer was
+                // already normalized before capture.
                 *branch_value = Variable::Answer(solved_ty.clone());
                 return true;
             }
@@ -3561,6 +3760,15 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     drop(variables);
                     self.is_subset_eq(&t1, want)
                 } else {
+                    if let Some((x, y)) =
+                        symintvar_typevar_unify_order(*v1, &variable1, *v2, &variable2)
+                    {
+                        drop(variable1);
+                        drop(variable2);
+                        variables.unify(x, y);
+                        return Ok(());
+                    }
+
                     match (&*variable1, &*variable2) {
                         // When both variables are quantified, we need to preserve the stricter bound.
                         // The `unify` function preserves the Variable data from its second argument,
@@ -3585,7 +3793,6 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
 
                             match (r1_restricted, r2_restricted) {
                                 (false, false) => {
-                                    // Neither has a restriction, order doesn't matter
                                     variables.unify(*v1, *v2);
                                 }
                                 (true, false) => {
@@ -3688,6 +3895,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     }
                     Variable::PartialQuantified(q) => {
                         let name = q.name.clone();
+                        let kind = q.kind();
                         let restriction = q.restriction().clone();
                         let bound = q.upper_bound(self.type_order.stdlib(), &self.solver.heap);
                         drop(v1_ref);
@@ -3695,7 +3903,16 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         // For constrained TypeVars, promote to the matching constraint type
                         // rather than pinning to the raw argument type.
                         if let Restriction::Constraints(constraints) = restriction {
-                            variables.update(*v1, Variable::Answer(t2.clone()));
+                            // Source-created SymIntVars are represented with an
+                            // unrestricted marker, not constraints; keep this
+                            // defensive path normalized in case an internal
+                            // quantified value is constructed with constraints.
+                            let answer = if kind == QuantifiedKind::SymIntVar {
+                                type_as_symintvar_solution(t2).unwrap_or_else(gradual_size)
+                            } else {
+                                t2.clone()
+                            };
+                            variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if let Type::Quantified(q_t2) = t2 {
                                 if !self.quantified_satisfies_constraints(q_t2, &constraints) {
@@ -3711,7 +3928,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             } else if let Some(constraint) =
                                 self.find_matching_constraint(t2, &constraints)
                             {
-                                let constraint = constraint.clone();
+                                let constraint = if kind == QuantifiedKind::SymIntVar {
+                                    type_as_symintvar_solution(constraint)
+                                        .unwrap_or_else(gradual_size)
+                                } else {
+                                    constraint.clone()
+                                };
                                 self.solver
                                     .variables
                                     .lock()
@@ -3727,7 +3949,12 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                                 );
                             }
                         } else {
-                            variables.update(*v1, Variable::Answer(t2.clone()));
+                            let answer = if kind == QuantifiedKind::SymIntVar {
+                                type_as_symintvar_solution(t2).unwrap_or_else(gradual_size)
+                            } else {
+                                t2.clone()
+                            };
+                            variables.update(*v1, Variable::Answer(answer));
                             drop(variables);
                             if self.is_subset_eq(t2, &bound).is_err() {
                                 self.solver.instantiation_errors.write().insert(
@@ -3822,6 +4049,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                             //
                             // TODO(https://github.com/facebook/pyrefly/issues/105): figure out
                             // what to do with ParamSpec.
+                            let answer = if q.kind() == QuantifiedKind::SymIntVar {
+                                type_as_symintvar_solution(&answer).unwrap_or_else(gradual_size)
+                            } else {
+                                answer
+                            };
                             self.solver
                                 .variables
                                 .lock()
@@ -3839,6 +4071,11 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                         drop(variables);
                         let (answer, specialization_error) =
                             self.is_subset_eq_quantified(t1, &q, None);
+                        let answer = if q.kind() == QuantifiedKind::SymIntVar {
+                            type_as_symintvar_solution(&answer).unwrap_or_else(gradual_size)
+                        } else {
+                            answer
+                        };
                         if let Some(specialization_error) = specialization_error {
                             self.solver
                                 .instantiation_errors
@@ -3891,5 +4128,35 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
             }
             _ => self.is_subset_eq_impl(got, want),
         }
+    }
+}
+
+fn quantified_kind_for_unification(variable: &Variable) -> Option<QuantifiedKind> {
+    match variable {
+        Variable::Quantified { quantified, .. } | Variable::PartialQuantified(quantified) => {
+            Some(quantified.kind())
+        }
+        _ => None,
+    }
+}
+
+fn symintvar_typevar_unify_order(
+    v1: Var,
+    variable1: &Variable,
+    v2: Var,
+    variable2: &Variable,
+) -> Option<(Var, Var)> {
+    // `unify(x, y)` preserves `y`'s variable data. If a symbolic-int variable
+    // meets an ordinary type variable, preserve the SymIntVar kind even if the
+    // ordinary TypeVar has a bound or constraints: later SymIntVar answers must
+    // remain symbolic integers, and any ordinary TypeVar restriction has already
+    // been checked when bounds were admitted.
+    match (
+        quantified_kind_for_unification(variable1),
+        quantified_kind_for_unification(variable2),
+    ) {
+        (Some(QuantifiedKind::SymIntVar), Some(QuantifiedKind::TypeVar)) => Some((v2, v1)),
+        (Some(QuantifiedKind::TypeVar), Some(QuantifiedKind::SymIntVar)) => Some((v1, v2)),
+        _ => None,
     }
 }
