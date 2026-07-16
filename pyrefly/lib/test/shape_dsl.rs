@@ -1780,6 +1780,65 @@ def index_preserves_dtype(concrete: Array[[2, 3], int]) -> Array[[3], int]:
 );
 
 testcase!(
+    test_shaped_array_slice_bound_kind_recovery,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntTuple, SymIntVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def ordinary_typevar[T](x: Array[[10], int], t: T) -> None:
+    reveal_type(x[t:])  # E: revealed type: Array[[int], int]
+    reveal_type(x[:t])  # E: revealed type: Array[[int], int]
+    reveal_type(x[::t])  # E: revealed type: Array[[int], int]
+
+def ordinary_paramspec[**P](x: Array[[10], int]) -> None:
+    reveal_type(x[P:])  # E: revealed type: Array[[int], int]
+    reveal_type(x[:P])  # E: revealed type: Array[[int], int]
+    reveal_type(x[::P])  # E: revealed type: Array[[int], int]
+
+def ordinary_typevartuple[*Ts](x: Array[[10], int]) -> None:
+    reveal_type(x[Ts:])  # E: revealed type: Array[[int], int]
+    reveal_type(x[:Ts])  # E: revealed type: Array[[int], int]
+    reveal_type(x[::Ts])  # E: revealed type: Array[[int], int]
+
+def symintvar[N: SymIntVar](x: Array[[10], int], n: SymInt[N]) -> None:
+    start: Array[[10 - N], int] = x[n:]
+    stop: Array[[N], int] = x[:n]
+    step: Array[[(10 + N - 1) // N], int] = x[::n]
+    negative: Array[[N + 1], int] = x[-(n + 1):]
+"#,
+);
+
+testcase!(
+    test_shaped_array_multi_axis_slice_bound_kind_recovery,
+    shaped_array_env(),
+    r#"
+from typing import reveal_type
+from shape_extensions import SymInt, SymIntTuple, SymIntVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: SymIntTuple, DType]: ...
+
+def ordinary_typevar[T](x: Array[[10, 20], int], t: T) -> None:
+    reveal_type(x[t:, :])  # E: revealed type: Array[[int, 20], int]
+
+def ordinary_paramspec[**P](x: Array[[10, 20], int]) -> None:
+    reveal_type(x[:, P:])  # E: revealed type: Array[[10, int], int]
+
+def symintvar[N: SymIntVar](x: Array[[10, 20], int], n: SymInt[N]) -> None:
+    start: Array[[10 - N, 20], int] = x[n:, :]
+    step: Array[[(10 + N - 1) // N, 20], int] = x[::n, :]
+
+def unclassifiable_step(x: Array[[10, 20], int], bad_step: str) -> None:
+    # A supplied invalid step is gradual; unlike an omitted step, it is not identity.
+    reveal_type(x[::bad_step, :])  # E: revealed type: Array[[int, 20], int]
+"#,
+);
+
+testcase!(
     test_shaped_array_tuple_carrier_indexing_keeps_shape_coherent,
     shaped_array_env(),
     r#"

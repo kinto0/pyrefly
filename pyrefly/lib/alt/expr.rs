@@ -3032,8 +3032,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         // Literal negation: just negate the value directly
                         return self.heap.mk_symint(SymInt::Literal(-val));
                     }
-                    Type::Quantified(_) | Type::SymInt(_) => inner_ty.clone(),
-                    _ => return Type::any_implicit(),
+                    _ if SymInt::from_type(&inner_ty).is_some() => inner_ty.clone(),
+                    _ => return gradual_size(),
                 };
                 // Wrap in Mul(-1, ...) WITHOUT canonicalizing.
                 // This preserves the structural signal for adjust_negative.
@@ -3045,8 +3045,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::Literal(ref lit) if let Some(val) = lit.value.as_index_i64() => {
                     self.heap.mk_symint(SymInt::Literal(val))
                 }
-                Type::Quantified(_) | Type::SymInt(_) => ty.clone(),
-                _ => Type::any_implicit(),
+                _ if SymInt::from_type(&ty).is_some() => ty.clone(),
+                _ => gradual_size(),
             }
         };
 
@@ -3058,8 +3058,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::Literal(lit) if let Some(val) = lit.value.as_index_i64() => {
                     Some(self.heap.mk_symint(SymInt::Literal(val)))
                 }
-                Type::Quantified(_) | Type::SymInt(_) => Some(ty.clone()),
-                _ => Option::None,
+                _ if SymInt::from_type(&ty).is_some() => Some(ty.clone()),
+                _ => Some(gradual_size()),
             }
         };
 

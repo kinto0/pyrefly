@@ -767,9 +767,10 @@ fn canonicalize_symint_dim(dim: SymInt) -> SymInt {
 }
 
 fn type_to_dim_recover(dim: Type) -> SymInt {
-    SymInt::from_type(&dim)
-        .map(canonicalize_symint_dim)
-        .unwrap_or(SymInt::Int)
+    match recover_symint_type(dim) {
+        Type::SymInt(dim) => canonicalize_symint_dim(dim),
+        _ => unreachable!("recovering a scalar dimension should produce a SymInt"),
+    }
 }
 
 fn dim_to_type(dim: &SymInt) -> Type {
@@ -811,6 +812,13 @@ fn is_valid_internal_symint(expr: &SymInt) -> bool {
         | SymInt::Pow(left, right) => {
             is_valid_internal_symint(left) && is_valid_internal_symint(right)
         }
+    }
+}
+
+fn recover_symint_type(dim: Type) -> Type {
+    match SymInt::from_type(&dim) {
+        Some(expr) if is_valid_internal_symint(&expr) => Type::SymInt(expr),
+        _ => gradual_size(),
     }
 }
 
@@ -1547,6 +1555,7 @@ fn shapeless_shape() -> SymIntTuple {
 /// Also handles symbolic negation: -1 * X (from unary `-` on a Dim/SymInt expression)
 /// becomes dim_size + (-1 * X) = dim_size - X.
 fn adjust_negative(bound: Type, dim_size: &Type) -> Type {
+    let bound = recover_symint_type(bound);
     let is_negative = match &bound {
         // Literal negative: -1, -2, etc.
         Type::SymInt(SymInt::Literal(v)) => *v < 0,
@@ -1576,7 +1585,7 @@ fn sub_dim(stop: Type, start: Type) -> Type {
 fn apply_step(range_dim: Type, step: Option<Type>) -> Type {
     let step = match step {
         None => return range_dim,
-        Some(s) => s,
+        Some(s) => recover_symint_type(s),
     };
     match &step {
         // Literal step: exact arithmetic
@@ -1853,6 +1862,28 @@ mod tests {
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![literal(3), literal(4), literal(5)])
         );
+    }
+
+    #[test]
+    fn prewrapped_invalid_slice_symint_recovers_to_gradual() {
+        let ordinary = Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar)));
+        let invalid = Type::SymInt(SymInt::add(size(1), ordinary));
+
+        assert_eq!(super::recover_symint_type(invalid), gradual_size());
+    }
+
+    #[test]
+    fn valid_slice_symint_trees_survive_recursive_recovery() {
+        let symbolic_var = Type::SymInt(SymInt::Symbolic(Box::new(Type::Var(Var::ZERO))));
+        assert_eq!(
+            super::recover_symint_type(symbolic_var.clone()),
+            symbolic_var
+        );
+
+        let nested = Type::SymInt(SymInt::Symbolic(Box::new(Type::SymInt(SymInt::Symbolic(
+            Box::new(Type::Var(Var::ZERO)),
+        )))));
+        assert_eq!(super::recover_symint_type(nested.clone()), nested);
     }
 
     #[test]
