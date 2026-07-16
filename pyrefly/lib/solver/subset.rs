@@ -970,7 +970,10 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         got: &SymIntTuple,
         want: &SymIntTuple,
     ) -> Result<(), SubsetError> {
-        if Self::symint_tuple_has_carrier_middle(got) || Self::symint_tuple_has_carrier_middle(want)
+        if got.is_shapeless() || want.is_shapeless() {
+            Ok(())
+        } else if Self::symint_tuple_has_carrier_middle(got)
+            || Self::symint_tuple_has_carrier_middle(want)
         {
             self.bind_tensor_dimensions(got, want)
         } else {
@@ -2952,9 +2955,9 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         want_shape: &SymIntTuple,
     ) -> Result<(), SubsetError> {
         // The subset logic only has two real cases: a fixed-rank shape or a shape
-        // with a variadic middle. Normalize direct `tuple[T, ...]` shapes to the
+        // with a variadic middle. Normalize direct shapeless shapes to the
         // variadic form locally so the case analysis below does not need a third
-        // `Unbounded` axis that behaves the same as `Unpacked([], tuple[T, ...], [])`.
+        // `Unbounded` axis that behaves the same as `Unpacked([], SymIntTuple, [])`.
         enum ShapeView<'a> {
             Concrete(&'a [Type]),
             Unpacked(Vec<Type>, Type, Vec<Type>),
@@ -2965,7 +2968,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 Tuple::Concrete(dims) => ShapeView::Concrete(dims),
                 Tuple::Unbounded(middle) => ShapeView::Unpacked(
                     Vec::new(),
-                    Type::Tuple(Tuple::Unbounded(middle.clone())),
+                    SymIntTuple::from_tuple(Tuple::Unbounded(middle.clone())).to_shape_arg_type(),
                     Vec::new(),
                 ),
                 Tuple::Unpacked(unpacked) => {
@@ -2976,7 +2979,7 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
         }
 
         fn pack_middle_slice(dims: &[Type]) -> Type {
-            shape_to_tuple_carrier(&SymIntTuple::from_types(dims.to_vec()))
+            SymIntTuple::from_types(dims.to_vec()).to_shape_arg_type()
         }
 
         match (shape_view(got_shape), shape_view(want_shape)) {
@@ -3093,11 +3096,8 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                     if prefix.is_empty() && suffix.is_empty() {
                         middle.clone()
                     } else {
-                        shape_to_tuple_carrier(&SymIntTuple::unpacked(
-                            prefix.to_vec(),
-                            middle.clone(),
-                            suffix.to_vec(),
-                        ))
+                        SymIntTuple::unpacked(prefix.to_vec(), middle.clone(), suffix.to_vec())
+                            .to_shape_arg_type()
                     }
                 };
 

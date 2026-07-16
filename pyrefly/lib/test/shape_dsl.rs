@@ -769,7 +769,7 @@ def bad[S: SymIntTuple, N: SymIntVar](
     takes_fixed_shape(shape_24)  # E: Shape dimension mismatch
     takes_fixed_shape(int_pair)  # E: is not assignable
     takes_unpacked_shape(ints)  # E: is not assignable
-    takes_unpacked_shape(symints)  # E: is not assignable
+    takes_unpacked_shape(symints)
 "#,
 );
 
@@ -1568,6 +1568,12 @@ def annotations(concrete: Array[[2, 3], int], scalar: Array[[], int], shapeless:
     reveal_type(shapeless[None])  # E: revealed type: Array
     reveal_type(shapeless[None, ...])  # E: revealed type: Array
 
+def accepts_precise(x: Array[[2, 3], int]) -> None:
+    pass
+
+def shapeless_is_gradual(shapeless: Array) -> None:
+    accepts_precise(shapeless)
+
 def values() -> None:
     value = Array()
     reveal_type(value)  # E: revealed type: Array
@@ -1729,9 +1735,9 @@ def f(
     shape_2_4: tuple[Literal[2], Literal[4]] = (2, 4)
     use_shape(compact_2_3, shape_2_3)
     use_shape(pep484_2_3, shape_2_3)
-    use_shape(compact_2_3, shape_2_4)  # E: Argument `tuple[Literal[2], Literal[4]]` is not assignable to parameter `shape` with type `tuple[Literal[2], Literal[3]]`
+    use_shape(compact_2_3, shape_2_4)  # E: Argument `tuple[Literal[2], Literal[4]]` is not assignable to parameter `shape` with type `SymIntTuple[2, 3]`
     out: tuple[Literal[2], Literal[3]] = get_shape(compact_2_3)
-    bad: tuple[Literal[2], Literal[4]] = get_shape(compact_2_3)  # E: `tuple[Literal[2], Literal[3]]` is not assignable to `tuple[Literal[2], Literal[4]]`
+    bad: tuple[Literal[2], Literal[4]] = get_shape(compact_2_3)  # E: `SymIntTuple[2, 3]` is not assignable to `tuple[Literal[2], Literal[4]]`
 "#,
 );
 
@@ -1806,7 +1812,7 @@ def get_shape[S](x: Array[S, int]) -> S: ...
 
 def f[*Ts](x: Array[tuple[Literal[2], *Ts], int]) -> None:
     good: tuple[Literal[2], *Ts] = get_shape(x)
-    bad: tuple[Literal[3], *Ts] = get_shape(x)  # E: `tuple[Literal[2], *Ts]` is not assignable to `tuple[Literal[3], *Ts]`
+    bad: tuple[Literal[3], *Ts] = get_shape(x)  # E: `SymIntTuple[2, *Ts]` is not assignable to `tuple[Literal[3], *Ts]`
 "#,
 );
 
@@ -1828,7 +1834,7 @@ def f[*Ts](
     shape_3: tuple[Literal[3], *Ts],
 ) -> None:
     use_shape(x, shape_2)
-    use_shape(x, shape_3)  # E: Argument `tuple[Literal[3], *Ts]` is not assignable to parameter `shape` with type `tuple[Literal[2], *Ts]`
+    use_shape(x, shape_3)  # E: Argument `tuple[Literal[3], *Ts]` is not assignable to parameter `shape` with type `SymIntTuple[2, *Ts]`
 "#,
 );
 

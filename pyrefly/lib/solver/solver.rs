@@ -1148,8 +1148,8 @@ impl Solver {
             }
             if let Type::ShapedArray(tensor) = x {
                 // Reuse tuple simplification for unpack flattening, then restore
-                // the shaped-array invariant that only `tuple[Any, ...]` is stored
-                // as a direct unbounded tuple.
+                // the shaped-array invariant that only gradual `SymIntTuple` is
+                // stored as a direct unbounded tuple.
                 //
                 // This re-simplifies the cached `shape` field only; the first-class
                 // `SymIntTuple` argument on `base_class` is still the pre-simplified

@@ -447,7 +447,9 @@ class Transformer(nn.Module):
             torch.ones(self.max_seq_length, self.max_seq_length, dtype=torch.bool)
         )
 
-    def forward(self, idx: Tensor, input_pos: Tensor | None = None) -> Tensor:
+    def forward[B: SymIntVar, SeqLen: SymIntVar](
+        self, idx: Tensor[[B, SeqLen]], input_pos: Tensor[[SeqLen]] | None = None
+    ) -> Tensor:
         if self.freqs_cis is None:
             raise AssertionError("Caches must be initialized first")
         mask = self.causal_mask[None, None, input_pos]

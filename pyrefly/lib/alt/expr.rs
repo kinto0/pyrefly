@@ -3144,7 +3144,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                     Tuple::Unbounded(middle) => SymIntTuple::unpacked(
                         new_dims,
-                        Type::Tuple(Tuple::Unbounded(middle.clone())),
+                        SymIntTuple::from_tuple(Tuple::Unbounded(middle.clone()))
+                            .to_shape_arg_type(),
                         Vec::new(),
                     ),
                     Tuple::Unpacked(f) => {
@@ -3899,7 +3900,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 match carrier {
                     Type::SymIntTuple(shape) => match shape.as_tuple() {
                         Tuple::Concrete(_) => Ok(Some(shape_to_tuple_carrier(&shape))),
-                        tuple if tuple.is_any_tuple() => Ok(Some(self.bare_symint_tuple_carrier())),
+                        _ if shape.is_shapeless() => Ok(Some(self.bare_symint_tuple_carrier())),
                         _ => {
                             self.error(
                                 errors,
@@ -4077,7 +4078,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     } else {
                         match self.expr_untype(arg, TypeFormContext::TypeArgument, errors) {
                             Type::SymIntTuple(shape) if i == shape_idx => {
-                                let carrier = if shape.as_tuple().is_any_tuple() {
+                                let carrier = if shape.is_shapeless() {
                                     self.bare_symint_tuple_carrier()
                                 } else {
                                     shape_to_tuple_carrier(&shape)

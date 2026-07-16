@@ -379,7 +379,7 @@ impl<'a> TypeDisplayContext<'a> {
                     None => {
                         output.write_qname(shaped_array.base_class.qname())?;
                         let shape = shaped_array.shape();
-                        if !shape.as_tuple().is_any_tuple() {
+                        if !shape.is_shapeless() {
                             output.write_str("[")?;
                             output.write_str(&shape.to_string())?;
                             output.write_str("]")?;
@@ -412,13 +412,11 @@ impl<'a> TypeDisplayContext<'a> {
 
         output.write_qname(shaped_array.base_class.qname())?;
         let shape = shaped_array.shape();
-        let display_count = targs
-            .display_count()
-            .max(if shape.as_tuple().is_any_tuple() {
-                0
-            } else {
-                shape_idx + 1
-            });
+        let display_count = targs.display_count().max(if shape.is_shapeless() {
+            0
+        } else {
+            shape_idx + 1
+        });
         if display_count == 0 {
             return Ok(());
         }
@@ -442,7 +440,7 @@ impl<'a> TypeDisplayContext<'a> {
         shape: &SymIntTuple,
         output: &mut impl TypeOutput,
     ) -> fmt::Result {
-        if shape.as_tuple().is_any_tuple() {
+        if shape.is_shapeless() {
             return self.fmt_helper_generic(&Type::any_tuple(), false, output);
         }
         match shape.as_tuple() {
@@ -457,7 +455,7 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_str("]")
             }
             Tuple::Unbounded(_) => {
-                unreachable!("shaped-array unbounded shapes must be tuple[Any, ...]")
+                unreachable!("shaped-array unbounded shapes must be gradual SymIntTuple")
             }
             Tuple::Unpacked(unpacked) => {
                 let (prefix, middle, suffix) = &**unpacked;
@@ -700,7 +698,7 @@ impl<'a> TypeDisplayContext<'a> {
             },
             Type::ShapedArray(shaped_array) => self.fmt_shaped_array(shaped_array, output),
             Type::SymIntTuple(symint_tuple) => {
-                if symint_tuple.as_tuple().is_any_tuple() {
+                if symint_tuple.is_shapeless() {
                     output.write_str("SymIntTuple")
                 } else {
                     output.write_str("SymIntTuple[")?;

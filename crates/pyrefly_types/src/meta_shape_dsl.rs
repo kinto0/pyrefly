@@ -2604,7 +2604,7 @@ fn eval_dsl_expr(
                 }
                 Tuple::Unbounded(_) => Ok(Val::Unpacked {
                     prefix: Vec::new(),
-                    middle: Type::any_tuple(),
+                    middle: SymIntTuple::shapeless().to_shape_arg_type(),
                     suffix: Vec::new(),
                 }),
                 Tuple::Unpacked(unpacked) => {

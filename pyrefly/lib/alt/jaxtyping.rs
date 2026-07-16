@@ -378,8 +378,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
             let middle = if tokens[var_idx] == "..." {
                 // Ellipsis: anonymous variadic matching any number of any-sized dims.
-                // Represented as tuple[Any, ...], same as shapeless tensor middle.
-                Type::any_tuple()
+                SymIntTuple::shapeless().to_shape_arg_type()
             } else {
                 // "*name" or "*#name": named variadic shape.
                 // Strip leading '*', then strip optional broadcast '#' prefix.
