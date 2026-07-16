@@ -1636,16 +1636,13 @@ fn apply_index_op(op: &IndexOp, dim: &Type) -> Option<Type> {
             let range_dim = sub_dim(stop, start);
             Some(apply_step(range_dim, step.clone()))
         }
-        IndexOp::ShapedArrayIndex(idx_dims) => {
-            // Multi-axis tensor indexing: this case shouldn't appear in apply_index_op
-            // since tensor indexing replaces dims entirely. Treat as fancy.
-            if idx_dims.is_empty() {
-                None
-            } else {
-                // Return the first dim of the index tensor; the rest are handled
-                // at a higher level. For multi-axis, this degrades to unknown.
-                Some(Type::any_implicit())
-            }
+        IndexOp::ShapedArrayIndex(_) => {
+            // `apply_index_op` is private, and its only caller is the `_` arm of
+            // `apply_ops_to_dims`. Its disjoint `ShapedArrayIndex` arm consumes this
+            // variant, so the `_` arm cannot dispatch it here.
+            unreachable!(
+                "ShapedArrayIndex dispatch invariant violated: apply_ops_to_dims must consume grouped tensor-index operations"
+            )
         }
         IndexOp::Fancy(Some(n)) => Some(Type::SymInt(SymInt::Literal(*n))),
         IndexOp::Fancy(None) => Some(Type::any_implicit()),
@@ -1729,12 +1726,14 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::shaped_array::IndexOp;
     use crate::shaped_array::ShapedArrayType;
     use crate::shaped_array::SymIntTuple;
     use crate::shaped_array::SymIntTupleRepr;
     use crate::shaped_array::SymIntTupleView;
     use crate::shaped_array::broadcast_shapes;
     use crate::shaped_array::gradual_shape_middle;
+    use crate::shaped_array::index_shape_multi;
     use crate::shaped_array::is_tuple_carrier_shape_middle;
     use crate::shaped_array::shape_to_tuple_carrier;
     use crate::shaped_array::shape_to_tuple_carrier_arg;
@@ -1862,6 +1861,40 @@ mod tests {
             shape_to_tuple_carrier(&shape),
             concrete_carrier(vec![literal(3), literal(4), literal(5)])
         );
+    }
+
+    #[test]
+    fn grouped_tensor_indices_use_multi_index_dispatch() {
+        let index_shape = vec![size(2), size(3)];
+        let ops = [
+            IndexOp::ShapedArrayIndex(index_shape.clone()),
+            IndexOp::ShapedArrayIndex(index_shape),
+        ];
+        let middle = gradual_shape_middle();
+        for (source_kind, shape, expected) in [
+            (
+                "concrete",
+                SymIntTuple::from_types(vec![size(10), size(20), size(30)]),
+                SymIntTuple::from_types(vec![size(2), size(3), size(30)]),
+            ),
+            (
+                "gradual",
+                SymIntTuple::shapeless(),
+                SymIntTuple::shapeless(),
+            ),
+            (
+                "unpacked",
+                SymIntTuple::unpacked(vec![size(10), size(20)], middle.clone(), vec![size(30)]),
+                SymIntTuple::unpacked(vec![size(2), size(3)], middle.clone(), vec![size(30)]),
+            ),
+        ] {
+            assert_eq!(
+                index_shape_multi(&shape, &ops, &[], false)
+                    .unwrap_or_else(|e| panic!("{source_kind} source shape: {e:?}")),
+                expected,
+                "{source_kind} source shape",
+            );
+        }
     }
 
     #[test]
