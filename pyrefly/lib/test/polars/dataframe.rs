@@ -31,6 +31,7 @@ class DataFrame:
     def select(self, *exprs: object, **named_exprs: object) -> "DataFrame": ...
     def drop(self, *columns: object, strict: bool = True) -> "DataFrame": ...
     def rename(self, mapping: object, *, strict: bool = True) -> "DataFrame": ...
+    def with_columns(self, *exprs: object, **named_exprs: object) -> "DataFrame": ...
 "#,
     );
     env.add(
@@ -820,5 +821,83 @@ from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type(df.rename({1: "z"}))  # E: revealed type: DataFrame
 reveal_type(df.rename({"a": 2}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_with_columns_appends_new_keyword_column,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.with_columns(b="x"))  # E: revealed type: DataFrame[a: int, b: Unknown]
+"#,
+);
+
+testcase!(
+    test_with_columns_overwrites_existing_in_place,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.with_columns(a="y"))  # E: revealed type: DataFrame[a: Unknown, b: str]
+"#,
+);
+
+testcase!(
+    test_with_columns_append_and_overwrite_pins_order,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.with_columns(a="y", c="z"))  # E: revealed type: DataFrame[a: Unknown, b: str, c: Unknown]
+"#,
+);
+
+testcase!(
+    test_with_columns_keyword_value_type_error_is_reported,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+def f(x: int) -> int:
+    return x
+df = pl.DataFrame({"a": [1]})
+df.with_columns(b=f("s"))  # E: Argument `Literal['s']` is not assignable to parameter `x` with type `int`
+"#,
+);
+
+testcase!(
+    test_with_columns_positional_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.with_columns(pl.Series()))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_with_columns_spread_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.with_columns(**{"b": "x"}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_with_columns_keyword_and_spread_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.with_columns(a="y", **{"c": "z"}))  # E: revealed type: DataFrame
 "#,
 );

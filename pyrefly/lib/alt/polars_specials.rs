@@ -313,4 +313,49 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_type(),
         )
     }
+
+    /// Model `df.with_columns(x=..., y=...)` as a new schema, overwriting a matching column
+    /// in place or appending a new one with an `Unknown` element type since the value type is
+    /// not modeled. Falls back with `None` unless every argument is a keyword with a name.
+    pub fn polars_with_columns(
+        &self,
+        base: &Type,
+        func: &ExprAttribute,
+        args: &Arguments,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let Type::DataFrame(schema) = base else {
+            return None;
+        };
+        if func.attr.id.as_str() != "with_columns" || !args.args.is_empty() {
+            return None;
+        }
+        // Validate syntactically before inferring anything: a `**mapping` spread bails here, so the
+        // fallback path stays the sole checker and never double-reports.
+        let mut named = Vec::with_capacity(args.keywords.len());
+        for kw in &args.keywords {
+            let Some(arg) = &kw.arg else {
+                return None;
+            };
+            named.push((arg.id.clone(), &kw.value));
+        }
+        let mut columns = schema.columns.clone();
+        for (name, value) in named {
+            // Infer the value to surface type errors inside it; its type is unused.
+            self.expr_infer(value, errors);
+            let unknown = self.heap.mk_any_implicit();
+            match columns.iter_mut().find(|(c, _)| *c == name) {
+                Some((_, ty)) => *ty = unknown,
+                None => columns.push((name, unknown)),
+            }
+        }
+        Some(
+            DataFrameSchema {
+                underlying: schema.underlying.clone(),
+                columns,
+                completeness: schema.completeness.clone(),
+            }
+            .to_type(),
+        )
+    }
 }
