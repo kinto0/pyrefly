@@ -2101,18 +2101,32 @@ impl<'a> Transaction<'a> {
         // cases. This avoids false positives where independent exports happen to
         // be processed in the same module across different epochs.
         //
-        // As a defense-in-depth measure, we also cap the total number of epochs to prevent
-        // runaway computation in case of unforeseen edge cases.
+        // As a defense-in-depth measure, we also cap the number of fine-grained epochs. On
+        // a cycle or on hitting the cap we abandon fine-grained propagation and switch to
+        // coarse mode: invalidate the entire rdep closure of the modules that just changed,
+        // then keep recomputing until stable. Coarse mode settles in a few epochs (unlike
+        // the one-edge-per-epoch fine-grained path) because lookups pull their dependencies
+        // — once the closure is dirty, a `run_step` recomputes it with correct values and
+        // the rest just drain the `changed`/`dirty` bookkeeping that `commit_transaction`
+        // requires to be empty.
         const MAX_EPOCHS: usize = 100;
         let mut seen_deps: SmallMap<ArcId<ModuleDataMut>, ModuleChanges> = SmallMap::new();
+        let mut coarse = false;
 
-        for i in 1..=MAX_EPOCHS {
+        for i in 1..=(2 * MAX_EPOCHS) {
             debug!("Running epoch {i} of run {run_number}");
             self.run_step(handles, require, custom_thread_pool)?;
             let changed = mem::take(&mut *self.data.changed.lock());
             if changed.is_empty() {
+                // `dirty` is only extended alongside `changed`, so no changes means the
+                // transaction is clean and safe to commit.
                 return Ok(());
             }
+            if coarse {
+                // Closure already invalidated; keep draining until stable.
+                continue;
+            }
+
             // Check for cycle: any module with overlapping export changes indicates
             // a mutable dependency cycle (e.g., A depends on B depends on A, and exports
             // keep oscillating).
@@ -2122,16 +2136,14 @@ impl<'a> Transaction<'a> {
                     .is_some_and(|seen| seen.overlaps(changed_dep))
             });
 
-            if has_cycle {
-                debug!(
-                    "Mutable dependency cycle detected: overlapping export changes. \
-                     Invalidating cycle."
-                );
-                // We are in a cycle of mutual dependencies, so give up.
-                // Just invalidate everything in the cycle and recompute it all.
-                // Use coarse-grained invalidation to ensure all cyclic modules reach stable state
+            if has_cycle || i >= MAX_EPOCHS {
+                debug!("Abandoning fine-grained propagation; coarsely invalidating closure.");
+                // Give up on fine-grained propagation — either a mutual-dependency cycle, or
+                // a chain deeper than the cap. Coarsely invalidate every transitive rdep of
+                // the modules that just changed, then let the loop recompute to a fixpoint.
                 self.invalidate_rdeps(changed.into_map(|(m, _)| m));
-                return self.run_step(handles, require, custom_thread_pool);
+                coarse = true;
+                continue;
             }
 
             // No cycle detected. Merge the new deps into our tracking set.
@@ -2146,16 +2158,17 @@ impl<'a> Transaction<'a> {
                 }
             }
         }
-        // If we reach here, we've exceeded MAX_EPOCHS without stabilizing.
-        // This should be extremely rare and indicates an unexpected edge case.
-        // Force invalidation and one final run as a fallback.
+
+        // Even coarse invalidation did not stabilize (a pathological oscillation). Clear the
+        // residual `changed`/`dirty` so the transaction commits in a consistent state
+        // (last-computed values) rather than tripping a `commit_transaction` assertion.
         tracing::warn!(
-            "Exceeded maximum epochs ({MAX_EPOCHS}) without stabilizing. \
-             This may indicate an unexpected dependency pattern. Forcing invalidation."
+            "Recheck did not stabilize within {} epochs; clearing residual state to commit consistently.",
+            2 * MAX_EPOCHS
         );
-        let changed = mem::take(&mut *self.data.changed.lock());
-        self.invalidate_rdeps(changed.into_map(|(m, _)| m));
-        self.run_step(handles, require, custom_thread_pool)
+        self.data.changed.lock().clear();
+        self.data.dirty.lock().clear();
+        Ok(())
     }
 
     pub fn run(

@@ -880,9 +880,9 @@ fn test_overlapping_exports_cycle_detected() {
     assert!(res.changed.contains(&"bar".to_owned()));
 }
 
-// Synthetic defense-in-depth reproducer for https://github.com/facebook/pyrefly/issues/4171.
+// Regression test for https://github.com/facebook/pyrefly/issues/4171: an export change
+// propagating through a chain deeper than MAX_EPOCHS must still converge, not panic.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_deep_scc_chain_stabilizes_after_epoch_cap() {
     const LEVELS: usize = 208;
 
