@@ -22,6 +22,7 @@ use ruff_python_ast::ExprNumberLiteral;
 use ruff_python_ast::Number;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
+use ruff_text_size::TextRange;
 use starlark_map::small_set::SmallSet;
 
 use crate::alt::answers::LookupAnswer;
@@ -194,5 +195,54 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Option<Type> {
         let schema = column_transform_schema(base, func, "select", args)?;
         self.polars_select_columns(schema, &args.args, errors)
+    }
+
+    /// Model `df.drop("a", "b")` as a new schema with the named columns removed, order preserved.
+    /// Falls back with `None` unless every argument is a positional string literal, and an unknown
+    /// name errors only after a schema is committed. Duplicate names are de-duplicated, unlike `select`.
+    pub fn polars_drop(
+        &self,
+        base: &Type,
+        func: &ExprAttribute,
+        args: &Arguments,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let schema = column_transform_schema(base, func, "drop", args)?;
+        let mut dropped: Vec<(Name, TextRange)> = Vec::with_capacity(args.args.len());
+        let mut seen = SmallSet::new();
+        for arg in &args.args {
+            let Expr::StringLiteral(key) = arg else {
+                return None;
+            };
+            let name = Name::new(key.value.to_str());
+            if seen.insert(name.clone()) {
+                dropped.push((name, arg.range()));
+            }
+        }
+        for (name, range) in &dropped {
+            if !schema.columns.iter().any(|(c, _)| c == name) {
+                errors
+                    .error_builder(
+                        *range,
+                        ErrorKind::UnknownColumn,
+                        format!("Column `{name}` is not in the DataFrame schema"),
+                    )
+                    .emit();
+            }
+        }
+        let columns = schema
+            .columns
+            .iter()
+            .filter(|(c, _)| !seen.contains(c))
+            .cloned()
+            .collect();
+        Some(
+            DataFrameSchema {
+                underlying: schema.underlying.clone(),
+                columns,
+                completeness: schema.completeness.clone(),
+            }
+            .to_type(),
+        )
     }
 }

@@ -828,6 +828,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     if let Some(ty) = self.polars_select(base.ty(), func, &x.arguments, errors) {
                         return ty;
                     }
+                    if let Some(ty) = self.polars_drop(base.ty(), func, &x.arguments, errors) {
+                        return ty;
+                    }
                     let attr = self.attr_access_infer(func, &base, errors);
                     // Reusing `base` bypasses `expr_infer_impl`, so record the callee's type trace
                     // and deprecation check here as that path would for any other expression.

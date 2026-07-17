@@ -29,6 +29,7 @@ class DataFrame:
     def __contains__(self, key: str) -> bool: ...
     def head(self, n: int = 5) -> "DataFrame": ...
     def select(self, *exprs: object, **named_exprs: object) -> "DataFrame": ...
+    def drop(self, *columns: object, strict: bool = True) -> "DataFrame": ...
 "#,
     );
     env.add(
@@ -613,5 +614,87 @@ import polars as pl
 from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type(df.select(b="x"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_drop_method_removes_column_preserves_order,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"], "c": [1.0]})
+reveal_type(df.drop("b"))  # E: revealed type: DataFrame[a: int, c: float]
+"#,
+);
+
+testcase!(
+    test_drop_method_multi_column_removes_both,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"], "c": [1.0]})
+reveal_type(df.drop("a", "c"))  # E: revealed type: DataFrame[b: str]
+"#,
+);
+
+testcase!(
+    test_drop_method_non_literal_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+k = "a"
+reveal_type(df.drop(k))  # E: revealed type: DataFrame
+reveal_type(df.drop("a", k))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_drop_method_unknown_and_non_literal_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+k = "a"
+reveal_type(df.drop("missing", k))  # E: revealed type: DataFrame
+reveal_type(df.drop(k, "missing"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_drop_method_duplicate_dedups,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.drop("a", "a"))  # E: revealed type: DataFrame[b: str]
+"#,
+);
+
+testcase!(
+    test_drop_method_unknown_column_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.drop("missing"))  # E: Column `missing` is not in the DataFrame schema # E: revealed type: DataFrame[a: int]
+"#,
+);
+
+testcase!(
+    test_drop_method_strict_false_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.drop("missing", strict=False))  # E: revealed type: DataFrame
+reveal_type(df)  # E: revealed type: DataFrame[a: int]
 "#,
 );
