@@ -23,6 +23,7 @@ use ruff_python_ast::Number;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
+use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 
 use crate::alt::answers::LookupAnswer;
@@ -235,6 +236,73 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .iter()
             .filter(|(c, _)| !seen.contains(c))
             .cloned()
+            .collect();
+        Some(
+            DataFrameSchema {
+                underlying: schema.underlying.clone(),
+                columns,
+                completeness: schema.completeness.clone(),
+            }
+            .to_type(),
+        )
+    }
+
+    /// Model `df.rename({"a": "b"})` as a new schema whose renamed columns keep their type and order.
+    /// Falls back with `None` unless the sole argument is a dict literal of string-literal pairs, or if
+    /// the rename would collide two columns. An unknown source name errors only after a schema is committed.
+    pub fn polars_rename(
+        &self,
+        base: &Type,
+        func: &ExprAttribute,
+        args: &Arguments,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let schema = column_transform_schema(base, func, "rename", args)?;
+        let [Expr::Dict(mapping)] = &args.args[..] else {
+            return None;
+        };
+        let mut renames: SmallMap<Name, (Name, TextRange)> =
+            SmallMap::with_capacity(mapping.items.len());
+        for item in &mapping.items {
+            let (Some(Expr::StringLiteral(src)), Expr::StringLiteral(dest)) =
+                (&item.key, &item.value)
+            else {
+                return None;
+            };
+            let source = Name::new(src.value.to_str());
+            if renames
+                .insert(source, (Name::new(dest.value.to_str()), src.range()))
+                .is_some()
+            {
+                return None;
+            }
+        }
+        let target = |name: &Name| {
+            renames
+                .get(name)
+                .map_or_else(|| name.clone(), |(dest, _)| dest.clone())
+        };
+        let mut resulting = SmallSet::new();
+        for (name, _) in &schema.columns {
+            if !resulting.insert(target(name)) {
+                return None;
+            }
+        }
+        for (source, (_, range)) in &renames {
+            if !schema.has_column(source) {
+                errors
+                    .error_builder(
+                        *range,
+                        ErrorKind::UnknownColumn,
+                        format!("Column `{source}` is not in the DataFrame schema"),
+                    )
+                    .emit();
+            }
+        }
+        let columns = schema
+            .columns
+            .iter()
+            .map(|(name, ty)| (target(name), ty.clone()))
             .collect();
         Some(
             DataFrameSchema {

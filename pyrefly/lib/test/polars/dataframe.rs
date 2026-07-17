@@ -30,6 +30,7 @@ class DataFrame:
     def head(self, n: int = 5) -> "DataFrame": ...
     def select(self, *exprs: object, **named_exprs: object) -> "DataFrame": ...
     def drop(self, *columns: object, strict: bool = True) -> "DataFrame": ...
+    def rename(self, mapping: object, *, strict: bool = True) -> "DataFrame": ...
 "#,
     );
     env.add(
@@ -696,5 +697,128 @@ from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type(df.drop("missing", strict=False))  # E: revealed type: DataFrame
 reveal_type(df)  # E: revealed type: DataFrame[a: int]
+"#,
+);
+
+testcase!(
+    test_rename_maps_keys_preserving_types_and_order,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"], "c": [1.0]})
+reveal_type(df.rename({"b": "z"}))  # E: revealed type: DataFrame[a: int, z: str, c: float]
+"#,
+);
+
+testcase!(
+    test_rename_swaps_two_columns_in_single_pass,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({"a": "b", "b": "a"}))  # E: revealed type: DataFrame[b: int, a: str]
+"#,
+);
+
+testcase!(
+    test_rename_empty_mapping_unchanged,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({}))  # E: revealed type: DataFrame[a: int, b: str]
+"#,
+);
+
+testcase!(
+    test_rename_column_to_itself_is_a_noop,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({"a": "a"}))  # E: revealed type: DataFrame[a: int, b: str]
+"#,
+);
+
+testcase!(
+    test_rename_leaves_original_schema_unchanged,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+df.rename({"a": "z"})
+reveal_type(df)  # E: revealed type: DataFrame[a: int, b: str]
+"#,
+);
+
+testcase!(
+    test_rename_unknown_source_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.rename({"missing": "z"}))  # E: Column `missing` is not in the DataFrame schema # E: revealed type: DataFrame[a: int]
+"#,
+);
+
+testcase!(
+    test_rename_two_sources_same_target_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({"a": "c", "b": "c"}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_rename_target_collides_with_unrenamed_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({"a": "b"}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_rename_duplicate_source_key_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.rename({"a": "y", "a": "z"}))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_rename_keyword_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.rename({"a": "z"}, strict=False))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_rename_non_string_literal_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.rename({1: "z"}))  # E: revealed type: DataFrame
+reveal_type(df.rename({"a": 2}))  # E: revealed type: DataFrame
 "#,
 );
