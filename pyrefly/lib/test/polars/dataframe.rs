@@ -28,6 +28,7 @@ class DataFrame:
     def __iter__(self) -> Iterator[Series]: ...
     def __contains__(self, key: str) -> bool: ...
     def head(self, n: int = 5) -> "DataFrame": ...
+    def select(self, *exprs: object, **named_exprs: object) -> "DataFrame": ...
 "#,
     );
     env.add(
@@ -498,5 +499,119 @@ import polars as pl
 from typing import reveal_type
 df = pl.DataFrame({"a": [1]})
 reveal_type(df[[]])  # E: revealed type: DataFrame[]
+"#,
+);
+
+testcase!(
+    test_select_method_narrows_schema,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"], "c": [1.0]})
+reveal_type(df.select("c", "a"))  # E: revealed type: DataFrame[c: float, a: int]
+"#,
+);
+
+testcase!(
+    test_select_method_leaves_original_schema_unchanged,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+df.select("a")
+reveal_type(df)  # E: revealed type: DataFrame[a: int, b: str]
+"#,
+);
+
+testcase!(
+    test_select_method_non_literal_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+k = "a"
+reveal_type(df.select(k))  # E: revealed type: DataFrame
+reveal_type(df.select("a", k))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_select_method_unknown_column_errors,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.select("a", "missing"))  # E: Column `missing` is not in the DataFrame schema # E: revealed type: DataFrame[a: int]
+"#,
+);
+
+testcase!(
+    test_select_method_unknown_column_suppressible,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+df = pl.DataFrame({"a": [1]})
+df.select("b")  # pyrefly: ignore[unknown-column]
+"#,
+);
+
+testcase!(
+    test_select_method_duplicate_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.select("a", "a"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_select_method_empty_narrows_to_empty,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.select())  # E: revealed type: DataFrame[]
+"#,
+);
+
+testcase!(
+    test_select_on_non_dataframe_falls_back,
+    env_with_polars_stubs(),
+    r#"
+from typing import reveal_type
+# A `select` method on an unrelated type is untouched; only Polars DataFrames are narrowed.
+class NotAFrame:
+    def select(self, x: int) -> int: ...
+reveal_type(NotAFrame().select(1))  # E: revealed type: int
+"#,
+);
+
+testcase!(
+    test_select_on_non_dataframe_receiver_error_reported_once,
+    env_with_polars_stubs(),
+    r#"
+# The receiver is inferred once, so an error inside it is not reported twice.
+class NotAFrame:
+    def select(self, x: int) -> int: ...
+def f(n: NotAFrame) -> None:
+    (n.missing).select(1)  # E: Object of class `NotAFrame` has no attribute `missing`
+"#,
+);
+
+testcase!(
+    test_select_method_keyword_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1]})
+reveal_type(df.select(b="x"))  # E: revealed type: DataFrame
 "#,
 );

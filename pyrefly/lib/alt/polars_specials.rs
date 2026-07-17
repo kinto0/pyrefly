@@ -13,7 +13,9 @@
 
 use pyrefly_types::data_frame::DataFrameSchema;
 use pyrefly_types::types::Type;
+use ruff_python_ast::Arguments;
 use ruff_python_ast::Expr;
+use ruff_python_ast::ExprAttribute;
 use ruff_python_ast::ExprDict;
 use ruff_python_ast::ExprList;
 use ruff_python_ast::ExprNumberLiteral;
@@ -30,6 +32,21 @@ use crate::types::class::Class;
 
 pub fn is_polars_dataframe(cls: &Class) -> bool {
     cls.has_toplevel_qname("polars.dataframe.frame", "DataFrame")
+}
+
+/// The receiver schema for a column transform whose method takes only positional
+/// arguments: `base` must carry a schema and `func` must name `method` with no
+/// keywords. Shared preamble so each transform states only what is unique to it.
+fn column_transform_schema<'b>(
+    base: &'b Type,
+    func: &ExprAttribute,
+    method: &str,
+    args: &Arguments,
+) -> Option<&'b DataFrameSchema> {
+    let Type::DataFrame(schema) = base else {
+        return None;
+    };
+    (func.attr.id.as_str() == method && args.keywords.is_empty()).then_some(&**schema)
 }
 
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
@@ -162,5 +179,20 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             .to_type(),
         )
+    }
+
+    /// Model `df.select("a", "b")` as a new schema with the named columns in argument order.
+    /// The caller passes the already-inferred receiver type, so the receiver is never inferred
+    /// twice. Falls back with `None` unless the receiver carries a schema, the method is
+    /// `select`, and every argument is a positional string literal.
+    pub fn polars_select(
+        &self,
+        base: &Type,
+        func: &ExprAttribute,
+        args: &Arguments,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let schema = column_transform_schema(base, func, "select", args)?;
+        self.polars_select_columns(schema, &args.args, errors)
     }
 }
