@@ -1965,6 +1965,7 @@ dependencies = [
  "pyrefly_bundled",
  "pyrefly_config",
  "pyrefly_derive",
+ "pyrefly_glean_schema",
  "pyrefly_graph",
  "pyrefly_python",
  "pyrefly_types",
@@ -2070,6 +2071,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "pyrefly_glean_schema"
+version = "1.2.0-dev.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "serde_repr",
 ]
 
 [[package]]
