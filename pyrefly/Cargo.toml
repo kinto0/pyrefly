@@ -24,6 +24,10 @@ path = "test_laziness/mod.rs"
 name = "pyrefly_lsp_interaction_tests"
 path = "lib/test/lsp/lsp_interaction/mod.rs"
 
+[[bench]]
+name = "micro"
+harness = false
+
 [dependencies]
 anstream = "0.6.11"
 anyhow = "1.0.103"
@@ -81,6 +85,7 @@ xxhash-rust = { version = "0.8.15", features = ["xxh64"] }
 yansi = { version = "1.0.0-rc.1", features = ["hyperlink"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
 pretty_assertions = { version = "1.4.1", features = ["alloc"], default-features = false }
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
