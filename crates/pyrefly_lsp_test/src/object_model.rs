@@ -5,7 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-/// This file contains a new implementation of the lsp_interaction test suite. Soon it will replace the old one.
 use std::iter::once;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -144,7 +143,7 @@ pub struct InitializeSettings {
 }
 
 pub struct ClientRequestHandle<'a, R: lsp_types::request::Request> {
-    pub(crate) id: RequestId,
+    id: RequestId,
     client: &'a TestClient,
     _type: PhantomData<R>,
 }
@@ -156,6 +155,10 @@ pub struct ServerRequestHandle<'a, R: lsp_types::request::Request> {
 }
 
 impl<'a, R: lsp_types::request::Request> ClientRequestHandle<'a, R> {
+    pub fn id(&self) -> &RequestId {
+        &self.id
+    }
+
     pub fn expect_response(self, expected: Value) -> Result<(), LspMessageError> {
         self.client.expect_response::<R>(self.id, expected)
     }
@@ -1210,7 +1213,6 @@ impl TestClient {
         })
     }
 
-    #[expect(dead_code)]
     pub fn untyped_import_diagnostic_response(
         package_name: &str,
         line: u32,
@@ -1266,7 +1268,6 @@ pub struct LspInteraction {
 /// A recorded telemetry event capturing the event payload, processing duration,
 /// and stringified error (if any). Used by [`TestTelemetry`] to broadcast events
 /// to test subscribers.
-#[expect(dead_code)]
 pub struct RecordedTelemetryEvent {
     pub event: TelemetryEvent,
     pub process: Duration,
@@ -1317,6 +1318,7 @@ pub struct TestTelemetry {
 }
 
 impl TestTelemetry {
+    #[expect(clippy::new_without_default, reason = "test harness constructor")]
     pub fn new() -> Self {
         Self {
             subscribers: Mutex::new(Vec::new()),
@@ -1386,6 +1388,7 @@ impl Default for LspInteractionArgs {
 }
 
 impl LspInteraction {
+    #[expect(clippy::new_without_default, reason = "test harness constructor")]
     pub fn new() -> Self {
         Self::new_with_args(LspInteractionArgs::default())
     }

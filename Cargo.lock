@@ -2120,6 +2120,7 @@ dependencies = [
  "pyrefly_derive",
  "pyrefly_glean_schema",
  "pyrefly_graph",
+ "pyrefly_lsp_test",
  "pyrefly_python",
  "pyrefly_types",
  "pyrefly_util",
@@ -2242,6 +2243,21 @@ dependencies = [
  "dupe",
  "pyrefly_util",
  "starlark_map",
+]
+
+[[package]]
+name = "pyrefly_lsp_test"
+version = "1.2.0-dev.2"
+dependencies = [
+ "anstream 0.6.21",
+ "anyhow",
+ "crossbeam-channel",
+ "lsp-server",
+ "lsp-types",
+ "pretty_assertions",
+ "pyrefly",
+ "pyrefly_util",
+ "serde_json",
 ]
 
 [[package]]
