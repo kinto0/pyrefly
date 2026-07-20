@@ -47,9 +47,12 @@ jobs:
               return;
             }
 
+            const title = `New Pyrefly PR #${pr.number}: ${pr.title}`;
+            const truncatedTitle = title.length > 256 ? `${title.substring(0, 253)}...` : title;
+
             const payload = {
               embeds: [{
-                title: `New Pyrefly PR #${pr.number}: ${pr.title}`,
+                title: truncatedTitle,
                 url: pr.html_url,
                 color: 16744448,
                 fields: [{
