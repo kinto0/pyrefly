@@ -30,6 +30,7 @@ use vec1::vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
+use crate::alt::call::CallTargetLookup;
 use crate::alt::callable::CallArg;
 use crate::alt::class::class_field::ClassAttribute;
 use crate::alt::expr::TypeOrExpr;
@@ -2818,8 +2819,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
 
             if let Some(dunder_bool_ty) = dunder_bool_ty
                 && !dunder_bool_ty.is_never()
-                && self.as_call_target(dunder_bool_ty.clone()).is_error()
             {
+                let dunder_bool_ty = match self.as_call_target(dunder_bool_ty) {
+                    CallTargetLookup::Ok(_) => return,
+                    CallTargetLookup::Error(ty, _) | CallTargetLookup::CircularCall(ty) => ty,
+                };
                 self.error(
                     errors,
                     range,
@@ -2827,7 +2831,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     format!(
                         "The `__bool__` attribute of `{}` has type `{}`, which is not callable",
                         self.for_display(union_member_ty.clone()),
-                        self.for_display(dunder_bool_ty.clone()),
+                        self.for_display(dunder_bool_ty),
                     ),
                 );
             }

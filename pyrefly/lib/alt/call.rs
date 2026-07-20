@@ -69,6 +69,7 @@ use crate::types::type_var::Restriction;
 use crate::types::typed_dict::TypedDict;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethod;
+use crate::types::types::Forallable;
 use crate::types::types::OverloadType;
 use crate::types::types::Type;
 
@@ -136,18 +137,26 @@ pub enum CallTargetLookup {
     Ok(Box<CallTarget>),
     /// When a type is not callable, still collect what can be called in callable "subcases". This is
     /// for example used for a union type that is not callable, but some of its "subcases" are callable.
-    Error(Vec<CallTarget>),
+    Error(Type, Vec<CallTarget>),
     /// `__call__` resolves back to the same class, creating infinite recursion
     /// through descriptor resolution. This is distinct from `Error` because
     /// the type *has* a `__call__`, it just can't be resolved to a concrete target.
-    CircularCall,
+    CircularCall(Type),
 }
 
 impl CallTargetLookup {
     pub fn is_error(&self) -> bool {
         match self {
             CallTargetLookup::Ok(..) => false,
-            CallTargetLookup::Error(..) | CallTargetLookup::CircularCall => true,
+            CallTargetLookup::Error(..) | CallTargetLookup::CircularCall(..) => true,
+        }
+    }
+
+    fn with_error_type(self, ty: impl FnOnce(Type) -> Type) -> Self {
+        match self {
+            Self::Error(rejected, targets) => Self::Error(ty(rejected), targets),
+            Self::CircularCall(rejected) => Self::CircularCall(ty(rejected)),
+            ok => ok,
         }
     }
 }
@@ -267,7 +276,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 if bound_method.obj.contains_overload_callable_residual() {
                     let mut is_subset = |got: &Type, want: &Type| self.is_subset_eq(got, want);
                     if let Some(bound) = self.bind_boundmethod(&bound_method, &mut is_subset) {
-                        return self.as_call_target_impl(bound, quantified);
+                        return self
+                            .as_call_target_impl(bound, quantified)
+                            .with_error_type(|_| Type::BoundMethod(Box::new(bound_method)));
                     }
                 }
                 let BoundMethod { obj, func } = bound_method;
@@ -288,7 +299,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             obj, overloads, meta,
                         )))
                     }
-                    _ => CallTargetLookup::Error(vec![]),
+                    _ => unreachable!("bound method functions are always callable"),
                 }
             }
             Type::ClassDef(cls) => match self.instantiate(&cls) {
@@ -319,6 +330,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let Type::Union(u) = *f else {
                     unreachable!("guarded by matches! above")
                 };
+                let original = Type::Type(Box::new(Type::Union(u.clone())));
                 let union_of_types = self.heap.mk_union(
                     u.members
                         .into_iter()
@@ -326,6 +338,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         .collect(),
                 );
                 self.as_call_target_impl(union_of_types, quantified)
+                    .with_error_type(|_| original)
             }
             Type::Type(f) if matches!(&*f, Type::SelfType(_)) => {
                 let Type::SelfType(cls) = *f else {
@@ -392,34 +405,46 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 CallTargetLookup::Ok(Box::new(CallTarget::Any(style)))
             }
             Type::Forall(forall) => {
-                let mut target = self.as_call_target_impl(forall.body.as_type(), quantified);
-                if let CallTargetLookup::Ok(f) = &mut target {
-                    match &mut **f {
-                        CallTarget::Callable(TargetWithTParams(x, _))
-                        | CallTarget::Function(TargetWithTParams(x, _)) => {
-                            *x = Some(forall.tparams);
+                let tparams = forall.tparams;
+                match self.as_call_target_impl(forall.body.as_type(), quantified) {
+                    CallTargetLookup::Ok(mut target) => {
+                        match &mut *target {
+                            CallTarget::Callable(TargetWithTParams(x, _))
+                            | CallTarget::Function(TargetWithTParams(x, _)) => {
+                                *x = Some(tparams);
+                            }
+                            _ => {}
                         }
-                        _ => {}
+                        CallTargetLookup::Ok(target)
                     }
+                    error => error.with_error_type(|ty| {
+                        let body = match ty {
+                            Type::Callable(callable) => Forallable::Callable(*callable),
+                            Type::Function(function) => Forallable::Function(*function),
+                            Type::TypeAlias(type_alias) => Forallable::TypeAlias(*type_alias),
+                            _ => unreachable!("a Forall body must remain forallable"),
+                        };
+                        body.forall(tparams)
+                    }),
                 }
-                target
             }
-            Type::Var(v) if let Some(_guard) = self.recurse(v) => {
-                self.as_call_target_impl(self.solver().force_var(v), quantified)
-            }
+            Type::Var(v) if let Some(_guard) = self.recurse(v) => self
+                .as_call_target_impl(self.solver().force_var(v), quantified)
+                .with_error_type(|_| Type::Var(v)),
             Type::Union(f) => {
+                let original = Type::Union(f.clone());
                 let xs_length = f.members.len();
                 let targets = f
                     .members
                     .into_iter()
                     .filter_map(|x| match self.as_call_target_impl(x, quantified.clone()) {
                         CallTargetLookup::Ok(target) => Some(*target),
-                        CallTargetLookup::Error(..) | CallTargetLookup::CircularCall => None,
+                        CallTargetLookup::Error(..) | CallTargetLookup::CircularCall(..) => None,
                     })
                     .collect::<Vec<_>>();
                 let targets_length = targets.len();
                 if xs_length > targets_length {
-                    CallTargetLookup::Error(targets)
+                    CallTargetLookup::Error(original, targets)
                 } else if targets_length == 1 {
                     CallTargetLookup::Ok(Box::new(targets.into_iter().next().unwrap()))
                 } else {
@@ -428,8 +453,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
             Type::Intersect(intersect) => {
                 // TODO(rechen): implement calling `A & B`
-                let (_, fallback) = *intersect;
+                let (types, fallback) = *intersect;
                 self.as_call_target_impl(fallback, quantified)
+                    .with_error_type(|fallback| Type::Intersect(Box::new((types, fallback))))
             }
             Type::Any(style) => CallTargetLookup::Ok(Box::new(CallTarget::Any(style))),
             Type::TypeAlias(ta) => {
@@ -437,9 +463,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 match body {
                     // This comes from an expression like `int | str`, which is not callable.
                     Type::Type(f) if matches!(&*f, Type::Union(_)) => {
-                        CallTargetLookup::Error(vec![])
+                        CallTargetLookup::Error(Type::TypeAlias(ta), vec![])
                     }
-                    _ => self.as_call_target_impl(body, quantified),
+                    _ => self
+                        .as_call_target_impl(body, quantified)
+                        .with_error_type(|_| Type::TypeAlias(ta)),
                 }
             }
             Type::ClassType(cls) => {
@@ -453,9 +481,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         let is_self_recursive = matches!(&ty, Type::ClassType(inner) if inner == &cls)
                             || matches!(&ty, Type::SelfType(inner) if inner.class_object() == cls.class_object());
                         if is_self_recursive {
-                            CallTargetLookup::CircularCall
+                            CallTargetLookup::CircularCall(Type::ClassType(cls))
                         } else {
                             self.as_call_target_impl(ty, quantified)
+                                .with_error_type(|_| Type::ClassType(cls))
                         }
                     }
                     // If the class has an unknown base (e.g. inherits from an
@@ -467,7 +496,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     {
                         CallTargetLookup::Ok(Box::new(CallTarget::Any(AnyStyle::Implicit)))
                     }
-                    None => CallTargetLookup::Error(vec![]),
+                    None => CallTargetLookup::Error(Type::ClassType(cls), vec![]),
                 }
             }
             // NNModule instances delegate call dispatch to their underlying class.
@@ -487,19 +516,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         self.as_call_target_impl(patched, quantified)
                     }
                     Some(ty) => self.as_call_target_impl(ty, quantified),
-                    None => CallTargetLookup::Error(vec![]),
+                    None => return CallTargetLookup::Error(Type::NNModule(module), vec![]),
                 }
+                .with_error_type(|_| Type::NNModule(module))
             }
             // A DataFrame delegates call dispatch to its underlying instance type.
-            Type::DataFrame(schema) => {
-                self.as_call_target_impl(schema.underlying_type(), quantified)
-            }
+            Type::DataFrame(schema) => self
+                .as_call_target_impl(schema.underlying_type(), quantified)
+                .with_error_type(|_| Type::DataFrame(schema)),
             Type::SelfType(cls) => {
                 // Ignoring `quantified` is okay here because Self is not a valid typevar bound.
-                self.self_as_dunder_call(&cls)
-                    .map_or(CallTargetLookup::Error(vec![]), |ty| {
-                        self.as_call_target_impl(ty, None)
-                    })
+                match self.self_as_dunder_call(&cls) {
+                    Some(ty) => self
+                        .as_call_target_impl(ty, None)
+                        .with_error_type(|_| Type::SelfType(cls)),
+                    None => CallTargetLookup::Error(Type::SelfType(cls), vec![]),
+                }
             }
             Type::Type(f) if matches!(&*f, Type::TypedDict(TypedDict::TypedDict(_))) => {
                 let Type::TypedDict(TypedDict::TypedDict(typed_dict)) = *f else {
@@ -523,11 +555,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let Type::Intersect(intersect) = *f else {
                     unreachable!("guarded by matches! above")
                 };
-                let (_, fallback) = *intersect;
+                let (types, fallback) = *intersect;
                 self.as_call_target_impl(self.heap.mk_type_of(fallback), quantified)
+                    .with_error_type(|fallback| {
+                        let Type::Type(fallback) = fallback else {
+                            unreachable!("the rejected fallback remains wrapped in Type")
+                        };
+                        self.heap
+                            .mk_type_of(Type::Intersect(Box::new((types, *fallback))))
+                    })
             }
             Type::Quantified(q) if q.is_type_var() => match q.restriction() {
-                Restriction::Unrestricted => CallTargetLookup::Error(vec![]),
+                Restriction::Unrestricted => CallTargetLookup::Error(Type::Quantified(q), vec![]),
                 Restriction::Bound(bound) => match bound {
                     Type::Union(f) => {
                         let members = &f.members;
@@ -542,12 +581,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                             ) {
                                 targets.push(*target);
                             } else {
-                                return CallTargetLookup::Error(vec![]);
+                                return CallTargetLookup::Error(Type::Quantified(q), vec![]);
                             }
                         }
                         CallTargetLookup::Ok(Box::new(CallTarget::Union(targets)))
                     }
-                    _ => self.as_call_target_impl(bound.clone(), Some(*q)),
+                    _ => self
+                        .as_call_target_impl(bound.clone(), Some((*q).clone()))
+                        .with_error_type(|_| Type::Quantified(q)),
                 },
                 Restriction::Constraints(constraints) => {
                     let mut targets = Vec::new();
@@ -560,17 +601,39 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                         ) {
                             targets.push(*target);
                         } else {
-                            return CallTargetLookup::Error(vec![]);
+                            return CallTargetLookup::Error(Type::Quantified(q), vec![]);
                         }
                     }
                     CallTargetLookup::Ok(Box::new(CallTarget::Union(targets)))
                 }
             },
-            Type::KwCall(call) => self.as_call_target_impl(call.return_ty, quantified),
-            Type::Literal(ref f) if let Lit::Enum(enum_) = &f.value => {
-                self.as_call_target_impl(self.heap.mk_class_type(enum_.class.clone()), quantified)
+            Type::KwCall(call) => {
+                let KwCall {
+                    func_metadata,
+                    keywords,
+                    return_ty,
+                } = *call;
+                self.as_call_target_impl(return_ty, quantified)
+                    .with_error_type(|return_ty| {
+                        Type::KwCall(Box::new(KwCall {
+                            func_metadata,
+                            keywords,
+                            return_ty,
+                        }))
+                    })
             }
-            _ => CallTargetLookup::Error(vec![]),
+            Type::Literal(lit) => {
+                if let Lit::Enum(enum_) = &lit.value {
+                    self.as_call_target_impl(
+                        self.heap.mk_class_type(enum_.class.clone()),
+                        quantified,
+                    )
+                    .with_error_type(|_| Type::Literal(lit))
+                } else {
+                    CallTargetLookup::Error(Type::Literal(lit), vec![])
+                }
+            }
+            ty => CallTargetLookup::Error(ty, vec![]),
         }
     }
 
@@ -582,7 +645,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         errors: &ErrorCollector,
         context: Option<&dyn Fn() -> ErrorContext>,
     ) -> CallTarget {
-        match self.as_call_target(ty.clone()) {
+        match self.as_call_target(ty) {
             CallTargetLookup::Ok(target) => {
                 let metadata = target.function_metadata();
                 if let Some(m) = metadata
@@ -610,7 +673,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 *target
             }
-            CallTargetLookup::Error(..) => {
+            CallTargetLookup::Error(ty, ..) => {
                 // Re-query `__call__` only on the error path so ordinary calls don't pay for
                 // preserving the original access error through call target resolution.
                 if let Some(error) = self.proxy_method_call_error(&ty) {
@@ -636,7 +699,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     context,
                 )
             }
-            CallTargetLookup::CircularCall => self.error_call_target(
+            CallTargetLookup::CircularCall(ty) => self.error_call_target(
                 errors,
                 range,
                 format!(
