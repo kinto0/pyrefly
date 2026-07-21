@@ -370,6 +370,17 @@ impl From<Cancelled> for RequestError {
     }
 }
 
+/// Bundled parameters for finding references, grouped to keep function signatures small.
+struct FindReferencesRequest {
+    request_id: RequestId,
+    handle: Handle,
+    uri: Url,
+    position: Position,
+    find_preference: FindPreference,
+    include_declaration: bool,
+    activity_key: Option<ActivityKey>,
+}
+
 pub struct InitializeInfo {
     pub params: InitializeParams,
     pub supports_diagnostic_markdown: bool,
@@ -4866,16 +4877,19 @@ impl Server {
     /// the common case of finding references, including external references.
     fn async_find_references_helper<'a, V: serde::Serialize>(
         &'a self,
-        request_id: RequestId,
         transaction: &Transaction<'a>,
-        handle: Handle,
-        uri: &Url,
-        position: Position,
-        find_preference: FindPreference,
-        include_declaration: bool,
-        activity_key: Option<ActivityKey>,
+        request: FindReferencesRequest,
         map_result: impl FnOnce(Vec<(Url, Vec<Range>)>) -> V + Send + Sync + 'static,
     ) -> Result<(), EmptyResponseReason> {
+        let FindReferencesRequest {
+            request_id,
+            handle,
+            uri,
+            position,
+            find_preference,
+            include_declaration,
+            activity_key,
+        } = request;
         let path_remapper = self.path_remapper.clone();
         let external_references = self.external_references.clone();
         let source_uri = uri.clone();
@@ -4885,7 +4899,7 @@ impl Server {
             request_id,
             transaction,
             handle,
-            uri,
+            &uri,
             position,
             find_preference,
             activity_key,
@@ -4982,17 +4996,19 @@ impl Server {
         let uri = &params.text_document_position.text_document.uri;
         let handle = self.make_handle_if_enabled(uri, Some(References::METHOD))?;
         self.async_find_references_helper(
-            request_id,
             transaction,
-            handle,
-            uri,
-            params.text_document_position.position,
-            FindPreference {
-                import_behavior: ImportBehavior::StopAtRenamedImports,
-                ..Default::default()
+            FindReferencesRequest {
+                request_id,
+                handle,
+                uri: uri.clone(),
+                position: params.text_document_position.position,
+                find_preference: FindPreference {
+                    import_behavior: ImportBehavior::StopAtRenamedImports,
+                    ..Default::default()
+                },
+                include_declaration: params.context.include_declaration,
+                activity_key,
             },
-            params.context.include_declaration,
-            activity_key,
             move |results| {
                 let mut locations = Vec::new();
                 for (uri, ranges) in results {
@@ -5017,19 +5033,22 @@ impl Server {
     ) -> Result<(), EmptyResponseReason> {
         let uri = &params.text_document_position.text_document.uri;
         let handle = self.make_handle_if_enabled(uri, Some(Rename::METHOD))?;
+        let new_name = params.new_name.clone();
         self.async_find_references_helper(
-            request_id,
             transaction,
-            handle,
-            uri,
-            params.text_document_position.position,
-            FindPreference {
-                import_behavior: ImportBehavior::StopAtRenamedImports,
-                resolve_call_dunders: false,
-                ..Default::default()
+            FindReferencesRequest {
+                request_id,
+                handle,
+                uri: uri.clone(),
+                position: params.text_document_position.position,
+                find_preference: FindPreference {
+                    import_behavior: ImportBehavior::StopAtRenamedImports,
+                    resolve_call_dunders: false,
+                    ..Default::default()
+                },
+                include_declaration: true,
+                activity_key,
             },
-            true,
-            activity_key,
             move |results| {
                 let mut changes = HashMap::new();
                 for (uri, ranges) in results {
@@ -5037,7 +5056,7 @@ impl Server {
                         uri,
                         ranges.into_map(|range| TextEdit {
                             range,
-                            new_text: params.new_name.clone(),
+                            new_text: new_name.clone(),
                         }),
                     );
                 }
