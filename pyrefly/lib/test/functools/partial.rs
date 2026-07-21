@@ -280,7 +280,6 @@ def foo(cls3: Type[B[T]]) -> None:
 // ===== Union targets =====
 
 functools_testcase!(
-    bug = "partial over a union that contains a non-callable (str) misses the \"str not callable\" error",
     test_partial_union_with_noncallable,
     r#"
 import functools
@@ -296,8 +295,7 @@ def f(
     reveal_type(functools.partial(cls2, 2)())  # E: revealed type: Any
     reveal_type(functools.partial(fn1, 2)())  # E: revealed type: int
     reveal_type(functools.partial(fn2, 2)())  # E: revealed type: int | str
-    # WANT: also emit `"str" not callable`
-    reveal_type(functools.partial(fn3, 2)())  # E: revealed type: int # E: Argument `((int) -> int) | str` is not assignable to parameter `func` with type `(...) -> int` in function `functools.partial.__new__`
+    reveal_type(functools.partial(fn3, 2)())  # E: revealed type: int # E: Expected a callable, got `str` # E: Argument `((int) -> int) | str` is not assignable to parameter `func` with type `(...) -> int` in function `functools.partial.__new__`
 "#,
 );
 

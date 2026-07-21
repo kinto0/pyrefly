@@ -25,6 +25,7 @@ use vec1::Vec1;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
+use crate::alt::call::CallTargetLookup;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallKeyword;
 use crate::alt::unwrap::HintRef;
@@ -131,6 +132,27 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             },
             other => other,
         };
+        // A union target with a non-callable member can never be a valid partial target for that
+        // member, so flag it the way a direct call would; the stub still reports the whole union as
+        // not assignable to `func`.
+        if let Type::Union(union) = &target_ty {
+            for member in &union.members {
+                if matches!(
+                    self.as_call_target(member.clone()),
+                    CallTargetLookup::Error(..)
+                ) {
+                    self.error(
+                        errors,
+                        target.range(),
+                        ErrorKind::NotCallable,
+                        format!(
+                            "Expected a callable, got `{}`",
+                            self.for_display(member.clone())
+                        ),
+                    );
+                }
+            }
+        }
         // Fall back to the stub, reusing the already-inferred target so it isn't inferred twice.
         let fallback = |me: &Self| {
             let mut args_with_ty = args.to_vec();
