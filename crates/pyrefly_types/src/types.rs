@@ -610,7 +610,7 @@ pub enum SuperObj {
     Class(ClassType),
 }
 
-#[derive(Debug, Clone, Eq, TypeEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq)]
 pub struct Union {
     pub members: Vec<Type>,
     pub display_name: Option<(ModuleName, Name)>,
@@ -625,6 +625,24 @@ impl PartialEq for Union {
 impl Hash for Union {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.members.hash(state)
+    }
+}
+
+impl PartialOrd for Union {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Union {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.members.cmp(&other.members)
+    }
+}
+
+impl TypeEq for Union {
+    fn type_eq(&self, other: &Self, ctx: &mut TypeEqCtx) -> bool {
+        self.members.type_eq(&other.members, ctx)
     }
 }
 
@@ -2061,9 +2079,36 @@ impl<'a> TypeVariable<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
+    use pyrefly_python::module_name::ModuleName;
+    use ruff_python_ast::name::Name;
+
+    use crate::equality::TypeEq;
+    use crate::equality::TypeEqCtx;
     use crate::literal::Lit;
     use crate::literal::LitStyle;
     use crate::types::Type;
+    use crate::types::Union;
+
+    /// `display_name` is presentation-only, so two unions with identical members
+    /// but different names must agree across `Eq`, `Ord`, and `TypeEq`.
+    #[test]
+    fn test_union_display_name_ignored_by_comparisons() {
+        let members = vec![Type::None, Type::LiteralString(LitStyle::Implicit)];
+        let named = Union {
+            members: members.clone(),
+            display_name: Some((ModuleName::builtins(), Name::new_static("TA"))),
+        };
+        let anonymous = Union {
+            members,
+            display_name: None,
+        };
+
+        assert_eq!(named, anonymous);
+        assert_eq!(named.cmp(&anonymous), Ordering::Equal);
+        assert!(named.type_eq(&anonymous, &mut TypeEqCtx::default()));
+    }
 
     #[test]
     fn test_as_bool() {
