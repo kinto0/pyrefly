@@ -109,6 +109,7 @@ mod tests {
                 NestingContext::toplevel(),
                 module,
                 None,
+                false,
             ),
             TArgs::default(),
         )

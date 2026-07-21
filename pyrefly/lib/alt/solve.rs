@@ -2919,6 +2919,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 x.def_index,
                 &x.def,
                 &x.parent,
+                x.is_protocol,
                 x.tparams_require_binding,
                 errors,
             ),

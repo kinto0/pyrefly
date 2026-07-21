@@ -206,6 +206,7 @@ fn test_class(module_name: ModuleName, name: &str) -> PyreflyClassType {
         NestingContext::toplevel(),
         module,
         None,
+        false,
     );
     PyreflyClassType::new(class, TArgs::default())
 }
