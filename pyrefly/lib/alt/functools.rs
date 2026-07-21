@@ -130,6 +130,13 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 Type::ClassType(instance) => self.constructor_to_callable(&instance),
                 other => Type::Type(Box::new(other)),
             },
+            // A callback-protocol instance normalizes to its `__call__` bound method (a
+            // `Type::BoundMethod`), whose receiver the signature match below strips. A plain
+            // instance with no `__call__` defers to the stub.
+            Type::ClassType(instance) => match self.instance_as_dunder_call(&instance) {
+                Some(dunder_call) => dunder_call,
+                None => Type::ClassType(instance),
+            },
             other => other,
         };
         // A union target with a non-callable member can never be a valid partial target for that

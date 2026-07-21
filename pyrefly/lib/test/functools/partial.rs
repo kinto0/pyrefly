@@ -172,7 +172,6 @@ def main1(f: Callable[[int, str], int]) -> None:
 );
 
 functools_testcase!(
-    bug = "partial of a callback protocol does not check the remaining positional against __call__'s signature",
     test_partial_callable_protocol,
     r#"
 import functools
@@ -181,7 +180,25 @@ class CallbackProto:
 def main2(f: CallbackProto) -> None:
     p = functools.partial(f, b="a")
     p(1)
-    p("a")  # WANT: Argument 1 to "__call__" of "CallbackProto" has incompatible type "str"; expected "int"
+    p("a")  # E: Argument `Literal['a']` is not assignable to parameter `a` with type `int`
+"#,
+);
+
+// Cross-module: a callback protocol imported across the module boundary still resolves its
+// `__call__`, so the residual is argument-checked.
+testcase!(
+    test_partial_callback_protocol_cross_module,
+    TestEnv::one(
+        "cbmod",
+        "class Cb:\n    def __call__(self, a: int, b: str) -> int: ...\n",
+    ),
+    r#"
+import functools
+from cbmod import Cb
+def m(f: Cb) -> None:
+    p = functools.partial(f, b="a")
+    p(1)
+    p("a")  # E: Argument `Literal['a']` is not assignable to parameter `a` with type `int`
 "#,
 );
 
