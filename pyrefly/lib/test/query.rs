@@ -1230,46 +1230,55 @@ def skipped(value: int) -> str:
 
 fn walk_skip_skipped_function_body<'a>(
     body: &'a [Stmt],
-    visit_expr: &mut TypeQueryExprVisitor<'a>,
+    record_expr: &mut TypeQueryExprVisitor<'a>,
 ) {
     for stmt in body {
         match stmt {
             Stmt::FunctionDef(function_def) if function_def.name.as_str() == "skipped" => {
-                visit_function_signature(function_def, visit_expr);
+                visit_function_signature(function_def, record_expr);
             }
-            _ => visit_stmt(stmt, visit_expr),
+            _ => visit_stmt(stmt, record_expr),
         }
     }
 }
 
-fn visit_exprs<'a, T: Visit<Expr>>(value: &'a T, visit_expr: &mut TypeQueryExprVisitor<'a>) {
-    value.visit(&mut |expr| visit_expr(expr, None));
+fn visit_expr<'a>(
+    expr: &'a Expr,
+    parent: Option<&'a Expr>,
+    record_expr: &mut TypeQueryExprVisitor<'a>,
+) {
+    record_expr(expr, parent);
+    expr.recurse(&mut |child| visit_expr(child, Some(expr), record_expr));
+}
+
+fn visit_exprs<'a, T: Visit<Expr>>(value: &'a T, record_expr: &mut TypeQueryExprVisitor<'a>) {
+    value.visit(&mut |expr| visit_expr(expr, None, record_expr));
 }
 
 fn visit_function_signature<'a>(
     function_def: &'a StmtFunctionDef,
-    visit_expr: &mut TypeQueryExprVisitor<'a>,
+    record_expr: &mut TypeQueryExprVisitor<'a>,
 ) {
-    visit_exprs(&function_def.decorator_list, visit_expr);
+    visit_exprs(&function_def.decorator_list, record_expr);
     if let Some(type_params) = &function_def.type_params {
-        visit_exprs(type_params, visit_expr);
+        visit_exprs(type_params, record_expr);
     }
-    visit_exprs(&function_def.parameters, visit_expr);
+    visit_exprs(&function_def.parameters, record_expr);
     if let Some(returns) = &function_def.returns {
-        visit_expr(returns, None);
+        visit_expr(returns, None, record_expr);
     }
 }
 
-fn visit_stmt<'a>(stmt: &'a Stmt, visit_expr: &mut TypeQueryExprVisitor<'a>) {
-    stmt.visit(&mut |expr| visit_expr(expr, None));
+fn visit_stmt<'a>(stmt: &'a Stmt, record_expr: &mut TypeQueryExprVisitor<'a>) {
+    stmt.visit(&mut |expr| visit_expr(expr, None, record_expr));
 }
 
-fn walk_without_function_bodies<'a>(body: &'a [Stmt], visit_expr: &mut TypeQueryExprVisitor<'a>) {
+fn walk_without_function_bodies<'a>(body: &'a [Stmt], record_expr: &mut TypeQueryExprVisitor<'a>) {
     for stmt in body {
         match stmt {
-            Stmt::ClassDef(class_def) => walk_without_function_bodies(&class_def.body, visit_expr),
-            Stmt::FunctionDef(function_def) => visit_function_signature(function_def, visit_expr),
-            _ => visit_stmt(stmt, visit_expr),
+            Stmt::ClassDef(class_def) => walk_without_function_bodies(&class_def.body, record_expr),
+            Stmt::FunctionDef(function_def) => visit_function_signature(function_def, record_expr),
+            _ => visit_stmt(stmt, record_expr),
         }
     }
 }

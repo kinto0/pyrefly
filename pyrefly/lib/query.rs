@@ -177,6 +177,10 @@ const CALLEE_KIND_METHOD: &str = "method";
 const CALLEE_KIND_CLASSMETHOD: &str = "classmethod";
 const CALLEE_KIND_STATICMETHOD: &str = "staticmethod";
 
+/// Records a single expression selected by a filtered query walker.
+///
+/// This callback does not recurse into child expressions. Walkers that include
+/// an expression are responsible for walking its children if they want them.
 pub type TypeQueryExprVisitor<'a> = dyn FnMut(&'a Expr, Option<&'a Expr>) + 'a;
 pub type TypeQueryStmtWalker = dyn for<'a> Fn(&'a [Stmt], &mut TypeQueryExprVisitor<'a>);
 
@@ -2139,25 +2143,10 @@ impl Query {
                     timing,
                 );
             }
-            x.recurse(&mut |c| {
-                f(
-                    c,
-                    Some(x),
-                    module_info,
-                    answers,
-                    bindings,
-                    res,
-                    type_cache,
-                    transform,
-                    type_shape_context,
-                    include_display,
-                    timing,
-                )
-            });
         }
 
         let mut res = Vec::new();
-        let mut visit_expr = |x: &Expr, parent: Option<&Expr>| {
+        let mut record_expr = |x: &Expr, parent: Option<&Expr>| {
             f(
                 x,
                 parent,
@@ -2173,10 +2162,19 @@ impl Query {
             )
         };
         if let Some(walker) = walker {
-            walker(&ast.body, &mut visit_expr);
+            walker(&ast.body, &mut record_expr);
         } else {
+            fn visit_expr<'a>(
+                x: &'a Expr,
+                parent: Option<&'a Expr>,
+                record_expr: &mut TypeQueryExprVisitor<'a>,
+            ) {
+                record_expr(x, parent);
+                x.recurse(&mut |c| visit_expr(c, Some(x), record_expr));
+            }
+
             for stmt in &ast.body {
-                stmt.visit(&mut |x| visit_expr(x, None));
+                stmt.visit(&mut |x| visit_expr(x, None, &mut record_expr));
             }
         }
         if let (Some(timing), Some(profile)) = (timing, profile) {
