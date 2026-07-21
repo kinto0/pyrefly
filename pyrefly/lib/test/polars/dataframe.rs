@@ -612,6 +612,50 @@ def f(n: NotAFrame) -> None:
 );
 
 testcase!(
+    test_select_wildcard_preserves_schema,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.select("*"))  # E: revealed type: DataFrame[a: int, b: str]
+"#,
+);
+
+testcase!(
+    test_select_wildcard_with_other_arg_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.select("*", "a"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_select_regex_selector_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.select("^a.*$"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
+    test_drop_wildcard_falls_back,
+    env_with_polars_stubs(),
+    r#"
+import polars as pl
+from typing import reveal_type
+df = pl.DataFrame({"a": [1], "b": ["x"]})
+reveal_type(df.drop("*"))  # E: revealed type: DataFrame
+"#,
+);
+
+testcase!(
     test_select_method_keyword_falls_back,
     env_with_polars_stubs(),
     r#"

@@ -56,6 +56,16 @@ pub fn is_pandas_dataframe(cls: &Class) -> bool {
     cls.has_toplevel_qname("pandas.core.frame", "DataFrame")
 }
 
+/// Whether a `select`/`drop` string is a `pl.col` selector (`"*"` or `"^regex$"`) rather than an
+/// exact column name.
+fn is_polars_selector_string(arg: &Expr) -> bool {
+    let Expr::StringLiteral(s) = arg else {
+        return false;
+    };
+    let value = s.value.to_str();
+    value == "*" || (value.starts_with('^') && value.ends_with('$'))
+}
+
 impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Infer a column schema from a `pl.DataFrame({...})` dict literal, or `None` to
     /// fall back to plain construction.
@@ -194,10 +204,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         )
     }
 
-    /// Model `df.select("a", "b")` as a new schema with the named columns in argument order.
-    /// The caller passes the already-inferred receiver type, so the receiver is never inferred
-    /// twice. Falls back with `None` unless the receiver carries a schema, the method is
-    /// `select`, and every argument is a positional string literal.
+    /// Model `df.select("a", "b")` as a new schema with the named columns in argument order. A lone
+    /// `"*"` keeps the schema unchanged since it selects every column. Falls back with `None` unless
+    /// every argument is a positional string literal.
     pub fn polars_select(
         &self,
         base: &Type,
@@ -208,6 +217,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let schema = column_transform_schema(base, func, "select", args)?;
         // Column selection is Polars-only; pandas has no `select` method and uses `[]`.
         if schema.kind != DataFrameKind::Polars {
+            return None;
+        }
+        if let [Expr::StringLiteral(s)] = &args.args[..]
+            && s.value.to_str() == "*"
+        {
+            return Some(base.clone());
+        }
+        if args.args.iter().any(is_polars_selector_string) {
             return None;
         }
         self.polars_select_columns(schema, &args.args, errors)
@@ -226,6 +243,9 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let schema = column_transform_schema(base, func, "drop", args)?;
         // Column drop is Polars-only; pandas `drop` defaults to the index axis.
         if schema.kind != DataFrameKind::Polars {
+            return None;
+        }
+        if args.args.iter().any(is_polars_selector_string) {
             return None;
         }
         let mut dropped: Vec<(Name, TextRange)> = Vec::with_capacity(args.args.len());
