@@ -720,20 +720,23 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::DataFrame(schema) => {
                 self.fmt_helper_generic(&schema.underlying_type(), false, output)?;
-                // Only a Complete schema renders its columns; a Partial one is
-                // indistinguishable from the plain underlying instance.
-                if schema.completeness == SchemaCompleteness::Complete {
-                    output.write_str("[")?;
-                    for (i, (name, ty)) in schema.columns.iter().enumerate() {
-                        if i > 0 {
-                            output.write_str(", ")?;
-                        }
-                        output.write_str(name.as_str())?;
-                        output.write_str(": ")?;
-                        self.fmt_helper_generic(ty, false, output)?;
+                output.write_str("[")?;
+                for (i, (name, ty)) in schema.columns.iter().enumerate() {
+                    if i > 0 {
+                        output.write_str(", ")?;
                     }
-                    output.write_str("]")?;
+                    output.write_str(name.as_str())?;
+                    output.write_str(": ")?;
+                    self.fmt_helper_generic(ty, false, output)?;
                 }
+                // A Partial schema carries unknown extra columns, shown as a trailing "...".
+                if schema.completeness == SchemaCompleteness::Partial {
+                    if !schema.columns.is_empty() {
+                        output.write_str(", ")?;
+                    }
+                    output.write_str("...")?;
+                }
+                output.write_str("]")?;
                 Ok(())
             }
             Type::Int(dim) => output.write_str(&format!("Int[{dim}]")),

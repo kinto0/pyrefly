@@ -19,6 +19,8 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::callable::FunctionKind;
+use pyrefly_types::data_frame::DataFrameKind;
+use pyrefly_types::data_frame::SchemaCompleteness;
 use pyrefly_types::dimension::Int;
 use pyrefly_types::dimension::canonicalize;
 use pyrefly_types::dimension::gradual_size;
@@ -2947,10 +2949,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     errors,
                     Some(&|| ErrorContext::Index(self.for_display(base.clone()))),
                 ),
-                // A string-literal read of a column absent from the schema is a static
-                // error, since the inferred column set is complete and the name cannot exist.
                 Type::DataFrame(schema) => {
-                    if let Expr::StringLiteral(key) = slice {
+                    if let Expr::StringLiteral(key) = slice
+                        && schema.completeness == SchemaCompleteness::Complete
+                    {
                         let name = key.value.to_str();
                         if !schema.columns.iter().any(|(c, _)| c.as_str() == name) {
                             errors
@@ -2962,6 +2964,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                 .emit();
                         }
                     } else if let Expr::List(ExprList { elts, .. }) = slice
+                        && schema.kind == DataFrameKind::Polars
                         && let Some(narrowed) =
                             self.polars_select_columns(&schema, elts, errors)
                     {

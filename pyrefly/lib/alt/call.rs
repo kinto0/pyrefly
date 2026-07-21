@@ -9,6 +9,7 @@ use std::iter;
 use std::sync::Arc;
 
 use pyrefly_python::dunder;
+use pyrefly_types::data_frame::DataFrameKind;
 use pyrefly_types::data_frame::DataFrameSchema;
 use pyrefly_types::data_frame::SchemaCompleteness;
 use pyrefly_types::literal::LitStyle;
@@ -44,6 +45,7 @@ use crate::alt::class::class_field::DescriptorBase;
 use crate::alt::class::dataclass::ReplaceKind;
 use crate::alt::expr::TypeOrExpr;
 use crate::alt::nn_module_specials::is_nn_sequential;
+use crate::alt::polars_specials::is_pandas_dataframe;
 use crate::alt::polars_specials::is_polars_dataframe;
 use crate::alt::unwrap::HintRef;
 use crate::alt::unwrap::MAX_CALL_HINT_WIDTH;
@@ -2041,14 +2043,22 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
 
-        // An inferred Polars column schema is layered onto the constructor result below.
-        let polars_columns = if let Type::ClassDef(cls) = &callee_ty
-            && is_polars_dataframe(cls)
+        // A pandas frame is mutable so columns can be added after construction, which leaves
+        // its schema Partial. A Polars frame is immutable so its schema is Complete.
+        let dataframe_schema = if let Type::ClassDef(cls) = &callee_ty
             && x.arguments.args.len() == 1
             && x.arguments.keywords.is_empty()
             && let Expr::Dict(dict) = &x.arguments.args[0]
         {
-            self.infer_polars_schema(dict, errors)
+            if is_polars_dataframe(cls) {
+                self.infer_dataframe_schema(dict, DataFrameKind::Polars, errors)
+                    .map(|c| (c, DataFrameKind::Polars, SchemaCompleteness::Complete))
+            } else if is_pandas_dataframe(cls) {
+                self.infer_dataframe_schema(dict, DataFrameKind::Pandas, errors)
+                    .map(|c| (c, DataFrameKind::Pandas, SchemaCompleteness::Partial))
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -2304,13 +2314,14 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         };
 
-        if let Some(columns) = polars_columns
+        if let Some((columns, kind, completeness)) = dataframe_schema
             && let Type::ClassType(underlying) = result.clone()
         {
             return DataFrameSchema {
                 underlying,
                 columns,
-                completeness: SchemaCompleteness::Complete,
+                completeness,
+                kind,
             }
             .to_type();
         }
