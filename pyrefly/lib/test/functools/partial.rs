@@ -696,8 +696,9 @@ partial(C, field=1, other="x")
 "#,
 );
 
+// A bare abstract class is flagged at partial construction, where the problem originates; a
+// `type[A]` value can still be a concrete subclass, so it is not flagged.
 functools_testcase!(
-    bug = "partial wrapping an abstract class is not flagged: partial(A) and the resulting call should both error, but only the direct A() is caught",
     test_partial_abstract_class,
     r#"
 from abc import ABC, abstractmethod
@@ -712,8 +713,28 @@ def f1(cls: type[A]) -> None:
     partial_cls()
 def f2() -> None:
     A()  # E: Cannot instantiate `A` because the following members are abstract: `method`
-    partial_cls = partial(A)  # WANT: Cannot instantiate abstract class "A" with abstract attribute "method"
-    partial_cls()  # WANT: Cannot instantiate abstract class "A" with abstract attribute "method"
+    partial_cls = partial(A)  # E: Cannot instantiate `A` because the following members are abstract: `method`
+    partial_cls()
+"#,
+);
+
+// A bare protocol is flagged at partial construction with the protocol-specific message, matching
+// a direct `P()` call; a `type[P]` value can still be a concrete subclass, so it is not flagged.
+functools_testcase!(
+    test_partial_protocol_class,
+    r#"
+from functools import partial
+from typing import Protocol
+class P(Protocol):
+    def method(self) -> None: ...
+def f1(cls: type[P]) -> None:
+    cls()
+    partial_cls = partial(cls)
+    partial_cls()
+def f2() -> None:
+    P()  # E: Cannot instantiate `P` because it is a protocol
+    partial_cls = partial(P)  # E: Cannot instantiate `P` because it is a protocol
+    partial_cls()
 "#,
 );
 

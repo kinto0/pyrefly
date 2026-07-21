@@ -28,6 +28,7 @@ use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallKeyword;
 use crate::alt::unwrap::HintRef;
+use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::types::callable::Callable;
 use crate::types::callable::Function;
@@ -74,10 +75,56 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // A class object / `type[C]` is callable via its constructor; normalize to that signature
         // so the same argument checking and residual logic apply, with the instance as the return.
         let target_ty = match target_ty {
-            Type::ClassDef(cls) => match self.promote_silently(&cls) {
-                Type::ClassType(instance) => self.constructor_to_callable(&instance),
-                _ => Type::ClassDef(cls),
-            },
+            // A bare protocol or abstract class can't be instantiated, so flag it at construction
+            // where the problem originates (a `type[C]` value below can still be a concrete
+            // subclass). Mirror the direct-instantiation path in `call.rs`.
+            Type::ClassDef(cls) => {
+                let metadata = self.get_metadata_for_class(&cls);
+                if metadata.is_protocol() {
+                    self.error(
+                        errors,
+                        callee_range,
+                        ErrorKind::BadInstantiation,
+                        format!(
+                            "Cannot instantiate `{}` because it is a protocol",
+                            cls.name()
+                        ),
+                    );
+                } else {
+                    let abstract_members = self.get_abstract_members_for_class(&cls);
+                    let unimplemented = abstract_members.unimplemented_abstract_methods();
+                    if !unimplemented.is_empty() {
+                        self.error(
+                            errors,
+                            callee_range,
+                            ErrorKind::BadInstantiation,
+                            format!(
+                                "Cannot instantiate `{}` because the following members are abstract: {}",
+                                cls.name(),
+                                unimplemented
+                                    .iter()
+                                    .map(|x| format!("`{x}`"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                        );
+                    } else if metadata.is_explicitly_abstract() {
+                        self.error(
+                            errors,
+                            callee_range,
+                            ErrorKind::BadInstantiation,
+                            format!(
+                                "Cannot instantiate `{}` because it directly extends `ABC` or uses `ABCMeta`",
+                                cls.name()
+                            ),
+                        );
+                    }
+                }
+                match self.promote_silently(&cls) {
+                    Type::ClassType(instance) => self.constructor_to_callable(&instance),
+                    _ => Type::ClassDef(cls),
+                }
+            }
             Type::Type(inner) => match *inner {
                 Type::ClassType(instance) => self.constructor_to_callable(&instance),
                 other => Type::Type(Box::new(other)),
