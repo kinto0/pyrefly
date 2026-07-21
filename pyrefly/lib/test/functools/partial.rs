@@ -412,7 +412,6 @@ def main4(a2good: A2Good, a2bad: A2Bad, **d2: Unpack[D2]) -> None:
 );
 
 functools_testcase!(
-    bug = "partial does not flag a TypedDict-Unpack prefix that supplies a key a **kwargs-Unpack target does not accept (fn2)",
     test_partial_typeddict_extra_key,
     r#"
 from typing import TypedDict
@@ -427,7 +426,7 @@ def fn1(a1: int) -> None: ...
 def fn2(**kwargs: Unpack[D1]) -> None: ...
 def main5(**d2: Unpack[D2]) -> None:
     partial(fn1, **d2)()  # E: Unexpected keyword argument `a2` in function `fn1`
-    partial(fn2, **d2)()  # WANT: Extra argument `a2` from **args for `fn2`
+    partial(fn2, **d2)()  # E: Unexpected keyword argument `a2` in function `fn2`
 "#,
 );
 
@@ -479,6 +478,27 @@ def main(**d: Unpack[Sub]) -> None:
     partial(fn, **d)(a=1, b="x")
     partial(fn, **d)(a="no")  # E: Argument `Literal['no']` is not assignable to parameter `a` with type `int`
     partial(fn, **d)(oops=1)  # E: Unexpected keyword argument `oops`
+"#,
+);
+
+// Binding a required field of a `**kwargs: Unpack[TypedDict]` target satisfies it: the later call
+// need not re-supply it, but an unbound required field is still enforced.
+functools_testcase!(
+    test_partial_typeddict_required_field_bound,
+    r#"
+from typing import TypedDict
+from typing_extensions import Unpack
+from functools import partial
+class D(TypedDict):
+    a1: int
+    a2: str
+def fn(**kwargs: Unpack[D]) -> None: ...
+partial(fn)
+partial(fn)()  # E: Missing argument `a1` # E: Missing argument `a2`
+partial(fn, a1=1)
+partial(fn, a1=1)()  # E: Missing argument `a2`
+partial(fn, a1=1, a2="x")()
+partial(fn, a1="no")  # E: Argument `Literal['no']` is not assignable to parameter `a1` with type `int` in function `fn`
 "#,
 );
 

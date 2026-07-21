@@ -12,6 +12,7 @@ use std::sync::Arc;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
+use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Var;
 use pyrefly_util::visit::Visit;
@@ -175,7 +176,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         // in the residual and are re-scoped into a `Forall` below, so a partial over a generic
         // function (including decorator use) preserves its genericity instead of leaking a residual
         // through the stub. Class objects, bound methods, and unions defer.
-        let (tparams, sig) = match &target_ty {
+        let (tparams, mut sig) = match &target_ty {
             Type::Callable(c) => (None, (**c).clone()),
             Type::Function(f) => (None, f.signature.clone()),
             // Strip the already-bound `self`/`cls` so the residual is the remaining parameters;
@@ -210,6 +211,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if !matches!(sig.params, Params::List(_)) {
             return fallback(self);
         }
+        self.expand_unpack_kwargs(&mut sig);
         // Nominal `partial[ret]` fallback for when no residual can be built. For a generic target
         // erase the target's own type vars so they don't leak out of scope; otherwise defer to the stub.
         let nominal_partial = |me: &Self, ret: Type| -> Type {
@@ -239,7 +241,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         let sig = match &tparams {
             None => {
                 let mut callee = target_ty.clone();
-                callee.transform_toplevel_callable(&mut |c: &mut Callable| make_params_optional(c));
+                callee.transform_toplevel_callable(&mut |c: &mut Callable| {
+                    self.expand_unpack_kwargs(c);
+                    make_params_optional(c);
+                });
                 self.freeform_call_infer(
                     callee,
                     &args[1..],
@@ -260,7 +265,10 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     .zip(tparams.iter().cloned())
                     .collect();
                 let mut callee = self.heap.mk_callable_from(inst.clone());
-                callee.transform_toplevel_callable(&mut |c: &mut Callable| make_params_optional(c));
+                callee.transform_toplevel_callable(&mut |c: &mut Callable| {
+                    self.expand_unpack_kwargs(c);
+                    make_params_optional(c);
+                });
                 self.freeform_call_infer(
                     callee,
                     &args[1..],
@@ -368,6 +376,29 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         }
         Some(names)
+    }
+
+    /// Expand each `**kwargs: Unpack[TypedDict]` into one keyword-only param per field so the ordinary
+    /// residual machinery handles them. An open TypedDict's extra items become a trailing `**kwargs`.
+    fn expand_unpack_kwargs(&self, callable: &mut Callable) {
+        let Params::List(params) = &mut callable.params else {
+            return;
+        };
+        let mut expanded: Vec<Param> = Vec::with_capacity(params.items().len());
+        for param in params.items() {
+            match param {
+                Param::Kwargs(_, Type::Unpack(inner)) if let Type::TypedDict(td) = &**inner => {
+                    for (name, ty, required) in self.typed_dict_kw_param_info(td) {
+                        expanded.push(Param::KwOnly(name, ty, required));
+                    }
+                    if let ExtraItems::Extra(extra) = self.typed_dict_extra_items(td) {
+                        expanded.push(Param::Kwargs(None, extra.ty));
+                    }
+                }
+                _ => expanded.push(param.clone()),
+            }
+        }
+        *params = ParamList::new(expanded);
     }
 }
 
