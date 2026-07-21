@@ -24,6 +24,10 @@ path = "test_laziness/mod.rs"
 name = "micro"
 harness = false
 
+[[bench]]
+name = "pytorch"
+harness = false
+
 [dependencies]
 anstream = "0.6.11"
 anyhow = "1.0.103"

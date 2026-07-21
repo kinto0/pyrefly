@@ -273,6 +273,14 @@ impl TestClient {
         }
     }
 
+    /// Override the send/receive timeouts. The interactive-test defaults are
+    /// tuned for small in-memory fixtures; benchmarks against large real-world
+    /// projects need far longer to settle their first full check.
+    pub fn set_timeouts(&mut self, send: Duration, recv: Duration) {
+        self.send_timeout = send;
+        self.recv_timeout = recv;
+    }
+
     fn get_root_or_panic(&self) -> PathBuf {
         self.root
             .clone()
