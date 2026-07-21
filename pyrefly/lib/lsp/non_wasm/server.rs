@@ -4871,6 +4871,7 @@ impl Server {
         handle: Handle,
         uri: &Url,
         position: Position,
+        find_preference: FindPreference,
         include_declaration: bool,
         activity_key: Option<ActivityKey>,
         map_result: impl FnOnce(Vec<(Url, Vec<Range>)>) -> V + Send + Sync + 'static,
@@ -4886,10 +4887,7 @@ impl Server {
             handle,
             uri,
             position,
-            FindPreference {
-                import_behavior: ImportBehavior::StopAtRenamedImports,
-                ..Default::default()
-            },
+            find_preference,
             activity_key,
             move |transaction, handle, definition, telemetry, telemetry_event| {
                 let qualified_name =
@@ -4989,6 +4987,10 @@ impl Server {
             handle,
             uri,
             params.text_document_position.position,
+            FindPreference {
+                import_behavior: ImportBehavior::StopAtRenamedImports,
+                ..Default::default()
+            },
             params.context.include_declaration,
             activity_key,
             move |results| {
@@ -5021,6 +5023,11 @@ impl Server {
             handle,
             uri,
             params.text_document_position.position,
+            FindPreference {
+                import_behavior: ImportBehavior::StopAtRenamedImports,
+                resolve_call_dunders: false,
+                ..Default::default()
+            },
             true,
             activity_key,
             move |results| {
