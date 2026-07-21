@@ -57,12 +57,12 @@ pyrefly_types = { path = "../crates/pyrefly_types" }
 pyrefly_util = { path = "../crates/pyrefly_util" }
 rayon = "1.11.0"
 regex = "1.13.1"
-ruff_annotate_snippets = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5" }
-ruff_notebook = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5" }
-ruff_python_ast = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5", features = ["serde"] }
-ruff_python_parser = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5" }
-ruff_source_file = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5" }
-ruff_text_size = { git = "https://github.com/astral-sh/ruff/", rev = "db5aa0a5f1b92cb91d910bf0866a967554dd94f5" }
+ruff_annotate_snippets = "0.0.4"
+ruff_notebook = "0.0.4"
+ruff_python_ast = { version = "0.0.4", features = ["serde"] }
+ruff_python_parser = "0.0.4"
+ruff_source_file = "0.0.4"
+ruff_text_size = "0.0.4"
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 serde_repr = "0.1.14"

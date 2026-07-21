@@ -801,6 +801,7 @@ impl Bindings {
             | SemanticSyntaxErrorKind::NamedExpressionInComprehensionIterable
             | SemanticSyntaxErrorKind::NamedExpressionInClassBodyComprehension
             | SemanticSyntaxErrorKind::TypeParameterDefaultOrder(_)
+            | SemanticSyntaxErrorKind::MultipleStarredNamesInSequencePattern
             | SemanticSyntaxErrorKind::ReturnInGenerator => false,
         }
     }

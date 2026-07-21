@@ -1021,9 +1021,9 @@ dependencies = [
 
 [[package]]
 name = "get-size-derive2"
-version = "0.9.0"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9f8ab1b98a1284961d722ce994d9a0f3018ab1917618d4113824a72b9f71bc9"
+checksum = "33ce01473d0fed9913c71114f0384807cdf584673424d093c102263645bf2a31"
 dependencies = [
  "attribute-derive",
  "quote",
@@ -1032,9 +1032,9 @@ dependencies = [
 
 [[package]]
 name = "get-size2"
-version = "0.9.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0cd0777a1057362cab35a779e0d79dacecb8d73e2c733eaafeb7ea917b08f03"
+checksum = "823645bc6404ae2915707777061a47d3a031a9ee0bff51b34ec973df3d8d2990"
 dependencies = [
  "compact_str",
  "get-size-derive2",
@@ -1090,7 +1090,6 @@ dependencies = [
  "js-sys",
  "libc",
  "r-efi 6.0.0",
- "rand_core 0.10.1",
  "wasip2",
  "wasip3",
  "wasm-bindgen",
@@ -1428,15 +1427,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -2435,7 +2425,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c7f5fa3a058cd35567ef9bfa5e75732bee0f9e4c55fa90477bef2dfcdbc4be80"
 dependencies = [
  "chacha20",
- "getrandom 0.4.2",
  "rand_core 0.10.1",
 ]
 
@@ -2550,8 +2539,9 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
 name = "ruff_annotate_snippets"
-version = "0.1.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "deafe621728d41f23ac9e2dc0ae984b03260e6d73d66993420aea70ad3d86919"
 dependencies = [
  "anstyle",
  "memchr",
@@ -2560,21 +2550,23 @@ dependencies = [
 
 [[package]]
 name = "ruff_cache"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ceee2c4a6c805f7264a63d9eefe00d2c1e810e83f34b9b95d00d6495519d4f8e"
 dependencies = [
  "filetime",
  "glob",
  "globset",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "regex",
  "seahash",
 ]
 
 [[package]]
 name = "ruff_diagnostics"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54d71d4103bc0ac2091afb1950bff3c667f5f3c8aacb73335894f166142e378b"
 dependencies = [
  "get-size2",
  "is-macro",
@@ -2583,28 +2575,30 @@ dependencies = [
 
 [[package]]
 name = "ruff_notebook"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f798d3786173a5a7763ec78fb750de63052a9a08d0ef840d1e7073239125a62"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "rand 0.10.2",
  "ruff_diagnostics",
  "ruff_source_file",
  "ruff_text_size",
  "serde",
  "serde_json",
- "serde_with",
  "thiserror 2.0.18",
  "uuid",
 ]
 
 [[package]]
 name = "ruff_python_ast"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a12d40253033e38020db1bdb91a2cf5d0bee1e755c1938a26d43fa3c73d2b426"
 dependencies = [
  "aho-corasick",
+ "arrayvec",
  "bitflags 2.13.1",
  "compact_str",
  "get-size2",
@@ -2622,8 +2616,9 @@ dependencies = [
 
 [[package]]
 name = "ruff_python_parser"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "154345bd168f768a36f620180eabc9a5bae844d8c853182b1a24bb1a984c9b00"
 dependencies = [
  "bitflags 2.13.1",
  "bstr",
@@ -2643,19 +2638,22 @@ dependencies = [
 
 [[package]]
 name = "ruff_python_trivia"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dc22c8e07f58267a6c517ab87df57f503ef92927cd0fc46c8445ff318a39e54"
 dependencies = [
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "ruff_source_file",
  "ruff_text_size",
+ "rustc-hash",
  "unicode-ident",
 ]
 
 [[package]]
 name = "ruff_source_file"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a7f467940ad19aead60f1a0d7ddbb08aa69f3bbfa49ab271886fb0d98459952"
 dependencies = [
  "memchr",
  "ruff_text_size",
@@ -2664,8 +2662,9 @@ dependencies = [
 
 [[package]]
 name = "ruff_text_size"
-version = "0.0.0"
-source = "git+https://github.com/astral-sh/ruff/?rev=db5aa0a5f1b92cb91d910bf0866a967554dd94f5#db5aa0a5f1b92cb91d910bf0866a967554dd94f5"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dca33c148ef1d49a0dd430cdc05125e9c63a3c93028a2cbe7f6ffb3e5bbc4c7"
 dependencies = [
  "get-size2",
  "serde",
@@ -3508,7 +3507,6 @@ checksum = "bf3923a6f5c4c6382e0b653c4117f48d631ea17f38ed86e2a828e6f7412f5239"
 dependencies = [
  "getrandom 0.4.2",
  "js-sys",
- "rand 0.10.2",
  "uuid-rng-internal",
  "wasm-bindgen",
 ]
