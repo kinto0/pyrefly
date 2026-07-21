@@ -358,4 +358,30 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             .to_type(),
         )
     }
+
+    /// Model row-only transforms (`filter`, `sort`, `fill_null`) as returning the receiver's
+    /// schema unchanged, since they reorder rows or replace values without touching the column
+    /// set or its types. Falls back with `None` for a receiver that carries no schema.
+    pub fn polars_row_transform(
+        &self,
+        base: &Type,
+        func: &ExprAttribute,
+        args: &Arguments,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        let Type::DataFrame(_) = base else {
+            return None;
+        };
+        if !matches!(func.attr.id.as_str(), "filter" | "sort" | "fill_null") {
+            return None;
+        }
+        // Infer the arguments so type errors inside them surface; the schema is unchanged.
+        for arg in args.args.iter() {
+            self.expr_infer(arg, errors);
+        }
+        for kw in args.keywords.iter() {
+            self.expr_infer(&kw.value, errors);
+        }
+        Some(base.clone())
+    }
 }
