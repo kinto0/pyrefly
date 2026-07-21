@@ -322,8 +322,9 @@ def f2(t: Union[Type[FooBar], FooBarFunc]) -> None:
 
 // ===== TypedDict Unpack **kwargs =====
 
+// Binding a `**` splat of an `Unpack[TypedDict]` consumes exactly the TypedDict's declared fields,
+// so the residual drops those parameters and the remaining ones are checked on the later call.
 functools_testcase!(
-    bug = "partial with TypedDict-Unpack **kwargs does not validate later call kwargs: bad type and unexpected key are missed",
     test_partial_typeddict_fn1_positional,
     r#"
 from typing import TypedDict
@@ -336,13 +337,12 @@ def main1(**d1: Unpack[D1]) -> None:
     partial(fn1, **d1)()
     partial(fn1, **d1)(**d1)
     partial(fn1, **d1)(a1=1)
-    partial(fn1, **d1)(a1="asdf")  # WANT: Argument "a1" to "fn1" has incompatible type "str"; expected "int"
-    partial(fn1, **d1)(oops=1)  # WANT: Unexpected keyword argument "oops" for "fn1"
+    partial(fn1, **d1)(a1="asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `a1` with type `int`
+    partial(fn1, **d1)(oops=1)  # E: Unexpected keyword argument `oops`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial of a function whose **kwargs is a TypedDict Unpack does not validate later call kwargs",
     test_partial_typeddict_fn2_kwargs,
     r#"
 from typing import TypedDict
@@ -355,13 +355,12 @@ def main2(**d1: Unpack[D1]) -> None:
     partial(fn2, **d1)()
     partial(fn2, **d1)(**d1)
     partial(fn2, **d1)(a1=1)
-    partial(fn2, **d1)(a1="asdf")  # WANT: Argument "a1" to "fn2" has incompatible type "str"; expected "int"
-    partial(fn2, **d1)(oops=1)  # WANT: Unexpected keyword argument "oops" for "fn2"
+    partial(fn2, **d1)(a1="asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `a1` with type `int`
+    partial(fn2, **d1)(oops=1)  # E: Unexpected keyword argument `oops`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial with a partial TypedDict Unpack prefix does not validate the remaining required/typed kwargs",
     test_partial_typeddict_fn3_mixed,
     r#"
 from typing import TypedDict
@@ -379,15 +378,14 @@ def main3(a2good: A2Good, a2bad: A2Bad, **d2: Unpack[D2]) -> None:
     partial(fn3, **d2)()
     partial(fn3, **d2)(a1=1, a2="asdf")
     partial(fn3, **d2)(**d2)
-    partial(fn3, **d2)(a1="asdf")  # WANT: Argument "a1" to "fn3" has incompatible type "str"; expected "int"
-    partial(fn3, **d2)(a1=1, a2="asdf", oops=1)  # WANT: Unexpected keyword argument "oops" for "fn3"
+    partial(fn3, **d2)(a1="asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `a1` with type `int`
+    partial(fn3, **d2)(a1=1, a2="asdf", oops=1)  # E: Unexpected keyword argument `oops`
     partial(fn3, **d2)(**a2good)
-    partial(fn3, **d2)(**a2bad)  # WANT: Argument "a2" to "fn3" has incompatible type "int"; expected "str"
+    partial(fn3, **d2)(**a2bad)  # E: Argument `int` is not assignable to parameter `a2` with type `str`
 "#,
 );
 
 functools_testcase!(
-    bug = "partial of a **kwargs-Unpack function does not validate the remaining kwargs supplied at call time",
     test_partial_typeddict_fn4_kwargs_mixed,
     r#"
 from typing import TypedDict
@@ -406,10 +404,10 @@ def main4(a2good: A2Good, a2bad: A2Bad, **d2: Unpack[D2]) -> None:
     partial(fn4, **d2)()
     partial(fn4, **d2)(a1=1, a2="asdf")
     partial(fn4, **d2)(**d2)
-    partial(fn4, **d2)(a1="asdf")  # WANT: Argument "a1" to "fn4" has incompatible type "str"; expected "int"
-    partial(fn4, **d2)(a1=1, a2="asdf", oops=1)  # WANT: Unexpected keyword argument "oops" for "fn4"
+    partial(fn4, **d2)(a1="asdf")  # E: Argument `Literal['asdf']` is not assignable to parameter `a1` with type `int`
+    partial(fn4, **d2)(a1=1, a2="asdf", oops=1)  # E: Unexpected keyword argument `oops`
     partial(fn3, **d2)(**a2good)
-    partial(fn3, **d2)(**a2bad)  # WANT: Argument "a2" to "fn3" has incompatible type "int"; expected "str"
+    partial(fn3, **d2)(**a2bad)  # E: Argument `int` is not assignable to parameter `a2` with type `str`
 "#,
 );
 
@@ -434,7 +432,7 @@ def main5(**d2: Unpack[D2]) -> None:
 );
 
 functools_testcase!(
-    bug = "partial with a too-narrow TypedDict-Unpack prefix does not report the missing/too-many/bad positionals at call time",
+    bug = "an optional TypedDict-Unpack prefix key is treated as always-bound, so a missing/positional diagnostic names the wrong parameter compared to mypy",
     test_partial_typeddict_missing,
     r#"
 from typing import TypedDict
@@ -449,16 +447,38 @@ class A2Bad(TypedDict, total=False):
 def fn3(a1: int, a2: str) -> None: ...
 def fn4(**kwargs) -> None: ...
 def main6(a2good: A2Good, a2bad: A2Bad, **d1: Unpack[D1]) -> None:
-    partial(fn3, **d1)()  # WANT: Missing positional argument "a1" in call to "fn3"
-    partial(fn3, **d1)("asdf")  # WANT: Too many positional arguments / Too few arguments / Argument 1 incompatible
+    # `a1` is bound optionally from `**d1`, but `a2` is never bound, so `a2` is the parameter
+    # flagged as missing (mypy also flags the still-optional `a1`).
+    partial(fn3, **d1)()  # E: Missing argument `a2`
+    partial(fn3, **d1)("asdf")  # E: Expected argument `a2` to be passed by name
     partial(fn3, **d1)(a2="asdf")
     partial(fn3, **d1)(**a2good)
-    partial(fn3, **d1)(**a2bad)  # WANT: Argument "a2" to "fn3" has incompatible type "int"; expected "str"
+    partial(fn3, **d1)(**a2bad)  # E: Argument `int` is not assignable to parameter `a2` with type `str`
     partial(fn4, **d1)()
-    partial(fn4, **d1)("asdf")
+    partial(fn4, **d1)("asdf")  # E: Expected 0 positional arguments, got 1
     partial(fn4, **d1)(a2="asdf")
     partial(fn4, **d1)(**a2good)
     partial(fn4, **d1)(**a2bad)
+"#,
+);
+
+// Expansion covers inherited TypedDict fields, so binding a subclass splat consumes the base-class
+// key and the residual validates it on the later call.
+functools_testcase!(
+    test_partial_typeddict_inherited_field,
+    r#"
+from typing import TypedDict
+from typing_extensions import Unpack
+from functools import partial
+class Base(TypedDict):
+    a: int
+class Sub(Base, total=False):
+    b: str
+def fn(a: int, b: str) -> None: ...
+def main(**d: Unpack[Sub]) -> None:
+    partial(fn, **d)(a=1, b="x")
+    partial(fn, **d)(a="no")  # E: Argument `Literal['no']` is not assignable to parameter `a` with type `int`
+    partial(fn, **d)(oops=1)  # E: Unexpected keyword argument `oops`
 "#,
 );
 

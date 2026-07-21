@@ -15,6 +15,7 @@ use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Var;
 use pyrefly_util::visit::Visit;
+use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
@@ -102,6 +103,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         if args.len() == 1 && kws.is_empty() && matches!(target_ty, Type::Overload(_)) {
             return target_ty;
         }
+        // The residual is keyed by the names the bound keywords consume. A `**` splat of an
+        // `Unpack[TypedDict]` binds exactly the TypedDict's declared fields, so expand it to those
+        // names; a splat of any other type can't be reduced structurally, so defer to the stub.
+        let Some(bound_kw_names) = self.partial_bound_kw_names(kws) else {
+            return fallback(self);
+        };
         // Overloaded target with bound arguments: drop branches the bound arguments can't satisfy and
         // recombine the surviving residuals into an overload, so per-call resolution still works.
         if let Type::Overload(overload) = &target_ty {
@@ -138,7 +145,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 }
                 // Defer the whole overload rather than silently drop a matched branch we can't
                 // represent, which would break a call that only matched that branch.
-                match partial_residual_callable(branch_sig, &args[1..], kws) {
+                match partial_residual_callable(branch_sig, &args[1..], &bound_kw_names) {
                     Some(residual) => residuals.push(residual),
                     None => return fallback(self),
                 }
@@ -266,7 +273,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 // A typevar in a *required* residual param stays symbolic so a later call arg can re-solve
                 // it (as a direct call would); one only in optional params keeps its solved value (GH #3546).
                 let mut regeneric_vars: SmallSet<Var> = SmallSet::new();
-                if let Some(residual) = partial_residual(&inst, &args[1..], kws) {
+                if let Some(residual) = partial_residual(&inst, &args[1..], &bound_kw_names) {
                     for param in residual.items() {
                         let (ty, required) = match param {
                             Param::PosOnly(_, t, r)
@@ -321,7 +328,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         };
         // The arguments can't be reduced to a residual (e.g. too many bound positionals); hand
         // back the nominal `partial[ret]` rather than re-running the stub over a `Forall`.
-        let Some(residual) = partial_residual(&sig, &args[1..], kws) else {
+        let Some(residual) = partial_residual(&sig, &args[1..], &bound_kw_names) else {
             return nominal_partial(self, sig.ret);
         };
         // A `TypeGuard`/`TypeIs` narrows only in a direct call; the residual just returns `bool`.
@@ -334,6 +341,33 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             None => self.heap.mk_callable_from(callable),
             Some(tparams) => restore_partial_generics(self.heap, callable, &tparams),
         }
+    }
+
+    /// The parameter names the bound keyword arguments consume, used to build the residual. A named
+    /// keyword contributes its own name; a `**` splat of an `Unpack[TypedDict]` contributes every
+    /// field the TypedDict declares. Returns `None` for a splat of any other type, which can't be
+    /// reduced to a fixed set of names.
+    fn partial_bound_kw_names(&self, keywords: &[CallKeyword]) -> Option<Vec<Name>> {
+        let mut names = Vec::new();
+        for kw in keywords {
+            match kw.arg {
+                Some(id) => names.push(id.id.clone()),
+                None => {
+                    // The bound arguments are re-inferred and validated below; here we only want the
+                    // splat's field names, so any inference error is reported there, not here.
+                    let ty = kw.value.infer(self, &self.error_collector());
+                    let Type::TypedDict(td) = ty else {
+                        return None;
+                    };
+                    names.extend(
+                        self.typed_dict_fields(&td)
+                            .into_iter()
+                            .map(|(name, _)| name),
+                    );
+                }
+            }
+        }
+        Some(names)
     }
 }
 
@@ -393,19 +427,20 @@ fn make_params_optional(callable: &mut Callable) {
 fn partial_residual_callable(
     branch: &Callable,
     bound_args: &[CallArg],
-    keywords: &[CallKeyword],
+    keyword_names: &[Name],
 ) -> Option<Callable> {
     match &branch.params {
-        Params::List(_) => partial_residual(branch, bound_args, keywords)
+        Params::List(_) => partial_residual(branch, bound_args, keyword_names)
             .map(|params| Callable::partial(params, branch.ret.clone())),
         // `(...)` still accepts anything after binding a prefix.
         Params::Ellipsis => Some(Callable::ellipsis(branch.ret.clone())),
         // `Concatenate[..., P]` binds its prefix first; the residual keeps the unbound prefix and `P`.
-        Params::ParamSpec(prefix, tail) => partial_paramspec_prefix(prefix, bound_args, keywords)
-            .map(|prefix| Callable {
+        Params::ParamSpec(prefix, tail) => {
+            partial_paramspec_prefix(prefix, bound_args, keyword_names).map(|prefix| Callable {
                 params: Params::ParamSpec(prefix, tail.clone()),
                 ret: branch.ret.clone(),
-            }),
+            })
+        }
         Params::Partial(_) | Params::Materialization => None,
     }
 }
@@ -415,7 +450,7 @@ fn partial_residual_callable(
 fn partial_paramspec_prefix(
     prefix: &[PrefixParam],
     bound_args: &[CallArg],
-    keywords: &[CallKeyword],
+    keyword_names: &[Name],
 ) -> Option<Box<[PrefixParam]>> {
     let mut remaining = prefix.to_vec();
     for arg in bound_args {
@@ -427,8 +462,7 @@ fn partial_paramspec_prefix(
         }
         remaining.remove(0);
     }
-    for kw in keywords {
-        let name = &kw.arg?.id;
+    for name in keyword_names {
         let idx = remaining
             .iter()
             .position(|p| matches!(p, PrefixParam::Pos(n, ..) if n == name))?;
@@ -442,7 +476,7 @@ fn partial_paramspec_prefix(
 fn partial_residual(
     callable: &Callable,
     bound_args: &[CallArg],
-    keywords: &[CallKeyword],
+    keyword_names: &[Name],
 ) -> Option<ParamList> {
     let Params::List(params) = &callable.params else {
         return None;
@@ -459,8 +493,7 @@ fn partial_residual(
             remaining.remove(idx);
         }
     }
-    for kw in keywords {
-        let name = &kw.arg?.id;
+    for name in keyword_names {
         let idx = remaining.iter().position(|p| {
             matches!(p, Param::Pos(n, ..) | Param::KwOnly(n, ..) if n == name)
                 || matches!(p, Param::Kwargs(..))
