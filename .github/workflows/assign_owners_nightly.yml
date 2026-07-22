@@ -1,23 +1,27 @@
-name: Assign team owners to unassigned PRs
+name: Nightly assign team owners to unassigned PRs
 
-# On-demand sweep that assigns a Pyrefly team engineer (from .github/owners.json)
+# Nightly sweep that assigns a Pyrefly team engineer (from .github/owners.json)
 # to open PRs that have no assignee, no merge conflict, and a signed CLA — the
 # PRs that are ready for a team member to shepherd but nobody has picked up.
+# Same logic as the on-demand backfill (assign_owners_sweep.yml), but runs
+# automatically once a day so newly-eligible PRs get picked up without anyone
+# having to trigger it.
 #
 # Selection is least-loaded (balanced against each owner's current open-PR
 # backlog) and each assignment is announced in the team Discord channel.
 #
-# Run manually from the Actions tab. Keep "dry_run" checked to preview what
-# would happen (logs only, plus the exact Discord messages), then uncheck it
-# to actually assign — mirroring backfill_importer_assignees.yml.
+# Scheduled runs assign for real. A manual run from the Actions tab exposes a
+# "dry_run" toggle (default off) to preview without assigning.
 
 on:
+  schedule:
+    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       dry_run:
         description: "Only log what would be assigned/notified, without assigning"
         type: boolean
-        default: true
+        default: false
 
 permissions: {}
 
@@ -38,9 +42,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // workflow_dispatch inputs arrive as strings; default to dry-run
-            // unless explicitly unchecked (matches backfill_importer_assignees).
-            const dryRun = (context.payload.inputs && context.payload.inputs.dry_run) !== 'false';
+            // Scheduled runs have no inputs and always assign for real; a manual
+            // run assigns unless its dry_run toggle is explicitly checked.
+            const dryRun = (context.payload.inputs && context.payload.inputs.dry_run) === 'true';
             const { owner, repo } = context.repo;
 
             // Pyrefly team GitHub handles — single source of truth in
