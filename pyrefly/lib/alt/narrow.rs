@@ -1228,6 +1228,16 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     ) -> Type {
         match op {
             AtomicNarrowOp::Placeholder => ty.clone(),
+            AtomicNarrowOp::ClassCoverageGate(_) => ty.clone(),
+            AtomicNarrowOp::ClassCoverageGateNeg(keys) => {
+                // Subtract the class only when every positional slot's sub-pattern exhausts its
+                // matched slot, i.e. all slot-coverage keys resolved to `Never`.
+                if !keys.is_empty() && keys.iter().all(|key| self.get_idx(*key).ty().is_never()) {
+                    self.heap.mk_never()
+                } else {
+                    ty.clone()
+                }
+            }
             AtomicNarrowOp::LenEq(v) => {
                 let right = self.expr_infer(v, errors);
                 let Type::Literal(f) = &right else {

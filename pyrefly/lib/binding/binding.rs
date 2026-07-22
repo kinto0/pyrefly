@@ -862,11 +862,14 @@ impl Ranged for NarrowUseLocation {
     }
 }
 
-/// Distinguishes between match statements and if/elif chains for exhaustiveness checking.
+/// Distinguishes between different kinds of exhaustiveness checking.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ExhaustivenessKind {
     Match,
     IfElif,
+    /// Coverage of a class pattern's sub-patterns over their matched slot types
+    /// (used to decide whether a refutable class pattern still narrows its class away).
+    ClassPatternCoverage,
 }
 
 /// Keys that refer to a `Type`.
