@@ -204,6 +204,8 @@ pub enum OutputFormat {
     Github,
     /// Emit JUnit XML
     JunitXml,
+    /// Emit CodeClimate issues in a JSON array (e.g. for GitLab Code Quality reports)
+    CodeClimate,
     /// Only show error count, omitting individual errors
     OmitErrors,
 }
