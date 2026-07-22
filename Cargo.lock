@@ -2261,7 +2261,6 @@ dependencies = [
  "equivalent",
  "itertools 0.15.0",
  "lsp-types",
- "parse-display",
  "pathdiff",
  "pyrefly_util",
  "regex",
@@ -2276,6 +2275,7 @@ dependencies = [
  "thin-vec",
  "thiserror 2.0.18",
  "toml",
+ "vec1",
 ]
 
 [[package]]
