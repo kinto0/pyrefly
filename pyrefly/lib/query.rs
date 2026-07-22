@@ -181,7 +181,8 @@ const CALLEE_KIND_STATICMETHOD: &str = "staticmethod";
 ///
 /// This callback does not recurse into child expressions. Walkers that include
 /// an expression are responsible for walking its children if they want them.
-pub type TypeQueryExprVisitor<'a> = dyn FnMut(&'a Expr, Option<&'a Expr>) + 'a;
+/// Returns whether the expression produced a located type.
+pub type TypeQueryExprVisitor<'a> = dyn FnMut(&'a Expr, Option<&'a Expr>) -> bool + 'a;
 pub type TypeQueryStmtWalker = dyn for<'a> Fn(&'a [Stmt], &mut TypeQueryExprVisitor<'a>);
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
@@ -2107,7 +2108,8 @@ impl Query {
             type_shape_context: &TypeShapeContext,
             include_display: bool,
             timing: &mut Option<&mut TypeQueryTiming>,
-        ) where
+        ) -> bool
+        where
             F: Fn(&TypeShapeContext, &Type, String) -> T,
         {
             let range = x.range();
@@ -2128,6 +2130,7 @@ impl Query {
                     include_display,
                     timing,
                 );
+                true
             } else if let Some(ty) = answers.get_type_trace(range) {
                 add_type(
                     &ty,
@@ -2142,6 +2145,9 @@ impl Query {
                     include_display,
                     timing,
                 );
+                true
+            } else {
+                false
             }
         }
 
