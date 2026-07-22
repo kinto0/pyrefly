@@ -1318,7 +1318,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                                     format!("Expected an iterable, got `{}`", self.for_display(ty)),
                                 );
                                 encountered_invalid_star = true;
-                                hint_ts_iter.nth(usize::MAX); // TODO: missing test
+                                hint_ts_iter.nth(usize::MAX);
                             }
                         }
                     }
