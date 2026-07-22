@@ -196,6 +196,59 @@ fn test_simple_int_annotation() {
 }
 
 #[test]
+fn test_return_annotations_have_exact_range_type_traces() {
+    let tdir = TempDir::new().unwrap();
+    let file_path = tdir.path().join("main.py");
+    let code = r#"def f() -> list[int]: ...
+def g() -> int | str: ...
+def h() -> list[int | str]: ...
+"#;
+    fs_anyhow::write(&file_path, code).unwrap();
+
+    let query = create_query();
+    let module_name = ModuleName::from_str("main");
+    let path = ModulePath::filesystem(file_path.clone());
+
+    let errors = query.add_files(vec![(module_name, path.clone())]);
+    assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
+
+    let types = query.get_types_in_file(module_name, path).unwrap();
+    let type_at_range = |line, start_col, end_col| {
+        types
+            .iter()
+            .find_map(|(range, ty)| {
+                (range.start_line.get() == line
+                    && range.start_col == start_col
+                    && range.end_line.get() == line
+                    && range.end_col == end_col)
+                    .then_some(ty.as_str())
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "Expected a type trace at {line}:{start_col}-{line}:{end_col}; got {types:?}"
+                )
+            })
+    };
+
+    assert_eq!(
+        "builtins.type[builtins.list[builtins.int]]",
+        type_at_range(1, 11, 20)
+    );
+    assert_eq!(
+        "builtins.type[builtins.int | builtins.str]",
+        type_at_range(2, 11, 20)
+    );
+    assert_eq!(
+        "builtins.type[builtins.list[builtins.int | builtins.str]]",
+        type_at_range(3, 11, 26),
+    );
+    assert_eq!(
+        "builtins.type[builtins.int | builtins.str]",
+        type_at_range(3, 16, 25),
+    );
+}
+
+#[test]
 fn test_type_shapes_include_structured_named_callable_and_type_variable_data() {
     let tdir = TempDir::new().unwrap();
     let file_path = tdir.path().join("main.py");
