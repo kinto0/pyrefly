@@ -2375,6 +2375,30 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     _ => None,
                 }
             }
+            UnresolvedFacetKind::MatchArg { class, index } => {
+                // Resolve the positional slot to an attribute name via the class's `__match_args__`
+                let suppress_errors = self.error_swallower();
+                let class_range = class.range();
+                let Type::ClassDef(cls) = self.expr_infer(&class, &suppress_errors) else {
+                    return None;
+                };
+                let instance = self.promote_silently(&cls);
+                let match_args = self.attr_infer_for_type(
+                    &instance,
+                    &dunder::MATCH_ARGS,
+                    class_range,
+                    &suppress_errors,
+                    None,
+                );
+                if let Type::Tuple(Tuple::Concrete(ts)) = &match_args
+                    && let Some(Type::Literal(lit)) = ts.get(index)
+                    && let Lit::Str(attr_name) = &lit.value
+                {
+                    Some(FacetKind::Attribute(Name::new(attr_name)))
+                } else {
+                    None
+                }
+            }
         }
     }
 

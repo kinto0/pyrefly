@@ -538,9 +538,19 @@ impl<'a> BindingsBuilder<'a> {
                                 pattern.range(),
                             ),
                         );
-                        // TODO: narrow attributes in positional patterns
+                        // Narrow the matched attribute as a facet of the subject, so sub-pattern narrowing flows to the parent.
+                        let subject_for_slot = if let Some(subject) = match_subject.as_single() {
+                            MatchSubject::Single(subject.clone().with_facet(
+                                UnresolvedFacetKind::MatchArg {
+                                    class: x.cls.clone(),
+                                    index: idx,
+                                },
+                            ))
+                        } else {
+                            MatchSubject::None
+                        };
                         narrow_ops.and_all(self.bind_pattern(
-                            MatchSubject::None,
+                            subject_for_slot,
                             pattern.clone(),
                             attr_key,
                         ))

@@ -1467,3 +1467,17 @@ def test(x: int | None, y: int | None) -> None:
     assert_type(v, int)  # E: `v` may be uninitialized
 "#,
 );
+
+testcase!(
+    test_match_class_positional_pattern_narrows_attribute,
+    r#"
+from typing import assert_type
+class C:
+    __match_args__ = ("x",)
+    x: int | str
+def f(c: C) -> None:
+    match c:
+        case C(int()):
+            assert_type(c.x, int)
+    "#,
+);
