@@ -86,6 +86,14 @@ Do not write a laundry list of implementation changes. Focus on:
 
 A reader should be able to understand the intent and rationale from the commit message, without following all the code changes in details.
 
+For any diff in this project (internal/Sapling), always:
+
+- Prefix the title with `[pyrefly]`.
+- Add the `#pyrefly` project as a reviewer (note the `#` — it is a Phabricator
+  project tag, not a user). E.g. `jf template --add-reviewers "#pyrefly"` before
+  `jf submit`, or `meta phabricator.diff update -n D<number> --add-reviewers
+  "#pyrefly"` if the diff already exists.
+
 ## Development environments
 
 There are three possible development environments:
