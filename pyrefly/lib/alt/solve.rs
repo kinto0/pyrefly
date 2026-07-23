@@ -156,6 +156,7 @@ use crate::types::class::Class;
 use crate::types::class::ClassType;
 use crate::types::display::TypeDisplayContext;
 use crate::types::literal::Lit;
+use crate::types::literal::LitStyle;
 use crate::types::module::ModuleType;
 use crate::types::param_spec::ParamSpec;
 use crate::types::quantified::AnchorIndex;
@@ -2426,7 +2427,18 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 if iterable_ty.ty().is_never() {
                     return Arc::new(EmptyAnswer);
                 }
-                let iterables = self.iterate(iterable_ty.ty(), *range, errors, None);
+                // String and bytes literals have known length, so generate a fixed-length iterable
+                let iterables = match iterable_ty.ty() {
+                    Type::Literal(lit) if let Lit::Str(s) = &lit.value => {
+                        let char_ty = self.heap.mk_literal_string(LitStyle::Implicit);
+                        vec![Iterable::FixedLen(vec![char_ty; s.chars().count()])]
+                    }
+                    Type::Literal(lit) if let Lit::Bytes(b) = &lit.value => {
+                        let elem_ty = self.heap.mk_class_type(self.stdlib.int().clone());
+                        vec![Iterable::FixedLen(vec![elem_ty; b.len()])]
+                    }
+                    _ => self.iterate(iterable_ty.ty(), *range, errors, None),
+                };
                 for iterable in iterables {
                     match iterable {
                         Iterable::OfType(_) | Iterable::Unpacked { .. } => {}
