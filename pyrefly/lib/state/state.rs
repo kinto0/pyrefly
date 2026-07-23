@@ -115,6 +115,7 @@ use crate::export::special::SpecialExport;
 use crate::module::bundled::BundledStub;
 use crate::module::finder::find_import_prefixes;
 use crate::module::typeshed::BundledTypeshedStdlib;
+use crate::module::typeshed::custom_typeshed_stdlib_config;
 use crate::solver::solver::VarRecurser;
 use crate::state::epoch::Epoch;
 use crate::state::errors::Errors;
@@ -1913,8 +1914,9 @@ impl<'a> Transaction<'a> {
     /// redundant single-threaded work on rechecks and multi-epoch runs.
     ///
     /// Returns `true` if all entries were already cached (no work done).
-    fn compute_stdlib(&mut self, sys_infos: SmallSet<SysInfo>) -> bool {
+    fn compute_stdlib(&mut self, handles: &[Handle]) -> bool {
         // Filter out SysInfos that already have a computed stdlib.
+        let sys_infos: SmallSet<SysInfo> = handles.iter().map(|h| h.sys_info().dupe()).collect();
         let missing: SmallSet<SysInfo> = sys_infos
             .into_iter()
             .filter(|k| !self.data.stdlib.contains_key(k))
@@ -1922,10 +1924,30 @@ impl<'a> Transaction<'a> {
         if missing.is_empty() {
             return true;
         }
-        let loader = self.get_cached_loader(&BundledTypeshedStdlib::config());
         // Use defaults (disabled) for stdlib - depth limiting is for user code
         let thread_state = ThreadState::new(None);
         for k in missing.into_iter_hashed() {
+            // The stdlib is cached per `SysInfo`, so every handle sharing this `SysInfo`
+            // must resolve to the same `typeshed_path`; otherwise the cached stdlib would
+            // depend on which handle happened to be seen first. Enforce that invariant
+            // rather than silently loading the stdlib from an arbitrary handle's typeshed.
+            let typeshed_path = handles
+                .iter()
+                .filter(|h| h.sys_info() == &*k)
+                .map(|h| self.data.state.get_config(h).typeshed_path.clone())
+                .reduce(|a, b| {
+                    assert_eq!(
+                        a, b,
+                        "handles sharing a SysInfo must agree on typeshed_path"
+                    );
+                    a
+                })
+                .flatten();
+            // Load the stdlib from the user-provided typeshed if one is set; otherwise
+            // use the bundled typeshed.
+            let stdlib_config = typeshed_path
+                .map_or_else(BundledTypeshedStdlib::config, custom_typeshed_stdlib_config);
+            let loader = self.get_cached_loader(&stdlib_config);
             self.data
                 .stdlib
                 .insert_hashed(k.to_owned(), Arc::new(Stdlib::for_bootstrapping()));
@@ -2065,12 +2087,8 @@ impl<'a> Transaction<'a> {
         let run_number = self.data.state.run_count.fetch_add(1, Ordering::SeqCst);
         // Compute stdlib once before the epoch loop. Stdlib is deterministic for a
         // given SysInfo and does not depend on user code, so it only needs to run once.
-        let sys_infos = handles
-            .iter()
-            .map(|x| x.sys_info().dupe())
-            .collect::<SmallSet<_>>();
         let stdlib_start = Instant::now();
-        let stdlib_cached = self.compute_stdlib(sys_infos);
+        let stdlib_cached = self.compute_stdlib(handles);
         let compute_stdlib_time = stdlib_start.elapsed();
         {
             let mut stats = self.stats.lock();
