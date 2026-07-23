@@ -2583,6 +2583,41 @@ def f(targets: list[int], n_points: int) -> None:
 );
 
 testcase!(
+    test_tensor_shapes_len_carries_first_dimension,
+    {
+        let mut env = shaped_array_env();
+        env.add_with_path(
+            "numpy",
+            "numpy.pyi",
+            r#"
+from shape_extensions import Int, IntTuple, IntVar, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape: IntTuple, DType = int]:
+    def __len__[N: IntVar](self: Array[[N], DType]) -> Int[N]: ...
+
+def arange[N: IntVar](stop: Int[N]) -> Array[[N], int]: ...
+def zeros[N: IntVar](shape: Int[N]) -> Array[[N], int]: ...
+"#,
+        );
+        env
+    },
+    r#"
+import numpy as np
+from shape_extensions import Int
+from typing import assert_type
+
+def f(a: np.Array[[5], int], xs: list[int]) -> None:
+    # `len()` returns `Array.__len__`'s `Int[N]` result (a subtype of `int`), so it
+    # carries the first dimension and flows into shape-DSL arithmetic downstream.
+    assert_type(len(a), Int[5])
+    assert_type(np.arange(len(a)), np.Array[[5], int])
+    # A plain `list.__len__` returns `int`, so `len()` stays gradual there.
+    assert_type(len(xs), int)
+"#,
+);
+
+testcase!(
     test_tensor_shapes_size_bound_defaults,
     shaped_array_env(),
     r#"

@@ -867,6 +867,10 @@ impl FuncId {
 pub enum FunctionKind {
     IsInstance,
     IsSubclass,
+    /// The builtin `len`. Special-cased so that when the argument's `__len__`
+    /// returns a subtype of `int` (e.g. a shaped array's `Int[N]`), `len(x)`
+    /// yields that type instead of typeshed's plain `int`.
+    Len,
     Dataclass,
     DataclassField,
     DataclassReplace,
@@ -1292,6 +1296,7 @@ impl FunctionKind {
         match (module.name().as_str(), cls.as_ref(), func.as_str()) {
             ("builtins", None, "isinstance") => Self::IsInstance,
             ("builtins", None, "issubclass") => Self::IsSubclass,
+            ("builtins", None, "len") => Self::Len,
             ("builtins", None, "classmethod") => Self::ClassMethod,
             ("dataclasses", None, "dataclass") => Self::Dataclass,
             ("dataclasses", None, "field") => Self::DataclassField,
@@ -1335,6 +1340,7 @@ impl FunctionKind {
         match self {
             Self::IsInstance => ModuleName::builtins(),
             Self::IsSubclass => ModuleName::builtins(),
+            Self::Len => ModuleName::builtins(),
             Self::ClassMethod => ModuleName::builtins(),
             Self::Dataclass => ModuleName::dataclasses(),
             Self::DataclassField => ModuleName::dataclasses(),
@@ -1373,6 +1379,7 @@ impl FunctionKind {
         match self {
             Self::IsInstance => Cow::Owned(Name::new_static("isinstance")),
             Self::IsSubclass => Cow::Owned(Name::new_static("issubclass")),
+            Self::Len => Cow::Owned(Name::new_static("len")),
             Self::ClassMethod => Cow::Owned(Name::new_static("classmethod")),
             Self::Dataclass => Cow::Owned(Name::new_static("dataclass")),
             Self::DataclassField => Cow::Owned(Name::new_static("field")),
@@ -1411,6 +1418,7 @@ impl FunctionKind {
         match self {
             Self::IsInstance => None,
             Self::IsSubclass => None,
+            Self::Len => None,
             Self::ClassMethod => None,
             Self::Dataclass => None,
             Self::DataclassField => None,

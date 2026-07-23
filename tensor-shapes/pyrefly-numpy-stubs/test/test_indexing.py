@@ -13,12 +13,7 @@ from shape_extensions import assert_shape
 
 def test_arange_from_array_length() -> None:
     targets = np.zeros(5, dtype=np.intp)
-    # TODO: ideally this reads `np.arange(len(targets))`, but the `len()` builtin
-    # coerces `ndarray.__len__`'s `Int[N]` result down to plain `int`, so the
-    # dimension is lost and `indices` goes gradual. Using `.shape[0]` keeps it
-    # concrete (`Int[5]`). Once overall array size is modeled as a shape transform
-    # so `len()` carries the first dimension, this can go back to `len(targets)`.
-    indices = np.arange(targets.shape[0])
+    indices = np.arange(len(targets))
 
     assert_shape(indices, (5,))
     assert_type(indices.dtype, np.dtype[np.intp])
