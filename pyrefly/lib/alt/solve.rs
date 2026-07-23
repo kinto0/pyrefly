@@ -2518,6 +2518,25 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     );
                 }
             }
+            BindingExpect::ValidateImplicitReturn {
+                annotation,
+                implicit_return,
+                is_async,
+                is_generator,
+                has_explicit_return,
+            } => {
+                let annotation = self.get_idx(*annotation).annotation.get_type().clone();
+                let implicit_return = self.get_idx(*implicit_return);
+                self.check_implicit_return_against_annotation(
+                    implicit_return,
+                    &annotation,
+                    *is_async,
+                    *is_generator,
+                    *has_explicit_return,
+                    range,
+                    errors,
+                );
+            }
             BindingExpect::MatchExhaustiveness {
                 subject_idx,
                 narrowing_subject,
@@ -3813,31 +3832,8 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
     /// Handle `Binding::ReturnType` - compute the return type of a function.
     /// The `#[inline(never)]` annotation is intentional to reduce stack frame size.
     #[inline(never)]
-    fn binding_to_type_return_type(&self, x: &ReturnType, errors: &ErrorCollector) -> Type {
+    fn binding_to_type_return_type(&self, x: &ReturnType) -> Type {
         let ty = match &x.kind {
-            ReturnTypeKind::ShouldValidateAnnotation {
-                range,
-                annotation,
-                implicit_return,
-                is_generator,
-                has_explicit_return,
-            } => {
-                // TODO: A return type annotation like `Final` is invalid in this context.
-                // It will result in an implicit Any type, which is reasonable, but we should
-                // at least error here.
-                let ty = self.get_idx(*annotation).annotation.get_type().clone();
-                let implicit_return = self.get_idx(*implicit_return);
-                self.check_implicit_return_against_annotation(
-                    implicit_return,
-                    &ty,
-                    x.is_async,
-                    *is_generator,
-                    *has_explicit_return,
-                    *range,
-                    errors,
-                );
-                self.return_type_from_annotation(ty, x.is_async, *is_generator)
-            }
             ReturnTypeKind::ShouldTrustAnnotation {
                 annotation,
                 is_generator,
@@ -5754,7 +5750,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 let (ann, name, call) = x.as_ref();
                 self.binding_to_type_type_var_tuple(*ann, name, call, errors)
             }
-            Binding::ReturnType(x) => self.binding_to_type_return_type(x, errors),
+            Binding::ReturnType(x) => self.binding_to_type_return_type(x),
             Binding::ReturnExplicit(x) => self.binding_to_type_return_explicit(x, errors),
             Binding::ReturnImplicit(x) => self.binding_to_type_return_implicit(x),
             Binding::ExceptionHandler(ann, is_star) => {

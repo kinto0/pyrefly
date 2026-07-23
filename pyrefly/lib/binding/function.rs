@@ -41,6 +41,7 @@ use crate::binding::binding::AnnotationTarget;
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingAnnotation;
 use crate::binding::binding::BindingDecoratedFunction;
+use crate::binding::binding::BindingExpect;
 use crate::binding::binding::BindingUndecoratedFunction;
 use crate::binding::binding::BindingUndecoratedFunctionRange;
 use crate::binding::binding::BindingYield;
@@ -54,6 +55,7 @@ use crate::binding::binding::Key;
 use crate::binding::binding::KeyAnnotation;
 use crate::binding::binding::KeyClass;
 use crate::binding::binding::KeyDecorator;
+use crate::binding::binding::KeyExpect;
 use crate::binding::binding::KeyLegacyTypeParam;
 use crate::binding::binding::KeyUndecoratedFunction;
 use crate::binding::binding::KeyUndecoratedFunctionRange;
@@ -484,13 +486,20 @@ impl<'a> BindingsBuilder<'a> {
         let return_type_binding = {
             let kind = match (return_ann_with_range, implicit_return, stub_or_impl) {
                 (Some((range, annotation)), Some(implicit_return), FunctionStubOrImpl::Impl) => {
-                    // We have an explicit return annotation and we want to validate it.
-                    ReturnTypeKind::ShouldValidateAnnotation {
-                        range,
+                    self.insert_binding(
+                        KeyExpect::ValidateImplicitReturn(range),
+                        BindingExpect::ValidateImplicitReturn {
+                            annotation,
+                            implicit_return,
+                            is_async,
+                            is_generator,
+                            has_explicit_return: !return_keys.is_empty(),
+                        },
+                    );
+                    ReturnTypeKind::ShouldTrustAnnotation {
                         annotation,
-                        implicit_return,
+                        range,
                         is_generator,
-                        has_explicit_return: !return_keys.is_empty(),
                     }
                 }
                 // We have an explicit return annotation on a stub function, so we just trust it, ignoring the implicit return.

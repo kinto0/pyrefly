@@ -105,6 +105,7 @@ pub struct TestEnv {
     check_unannotated_defs: bool,
     infer_return_types: InferReturnTypes,
     infer_with_first_use: bool,
+    recursion_depth_limit: Option<u32>,
     site_package_path: Vec<PathBuf>,
     implicitly_defined_attribute_error: bool,
     explicit_any_error: bool,
@@ -150,6 +151,7 @@ impl TestEnv {
             check_unannotated_defs: true,
             infer_return_types: InferReturnTypes::Checked,
             infer_with_first_use: true,
+            recursion_depth_limit: None,
             site_package_path: Vec::new(),
             implicitly_defined_attribute_error: false,
             explicit_any_error: false,
@@ -267,6 +269,11 @@ impl TestEnv {
         let mut res = Self::new();
         res.infer_with_first_use = infer_with_first_use;
         res
+    }
+
+    pub fn with_recursion_depth_limit(mut self, recursion_depth_limit: u32) -> Self {
+        self.recursion_depth_limit = Some(recursion_depth_limit);
+        self
     }
 
     pub fn enable_implicitly_defined_attribute_error(mut self) -> Self {
@@ -488,6 +495,7 @@ impl TestEnv {
         config.root.check_unannotated_defs = Some(self.check_unannotated_defs);
         config.root.infer_return_types = Some(self.infer_return_types);
         config.root.infer_with_first_use = Some(self.infer_with_first_use);
+        config.root.recursion_depth_limit = self.recursion_depth_limit;
         config.root.strict_callable_subtyping = Some(self.strict_callable_subtyping);
         config.root.strict_partial_subtyping = Some(self.strict_partial_subtyping);
         config.root.spec_compliant_overloads = Some(self.spec_compliant_overloads);

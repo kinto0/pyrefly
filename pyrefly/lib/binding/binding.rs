@@ -1059,6 +1059,8 @@ pub enum KeyExpect {
     ForwardRefUnion(TextRange),
     /// A name used in annotation position that may be an invalid implicit alias.
     ImplicitAliasCheck(TextRange),
+    /// Validate an implementation's implicit return against its annotation.
+    ValidateImplicitReturn(TextRange),
 }
 
 impl Ranged for KeyExpect {
@@ -1075,7 +1077,8 @@ impl Ranged for KeyExpect {
             | KeyExpect::PrivateAttributeAccess(range)
             | KeyExpect::UninitializedCheck(range)
             | KeyExpect::ForwardRefUnion(range)
-            | KeyExpect::ImplicitAliasCheck(range) => *range,
+            | KeyExpect::ImplicitAliasCheck(range)
+            | KeyExpect::ValidateImplicitReturn(range) => *range,
         }
     }
 }
@@ -1095,6 +1098,7 @@ impl DisplayWith<ModuleInfo> for KeyExpect {
             KeyExpect::UninitializedCheck(r) => ("UninitializedCheck", r),
             KeyExpect::ForwardRefUnion(r) => ("ForwardRefUnion", r),
             KeyExpect::ImplicitAliasCheck(r) => ("ImplicitAliasCheck", r),
+            KeyExpect::ValidateImplicitReturn(r) => ("ValidateImplicitReturn", r),
         };
         write!(f, "KeyExpect::{}({})", name, ctx.display(range))
     }
@@ -1147,6 +1151,15 @@ pub enum BindingExpect {
         new: Idx<KeyAnnotation>,
         existing: Idx<KeyAnnotation>,
         name: Name,
+    },
+    /// Validate a function implementation's implicit return without making the
+    /// published return type depend on the function body.
+    ValidateImplicitReturn {
+        annotation: Idx<KeyAnnotation>,
+        implicit_return: Idx<Key>,
+        is_async: bool,
+        is_generator: bool,
+        has_explicit_return: bool,
     },
     /// Expression used in a boolean context (`bool()`, `if`, or `while`)
     Bool(Expr),
@@ -1258,6 +1271,16 @@ impl DisplayWith<Bindings> for BindingExpect {
                 ctx.display(*new),
                 ctx.display(*existing),
                 name
+            ),
+            Self::ValidateImplicitReturn {
+                annotation,
+                implicit_return,
+                ..
+            } => write!(
+                f,
+                "ValidateImplicitReturn({}, {})",
+                ctx.display(*annotation),
+                ctx.display(*implicit_return),
             ),
             Self::PrivateAttributeAccess(expectation) => write!(
                 f,
@@ -1923,15 +1946,8 @@ pub struct ReturnExplicit {
 
 #[derive(Clone, Debug)]
 pub enum ReturnTypeKind {
-    /// We have an explicit return annotation, and we should validate it against the implicit returns
-    ShouldValidateAnnotation {
-        range: TextRange,
-        annotation: Idx<KeyAnnotation>,
-        implicit_return: Idx<Key>,
-        is_generator: bool,
-        has_explicit_return: bool,
-    },
-    /// We have an explicit return annotation, and we should blindly trust it without any validation
+    /// The published return type comes from an explicit annotation. Checks against
+    /// the implementation are modeled as separate expectation bindings.
     ShouldTrustAnnotation {
         annotation: Idx<KeyAnnotation>,
         range: TextRange,
@@ -1955,7 +1971,6 @@ pub enum ReturnTypeKind {
 impl ReturnTypeKind {
     pub fn has_return_annotation(&self) -> bool {
         match self {
-            Self::ShouldValidateAnnotation { .. } => true,
             Self::ShouldTrustAnnotation { .. } => true,
             Self::ShouldReturnAny { .. } => false,
             Self::ShouldInferType { .. } => false,
@@ -1964,7 +1979,6 @@ impl ReturnTypeKind {
 
     pub fn should_infer_return(&self) -> bool {
         match self {
-            Self::ShouldValidateAnnotation { .. } => false,
             Self::ShouldTrustAnnotation { .. } => false,
             Self::ShouldReturnAny { .. } => false,
             Self::ShouldInferType { .. } => true,

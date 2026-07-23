@@ -993,8 +993,7 @@ fn parse_functions(
 
 fn return_annotation_range(bindings: &Bindings, return_idx: Idx<Key>) -> Option<TextRange> {
     if let Binding::ReturnType(ret) = bindings.get(return_idx)
-        && let ReturnTypeKind::ShouldValidateAnnotation { range, .. }
-        | ReturnTypeKind::ShouldTrustAnnotation { range, .. } = &ret.kind
+        && let ReturnTypeKind::ShouldTrustAnnotation { range, .. } = &ret.kind
     {
         Some(*range)
     } else {

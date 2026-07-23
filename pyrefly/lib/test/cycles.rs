@@ -5,8 +5,41 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::fmt::Write;
+
 use crate::test::util::TestEnv;
+use crate::test::util::testcase_for_macro;
 use crate::testcase;
+
+#[test]
+fn annotated_recursive_signatures_do_not_recurse_through_bodies() -> anyhow::Result<()> {
+    const N: usize = 64;
+
+    let mut code = String::new();
+    for i in 0..N {
+        let (return_annotation, expected_error) = if i == 0 {
+            (
+                "int",
+                "  # E: Function declared to return `int` but is missing an explicit `return`",
+            )
+        } else {
+            ("None", "")
+        };
+        writeln!(
+            &mut code,
+            "def f{i}() -> {return_annotation}:{expected_error}\n    f{}()",
+            (i + 1) % N,
+        )
+        .unwrap();
+    }
+    code.push_str("f0()\n");
+    testcase_for_macro(
+        TestEnv::new().with_recursion_depth_limit(32),
+        &code,
+        file!(),
+        line!(),
+    )
+}
 
 // Leaky loop tests: These demonstrate that loop recursion can create cycles
 // in the definition of variables. The loop creates a cycle in `x`, and with
@@ -550,8 +583,6 @@ def tokenize_lines(
 // the full expression chain within the block:
 //   L.append('...%s' % (value)) → value → repr(self.fN) → phi_(N-1)
 fn env_deep_phi_chain_term_expr() -> TestEnv {
-    use std::fmt::Write;
-
     const NUM_FIELDS: usize = 1000;
 
     let mut code = String::new();
