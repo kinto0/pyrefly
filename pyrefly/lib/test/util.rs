@@ -130,6 +130,7 @@ pub struct TestEnv {
     no_any_return_explicit_error: bool,
     no_any_return_implicit_error: bool,
     implicit_any_lambda_error: bool,
+    invalid_abstract_method_error: bool,
     unknown_variable_type_error: bool,
     default_require_level: Require,
     extra_file_extensions: Vec<String>,
@@ -174,6 +175,7 @@ impl TestEnv {
             no_any_return_explicit_error: false,
             no_any_return_implicit_error: false,
             implicit_any_lambda_error: false,
+            invalid_abstract_method_error: false,
             unknown_variable_type_error: false,
             default_require_level: Require::Exports,
             extra_file_extensions: Vec::new(),
@@ -387,6 +389,11 @@ impl TestEnv {
         self
     }
 
+    pub fn enable_invalid_abstract_method_error(mut self) -> Self {
+        self.invalid_abstract_method_error = true;
+        self
+    }
+
     pub fn enable_unknown_variable_type_error(mut self) -> Self {
         self.unknown_variable_type_error = true;
         self
@@ -550,6 +557,9 @@ impl TestEnv {
         }
         if self.implicit_any_lambda_error {
             errors.set_error_severity(ErrorKind::ImplicitAnyLambda, Severity::Error);
+        }
+        if self.invalid_abstract_method_error {
+            errors.set_error_severity(ErrorKind::InvalidAbstractMethod, Severity::Error);
         }
         if self.unknown_variable_type_error {
             errors.set_error_severity(ErrorKind::UnknownVariableType, Severity::Error);

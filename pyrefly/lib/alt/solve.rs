@@ -2863,6 +2863,7 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             );
             self.check_variance_for_class(cls, class_bases.as_ref(), &class_field_map, errors);
             self.check_self_in_typed_dict(cls, &class_field_map, errors);
+            self.check_invalid_abstract_methods(cls, &class_field_map, errors);
         }
         Arc::new(EmptyAnswer)
     }
@@ -2890,6 +2891,46 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     range,
                     ErrorKind::InvalidSelfType,
                     "`Self` is not allowed in a `TypedDict`".to_owned(),
+                );
+            }
+        }
+    }
+
+    /// #3728: flag `@abstractmethod` on a method of a class that is not abstract
+    /// (not an ABC, no `ABCMeta` metaclass, not a `Protocol` or `NewType`). Such a class is
+    /// directly instantiable yet carries an unimplemented method. This runs as a
+    /// class-level diagnostic (alongside the override checks), so it forces no
+    /// field resolution for importers of the class and stays lazy.
+    fn check_invalid_abstract_methods(
+        &self,
+        cls: &Class,
+        class_field_map: &SmallMap<Name, Arc<ClassField>>,
+        errors: &ErrorCollector,
+    ) {
+        let metadata = self.get_metadata_for_class(cls);
+        if metadata.extends_abc() || metadata.is_protocol() || metadata.is_new_type() {
+            return;
+        }
+        let Some(cls_fields) = self.get_class_fields(cls) else {
+            return;
+        };
+        for (name, field) in class_field_map.iter() {
+            // `field_decl_range` is `Some` only for fields declared in this class,
+            // which restricts the check to the class's own methods (not inherited
+            // ones) and gives the definition range to report at.
+            if field.is_abstract()
+                && let Some(range) = cls_fields.field_decl_range(name)
+            {
+                self.error(
+                    errors,
+                    range,
+                    ErrorKind::InvalidAbstractMethod,
+                    format!(
+                        "`{}.{}` is decorated with `@abstractmethod` but `{}` is not an abstract class",
+                        cls.name(),
+                        name,
+                        cls.name()
+                    ),
                 );
             }
         }
