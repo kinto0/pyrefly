@@ -4650,6 +4650,34 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 "Result of async function call is unused. Did you forget to `await`?".to_owned()
             };
             self.error(errors, e.range(), ErrorKind::UnusedCoroutine, msg);
+        } else if !matches!(
+            special_export,
+            // These special exports emit their own diagnostic when used as a
+            // bare statement, so exempting them avoids a duplicate error.
+            Some(
+                SpecialExport::TypeVar
+                    | SpecialExport::IntVar
+                    | SpecialExport::ParamSpec
+                    | SpecialExport::TypeVarTuple
+                    | SpecialExport::AssertType
+                    | SpecialExport::RevealType
+            )
+        ) && matches!(e, Expr::Call(_))
+            && !result.is_none()
+            && !result.is_any()
+            && !result.is_never()
+            && !matches!(&result, Type::ClassType(cls) if self.extends_any(cls.class_object()))
+        {
+            self.error(
+                errors,
+                e.range(),
+                ErrorKind::UnusedCallResult,
+                format!(
+                    "Result of call expression is of type `{}` and is not used; \
+                     assign to `_` if this is intentional",
+                    self.for_display(result.clone())
+                ),
+            );
         }
         result
     }

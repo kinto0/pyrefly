@@ -121,6 +121,7 @@ pub struct TestEnv {
     incompatible_comparison_error: bool,
     untyped_class_decorator_error: bool,
     untyped_function_decorator_error: bool,
+    unused_call_result_error: bool,
     string_as_iterable_warning: bool,
     strict_callable_subtyping: bool,
     strict_partial_subtyping: bool,
@@ -164,6 +165,7 @@ impl TestEnv {
             incompatible_comparison_error: false,
             untyped_class_decorator_error: false,
             untyped_function_decorator_error: false,
+            unused_call_result_error: false,
             string_as_iterable_warning: false,
             strict_callable_subtyping: false,
             strict_partial_subtyping: false,
@@ -337,6 +339,11 @@ impl TestEnv {
 
     pub fn enable_untyped_function_decorator_error(mut self) -> Self {
         self.untyped_function_decorator_error = true;
+        self
+    }
+
+    pub fn enable_unused_call_result_error(mut self) -> Self {
+        self.unused_call_result_error = true;
         self
     }
 
@@ -534,6 +541,9 @@ impl TestEnv {
         }
         if self.untyped_function_decorator_error {
             errors.set_error_severity(ErrorKind::UntypedFunctionDecorator, Severity::Error);
+        }
+        if self.unused_call_result_error {
+            errors.set_error_severity(ErrorKind::UnusedCallResult, Severity::Error);
         }
         if self.string_as_iterable_warning {
             errors.set_error_severity(ErrorKind::StringAsIterable, Severity::Warn);
