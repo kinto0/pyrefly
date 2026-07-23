@@ -25,7 +25,6 @@
 //! Run with buck: `buck run @fbcode//mode/opt fbcode//pyrefly/pyrefly:micro_bench -- --bench`
 
 use std::fmt::Write as _;
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -67,7 +66,11 @@ static SHARED_STATE: LazyLock<State> = LazyLock::new(|| {
         ArcId::new(c)
     };
     let finder = ConfigFinder::new_constant(config);
-    let state = State::new(finder, ThreadCount::NumThreads(NonZeroUsize::MIN));
+    // Inline (no rayon pool): a pooled run blocks the measured thread on a futex
+    // while a worker does the check, which CodSpeed's instrumented instrument
+    // reports as an uninstrumentable ~300ms system call. Running inline keeps the
+    // whole check on the measured thread.
+    let state = State::new(finder, ThreadCount::Inline);
     // Force stdlib init by running an empty module.
     let h = Handle::new(
         ModuleName::from_str("_bench_init"),
