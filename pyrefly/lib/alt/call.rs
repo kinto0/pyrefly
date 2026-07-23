@@ -1650,6 +1650,31 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
             }
         };
         if let Some(func_metadata) = kw_metadata {
+            // The call form `dataclass(C)` transforms `C` in place, so reject the same
+            // class kinds as the `@dataclass` decorator (see `report_forbidden_dataclass_target`).
+            // The decorator path never reaches here: a bare decorator is not a call.
+            if matches!(func_metadata.kind, FunctionKind::Dataclass) {
+                let transformed = match &res {
+                    Type::ClassDef(c) => Some(c),
+                    Type::Type(t) => match t.as_ref() {
+                        Type::ClassType(ct) => Some(ct.class_object()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(cls) = transformed {
+                    let metadata = self.get_metadata_for_class(cls);
+                    self.report_forbidden_dataclass_target(
+                        cls.name(),
+                        metadata.is_protocol(),
+                        metadata.is_enum(),
+                        metadata.is_typed_dict(),
+                        metadata.named_tuple_metadata().is_some(),
+                        arguments_range,
+                        errors,
+                    );
+                }
+            }
             let mut kws = TypeMap::new();
             for kw in keywords {
                 if let Some(name) = kw.arg {
