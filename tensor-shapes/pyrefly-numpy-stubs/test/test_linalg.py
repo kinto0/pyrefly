@@ -157,8 +157,10 @@ def test_matmul_operator_rejects_mismatched_inner_dimension() -> None:
     # shape" invariant.
     assert_shape(np.ones((3, 4)) @ np.ones((4, 5)), (3, 5))
     try:
-        # E: `@` is not supported
-        assert_shape(a @ b, (3, 4))
+        # `a @ b` is rejected statically (mismatched inner dims) and raises at
+        # runtime; the well-formed anchor above satisfies the shape-assertion
+        # invariant, so this line only needs to exercise the rejection.
+        a @ b  # E: `@` is not supported
     except ValueError:
         pass
     else:

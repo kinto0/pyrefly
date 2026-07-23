@@ -2448,8 +2448,11 @@ def use(cond: bool, i: int, s: Int[int], s3: Int[3], s4: Int[4], lit3: Literal[3
     Int_from_int: Int[int] = i
     take_int(s)
     take_int_int(i)
-    assert_type(i, Int[int])
-    assert_type(s, int)
+    # `int` and `Int[int]` are mutually assignable (above), but each keeps its own
+    # representation. See `test_tensor_shapes_int_and_int_int_not_assert_type_equal`
+    # for the `assert_type` distinction between them.
+    assert_type(i, int)
+    assert_type(s, Int[int])
     assert_type(choose_int(s3), Literal["exact"])
     # `Literal[3]` intentionally participates in the same exact-shape
     # equivalence class as `Int[3]`.
@@ -2467,6 +2470,25 @@ def use(cond: bool, i: int, s: Int[int], s3: Int[3], s4: Int[4], lit3: Literal[3
 
     inferred_union = i if cond else s
     reveal_type(inferred_union)  # E: revealed type: int
+"#,
+);
+
+testcase!(
+    test_tensor_shapes_int_and_int_int_not_assert_type_equal,
+    shaped_array_env(),
+    r#"
+from shape_extensions import Int
+from typing import assert_type
+
+def f(i: int, s: Int[int]) -> None:
+    # `int` and `Int[int]` are mutually assignable, but they are distinct type
+    # representations. `assert_type` checks the representation, not just the
+    # subtyping order, so it treats them as non-equivalent.
+    assert_type(i, Int[int])  # E: assert_type
+    assert_type(s, int)  # E: assert_type
+    # Each is equivalent to its own representation.
+    assert_type(i, int)
+    assert_type(s, Int[int])
 "#,
 );
 
@@ -4247,5 +4269,53 @@ def f(
     assert_type(matmul(good_left, good_right), Array[tuple[Literal[3], Literal[5]]])
     matmul(good_left, bad_right)  # E: matmul inner dimensions must match
     matmul(good_left, vector)  # E: matmul expects 2-D arrays
+"#,
+);
+
+testcase!(
+    test_assert_type_gradual_shape_not_equivalent_to_concrete,
+    shaped_array_env(),
+    r#"
+from typing import Any, assert_type
+from shape_extensions import Int, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]: ...
+
+def bare_dims(gradual: Int[int], concrete: Int[3]) -> None:
+    # A gradual dimension is the shape analog of `Any`: not equivalent to a concrete size.
+    assert_type(gradual, Int[3])  # E: assert_type
+    assert_type(concrete, Int[int])  # E: assert_type
+    # Sameness still holds.
+    assert_type(gradual, Int[int])
+    assert_type(concrete, Int[3])
+
+def shapes(gradual: Array[[Any], int], concrete: Array[[3], int]) -> None:
+    assert_type(gradual, Array[[3], int])  # E: assert_type
+    assert_type(concrete, Array[[Any], int])  # E: assert_type
+    assert_type(gradual, Array[[Any], int])
+    assert_type(concrete, Array[[3], int])
+"#,
+);
+
+testcase!(
+    test_assert_type_shapeless_shape_not_equivalent_to_concrete,
+    shaped_array_env(),
+    r#"
+from typing import assert_type
+from shape_extensions import IntTuple, shaped_array
+
+@shaped_array(shape="Shape")
+class Array[Shape, DType]: ...
+
+def f(shapeless: Array[IntTuple, int], concrete: Array[[3], int]) -> None:
+    # A wholly shapeless array is the maximal gradual shape (unknown rank) — the
+    # whole-tensor analog of `Any` — so it is non-equivalent to a concrete shape
+    # under `assert_type`, matching the gradual-dimension case above.
+    assert_type(shapeless, Array[[3], int])  # E: assert_type
+    assert_type(concrete, Array[IntTuple, int])  # E: assert_type
+    # Sameness and gradual assignability are unaffected.
+    assert_type(shapeless, Array[IntTuple, int])
+    assert_type(concrete, Array[[3], int])
 "#,
 );

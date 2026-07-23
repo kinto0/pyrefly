@@ -3148,6 +3148,18 @@ impl<'a, Ans: LookupAnswer> Subset<'a, Ans> {
                 let got_folded = fold(got_extra_prefix, got_middle.as_ref(), got_extra_suffix);
                 let want_folded = fold(want_extra_prefix, want_middle.as_ref(), want_extra_suffix);
 
+                // Equivalence materializes one side at a time. The rank marker
+                // remains consistent with an unmaterialized gradual rank, but
+                // reaches the ordinary subset logic for every concrete rank.
+                if matches!(
+                    (&got_folded, &want_folded),
+                    (Type::Materialization, Type::IntTuple(shape))
+                        | (Type::IntTuple(shape), Type::Materialization)
+                        if shape.is_shapeless()
+                ) {
+                    return Ok(());
+                }
+
                 self.is_subset_eq(&got_folded, &want_folded)?;
                 if is_tuple_carrier_shape_middle(got_middle.as_ref())
                     || is_tuple_carrier_shape_middle(want_middle.as_ref())

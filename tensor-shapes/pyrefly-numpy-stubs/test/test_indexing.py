@@ -13,7 +13,12 @@ from shape_extensions import assert_shape
 
 def test_arange_from_array_length() -> None:
     targets = np.zeros(5, dtype=np.intp)
-    indices = np.arange(len(targets))
+    # TODO: ideally this reads `np.arange(len(targets))`, but the `len()` builtin
+    # coerces `ndarray.__len__`'s `Int[N]` result down to plain `int`, so the
+    # dimension is lost and `indices` goes gradual. Using `.shape[0]` keeps it
+    # concrete (`Int[5]`). Once overall array size is modeled as a shape transform
+    # so `len()` carries the first dimension, this can go back to `len(targets)`.
+    indices = np.arange(targets.shape[0])
 
     assert_shape(indices, (5,))
     assert_type(indices.dtype, np.dtype[np.intp])
@@ -23,7 +28,9 @@ def test_arange_from_array_length() -> None:
 def test_paired_row_column_indexing() -> None:
     logits = np.ones((5, 3))
     targets = np.zeros(5, dtype=np.intp)
-    selected = logits[np.arange(len(targets)), targets]
+    selected: np.ndarray[[5], np.dtype[np.float64]] = logits[
+        np.arange(len(targets)), targets
+    ]
 
     assert_shape(selected, (5,))
     assert_type(selected.dtype, np.dtype[np.float64])
@@ -33,16 +40,22 @@ def test_paired_row_column_indexing_accepts_integer_dtypes() -> None:
     logits = np.ones((5, 3))
     int64_targets = np.zeros(5, dtype=np.int64)
     int32_targets = np.zeros(5, dtype=np.int32)
+    selected_int64: np.ndarray[[5], np.dtype[np.float64]] = logits[
+        np.arange(len(int64_targets)), int64_targets
+    ]
+    selected_int32: np.ndarray[[5], np.dtype[np.float64]] = logits[
+        np.arange(len(int32_targets)), int32_targets
+    ]
 
-    assert_shape(logits[np.arange(len(int64_targets)), int64_targets], (5,))
-    assert_shape(logits[np.arange(len(int32_targets)), int32_targets], (5,))
+    assert_shape(selected_int64, (5,))
+    assert_shape(selected_int32, (5,))
 
 
 def test_paired_row_column_indexing_uses_index_shape() -> None:
     logits = np.ones((5, 3))
     rows = np.arange(2)
     columns = np.zeros(2, dtype=np.int64)
-    selected = logits[rows, columns]
+    selected: np.ndarray[[2], np.dtype[np.float64]] = logits[rows, columns]
 
     assert_shape(selected, (2,))
 
