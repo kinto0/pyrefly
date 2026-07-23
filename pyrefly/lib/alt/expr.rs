@@ -1437,9 +1437,11 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                 );
 
                 // We use the TypedDict hint if it successfully matched or if there is only one hint, unless
-                // this is a "soft" type hint, in which case we don't want to raise any check errors.
+                // this is a "soft" type hint, in which case we don't want to raise any check errors. An
+                // anonymous TypedDict is considered a soft hint because it is an inferred type.
                 if check_errors.is_empty()
-                    || hint.types().len() == 1
+                    || !matches!(typed_dict, TypedDict::Anonymous(_))
+                        && hint.types().len() == 1
                         && hint
                             .errors()
                             .inspect(|errors| errors.extend(check_errors))
