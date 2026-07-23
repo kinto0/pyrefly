@@ -60,7 +60,7 @@ jobs:
       with:
         tool: cargo-codspeed
     - name: build benchmarks
-      run: cargo codspeed build -p pyrefly --bench pytorch
+      run: cargo codspeed build -m walltime -p pyrefly --bench pytorch
     - name: run benchmarks
       uses: CodSpeedHQ/action@v4
       with:
