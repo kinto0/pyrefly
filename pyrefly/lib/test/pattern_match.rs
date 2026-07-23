@@ -1454,6 +1454,33 @@ def bar(b: bool) -> int:  # E: one or more paths are missing an explicit
 "#,
 );
 
+// A class-pattern facet narrow (`isinstance`) now filters the parent union down to the
+// matching member. Per-element narrowing of sibling captures and exhaustiveness for
+// these patterns remain follow-ups (relational narrowing).
+testcase!(
+    test_match_tuple_union_parent_narrows,
+    r#"
+from typing import assert_type
+def f(t: tuple[str, int] | tuple[int, str]) -> None:
+    match t:
+        case (str(), _):
+            assert_type(t, tuple[str, int])
+        case (_, str()):
+            assert_type(t, tuple[int, str])
+"#,
+);
+
+testcase!(
+    test_match_tuple_union_invalid_class_pattern_reports_once,
+    r#"
+from typing import Final
+def f(t: tuple[object, int] | tuple[object, str]) -> None:
+    match t:
+        case (Final(), _):  # E: Expected class object, got special form `Final`
+            pass
+"#,
+);
+
 // https://github.com/facebook/pyrefly/issues/3883
 testcase!(
     bug = "sequence pattern with a literal element does not subtract the tuple from the union, so the match is not seen as exhaustive",

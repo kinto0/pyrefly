@@ -1151,6 +1151,26 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
                     }
                 }))
             }
+            // Only filter members of a union to avoid inferring `Never` excessively
+            AtomicNarrowOp::IsInstance(_, _) | AtomicNarrowOp::IsNotInstance(_, _)
+                if base.is_union() =>
+            {
+                let suppress_errors = self.error_swallower();
+                Some(self.distribute_over_union(base, |t| {
+                    let base_info = TypeInfo::of_ty(t.clone());
+                    let facet_ty = self.get_facet_chain_type(
+                        &base_info,
+                        &FacetChain::new(Vec1::new(facet.clone())),
+                        range,
+                    );
+                    let narrowed_facet = self.atomic_narrow(&facet_ty, op, range, &suppress_errors);
+                    if narrowed_facet.is_never() {
+                        self.heap.mk_never()
+                    } else {
+                        t.clone()
+                    }
+                }))
+            }
             _ => None,
         }
     }

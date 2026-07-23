@@ -466,7 +466,7 @@ match y:
 testcase!(
     test_match_narrow_len,
     r#"
-from typing import assert_type, Never
+from typing import assert_type
 
 def foo(x: tuple[int, int] | tuple[str]):
     match x:
@@ -479,7 +479,7 @@ def foo(x: tuple[int, int] | tuple[str]):
             assert_type(x0, int)
             assert_type(x1, int)
     match x:
-        # these two cases should be impossible to match
+        # these two cases are impossible to match
         case [str(), str()]:  # E: Case pattern can never match subject of type `tuple[int, int] | tuple[str]`
             assert_type(x, tuple[int, int])
         case [int()]:  # E: Case pattern can never match subject of type `tuple[int, int] | tuple[str]`
