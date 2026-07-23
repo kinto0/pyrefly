@@ -20,6 +20,7 @@ use ruff_python_ast::PatternKeyword;
 use ruff_python_ast::StmtMatch;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
+use vec1::Vec1;
 
 use crate::binding::binding::Binding;
 use crate::binding::binding::BindingExpect;
@@ -33,6 +34,8 @@ use crate::binding::binding::UnpackedPosition;
 use crate::binding::bindings::BindingsBuilder;
 use crate::binding::expr::Usage;
 use crate::binding::narrow::AtomicNarrowOp;
+use crate::binding::narrow::FacetOrigin;
+use crate::binding::narrow::FacetSubject;
 use crate::binding::narrow::NarrowOp;
 use crate::binding::narrow::NarrowOps;
 use crate::binding::narrow::NarrowSource;
@@ -41,6 +44,7 @@ use crate::binding::narrow::expr_to_subjects;
 use crate::binding::scope::FlowStyle;
 use crate::config::error_kind::ErrorKind;
 use crate::export::special::SpecialExport;
+use crate::types::facet::UnresolvedFacetChain;
 use crate::types::facet::UnresolvedFacetKind;
 
 #[derive(Clone, Debug)]
@@ -176,6 +180,29 @@ impl PatternNarrowOps {
 }
 
 impl<'a> BindingsBuilder<'a> {
+    /// The atomic narrow op a leaf sub-pattern imposes on its element, if any.
+    ///
+    /// Used to build a subject narrowed by every sibling element constraint, so non-narrowing
+    /// element captures in a sequence pattern see the narrowed parent type after applying narrowing
+    /// from other elements of the sequence.
+    fn sequence_element_atomic_op(pattern: &Pattern) -> Option<AtomicNarrowOp> {
+        match pattern {
+            Pattern::MatchClass(x) => Some(AtomicNarrowOp::IsInstance(
+                (*x.cls).clone(),
+                NarrowSource::Pattern,
+            )),
+            Pattern::MatchValue(p) => Some(AtomicNarrowOp::Eq((*p.value).clone())),
+            Pattern::MatchSingleton(p) => {
+                Some(AtomicNarrowOp::Is(Ast::pattern_match_singleton_to_expr(p)))
+            }
+            Pattern::MatchAs(p) => p
+                .pattern
+                .as_deref()
+                .and_then(Self::sequence_element_atomic_op),
+            _ => None,
+        }
+    }
+
     /// Traverse a pattern and bind all the names; key is the reference for
     /// the value that's being matched on.
     fn bind_pattern(
@@ -275,11 +302,33 @@ impl<'a> BindingsBuilder<'a> {
                     NarrowOp::Atomic(None, AtomicNarrowOp::IsSequence),
                     NarrowOp::Atomic(None, len_narrow_op.clone()),
                 ]);
+                let subject_narrow_op = if num_patterns == num_non_star_patterns {
+                    let mut ops = vec![
+                        NarrowOp::Atomic(None, AtomicNarrowOp::IsSequence),
+                        NarrowOp::Atomic(None, len_narrow_op.clone()),
+                    ];
+                    for (i, p) in x.patterns.iter().enumerate() {
+                        if let Some(atomic) = Self::sequence_element_atomic_op(p) {
+                            ops.push(NarrowOp::Atomic(
+                                Some(FacetSubject {
+                                    chain: UnresolvedFacetChain::new(Vec1::new(
+                                        UnresolvedFacetKind::Index(i as i64),
+                                    )),
+                                    origin: FacetOrigin::Direct,
+                                }),
+                                atomic,
+                            ));
+                        }
+                    }
+                    NarrowOp::And(ops)
+                } else {
+                    combined_narrow_op.clone()
+                };
                 subject_idx = self.insert_binding(
                     Key::PatternNarrow(x.range()),
                     Binding::Narrow(
                         subject_idx,
-                        Box::new(combined_narrow_op.clone()),
+                        Box::new(subject_narrow_op),
                         NarrowUseLocation::Span(x.range()),
                     ),
                 );

@@ -1437,7 +1437,7 @@ def f(n: Node) -> int:
 
 // https://github.com/facebook/pyrefly/issues/3805
 testcase!(
-    bug = "match on a union of tuples widens to tuple[str | int, str | int], losing exhaustiveness and per-element narrowing",
+    bug = "match on a union of tuples is not seen as exhaustive: the arms cover it but a missing-return is still reported (per-element narrowing is fixed; exhaustiveness needs a sequence coverage gate)",
     test_match_tuple_union_narrowing,
     r#"
 def foo(b: bool) -> tuple[str, int] | tuple[int, str]:
@@ -1448,9 +1448,37 @@ def foo(b: bool) -> tuple[str, int] | tuple[int, str]:
 def bar(b: bool) -> int:  # E: one or more paths are missing an explicit
     match foo(b):
         case (str() as x, y):
-            return y  # E: Returned type `int | str` is not assignable to declared return type `int`
+            return y
         case (x, str() as y):
-            return x  # E: Returned type `int | str` is not assignable to declared return type `int`
+            return x
+"#,
+);
+
+testcase!(
+    test_match_tuple_union_relational_element_reads,
+    r#"
+from typing import assert_type
+def foo(b: bool) -> tuple[str, int] | tuple[int, str]:
+    if b:
+        return "foo", 1
+    else:
+        return 2, "bar"
+def named(t: tuple[str, int] | tuple[int, str]) -> None:
+    match t:
+        case (str() as x, y):
+            assert_type(x, str)
+            assert_type(y, int)
+        case (x2, str() as y2):
+            assert_type(x2, int)
+            assert_type(y2, str)
+def synthetic() -> None:
+    match foo(True):
+        case (str() as x, y):
+            assert_type(x, str)
+            assert_type(y, int)
+        case (x2, str() as y2):
+            assert_type(x2, int)
+            assert_type(y2, str)
 "#,
 );
 
