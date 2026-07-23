@@ -57,6 +57,12 @@ static SHARED_STATE: LazyLock<State> = LazyLock::new(|| {
         let mut c = ConfigFile::default();
         c.python_environment.python_version = Some(PythonVersion::default());
         c.python_environment.python_platform = Some(PythonPlatform::default());
+        // Skip interpreter discovery: `configure()` otherwise spawns `python3`
+        // subprocesses to probe site-packages, whose syscalls land in the measured
+        // region under CodSpeed's instrumented instrument. The snippets only use
+        // stdlib, served from bundled in-memory typeshed, so no site-packages exist.
+        c.interpreters.skip_interpreter_query = true;
+        c.python_environment.site_package_path = Some(Vec::new());
         c.configure();
         ArcId::new(c)
     };
