@@ -32,6 +32,9 @@ use ruff_python_ast::StmtFunctionDef;
 use ruff_python_ast::StmtRaise;
 use ruff_python_ast::StmtReturn;
 use ruff_python_ast::name::Name;
+use ruff_python_ast::visitor::source_order::SourceOrderVisitor;
+use ruff_python_ast::visitor::source_order::walk_expr;
+use ruff_python_ast::visitor::source_order::walk_stmt;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
@@ -86,6 +89,83 @@ struct Decorators {
     is_override: bool,
     is_classmethod: bool,
     decorators: Box<[Idx<KeyDecorator>]>,
+}
+
+struct SuperMethodCallFinder<'a> {
+    method_name: &'a Name,
+    found: bool,
+}
+
+impl<'a> SuperMethodCallFinder<'a> {
+    fn is_super_call(expr: &Expr) -> bool {
+        let Expr::Call(call) = expr else {
+            return false;
+        };
+        let Expr::Name(name) = call.func.as_ref() else {
+            return false;
+        };
+        name.id.as_str() == "super"
+    }
+
+    fn is_super_method_call(&self, expr: &Expr) -> bool {
+        let Expr::Call(call) = expr else {
+            return false;
+        };
+        let Expr::Attribute(attr) = call.func.as_ref() else {
+            return false;
+        };
+        attr.attr.id == *self.method_name && Self::is_super_call(attr.value.as_ref())
+    }
+
+    fn find(method_name: &'a Name, body: &[Stmt]) -> bool {
+        // Only the constructor-like dunders ever consult this flag (see
+        // `ClassField::requires_super_method_call`), so skip walking the body
+        // entirely for every other function.
+        if !(method_name == &dunder::INIT
+            || method_name == &dunder::NEW
+            || method_name == &dunder::INIT_SUBCLASS)
+        {
+            return false;
+        }
+        let mut finder = Self {
+            method_name,
+            found: false,
+        };
+        for stmt in body {
+            finder.visit_stmt(stmt);
+            if finder.found {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl<'a, 'b> SourceOrderVisitor<'a> for SuperMethodCallFinder<'b> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if self.found {
+            return;
+        }
+        match stmt {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if self.found {
+            return;
+        }
+        match expr {
+            // A lambda body only runs when the lambda is called, so a `super()`
+            // call inside it does not count as the enclosing method calling super.
+            Expr::Lambda(_) => {}
+            _ if self.is_super_method_call(expr) => {
+                self.found = true;
+            }
+            _ => walk_expr(self, expr),
+        }
+    }
 }
 
 pub struct SelfAssignments {
@@ -905,6 +985,7 @@ impl<'a> BindingsBuilder<'a> {
             self.function_header(&mut x, &func_name, class_key, def_idx.usage(), parent);
 
         let docstring_range = Docstring::range_from_stmts(x.body.as_slice());
+        let calls_super_method = SuperMethodCallFinder::find(&func_name.id, &x.body);
         let (stub_or_impl, placeholder_body_kind, is_return_inferred, self_assignments) = self
             .function_body(
                 &mut x.parameters,
@@ -933,6 +1014,7 @@ impl<'a> BindingsBuilder<'a> {
                 stub_or_impl,
                 placeholder_body_kind,
                 is_return_inferred,
+                calls_super_method,
                 class_key,
                 decorators: decorators.decorators,
                 legacy_tparams: legacy_tparams.into_boxed_slice(),

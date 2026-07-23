@@ -281,6 +281,8 @@ pub enum ErrorKind {
     MissingSource,
     /// We are using bundled stubs for a package but the source code is missing.
     MissingSourceForStubs,
+    /// A constructor-like method overrides a parent class method but does not call `super()`.
+    MissingSuperCall,
     /// The first string argument to a functional type definition does not match the bound name.
     NameMismatch,
     /// The attribute exists but does not support this access pattern.
@@ -523,6 +525,7 @@ impl ErrorKind {
             ErrorKind::InvalidDecorator => Severity::Warn,
             ErrorKind::MisplacedIgnore => Severity::Warn,
             ErrorKind::MissingOverrideDecorator => Severity::Ignore,
+            ErrorKind::MissingSuperCall => Severity::Ignore,
             ErrorKind::MissingSource => Severity::Ignore,
             ErrorKind::NameMismatch => Severity::Warn,
             ErrorKind::NoAnyReturn => Severity::Ignore,
