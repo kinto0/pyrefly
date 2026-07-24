@@ -46,11 +46,16 @@ use pyrefly_python::sys_info::PythonVersion;
 use pyrefly_python::sys_info::SysInfo;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::thread_pool::ThreadCount;
+use pyrefly_util::timer::set_timing_enabled;
 
 const BENCH_FILE: &str = "bench.py";
 
 /// Single-threaded state with stdlib pre-initialized.
 static SHARED_STATE: LazyLock<State> = LazyLock::new(|| {
+    // Disable the type checker's wall-clock profiling timers. Each `Instant::now()`
+    // is a `clock_gettime` syscall under CodSpeed's Valgrind instrument, which
+    // cannot be instrumented and pollutes the measurement.
+    set_timing_enabled(false);
     let sys_info = SysInfo::new(PythonVersion::default(), PythonPlatform::default());
     let config = {
         let mut c = ConfigFile::default();
