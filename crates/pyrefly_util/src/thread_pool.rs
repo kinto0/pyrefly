@@ -27,6 +27,13 @@ pub enum ThreadCount {
     #[default]
     AllThreads,
     NumThreads(NonZeroUsize),
+    /// Run all work inline on the calling thread with no rayon pool. A rayon
+    /// pool — even one sized to a single thread — dispatches work to a worker
+    /// and blocks the caller on a futex for the whole duration. That futex
+    /// shows up under CodSpeed's instrumented instrument as an uninstrumentable
+    /// system call spanning the entire check. Running inline keeps all work on
+    /// the measured thread.
+    Inline,
 }
 
 /// Thread count used by tests. Enough threads to see parallelism bugs, but not too many to debug through.
@@ -72,8 +79,10 @@ impl ThreadPool {
     }
 
     pub fn new(count: ThreadCount) -> Self {
-        if cfg!(target_arch = "wasm32") {
-            // ThreadPool doesn't work on WASM
+        if cfg!(target_arch = "wasm32") || count == ThreadCount::Inline {
+            // No pool: WASM can't spawn threads, and `Inline` deliberately runs
+            // work on the calling thread. `spawn_many`/`install` then invoke their
+            // closures directly, with no worker handoff.
             return Self(None);
         }
 
@@ -89,6 +98,7 @@ impl ThreadPool {
                     .unwrap_or(1);
                 builder = builder.num_threads(max_threads);
             }
+            ThreadCount::Inline => unreachable!("handled by the early return above"),
         }
         let pool = builder.build().expect("To be able to build a thread pool");
         // Only print the message once

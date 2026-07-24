@@ -34,6 +34,8 @@
 //! this condition remains true for the duration of the read.
 
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use arc_swap::Guard;
 use dupe::Dupe;
@@ -91,6 +93,7 @@ impl ModuleState {
             require: AtomicRequire::new(self.require),
             computing: Mutex::new(false),
             computing_condvar: Condvar::new(),
+            computing_waiters: AtomicUsize::new(0),
         }
     }
 }
@@ -109,6 +112,10 @@ pub struct ModuleStateMut {
     computing: Mutex<bool>,
     /// Signaled when `computing` becomes false.
     computing_condvar: Condvar,
+    /// Number of threads currently parked in `computing_condvar.wait`, maintained
+    /// under the `computing` lock. Lets us skip `notify_all` (an uninstrumentable
+    /// `futex` syscall) when no thread is waiting — the common single-threaded case.
+    computing_waiters: AtomicUsize,
 }
 
 impl ModuleStateMut {
@@ -120,6 +127,7 @@ impl ModuleStateMut {
             require: AtomicRequire::new(require),
             computing: Mutex::new(false),
             computing_condvar: Condvar::new(),
+            computing_waiters: AtomicUsize::new(0),
         }
     }
 
@@ -205,7 +213,9 @@ impl ModuleStateMut {
             } else {
                 return None;
             }
+            self.computing_waiters.fetch_add(1, Ordering::Relaxed);
             computing = self.computing_condvar.wait(computing);
+            self.computing_waiters.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
@@ -226,7 +236,9 @@ impl ModuleStateMut {
                     _computing: ComputingFlag { state: self },
                 });
             }
+            self.computing_waiters.fetch_add(1, Ordering::Relaxed);
             computing = self.computing_condvar.wait(computing);
+            self.computing_waiters.fetch_sub(1, Ordering::Relaxed);
         }
     }
 
@@ -292,7 +304,12 @@ impl Drop for ComputingFlag<'_> {
     fn drop(&mut self) {
         let mut computing = self.state.computing.lock();
         *computing = false;
-        self.state.computing_condvar.notify_all();
+        // Both the waiter count and this check happen under the `computing` lock,
+        // so skipping the wake when no thread is parked is race-free and avoids an
+        // uninstrumentable `futex` syscall in the common single-threaded case.
+        if self.state.computing_waiters.load(Ordering::Relaxed) > 0 {
+            self.state.computing_condvar.notify_all();
+        }
     }
 }
 
