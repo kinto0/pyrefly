@@ -2230,6 +2230,12 @@ impl<'a, Ans: LookupAnswer> AnswersSolver<'a, Ans> {
         range: TextRange,
         errors: &ErrorCollector,
     ) -> Arc<TypeInfo> {
+        // DELIBERATE PERFORMANCE REGRESSION — do not land. Added to check that
+        // CodSpeed flags a slowdown in the micro benchmarks. This runs once per
+        // binding, so it scales with the size of the checked snippet.
+        for i in 0..500u64 {
+            std::hint::black_box(i.wrapping_mul(2654435761));
+        }
         // Special case for forward, as we don't want to re-expand the type.
         // ForwardToFirstUse is handled here too: the partial answer shortcut
         // lives in get_idx (before push), so by the time we reach solve_binding
