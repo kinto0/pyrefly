@@ -173,7 +173,9 @@ impl<K: Ord, V> TaskHeap<K, V> {
             fn drop(&mut self) {
                 let mut lock = self.0.inner.lock();
                 lock.active_workers -= 1;
-                if lock.active_workers == 0 && lock.heap.is_empty() {
+                // Only wake if a worker is actually parked. `notify_all` otherwise
+                // still issues a `futex` syscall, which CodSpeed cannot instrument.
+                if lock.active_workers == 0 && lock.heap.is_empty() && lock.paused_workers > 0 {
                     self.0.condition.notify_all();
                 }
             }
@@ -200,7 +202,11 @@ impl<K: Ord, V> TaskHeap<K, V> {
                 }
                 None => {
                     if lock.active_workers == 0 {
-                        self.condition.notify_all();
+                        // Only wake if a worker is actually parked; a bare
+                        // `notify_all` still issues an uninstrumentable `futex`.
+                        if lock.paused_workers > 0 {
+                            self.condition.notify_all();
+                        }
                         break;
                     }
                     lock.paused_workers += 1;
