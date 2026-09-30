@@ -28,6 +28,50 @@ to run, good for a quick signal.
 
 Source: `pyrefly/pyrefly/benches/micro.rs`.
 
+### Microbenchmarks in CodSpeed CI
+
+The `simulation` job in `.github/workflows/codspeed.yml` runs on every pull
+request and measures instruction counts under Valgrind. CodSpeed runs each
+benchmark five times to warm up and then measures one iteration, so nothing is
+averaged: any run-to-run difference in the work done shows up as a regression or
+an improvement on some unrelated pull request. A benchmark belongs in that job
+only if it executes the same instructions on every run.
+
+Do not add a benchmark to the simulation job if any of these apply. Run it
+locally, or add it to the opt-in `walltime` job instead.
+
+- **It uses a thread pool anywhere in the process, including setup.** Build the
+  `State` with `ThreadCount::Inline`, as `micro.rs` does. Data that pool threads
+  allocate lives in those threads' allocator arenas, and which thread handled
+  which module depends on scheduling, so freeing or walking that data costs a
+  different number of instructions on each run. Idle pool workers can also run
+  while measurement is on.
+- **The measured region frees or rebuilds a large amount of state.** The cost of
+  deallocation depends on the heap layout, which is not reproducible even
+  single-threaded once the heap is large. This is why the `commit` benchmark
+  runs in walltime mode.
+- **It depends on anything else that varies between runs**: iteration order of a
+  randomly seeded `HashMap`, pointer addresses, the clock, the filesystem, or
+  other syscalls. Under Valgrind every `Instant::now()` is a syscall, so disable
+  timing with `set_timing_enabled(false)`.
+
+Existing microbenchmarks vary by about 0.1% between runs on the CodSpeed
+benchmark page. After adding one, check that page after a few runs on `main`;
+anything above about 1% does not belong in the simulation job.
+
+## Commit benchmark
+
+`benches/commit.rs` -- buck `commit_bench`, cargo bench `commit`. Times
+`State::commit_transaction` over a synthetic 500-module project in three
+scenarios (`clean`, `invalidate_find`, `invalidate_all`). Setup checks the
+project on the thread pool, so it runs in the walltime CodSpeed job, not the
+per-PR simulation job.
+
+```bash
+buck2 run @fbcode//mode/opt fbcode//pyrefly/pyrefly:commit_bench -- --bench
+cargo bench --bench commit
+```
+
 ## PyTorch benchmarks (heavy, walltime)
 
 Three real-world benchmarks run over a pinned, multi-gigabyte PyTorch checkout
