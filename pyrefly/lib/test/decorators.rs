@@ -1340,3 +1340,26 @@ class  # E: Parse error: Expected an identifier
 assert_type(y, Literal[2])  # E: Parse error: Expected an indented block after `class` definition
 "#,
 );
+
+testcase!(
+    bug = "The function member of `function | Any` should be bound to the instance",
+    test_method_decorated_to_union_with_any,
+    r#"
+from typing import Any, TypeVar, assert_type
+
+T = TypeVar("T")
+
+def maybe_unknown(f: T) -> T | Any: ...
+
+class A:
+    @maybe_unknown
+    def method(self, name: str) -> int: ...
+
+    @maybe_unknown
+    def __getattr__(self, name: str) -> int: ...
+
+def f(a: A) -> None:
+    assert_type(a.method("x"), int | Any)  # E: Missing argument `name` in function `A.method` # E: Argument `Literal['x']` is not assignable to parameter `self` with type `A` in function `A.method`
+    assert_type(a.anything, int | Any)  # E: Argument `Literal['anything']` is not assignable to parameter `self` with type `A` in function `A.__getattr__` # E: Missing argument `name` in function `A.__getattr__`
+"#,
+);
