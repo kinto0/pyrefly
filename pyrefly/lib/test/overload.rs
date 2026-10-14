@@ -2769,3 +2769,38 @@ assert_type(my_divmod(LHS(), 1), tuple[LHS, LHS])
 assert_type(my_divmod(LHS(), RHS()), tuple[RHS, RHS])
     "#,
 );
+
+// `R` appears only in the return type of `SupportsF.f`, but `Box` is invariant, so matching each
+// overload pins `R` from both sides. Once `y` solves `T`, the first matching overload applies.
+testcase!(
+    bug = "Every overload that accepts `y` applies, not just the first one",
+    test_overloaded_protocol_method_with_invariant_return_var,
+    r#"
+from typing import Protocol, assert_type, overload, reveal_type
+
+class Box[T]:
+    x: T
+
+class SupportsF[T, R](Protocol):
+    def f(self, other: T, /) -> Box[R]: ...
+
+def call[T, R](x: SupportsF[T, R], y: T) -> R: ...
+
+def call_box[T, R](x: SupportsF[T, R], y: T) -> Box[R]: ...
+
+class A:
+    @overload
+    def f(self, other: int) -> Box[int]: ...
+    @overload
+    def f(self, other: float) -> Box[float]: ...
+    @overload
+    def f(self, other: complex) -> Box[complex]: ...
+    def f(self, other: complex) -> Box[int] | Box[float] | Box[complex]: ...
+
+def g(a: A, i: int, fl: float):
+    assert_type(call(a, i), int | float | complex)
+    assert_type(call(a, fl), float | complex)
+    reveal_type(call_box(a, i))  # E: revealed type: Overloaded[Box[int], Box[float], Box[complex]]
+    reveal_type(call_box(a, fl))  # E: revealed type: Overloaded[Box[float], Box[complex]]
+    "#,
+);
