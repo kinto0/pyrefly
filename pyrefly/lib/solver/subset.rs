@@ -79,6 +79,7 @@ use crate::types::type_var::Variance;
 use crate::types::types::Forallable;
 use crate::types::types::TArgs;
 use crate::types::types::Type;
+use crate::types::types::Var;
 
 /// Extract a `TypeAliasData` reference from a `Type` that wraps one,
 /// either directly as `Type::TypeAlias` or inside `Type::Forall`.
@@ -1523,20 +1524,25 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         // parameters that the branches are matched against. Otherwise, the branches see fully
         // known argument types, so the first matching branch is the one that applies.
         let mut signatures = want.toplevel_callable_signatures().peekable();
-        if signatures.peek().is_some()
-            && !signatures.any(|(callable, _)| {
-                let mut mentions_captured_var = false;
+        let param_vars: SmallSet<Var> = if signatures.peek().is_some() {
+            let mut param_vars = SmallSet::new();
+            for (callable, _) in signatures {
                 callable.params.visit(&mut |ty: &Type| {
-                    mentions_captured_var |= ty
-                        .collect_maybe_placeholder_vars()
-                        .iter()
-                        .any(|v| captured_vars.contains(v));
+                    param_vars.extend(
+                        ty.collect_maybe_placeholder_vars()
+                            .into_iter()
+                            .filter(|v| captured_vars.contains(v)),
+                    );
                 });
-                mentions_captured_var
-            })
-        {
-            return OverloadCapture::NotApplicable;
-        }
+            }
+            if param_vars.is_empty() {
+                return OverloadCapture::NotApplicable;
+            }
+            param_vars
+        } else {
+            // Without a signature to inspect, any captured var may appear in the parameters.
+            captured_vars.iter().copied().collect()
+        };
         let free_quantified_vars_in_call = self.active_call_context.free_quantified_vars_in_call();
         let captures = branches
             .into_iter()
@@ -1549,6 +1555,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         me.solver.extract_overload_branch(
                             branch_index,
                             &captured_vars,
+                            &param_vars,
                             &free_quantified_vars_in_call,
                         )
                     })

@@ -151,6 +151,10 @@ impl Bounds {
 pub struct OverloadBranch {
     branch_index: usize,
     values: SmallMap<Var, Variable>,
+    /// The captured vars that appear in the parameters the branch was matched against. The other
+    /// captured vars only receive the branch's return type, so they cannot decide which branch
+    /// applies.
+    param_vars: SmallSet<Var>,
     /// Vars that may become free quantifieds, as of snapshot time. Read by
     /// `overload_branch_value_type` to decide whether an unsolved branch value
     /// should be a free quantified.
@@ -1034,6 +1038,7 @@ impl Solver {
         &self,
         branch_index: usize,
         vars: &[Var],
+        param_vars: &SmallSet<Var>,
         free_quantified_vars_in_call: &SmallSet<Var>,
     ) -> OverloadBranch {
         let variables = self.variables.lock();
@@ -1054,6 +1059,7 @@ impl Solver {
         OverloadBranch {
             branch_index,
             values,
+            param_vars: param_vars.clone(),
             free_quantified_vars,
             errors,
         }
@@ -2064,9 +2070,11 @@ impl Solver {
             surviving_branches.push((capture.branch_index, state));
             // Step 5 of overload call evaluation: once the types passed to a branch's parameters
             // are known, a branch that accepts every materialization of them eliminates later
-            // branches. A var receives a parameter type as an upper bound, or is pinned outright.
+            // branches. A var in the parameters receives a parameter type as an upper bound, or is
+            // pinned outright.
             let passed_types_are_known = capture.values.iter().all(|(var, branch_value)| {
-                solved_vars.contains_key(var)
+                !capture.param_vars.contains(var)
+                    || solved_vars.contains_key(var)
                     || match branch_value {
                         Variable::Quantified { bounds, .. } | Variable::Unwrap(bounds) => {
                             bounds.upper.is_empty()
