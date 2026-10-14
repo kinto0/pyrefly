@@ -1342,7 +1342,6 @@ assert_type(y, Literal[2])  # E: Parse error: Expected an indented block after `
 );
 
 testcase!(
-    bug = "The function member of `function | Any` should be bound to the instance",
     test_method_decorated_to_union_with_any,
     r#"
 from typing import Any, TypeVar, assert_type
@@ -1359,7 +1358,7 @@ class A:
     def __getattr__(self, name: str) -> int: ...
 
 def f(a: A) -> None:
-    assert_type(a.method("x"), int | Any)  # E: Missing argument `name` in function `A.method` # E: Argument `Literal['x']` is not assignable to parameter `self` with type `A` in function `A.method`
-    assert_type(a.anything, int | Any)  # E: Argument `Literal['anything']` is not assignable to parameter `self` with type `A` in function `A.__getattr__` # E: Missing argument `name` in function `A.__getattr__`
+    assert_type(a.method("x"), int | Any)
+    assert_type(a.anything, int | Any)
 "#,
 );

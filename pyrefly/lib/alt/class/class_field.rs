@@ -1304,6 +1304,12 @@ fn make_bound_method_helper(
             let ts = &f.members;
             let mut bound_methods = Vec::with_capacity(ts.len());
             for t in ts {
+                // Binding `Any` yields `Any`, so it should not prevent the other members from
+                // being bound.
+                if t.is_any() {
+                    bound_methods.push(t.clone());
+                    continue;
+                }
                 match make_bound_method_helper(heap, obj.clone(), t.clone(), should_bind) {
                     Ok(x) => bound_methods.push(x),
                     Err(_) => return Err(attr),
