@@ -6,6 +6,7 @@
  */
 
 import { defineConfig } from '@vscode/test-cli';
+import { makeStartupSettingsWorkspaces } from './src/test/startup-settings/workspaces.mjs';
 
 // One configuration per window shape. The multi-root tests need two folders
 // open; the failed-start tests open a workspace whose settings break the first
@@ -17,6 +18,8 @@ import { defineConfig } from '@vscode/test-cli';
 // test that awaits `configuration.update` is also waiting on a server launch.
 // Mocha's 2s default is not enough for that on the slower CI runners.
 const mocha = {timeout: 20000};
+
+const startup = makeStartupSettingsWorkspaces(['instant', 'delay', 'drop']);
 
 export default defineConfig([
 	{
@@ -51,5 +54,17 @@ export default defineConfig([
 		// first `client.start()` is made to fail.
 		workspaceFolder: "./src/test/fixtures/failed-start",
 		launchArgs: ['--disable-workspace-trust']
-	}
+	},
+	// The startup-settings tests run the real Python extension, because the
+	// extension asks it for the interpreter while it answers the server's
+	// configuration request. One window per mode of `lsp-shim.js`, because each
+	// mode decides how the server's startup goes.
+	...['instant', 'delay', 'drop'].map(mode => ({
+		label: `startup-settings-${mode}`,
+		files: `dist/test/startup-settings/${mode}/*.test.js`,
+		workspaceFolder: startup[mode],
+		installExtensions: ['ms-python.python'],
+		mocha,
+		launchArgs: ['--disable-workspace-trust']
+	}))
 ]);
