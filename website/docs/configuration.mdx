@@ -1153,6 +1153,12 @@ interpreter. Pyrefly never creates or updates a script's environment: if the
 environment does not exist, Pyrefly warns and checks the script like any other
 file. Run `uv sync --script <file>` to create the environment.
 
+To check a project without its scripts, pass `--exclude-scripts`. Pyrefly then
+skips the files with a `# /// script` block that it finds in the project or in
+the given directories, and still checks the files that you give explicitly.
+`uv check --type-checker pyrefly` passes `--exclude-scripts`, and checks a
+script with `uv check --script`.
+
 Pyrefly runs the uv executable in the `UV` environment variable, which uv sets
 for the commands that it runs, or `uv` on your `PATH`.
 

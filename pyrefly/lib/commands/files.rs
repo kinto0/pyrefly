@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,6 +13,7 @@ use anyhow::Context as _;
 use clap::Parser;
 use dupe::Dupe;
 use pyrefly_config::args::ConfigOverrideArgs;
+use pyrefly_config::environment::uv;
 use pyrefly_config::resolve_unconfigured::UnconfiguredOverride;
 use pyrefly_util::absolutize::Absolutize as _;
 use pyrefly_util::arc_id::ArcId;
@@ -20,6 +22,7 @@ use pyrefly_util::globs::FilteredGlobs;
 use pyrefly_util::globs::Globs;
 use pyrefly_util::globs::HiddenDirFilter;
 use pyrefly_util::includes::Includes;
+use starlark_map::small_set::SmallSet;
 use tracing::debug;
 use tracing::info;
 use tracing::warn;
@@ -71,6 +74,10 @@ pub struct FilesArgs {
     /// Files to exclude when type checking.
     #[arg(long)]
     project_excludes: Option<Vec<String>>,
+    /// Skip the PEP 723 scripts that Pyrefly finds in the project or in the given directories.
+    /// Files given explicitly are still checked.
+    #[arg(long)]
+    exclude_scripts: bool,
 
     /// Explicitly set the Pyrefly configuration to use when type checking.
     /// In "single-file checking mode," this config is applied to all files being checked, ignoring
@@ -337,6 +344,46 @@ fn get_globs_and_config_for_files(
     Ok((Box::new(globs), config_finder, upsell))
 }
 
+/// Skips the PEP 723 scripts among the files of `inner`, except `explicit_files`. A script runs in
+/// its own environment, so a tool such as `uv check` checks scripts separately from the project.
+struct ExcludeScripts {
+    inner: Box<dyn Includes>,
+    explicit_files: SmallSet<PathBuf>,
+}
+
+impl ExcludeScripts {
+    fn keeps(&self, path: &Path) -> bool {
+        self.explicit_files.contains(path)
+            || path.extension().is_none_or(|extension| extension != "py")
+            || fs::read_to_string(path)
+                .map_or(true, |source| uv::script_metadata(&source).is_none())
+    }
+}
+
+impl Includes for ExcludeScripts {
+    fn roots(&self) -> Vec<PathBuf> {
+        self.inner.roots()
+    }
+
+    fn files_iter(&self) -> anyhow::Result<Box<dyn Iterator<Item = PathBuf> + '_>> {
+        Ok(Box::new(
+            self.inner.files_iter()?.filter(|path| self.keeps(path)),
+        ))
+    }
+
+    fn covers(&self, path: &Path) -> bool {
+        self.inner.covers(path) && self.keeps(path)
+    }
+
+    fn covers_ignoring_excludes(&self, path: &Path) -> bool {
+        self.inner.covers_ignoring_excludes(path)
+    }
+
+    fn errors(&mut self) -> Vec<anyhow::Error> {
+        self.inner.errors()
+    }
+}
+
 impl FilesArgs {
     /// The file arguments as given on the command line. Empty means project-checking mode.
     pub fn files(&self) -> &[String] {
@@ -363,14 +410,20 @@ impl FilesArgs {
         } else {
             None
         };
-        if self.files.is_empty() {
+        let explicit_files = self
+            .files
+            .iter()
+            .map(|file| PathBuf::from(file).absolutize())
+            .filter(|file| file.is_file())
+            .collect();
+        let (includes, config_finder, upsell) = if self.files.is_empty() {
             get_globs_and_config_for_project(
                 self.config,
                 project_excludes,
                 config_override,
                 wrapper,
                 scope,
-            )
+            )?
         } else {
             // File mode bypasses the config's globs, so `scope` is intentionally unused.
             get_globs_and_config_for_files(
@@ -379,8 +432,17 @@ impl FilesArgs {
                 project_excludes,
                 config_override,
                 wrapper,
-            )
-        }
+            )?
+        };
+        let includes = if self.exclude_scripts {
+            Box::new(ExcludeScripts {
+                inner: includes,
+                explicit_files,
+            })
+        } else {
+            includes
+        };
+        Ok((includes, config_finder, upsell))
     }
 
     pub fn get(
@@ -393,7 +455,47 @@ impl FilesArgs {
             files,
             config,
             project_excludes: None,
+            exclude_scripts: false,
         }
         .resolve(args, wrapper)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exclude_scripts() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        let script = root.join("script.py");
+        let module = root.join("module.py");
+        fs::write(&script, "# /// script\n# dependencies = [\"six\"]\n# ///\n").unwrap();
+        fs::write(&module, "x = 1\n").unwrap();
+        let files = |explicit_files: Vec<PathBuf>| {
+            let includes = ExcludeScripts {
+                inner: Box::new(FilteredGlobs::new(
+                    Globs::new(vec![root.to_string_lossy().into_owned()]).unwrap(),
+                    Globs::empty(),
+                    None,
+                    HiddenDirFilter::Disabled,
+                )),
+                explicit_files: explicit_files.into_iter().collect(),
+            };
+            let mut files = includes.files_iter().unwrap().collect::<Vec<_>>();
+            files.sort();
+            files
+        };
+        assert_eq!(
+            files(Vec::new()),
+            vec![module.clone()],
+            "a script found in a directory is skipped",
+        );
+        assert_eq!(
+            files(vec![script.clone()]),
+            vec![module, script],
+            "an explicitly given script is checked",
+        );
     }
 }
