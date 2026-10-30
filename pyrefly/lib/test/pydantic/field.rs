@@ -437,7 +437,6 @@ assert_type(model.model_construct(value=2, _fields_set={"value"}), Model)
 );
 
 pydantic_testcase!(
-    bug = "a synthesized ancestor masks a later user override",
     test_model_construct_multiple_inheritance_override,
     r#"
 from typing import Any, Self, assert_type
@@ -455,11 +454,11 @@ class Override(BaseModel):
 class Child(Standard, Override):
     pass
 
-assert_type(Child.model_construct(), Child)  # E: Missing argument `value`
+assert_type(Child.model_construct(), Child)
 instance = Child(value=1)
-assert_type(instance.model_construct(), Child)  # E: Missing argument `value`
+assert_type(instance.model_construct(), Child)
 construct = instance.model_construct
-assert_type(construct(), Child)  # E: Missing argument `value`
+assert_type(construct(), Child)
 
 class LocalOverride(Child):
     @classmethod
@@ -471,7 +470,6 @@ assert_type(LocalOverride.model_construct(), LocalOverride)
 );
 
 pydantic_testcase!(
-    bug = "a synthesized ancestor masks a specialized generic override",
     test_model_construct_multiple_inheritance_generic_override,
     r#"
 from typing import Any, Self, assert_type
@@ -491,10 +489,10 @@ class Child(Standard, Override[int]):
 class Grandchild(Child):
     pass
 
-assert_type(Child.model_construct(marker=1), Child)  # E: Missing argument `value`
-assert_type(Grandchild.model_construct(marker=1), Grandchild)  # E: Missing argument `value`
-Child.model_construct(value=1, marker="invalid")
-Grandchild.model_construct(value=1, marker="invalid")
+assert_type(Child.model_construct(marker=1), Child)
+assert_type(Grandchild.model_construct(marker=1), Grandchild)
+Child.model_construct(value=1, marker="invalid")  # E: `Literal['invalid']` is not assignable to parameter `marker`
+Grandchild.model_construct(value=1, marker="invalid")  # E: `Literal['invalid']` is not assignable to parameter `marker`
 "#,
 );
 

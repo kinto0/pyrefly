@@ -217,21 +217,30 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
             fields.insert(Name::new_static("__attrs_init__"), init_method);
         }
-        // Only replace BaseModel's permissive signature. RootModel and user overrides
-        // already provide signatures that subclasses must inherit.
         if metadata.is_pydantic_model()
-            && self
-                .get_non_synthesized_class_member_and_defining_class(cls, &MODEL_CONSTRUCT)
-                .is_some_and(|member| {
-                    member
-                        .defining_class
-                        .has_toplevel_qname(ModuleName::pydantic().as_str(), "BaseModel")
-                })
+            && let Some(member) =
+                self.get_non_synthesized_class_member_and_defining_class(cls, &MODEL_CONSTRUCT)
         {
-            fields.insert(
-                MODEL_CONSTRUCT,
-                self.get_pydantic_model_construct(cls, dataclass, &kw_only_by_class),
-            );
+            let model_construct = if member
+                .defining_class
+                .has_toplevel_qname(ModuleName::pydantic().as_str(), "BaseModel")
+            {
+                Some(self.get_pydantic_model_construct(cls, dataclass, &kw_only_by_class))
+            } else if member.defining_class != *cls
+                && self
+                    .get_class_member_ignoring_own_synthesized(cls, &MODEL_CONSTRUCT)
+                    .is_some_and(|visible| visible.value.as_ref() != member.value.as_ref())
+            {
+                // An earlier synthesized base must not mask a real override later in the MRO.
+                Some(ClassSynthesizedField {
+                    inner: member.value.into_owned().into(),
+                })
+            } else {
+                None
+            };
+            if let Some(model_construct) = model_construct {
+                fields.insert(MODEL_CONSTRUCT, model_construct);
+            }
         }
         let dataclass_fields_type = self.stdlib.dict(
             self.heap.mk_class_type(self.stdlib.str().clone()),
