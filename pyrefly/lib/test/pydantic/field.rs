@@ -181,9 +181,11 @@ class DecimalField(BaseModel):
     c: Decimal = Field(le=100)
     d: Decimal = Field(lt=100)
     e: Decimal | None = Field(default=None, ge=0)
-    f: Decimal = Field(ge="0")  # E: Pydantic `ge` value has type `Literal['0']`, which is not assignable to field type `Decimal`
+    f: Decimal = Field(ge="bad")  # E: Pydantic `ge` value has type `Literal['bad']`, which is not assignable to field type `Decimal`
     g: Annotated[Decimal, Field(ge=0)]
-    h: Annotated[Decimal, Field(ge="0")]  # E: Pydantic `ge` value has type `Literal['0']`, which is not assignable to field type `Decimal`
+    h: Annotated[Decimal, Field(ge="bad")]  # E: Pydantic `ge` value has type `Literal['bad']`, which is not assignable to field type `Decimal`
+    i: Decimal = Field(ge=True)  # E: Pydantic `ge` value has type `Literal[True]`, which is not assignable to field type `Decimal`
+    j: Annotated[Decimal, Field(ge=False)]  # E: Pydantic `ge` value has type `Literal[False]`, which is not assignable to field type `Decimal`
 "#,
 );
 
