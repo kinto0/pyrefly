@@ -70,22 +70,22 @@ fn class_field_declaration_preserves_self() {
 
 #[test]
 fn class_field_definition_ownership() {
-    // TODO: Global, nonlocal, and decorator writes must keep their own binding types.
+    // Captured and decorator writes retain their own types despite same-named class fields.
     let cases = [
         (
             "x = 0\nclass C:\n    global x\n    x = 1\n    def __init__(self) -> None:\n        self.x: str = 'field'\n",
             "x = 1",
-            "str",
+            "Literal[1]",
         ),
         (
             "def f() -> None:\n    x = 0\n    class C:\n        nonlocal x\n        x = 1\n        def __init__(self) -> None:\n            self.x: str = 'field'\n",
             "x = 1",
-            "str",
+            "Literal[1]",
         ),
         (
             "def deco(cls: type) -> type:\n    return cls\n@(x := deco)\nclass C:\n    x: str = 'field'\n",
             "x := deco",
-            "str",
+            "(cls: type[Any]) -> type[Any]",
         ),
         (
             "class C:\n    x: str = 'field'\n    def f(self, x: int) -> None:\n        x = 1\n",

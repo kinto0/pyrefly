@@ -96,15 +96,15 @@ class B(A):
 
 #[test]
 fn class_field_shadowing_inlay_hint() {
-    // TODO: A global write must not inherit an unrelated instance field's annotation.
+    // Captured writes are unrelated to same-named instance fields.
     for (body, expected) in [
         (
             "x = 0\nclass C:\n    global x\n    x = value()\n    def __init__(self) -> None:\n        self.x: str = 'field'\n",
-            ": str",
+            ": int",
         ),
         (
             "def f() -> None:\n    x = 0\n    class C:\n        nonlocal x\n        x = value()\n        def __init__(self) -> None:\n            self.x: str = 'field'\n",
-            ": str",
+            ": int",
         ),
         (
             "class C:\n    x: str = 'field'\n    def f(self) -> None:\n        x = value()\n",

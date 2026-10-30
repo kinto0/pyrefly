@@ -342,12 +342,12 @@ impl<'a> Transaction<'a> {
                         _ => {}
                     }
                 }
-                key @ Key::Definition(identifier)
+                key @ Key::Definition(_)
                     if inlay_hint_config.variable_types
                         && let Some(ty) = answers.get_type_at(idx) =>
                 {
-                    let mut ty = self
-                        .class_field_type_at_definition(handle, *identifier)
+                    let mut ty = answers
+                        .get_class_field_type_at_definition(idx)
                         .unwrap_or(ty);
                     let mut insertable = true;
                     if let Some(constructor) = self.new_type_constructor_signature(handle, &ty) {

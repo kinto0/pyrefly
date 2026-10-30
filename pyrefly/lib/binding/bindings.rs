@@ -248,6 +248,8 @@ pub struct Bindings {
     /// so a reverse iteration with "first containing range" yields the
     /// innermost enclosing class.
     class_scopes: Vec<(TextRange, Idx<KeyClass>)>,
+    /// Class-body definitions and their owning fields. Other scopes have no entries.
+    class_field_definitions: SmallMap<Idx<Key>, KeyClassField>,
     pub(crate) shape_declarations: ShapeDeclarations,
     /// Annotation-only declarations (`x: Final[int]`) that are subsequently
     /// initialized by an assignment that cannot be syntactically merged with
@@ -339,6 +341,7 @@ pub struct BindingsBuilder<'a> {
     /// recover the enclosing class for a given expression range without
     /// needing a per-`Self`-use bind-time key.
     pub class_scopes: Vec<(TextRange, Idx<KeyClass>)>,
+    class_field_definitions: SmallMap<Idx<Key>, KeyClassField>,
     pub shape_declarations: ShapeDeclarations,
     pub(super) shape_comments: ShapeComments,
     /// The annotation whose `Shaped` string or comment payload is being bound.
@@ -428,6 +431,7 @@ impl Bindings {
             lambda_yield_keys: Vec::new(),
             owned_lambda_params: SmallMap::new(),
             class_scopes: Vec::new(),
+            class_field_definitions: SmallMap::new(),
             shape_declarations: ShapeDeclarations::default(),
             subsequently_initialized: SmallSet::new(),
             promote_ranges: SmallSet::new(),
@@ -473,6 +477,11 @@ impl Bindings {
     /// index after incremental rebuild).
     pub fn get_class_fields(&self, idx: ClassDefIndex) -> Option<&ClassFields> {
         Some(&self.metadata.get_class_checked(idx)?.fields)
+    }
+
+    /// The class field owned by a class-body definition, excluding captures from other scopes.
+    pub(crate) fn class_field_for_definition(&self, idx: Idx<Key>) -> Option<&KeyClassField> {
+        self.class_field_definitions.get(&idx)
     }
 
     /// Per-module class index for a class definition statement (`ClassDefIndex`),
@@ -750,6 +759,7 @@ impl Bindings {
             owned_lambda_params: SmallMap::new(),
             next_lambda_param_id: 0,
             class_scopes: Vec::new(),
+            class_field_definitions: SmallMap::new(),
             shape_declarations: ShapeDeclarations::default(),
             shape_comments: ShapeComments::new(&x, &module_info, errors),
             shape_string_annotation: None,
@@ -894,6 +904,7 @@ impl Bindings {
             lambda_yield_keys: builder.lambda_yield_keys,
             owned_lambda_params: builder.owned_lambda_params,
             class_scopes: builder.class_scopes,
+            class_field_definitions: builder.class_field_definitions,
             shape_declarations: builder.shape_declarations.finish(),
             subsequently_initialized: builder.subsequently_initialized,
             promote_ranges: builder.promote_ranges,
@@ -2285,6 +2296,12 @@ impl<'a> BindingsBuilder<'a> {
         // `Static::upsert` skips them, so they are never in the static scope.
         if name.is_empty() {
             return None;
+        }
+        if let Some(class_index) = self.scopes.current_class_field_owner(name)
+            && matches!(self.idx_to_key(idx), Key::Definition(_))
+        {
+            self.class_field_definitions
+                .insert(idx, KeyClassField(class_index, name.clone()));
         }
         // Suppress the ALL_CAPS check when a more specific check already reported
         // on this reassignment, to avoid emitting two overlapping errors. Both

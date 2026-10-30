@@ -1800,6 +1800,13 @@ impl Scopes {
         }
     }
 
+    /// The `ClassDefIndex` that owns a bare name written in the current class body.
+    /// Global and nonlocal captures belong to another scope, not to this class.
+    pub fn current_class_field_owner(&self, name: &Name) -> Option<ClassDefIndex> {
+        let class_index = self.current_class_def_index()?;
+        (!self.is_mutable_capture(name)).then_some(class_index)
+    }
+
     pub fn in_function_scope(&self) -> bool {
         self.iter_rev()
             .any(|scope| matches!(scope.kind, ScopeKind::Function(_) | ScopeKind::Method(_)))
