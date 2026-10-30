@@ -77,6 +77,7 @@ jobs:
     permissions:
       actions: read # find the last successful sweep
       contents: read # read owners.json once for the run
+      issues: read # find issues updated since the last sweep
       pull-requests: read
     outputs:
       prs: ${{ steps.select.outputs.result }}
@@ -131,15 +132,24 @@ jobs:
               core.setOutput('since', Number.isFinite(since) ? since : Date.now());
             }
             const prs = await github.paginate(github.rest.pulls.list, {
-              owner, repo, state: 'open', sort: 'updated', direction: 'desc', per_page: 100,
-            }, (response, done) => {
-              const page = response.data.filter(pr => Date.parse(pr.updated_at) >= since);
-              if (page.length < response.data.length) done();
-              return page;
+              owner, repo, state: 'open', per_page: 100,
             });
             if (sweep) {
-              // An update during pagination can list a PR on two pages.
-              return [...new Set(prs.filter(pr => pr.user.type !== 'Bot'
+              // Claiming an issue doesn't update the PR, so also select PRs
+              // whose authors are assigned to issues updated since the last
+              // sweep. Without a last sweep, every open PR is selected anyway.
+              const assignees = new Set();
+              if (Number.isFinite(since)) {
+                for (const issue of await github.paginate(github.rest.issues.listForRepo, {
+                  owner, repo, state: 'open', since: new Date(since).toISOString(), per_page: 100,
+                })) {
+                  if (!issue.pull_request) issue.assignees.forEach(a => assignees.add(a.login.toLowerCase()));
+                }
+              }
+              // A PR opened during pagination can list another PR on two pages.
+              return [...new Set(prs.filter(pr => (Date.parse(pr.updated_at) >= since
+                || assignees.has(pr.user.login.toLowerCase()))
+                && pr.user.type !== 'Bot'
                 && !pr.head.ref.startsWith('export-D')
                 && !owners.includes(pr.user.login.toLowerCase()))
                 .map(pr => pr.number))];
@@ -164,6 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write # read the PR, reviews, labels, and timeline, update labels, and comment
+      issues: read # read issues referenced in the PR description
       checks: read # distinguish unsigned CLAs from pending checks
     steps:
       # The next step reacts to this step's result: "passed", "failed", or
@@ -189,7 +200,10 @@ jobs:
             const issue_number = pull_number;
             const MARKER = '<!-- pr-check -->';
 
-            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            // The "full" format adds `body_html`, the rendered description.
+            const { data: pr } = await github.rest.pulls.get({
+              owner, repo, pull_number, mediaType: { format: 'full' },
+            });
             const owners = JSON.parse(process.env.OWNERS_JSON);
             const author = pr.user.login.toLowerCase();
             const labels = (await github.paginate(github.rest.issues.listLabelsOnIssue, {
@@ -229,32 +243,61 @@ jobs:
             // it is missing.
             const box = (pr.body || '').replace(/<!--[\s\S]*?-->/g, '')
               .match(/^\s*[-*]\s*\[([ x])\]\s*I am a human/im)?.[1].toLowerCase();
-            let problem;
+            const problems = [];
             if (box !== 'x') {
               const policy = `See our [AI policy](https://github.com/${owner}/${repo}/blob/main/AI_POLICY.md).`;
-              problem = box === undefined
+              problems.push(box === undefined
                 ? `Add this checkbox to the PR description and check it: \`- [x] I am a human, and I fully understand the code I am submitting.\` ${policy}`
-                : `Check the "I am a human" box in the PR description. ${policy}`;
+                : `Check the "I am a human" box in the PR description. ${policy}`);
             }
             const CONTRIBUTING = `https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md`;
+            // Issues referenced in the description are read from the links that
+            // GitHub renders for them, so that GitHub decides what counts as a
+            // reference.
+            const issueNumbers = new Set([...(pr.body_html || '').matchAll(
+              new RegExp(`data-hovercard-url="/${pr.base.repo.full_name}/issues/(\\d+)/hovercard"`, 'gi'))]
+              .map(([, number]) => Number(number)));
+            const referenced = [];
+            for (const number of issueNumbers) {
+              const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: number });
+              referenced.push(issue);
+            }
+            const issues = referenced.filter(i => i.state === 'open');
+            const CLAIMING = `${CONTRIBUTING}#claiming-issues-claim--unclaim`;
+            const refs = list => list.map(i => `#${i.number}`).join(', ');
+            const recommendations = [];
+            if (issues.length === 0) {
+              const allClosed = referenced.length > 0
+                ? `Every issue referenced in the PR description is already closed: ${refs(referenced)}. `
+                : '';
+              recommendations.push(`${allClosed}If this PR addresses an open issue, please link the issue in the PR description and [claim](${CLAIMING}) it.`);
+            } else if (!issues.some(i => i.assignees.some(a => a.login.toLowerCase() === author))) {
+              const unassigned = issues.filter(i => i.assignees.length === 0);
+              // `#claim` refuses assigned issues, so when every issue is
+              // assigned, the author is pointed to the reassignment process
+              // instead. Assignees are not mentioned, to avoid notifying them.
+              problems.push(unassigned.length > 0
+                ? `[Claim](${CLAIMING}) the issue that this PR addresses by commenting \`#claim\` on it. Unclaimed issues referenced in the PR description: ${refs(unassigned)}.`
+                : `Every open issue referenced in the PR description is already assigned to someone else: ${refs(issues)}. If you're working on one of these issues, please [request](${CLAIMING}) that it be reassigned to you.`);
+            }
             const split = `[splitting it](${CONTRIBUTING}#splitting-a-pull-request)`;
-            let recommendation;
             if (labels.includes('size/xl')) {
-              recommendation = `This PR is very large, which makes it slow and difficult to review. We strongly recommend ${split} into smaller PRs that can be merged independently. If that isn't possible, please structure it as a series of small commits. If you've already split it as far as is practical, no action is needed.`;
+              recommendations.push(`This PR is very large, which makes it slow and difficult to review. We strongly recommend ${split} into smaller PRs that can be merged independently. If that isn't possible, please structure it as a series of small commits. If you've already split it as far as is practical, no action is needed.`);
             } else if (labels.includes('size/l')) {
-              recommendation = `This PR is on the larger side. If parts of it could be merged on their own, consider ${split} into separate PRs for faster review. If you've already split it as far as is practical, no action is needed.`;
+              recommendations.push(`This PR is on the larger side. If parts of it could be merged on their own, consider ${split} into separate PRs for faster review. If you've already split it as far as is practical, no action is needed.`);
             }
 
             const CHECKLIST = `[pull request checklist](${CONTRIBUTING}#making-a-pull-request)`;
+            const list = items => items.map(item => `- ${item}`).join('\n');
             const report = [
               MARKER,
-              problem
-                ? `⚠️ **Action needed**: this PR is missing required items from our ${CHECKLIST}:\n\n- ${problem}`
+              problems.length > 0
+                ? `⚠️ **Action needed**: this PR is missing required items from our ${CHECKLIST}:\n\n${list(problems)}`
                 : `✅ This PR meets all requirements from our ${CHECKLIST}.`,
-              recommendation && `**Optional recommendations**:\n\n- ${recommendation}`,
+              recommendations.length > 0 && `**Optional recommendations**:\n\n${list(recommendations)}`,
               'Note: this comment updates automatically after changes to the PR. Updates may take up to half an hour.',
             ].filter(Boolean).join('\n\n');
-            const writeComment = existingCheck ? existingCheck.body !== report : Boolean(problem || recommendation);
+            const writeComment = existingCheck ? existingCheck.body !== report : problems.length + recommendations.length > 0;
             if (!dryRun && writeComment) {
               if (existingCheck) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: existingCheck.id, body: report });
@@ -262,7 +305,7 @@ jobs:
                 await github.rest.issues.createComment({ owner, repo, issue_number, body: report });
               }
             }
-            const result = problem ? 'failed' : 'passed';
+            const result = problems.length > 0 ? 'failed' : 'passed';
             const comment = !writeComment ? (existingCheck ? 'comment unchanged' : 'no comment')
               : `comment ${dryRun ? 'would be ' : ''}${existingCheck ? 'updated' : 'posted'}`;
             core.setOutput('summary', `${result}, ${comment}`);
