@@ -4401,10 +4401,27 @@ impl<'a> Transaction<'a> {
             .map(Vec1::into_vec)
             .unwrap_or_default();
 
-        for FindDefinitionItemWithDocstring { module, .. } in definitions {
+        for FindDefinitionItemWithDocstring {
+            module,
+            definition_range,
+            ..
+        } in definitions
+        {
             // Block rename only if it's third-party AND not an editable install/source file.
 
             if self.is_third_party_module(&module, handle) && !self.is_source_file(&module, handle)
+            {
+                return None;
+            }
+
+            // Also block rename if the stub that consumers are checked against cannot be edited,
+            // because renaming the definition without that stub would break its consumers.
+            if let Some(interface) = self.find_corresponding_interface_definition(
+                *handle.sys_info(),
+                &TextRangeWithModule::new(module, definition_range),
+            ) && (interface.module.path().is_bundled()
+                || (self.is_third_party_module(&interface.module, handle)
+                    && !self.is_source_file(&interface.module, handle)))
             {
                 return None;
             }

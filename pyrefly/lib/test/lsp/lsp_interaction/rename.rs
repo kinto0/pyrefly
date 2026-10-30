@@ -307,8 +307,7 @@ fn test_rename_editable_source_with_third_party_stub() {
         .client
         .did_open("editable_src/mylib/__init__.py");
 
-    // BUG: renaming `item` would require editing the third-party stub, so it should not be
-    // allowed.
+    // Renaming `item` would require editing the third-party stub, so it is not allowed.
     let position = json!({
         "textDocument": {"uri": Uri::from_file_path(&source).unwrap().to_string()},
         "position": {"line": 0, "character": 4},
@@ -316,41 +315,17 @@ fn test_rename_editable_source_with_third_party_stub() {
     interaction
         .client
         .send_request::<PrepareRenameRequest>(position.clone())
-        .expect_response(json!({
-            "start": {"line": 0, "character": 4},
-            "end": {"line": 0, "character": 8},
-        }))
+        .expect_response(serde_json::Value::Null)
         .unwrap();
     let mut rename = position;
     rename["newName"] = json!("renamed");
     interaction
         .client
         .send_request::<RenameRequest>(rename)
-        .expect_response(json!({
-            "changes": {
-                Uri::from_file_path(&user_code).unwrap().to_string(): [
-                    {
-                        "newText": "renamed",
-                        "range": {"start": {"line": 0, "character": 18}, "end": {"line": 0, "character": 22}}
-                    },
-                    {
-                        "newText": "renamed",
-                        "range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 4}}
-                    },
-                ],
-                Uri::from_file_path(&source).unwrap().to_string(): [
-                    {
-                        "newText": "renamed",
-                        "range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 8}}
-                    },
-                ],
-                Uri::from_file_path(&stub).unwrap().to_string(): [
-                    {
-                        "newText": "renamed",
-                        "range": {"start": {"line": 0, "character": 4}, "end": {"line": 0, "character": 8}}
-                    },
-                ],
-            }
+        .expect_response_error(json!({
+            "code": -32600,
+            "message": "Third-party symbols cannot be renamed",
+            "data": null,
         }))
         .unwrap();
 
@@ -402,7 +377,7 @@ fn test_rename_editable_source_with_bundled_stub() {
     interaction.client.did_open("user.py");
     interaction.client.did_open("editable_src/requests/api.py");
 
-    // BUG: renaming `get` would require editing the bundled stub, so it should not be allowed.
+    // Renaming `get` would require editing the bundled stub, so it is not allowed.
     let position = json!({
         "textDocument": {"uri": Uri::from_file_path(&source).unwrap().to_string()},
         "position": {"line": 0, "character": 4},
@@ -410,23 +385,18 @@ fn test_rename_editable_source_with_bundled_stub() {
     interaction
         .client
         .send_request::<PrepareRenameRequest>(position.clone())
-        .expect_response(json!({
-            "start": {"line": 0, "character": 4},
-            "end": {"line": 0, "character": 7},
-        }))
+        .expect_response(serde_json::Value::Null)
         .unwrap();
     let mut rename = position;
     rename["newName"] = json!("renamed");
     interaction
         .client
         .send_request::<RenameRequest>(rename)
-        .expect_response_with(|edit| {
-            edit.and_then(|edit| edit.changes).is_some_and(|changes| {
-                changes
-                    .keys()
-                    .any(|uri| uri.as_str().ends_with("/requests/api.pyi"))
-            })
-        })
+        .expect_response_error(json!({
+            "code": -32600,
+            "message": "Third-party symbols cannot be renamed",
+            "data": null,
+        }))
         .unwrap();
 
     interaction.shutdown().unwrap();
