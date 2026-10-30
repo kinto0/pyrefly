@@ -199,6 +199,101 @@ def build(handler: Callable[[int], int], apps: tuple[list[Callable[..., int]], .
 );
 
 testcase!(
+    bug = "wrapped function metadata grows through loop fixpoints",
+    test_functools_update_wrapper_function_loop,
+    r#"
+from functools import update_wrapper
+from typing import assert_type
+
+def source(x: int) -> int:
+    return x
+
+def wrapper(x: int) -> int:
+    return x
+
+def repeatedly(count: int) -> int:
+    fn = source
+    for _ in range(count):  # E: Fixpoint iteration did not converge
+        fn = update_wrapper(wrapper, fn)
+    return fn(1)
+
+assert_type(repeatedly(3), int)
+    "#,
+);
+
+testcase!(
+    bug = "an ignored mutation is hidden behind a known wrapped edge",
+    test_inspect_unwrap_mutated_middle,
+    r#"
+from functools import update_wrapper, wraps
+from inspect import unwrap
+from typing import assert_type
+
+def leaf() -> str:
+    return "leaf"
+
+def middle() -> int:
+    return 1
+
+update_wrapper(middle, leaf)
+
+@wraps(middle)
+def outer() -> bool:
+    return False
+
+assert_type(unwrap(outer)(), int)
+    "#,
+);
+
+testcase!(
+    bug = "wrapped metadata retains an edge after an ignored retarget",
+    test_inspect_unwrap_retargeted_function,
+    r#"
+from functools import update_wrapper, wraps
+from inspect import unwrap
+from typing import assert_type
+
+def original() -> int:
+    return 1
+
+def replacement() -> str:
+    return "replacement"
+
+@wraps(original)
+def wrapper() -> bool:
+    return False
+
+alias = wrapper
+update_wrapper(alias, replacement)
+assert_type(unwrap(wrapper)(), int)
+assert_type(unwrap(alias)(), int)
+    "#,
+);
+
+testcase!(
+    bug = "wrapped metadata snapshots a target before its mutation",
+    test_inspect_unwrap_target_mutated_later,
+    r#"
+from functools import update_wrapper, wraps
+from inspect import unwrap
+from typing import assert_type
+
+def leaf() -> str:
+    return "leaf"
+
+def middle() -> int:
+    return 1
+
+@wraps(middle)
+def outer() -> bool:
+    return False
+
+update_wrapper(middle, leaf)
+assert_type(unwrap(outer)(), int)
+    "#,
+);
+
+testcase!(
     test_inspect_unwrap_unknown_wrapping_state,
     r#"
 from functools import update_wrapper, wraps
