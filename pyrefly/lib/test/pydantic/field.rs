@@ -329,6 +329,46 @@ assert_type(Child(value=1).clone(), Child)
 );
 
 pydantic_testcase!(
+    bug = "model_construct returns the declaring class instead of Self",
+    test_model_construct_self_return,
+    r#"
+from typing import Self, assert_type
+
+from pydantic import BaseModel
+
+class Model(BaseModel):
+    value: int
+
+    @classmethod
+    def make(cls, value: int) -> Self:
+        return cls.model_construct(value=value)  # E: Returned type `Model` is not assignable to declared return type `Self@Model`
+
+class Child(Model):
+    label: str = "default"
+
+assert_type(Child.make(1), Child)
+
+def make[T: Model](cls: type[T], value: int) -> T:
+    return cls.model_construct(value=value)  # E: Returned type `Model` is not assignable to declared return type `T`
+
+assert_type(make(Child, 1), Child)
+
+class GenericModel[T](BaseModel):
+    value: T
+
+    @classmethod
+    def make(cls, value: T) -> Self:
+        return cls.model_construct(value=value)  # E: Returned type `GenericModel[T]` is not assignable to declared return type `Self@GenericModel`
+
+class GenericChild(GenericModel[int]):
+    pass
+
+assert_type(GenericModel[int].make(1), GenericModel[int])
+assert_type(GenericChild.make(1), GenericChild)
+"#,
+);
+
+pydantic_testcase!(
     test_model_construct_inherited_override,
     r#"
 from typing import Any, Self, assert_type
