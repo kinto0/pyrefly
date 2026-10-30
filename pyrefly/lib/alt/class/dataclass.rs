@@ -394,7 +394,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             params.push(Param::KwOnly(name, field.ty(), required));
         }
         if dataclass.kws.extra {
-            params.push(Param::Kwargs(None, self.heap.mk_any_implicit()));
+            params.push(Param::Kwargs(None, self.heap.mk_any_explicit()));
         }
         let mut metadata = FuncMetadata::method(cls, MODEL_CONSTRUCT);
         metadata.flags.is_classmethod = true;

@@ -498,7 +498,6 @@ Grandchild.model_construct(value=1, marker="invalid")  # E: `Literal['invalid']`
 
 // Pydantic's intentionally permissive extras are explicit Any, not unknown input.
 testcase!(
-    bug = "model_construct extras are incorrectly treated as unknown",
     test_model_construct_explicit_kwargs,
     pydantic_env().enable_partially_unknown_type_error(),
     r#"
@@ -507,8 +506,8 @@ from pydantic import BaseModel
 class Model(BaseModel):
     value: int
 
-Model.model_construct(value=1)  # E: The type of attribute `model_construct` is partially unknown
-Model.model_construct(value=1, extra="accepted")  # E: The type of attribute `model_construct` is partially unknown
+Model.model_construct(value=1)
+Model.model_construct(value=1, extra="accepted")
 "#,
 );
 
