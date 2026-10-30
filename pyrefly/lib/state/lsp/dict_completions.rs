@@ -37,6 +37,8 @@ use crate::state::lsp::TransactionHandle;
 use crate::state::state::Transaction;
 use crate::types::types::Type;
 
+const STRING_LITERAL_CURSOR_ALLOWANCE: TextSize = TextSize::new(4);
+
 #[derive(Clone)]
 enum DictKeyLiteralContext {
     /// A key literal used to access an existing dict/TypedDict.
@@ -516,13 +518,9 @@ impl<'a> Transaction<'a> {
                 continue;
             };
             let (priority, dist) = Self::string_literal_priority(position, literal.range());
-            let should_update = match &best {
-                Some((best_prio, best_dist, _, _)) => {
-                    priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                }
-                None => true,
-            };
-            if should_update {
+            if best.as_ref().is_none_or(|(best_prio, best_dist, ..)| {
+                (priority, dist) < (*best_prio, *best_dist)
+            }) {
                 best = Some((priority, dist, base_expr, literal));
                 if priority == 0 && dist == TextSize::from(0) {
                     break;
@@ -659,7 +657,7 @@ impl<'a> Transaction<'a> {
                     };
                     // Match the four-character allowance in `add_dict_key_completions`
                     // before resolving context for an ordinary set or a distant string.
-                    if (priority == 1 && dist > TextSize::from(4))
+                    if (priority == 1 && dist > STRING_LITERAL_CURSOR_ALLOWANCE)
                         || (priority == 2 && dist != TextSize::from(0))
                     {
                         continue;
@@ -692,13 +690,9 @@ impl<'a> Transaction<'a> {
             let Some((priority, dist, context)) = best_in_expr else {
                 continue;
             };
-            let should_update = match &best {
-                Some((best_prio, best_dist, _)) => {
-                    priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                }
-                None => true,
-            };
-            if should_update {
+            if best.as_ref().is_none_or(|(best_prio, best_dist, ..)| {
+                (priority, dist) < (*best_prio, *best_dist)
+            }) {
                 best = Some((priority, dist, context));
                 if priority == 0 && dist == TextSize::from(0) {
                     break;
@@ -728,13 +722,9 @@ impl<'a> Transaction<'a> {
                 continue;
             };
             let (priority, dist) = Self::string_literal_priority(position, literal.range());
-            let should_update = match &best {
-                Some((best_prio, best_dist, _)) => {
-                    priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                }
-                None => true,
-            };
-            if should_update {
+            if best.as_ref().is_none_or(|(best_prio, best_dist, ..)| {
+                (priority, dist) < (*best_prio, *best_dist)
+            }) {
                 best = Some((priority, dist, literal));
                 if priority == 0 && dist == TextSize::from(0) {
                     break;
@@ -748,15 +738,15 @@ impl<'a> Transaction<'a> {
         set: &ExprSet,
         position: TextSize,
     ) -> Option<(u8, TextSize, &ExprStringLiteral)> {
-        let mut best = None;
+        let mut best: Option<(u8, TextSize, &ExprStringLiteral)> = None;
         for elt in &set.elts {
             let Expr::StringLiteral(literal) = elt else {
                 continue;
             };
             let (priority, dist) = Self::string_literal_priority(position, literal.range());
-            if best
-                .is_none_or(|(best_prio, best_dist, _)| (priority, dist) < (best_prio, best_dist))
-            {
+            if best.as_ref().is_none_or(|(best_prio, best_dist, ..)| {
+                (priority, dist) < (*best_prio, *best_dist)
+            }) {
                 best = Some((priority, dist, literal));
                 if priority == 0 {
                     break;
@@ -786,13 +776,12 @@ impl<'a> Transaction<'a> {
                     continue;
                 };
                 let (priority, dist) = Self::string_literal_priority(position, value_lit.range());
-                let should_update = match &best_in_dict {
-                    Some((best_prio, best_dist, _, _)) => {
-                        priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                    }
-                    None => true,
-                };
-                if should_update {
+                if best_in_dict
+                    .as_ref()
+                    .is_none_or(|(best_prio, best_dist, ..)| {
+                        (priority, dist) < (*best_prio, *best_dist)
+                    })
+                {
                     best_in_dict = Some((priority, dist, key_lit.clone(), value_lit.clone()));
                     if priority == 0 && dist == TextSize::from(0) {
                         break;
@@ -802,13 +791,9 @@ impl<'a> Transaction<'a> {
             let Some((priority, dist, key_lit, value_lit)) = best_in_dict else {
                 continue;
             };
-            let should_update = match &best {
-                Some((best_prio, best_dist, _, _, _)) => {
-                    priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                }
-                None => true,
-            };
-            if should_update {
+            if best.as_ref().is_none_or(|(best_prio, best_dist, ..)| {
+                (priority, dist) < (*best_prio, *best_dist)
+            }) {
                 best = Some((priority, dist, dict.clone(), key_lit, value_lit));
                 if priority == 0 && dist == TextSize::from(0) {
                     break;
@@ -944,10 +929,9 @@ impl<'a> Transaction<'a> {
             // Allow the cursor to sit a few characters before the literal (e.g. between
             // nested subscripts) so completion requests fired just before the quotes
             // still succeed.
-            let allowance = TextSize::from(4);
             let lower_bound = literal_range
                 .start()
-                .checked_sub(allowance)
+                .checked_sub(STRING_LITERAL_CURSOR_ALLOWANCE)
                 .unwrap_or_else(|| TextSize::new(0));
             if position < lower_bound || position > literal_range.end() {
                 return false;
