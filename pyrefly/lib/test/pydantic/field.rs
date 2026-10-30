@@ -227,6 +227,108 @@ Model[int].model_construct(value="1")  # E: `Literal['1']` is not assignable to 
 );
 
 pydantic_testcase!(
+    bug = "model_construct binds instances into _fields_set",
+    test_model_construct_instance_binding,
+    r#"
+from typing import assert_type
+
+from pydantic import BaseModel
+
+class Model(BaseModel):
+    value: int
+
+model = Model(value=1)
+assert_type(Model.model_construct(value=1), Model)
+assert_type(model.model_construct(value=1), Model)  # E: Argument `Model` is not assignable to parameter `_fields_set`
+assert_type(model.model_construct({"value"}, value=1), Model)  # E: Argument `Model` is not assignable to parameter `_fields_set`  # E: Expected 0 positional arguments, got 1
+construct = model.model_construct
+assert_type(construct(value=1), Model)  # E: Argument `Model` is not assignable to parameter `_fields_set`
+
+class GenericModel[T](BaseModel):
+    value: T
+
+instance = GenericModel[int](value=1)
+assert_type(instance.model_construct(value=1), GenericModel[int])  # E: Argument `GenericModel[int]` is not assignable to parameter `_fields_set`
+
+class ReceiverNames(BaseModel):
+    cls: int
+    self: str
+
+assert_type(ReceiverNames.model_construct(cls=1, self="value"), ReceiverNames)
+"#,
+);
+
+pydantic_testcase!(
+    bug = "model_construct binds generic subclass instances into _fields_set",
+    test_model_construct_inference,
+    r#"
+from typing import assert_type
+
+from pydantic import BaseModel
+
+class Model[T](BaseModel):
+    value: T
+
+assert_type(Model.model_construct(value=1), Model[int])
+construct = Model.model_construct
+assert_type(construct(value="s"), Model[str])
+
+class Child(Model[int]):
+    pass
+
+assert_type(Child.model_construct(value=1), Child)
+Child.model_construct(value="s")  # E: `Literal['s']` is not assignable to parameter `value`
+assert_type(Child(value=1).model_construct(value=1), Child)  # E: Argument `Child` is not assignable to parameter `_fields_set`
+"#,
+);
+
+pydantic_testcase!(
+    bug = "model_construct overrides and super calls lose Self",
+    test_model_construct_subclass_override,
+    r#"
+from typing import Any, Self, assert_type
+
+from pydantic import BaseModel
+
+class Standard(BaseModel):
+    value: int
+
+class OverridingChild(Standard):
+    @classmethod
+    def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:  # E: Class member `OverridingChild.model_construct` overrides parent class `Standard` in an inconsistent manner
+        return super().model_construct(_fields_set, **values)  # E: Returned type `Standard` is not assignable to declared return type `Self@OverridingChild`
+
+class Grandchild(OverridingChild):
+    pass
+
+assert_type(OverridingChild.model_construct(), OverridingChild)
+assert_type(OverridingChild(value=1).model_construct(), OverridingChild)
+assert_type(Grandchild.model_construct(), Grandchild)
+"#,
+);
+
+pydantic_testcase!(
+    bug = "model_construct binds instances and loses Self",
+    test_model_construct_instance_self_return,
+    r#"
+from typing import Self, assert_type
+
+from pydantic import BaseModel
+
+class Model(BaseModel):
+    value: int
+
+    def clone(self) -> Self:
+        return self.model_construct(value=self.value)  # E: Returned type `Model` is not assignable to declared return type `Self@Model`  # E: Argument `Self@Model` is not assignable to parameter `_fields_set`
+
+class Child(Model):
+    pass
+
+assert_type(Child(value=1).clone(), Child)
+"#,
+);
+
+pydantic_testcase!(
     test_model_construct_inherited_override,
     r#"
 from typing import Any, Self, assert_type
