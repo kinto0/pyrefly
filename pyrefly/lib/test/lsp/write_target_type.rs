@@ -10,6 +10,9 @@
 //! `c.x = 1`, `del c.x` and `c.x: int`. The common shapes of assignment target
 //! are covered by `hover_on_attribute_assignment_target` in `hover.rs`.
 //!
+//! Class-body name definitions are also covered: they report the resolved field declaration
+//! type, while names owned by other scopes retain their own binding types.
+//!
 //! A target is not a read, so these report what is being written to the
 //! attribute rather than what reading it would return. A target that is only
 //! declared reports its declared type, since nothing is written to it.
@@ -120,6 +123,66 @@ fn class_field_definition_ownership() {
                 "computed type for {code}",
             );
         }
+    }
+}
+
+#[test]
+fn class_field_declaration_type_invariants() {
+    let cases = [
+        ("class C:\n    x = 1\n", "x = 1", "Literal[1]"),
+        (
+            "from typing import Final\nclass C:\n    x: Final = 1\n",
+            "x: Final",
+            "Literal[1]",
+        ),
+        (
+            "class A[T]:\n    x: tuple[T, ...] = ()\nclass B(A[str]):\n    x = ('value',)\n",
+            "x = ('value',)",
+            "tuple[str, ...]",
+        ),
+        (
+            "from typing import Self\nclass A:\n    x: Self | None = None\nclass B(A):\n    x = None\n",
+            "x = None",
+            "Self@A | None",
+        ),
+        (
+            "class A:\n    x: int = 0\nclass B(A):\n    x, y = 1, 2\n    x = 3\n",
+            "x, y",
+            "int",
+        ),
+        (
+            "class A:\n    x: int = 0\nclass B(A):\n    x, y = 1, 2\n    x = 3\n",
+            "x = 3",
+            "int",
+        ),
+        (
+            "class A:\n    x: int = 0\nclass B(A):\n    for x in (1, 2):\n        pass\n",
+            "x in",
+            "int",
+        ),
+    ];
+    for (code, target, expected) in cases {
+        let (handles, state) =
+            mk_multi_file_state_assert_no_errors(&[("main", code)], Require::Exports);
+        let handle = handles.get("main").unwrap();
+        let position = TextSize::try_from(code.find(target).unwrap()).unwrap();
+        let transaction = state.transaction();
+        assert_eq!(
+            expected,
+            transaction
+                .get_type_at(handle, position)
+                .unwrap()
+                .to_string(),
+            "hover for {code}",
+        );
+        assert_eq!(
+            expected,
+            transaction
+                .get_computed_type_at_range(handle, TextRange::at(position, 1.into()))
+                .unwrap()
+                .to_string(),
+            "computed type for {code}",
+        );
     }
 }
 
