@@ -1396,7 +1396,6 @@ assert_type(x, Literal["q"])
 
 // https://github.com/facebook/pyrefly/issues/5279
 testcase!(
-    bug = "The value of a member written as `member(value=...)` keeps the `member` wrapper",
     test_enum_member_keyword_value,
     r#"
 from collections.abc import Callable
@@ -1409,7 +1408,7 @@ class Format(Enum):
     DECIMAL = member(value=decimal)
 
     def render(self, value: int, /) -> str:
-        formatter: Callable[[int], str] = self.value  # E: `member[(value: int, /) -> str]` is not assignable to `(int) -> str`
+        formatter: Callable[[int], str] = self.value
         return formatter(value)
 "#,
 );
