@@ -1216,7 +1216,7 @@ def f(cond: bool) -> None:
     assert_eq!(polars_column_completion_labels(code), vec!["id".to_owned()]);
 }
 
-// These expectations capture the parameter fields incorrectly inherited through `**` unpacking.
+// An unpacked mapping contains call-argument names, not the fields of a parameter's TypedDict.
 #[test]
 fn dict_completion_unpacking_parameter_context() {
     for body in ["take(**{\"|\"})", "take(**{\"|\": 0})", "take(**dict(|))"] {
@@ -1246,7 +1246,7 @@ fn dict_completion_unpacking_parameter_context() {
             } else {
                 field.to_owned()
             };
-            assert!(labels.contains(&label), "{body}: {labels:?}");
+            assert!(!labels.contains(&label), "{body}: {labels:?}");
         }
     }
 }

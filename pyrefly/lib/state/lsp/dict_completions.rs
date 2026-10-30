@@ -142,11 +142,9 @@ impl<'a> Transaction<'a> {
                 }
                 AnyNodeRef::ExprCall(call)
                     if call.arguments.args.iter().any(|arg| arg.range() == range)
-                        || call
-                            .arguments
-                            .keywords
-                            .iter()
-                            .any(|keyword| keyword.value.range() == range) =>
+                        || call.arguments.keywords.iter().any(|keyword| {
+                            keyword.arg.is_some() && keyword.value.range() == range
+                        }) =>
                 {
                     return self.get_active_call_argument_type_for_surface(handle, range.start());
                 }
