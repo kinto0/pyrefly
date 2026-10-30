@@ -1113,4 +1113,28 @@ mod tests {
         let kinds: Vec<_> = state.get_errors().into_iter().map(|e| e.kind).collect();
         assert!(kinds.is_empty(), "unexpected diagnostics: {kinds:?}");
     }
+
+    // https://github.com/facebook/pyrefly/issues/5113
+    // bug: a kind with no editor tag that is set to `hint` gets a hint marker,
+    // which Monaco barely shows; it should look like `info`.
+    #[test]
+    fn test_kind_set_to_hint_in_config() {
+        let mut state = Playground::new(None).unwrap();
+        let mut files = SmallMap::new();
+        files.insert(
+            "main.py".to_owned(),
+            "import os\nx: int = \"wrong\"\n".to_owned(),
+        );
+        files.insert(
+            "pyrefly.toml".to_owned(),
+            "[errors]\nbad-assignment = \"hint\"\n".to_owned(),
+        );
+        state.update_sandbox_files(files, true);
+        state.set_active_file("main.py");
+
+        let errors = state.get_errors();
+        let severity = |kind: &str| errors.iter().find(|e| e.kind == kind).map(|e| e.severity);
+        assert_eq!(severity("unused-import"), Some(1)); // MarkerSeverity.Hint
+        assert_eq!(severity("bad-assignment"), Some(1)); // MarkerSeverity.Hint
+    }
 }

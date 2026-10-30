@@ -1084,4 +1084,33 @@ def f(x: None) -> None:
         assert_eq!(&*annotations[0].label, "has type `None`");
         assert_eq!(&*annotations[1].label, "has type `Literal[2]`");
     }
+
+    // https://github.com/facebook/pyrefly/issues/5113
+    // bug: a kind with no editor tag that is set to `hint` is sent as an LSP hint,
+    // which editors barely show; it should look like `info`.
+    #[test]
+    fn test_hint_severity_in_lsp() {
+        let module_info = Module::new(
+            ModuleName::from_str("test"),
+            ModulePath::filesystem(PathBuf::from("test.py")),
+            Arc::new("x".to_owned()),
+        );
+        let diagnostic = |kind| {
+            Error::new(
+                module_info.clone(),
+                TextRange::new(TextSize::new(0), TextSize::new(1)),
+                "message".to_owned(),
+                Vec::new(),
+                kind,
+            )
+            .with_severity(Severity::Hint)
+            .to_diagnostic()
+        };
+        let unused = diagnostic(ErrorKind::UnusedImport);
+        assert_eq!(unused.severity, Some(DiagnosticSeverity::Hint));
+        assert_eq!(unused.tags, Some(vec![DiagnosticTag::Unnecessary]));
+        let assignment = diagnostic(ErrorKind::BadAssignment);
+        assert_eq!(assignment.severity, Some(DiagnosticSeverity::Hint));
+        assert_eq!(assignment.tags, None);
+    }
 }
