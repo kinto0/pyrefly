@@ -281,7 +281,6 @@ assert_type(Child(value=1).model_construct(value=1), Child)
 );
 
 pydantic_testcase!(
-    bug = "model_construct overrides and super calls lose Self",
     test_model_construct_subclass_override,
     r#"
 from typing import Any, Self, assert_type
@@ -294,7 +293,7 @@ class Standard(BaseModel):
 class OverridingChild(Standard):
     @classmethod
     def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:
-        return super().model_construct(_fields_set, **values)  # E: Returned type `Standard` is not assignable to declared return type `Self@OverridingChild`
+        return super().model_construct(_fields_set, **values)
 
 class Grandchild(OverridingChild):
     pass
@@ -306,7 +305,6 @@ assert_type(Grandchild.model_construct(), Grandchild)
 );
 
 pydantic_testcase!(
-    bug = "model_construct loses Self through instance access",
     test_model_construct_instance_self_return,
     r#"
 from typing import Self, assert_type
@@ -317,7 +315,7 @@ class Model(BaseModel):
     value: int
 
     def clone(self) -> Self:
-        return self.model_construct(value=self.value)  # E: Returned type `Model` is not assignable to declared return type `Self@Model`
+        return self.model_construct(value=self.value)
 
 class Child(Model):
     pass
@@ -327,7 +325,6 @@ assert_type(Child(value=1).clone(), Child)
 );
 
 pydantic_testcase!(
-    bug = "model_construct returns the declaring class instead of Self",
     test_model_construct_self_return,
     r#"
 from typing import Self, assert_type
@@ -339,7 +336,7 @@ class Model(BaseModel):
 
     @classmethod
     def make(cls, value: int) -> Self:
-        return cls.model_construct(value=value)  # E: Returned type `Model` is not assignable to declared return type `Self@Model`
+        return cls.model_construct(value=value)
 
 class Child(Model):
     label: str = "default"
@@ -347,7 +344,7 @@ class Child(Model):
 assert_type(Child.make(1), Child)
 
 def make[T: Model](cls: type[T], value: int) -> T:
-    return cls.model_construct(value=value)  # E: Returned type `Model` is not assignable to declared return type `T`
+    return cls.model_construct(value=value)
 
 assert_type(make(Child, 1), Child)
 
@@ -356,7 +353,7 @@ class GenericModel[T](BaseModel):
 
     @classmethod
     def make(cls, value: T) -> Self:
-        return cls.model_construct(value=value)  # E: Returned type `GenericModel[T]` is not assignable to declared return type `Self@GenericModel`
+        return cls.model_construct(value=value)
 
 class GenericChild(GenericModel[int]):
     pass

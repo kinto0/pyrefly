@@ -369,9 +369,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             fields_set_type,
             Required::Optional(None),
         );
+        let self_type = self.heap.mk_self_type(self.as_class_type_unchecked(cls));
         let cls_param = Param::PosOnly(
             Some(Name::new_static("cls")),
-            self.heap.mk_type_of(self.instantiate(cls)),
+            self.heap.mk_type_of(self_type.clone()),
             Required::Required,
         );
         let mut params = vec![cls_param, fields_set];
@@ -389,7 +390,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let mut metadata = FuncMetadata::method(cls, MODEL_CONSTRUCT);
         metadata.flags.is_classmethod = true;
         let ty = self.heap.mk_function(Function {
-            signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
+            signature: Callable::list(ParamList::new(params), self_type),
             metadata,
         });
         ClassSynthesizedField::new(ty)
