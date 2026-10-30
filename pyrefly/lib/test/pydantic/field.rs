@@ -423,6 +423,98 @@ Model.model_construct(required=3, value="1")  # E: `Literal['1']` is not assigna
 );
 
 pydantic_testcase!(
+    test_model_construct_instance_fields_set_keyword,
+    r#"
+from typing import assert_type
+from pydantic import BaseModel
+
+class Model(BaseModel):
+    value: int
+
+model = Model(value=1)
+assert_type(model.model_construct(value=2, _fields_set={"value"}), Model)
+"#,
+);
+
+pydantic_testcase!(
+    bug = "a synthesized ancestor masks a later user override",
+    test_model_construct_multiple_inheritance_override,
+    r#"
+from typing import Any, Self, assert_type
+from pydantic import BaseModel
+
+class Standard(BaseModel):
+    value: int
+
+class Override(BaseModel):
+    @classmethod
+    def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:
+        values.setdefault("value", 1)
+        return super().model_construct(_fields_set=_fields_set, **values)
+
+class Child(Standard, Override):
+    pass
+
+assert_type(Child.model_construct(), Child)  # E: Missing argument `value`
+instance = Child(value=1)
+assert_type(instance.model_construct(), Child)  # E: Missing argument `value`
+construct = instance.model_construct
+assert_type(construct(), Child)  # E: Missing argument `value`
+
+class LocalOverride(Child):
+    @classmethod
+    def model_construct(cls, _fields_set: set[str] | None = None, **values: Any) -> Self:
+        return super().model_construct(_fields_set, **values)
+
+assert_type(LocalOverride.model_construct(), LocalOverride)
+"#,
+);
+
+pydantic_testcase!(
+    bug = "a synthesized ancestor masks a specialized generic override",
+    test_model_construct_multiple_inheritance_generic_override,
+    r#"
+from typing import Any, Self, assert_type
+from pydantic import BaseModel
+
+class Standard(BaseModel):
+    value: int
+
+class Override[T](BaseModel):
+    @classmethod
+    def model_construct(cls, _fields_set: set[str] | None = None, *, marker: T | None = None, **values: Any) -> Self:
+        return super().model_construct(_fields_set, **values)
+
+class Child(Standard, Override[int]):
+    pass
+
+class Grandchild(Child):
+    pass
+
+assert_type(Child.model_construct(marker=1), Child)  # E: Missing argument `value`
+assert_type(Grandchild.model_construct(marker=1), Grandchild)  # E: Missing argument `value`
+Child.model_construct(value=1, marker="invalid")
+Grandchild.model_construct(value=1, marker="invalid")
+"#,
+);
+
+// Pydantic's intentionally permissive extras are explicit Any, not unknown input.
+testcase!(
+    bug = "model_construct extras are incorrectly treated as unknown",
+    test_model_construct_explicit_kwargs,
+    pydantic_env().enable_partially_unknown_type_error(),
+    r#"
+from pydantic import BaseModel
+
+class Model(BaseModel):
+    value: int
+
+Model.model_construct(value=1)  # E: The type of attribute `model_construct` is partially unknown
+Model.model_construct(value=1, extra="accepted")  # E: The type of attribute `model_construct` is partially unknown
+"#,
+);
+
+pydantic_testcase!(
     test_frozen_field_override_covariant,
     r#"
 from pydantic import BaseModel, Field
