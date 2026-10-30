@@ -773,4 +773,20 @@ mod tests {
             }
         }
     }
+
+    // https://github.com/facebook/pyrefly/issues/5113
+    // bug: `deprecated` and `unreachable` default to `warn`; the team agreed on
+    // 2026-10-29 that they should default to `hint`.
+    #[test]
+    fn test_deprecated_and_unreachable_severity() {
+        let severity = |preset: Preset, kind| match preset.apply().errors {
+            Some(errors) => errors.severity(kind),
+            None => kind.default_severity(),
+        };
+        for kind in [ErrorKind::Deprecated, ErrorKind::Unreachable] {
+            assert_eq!(severity(Preset::Default, kind), Severity::Warn);
+            assert_eq!(severity(Preset::Basic, kind), Severity::Ignore);
+            assert_eq!(severity(Preset::All, kind), Severity::Error);
+        }
+    }
 }
