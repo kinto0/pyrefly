@@ -14,6 +14,7 @@ use dupe::Dupe;
 use lsp_types::CompletionItem;
 use lsp_types::CompletionItemKind;
 use lsp_types::Contents;
+use lsp_types::DiagnosticTag;
 use lsp_types::SemanticTokens;
 use lsp_types::SemanticTokensLegend;
 use lsp_types::TextEdit;
@@ -151,6 +152,8 @@ pub struct Diagnostic {
     pub message_details: String,
     pub kind: String,
     pub severity: i32,
+    /// Monaco marker tags, which use the same numbers as LSP diagnostic tags.
+    pub tags: Vec<DiagnosticTag>,
     pub filename: String,
 }
 
@@ -274,6 +277,7 @@ impl Playground {
                         kind: "parse-error".to_owned(),
                         // MarkerSeverity.Error (8)
                         severity: 8,
+                        tags: Vec::new(),
                         filename: "pyrefly.toml".to_owned(),
                     });
                     if !force_update {
@@ -428,8 +432,11 @@ impl Playground {
                         Severity::Error => 8,
                         Severity::Warn => 4,
                         Severity::Info => 2,
+                        // As in the LSP, a hint without its own editor look is shown like `info`.
+                        Severity::Hint if e.editor_tag().is_none() => 2,
                         Severity::Hint | Severity::Ignore => 1,
                     },
+                    tags: e.editor_tag().into_iter().collect(),
                     filename: filename.clone(),
                 }
             });
@@ -1115,8 +1122,6 @@ mod tests {
     }
 
     // https://github.com/facebook/pyrefly/issues/5113
-    // bug: a kind with no editor tag that is set to `hint` gets a hint marker,
-    // which Monaco barely shows; it should look like `info`.
     #[test]
     fn test_kind_set_to_hint_in_config() {
         let mut state = Playground::new(None).unwrap();
@@ -1133,8 +1138,14 @@ mod tests {
         state.set_active_file("main.py");
 
         let errors = state.get_errors();
-        let severity = |kind: &str| errors.iter().find(|e| e.kind == kind).map(|e| e.severity);
-        assert_eq!(severity("unused-import"), Some(1)); // MarkerSeverity.Hint
-        assert_eq!(severity("bad-assignment"), Some(1)); // MarkerSeverity.Hint
+        // The severity and the serialized tags are what Monaco receives.
+        let marker = |kind: &str| {
+            let e = errors.iter().find(|e| e.kind == kind).unwrap();
+            (e.severity, serde_json::to_string(&e.tags).unwrap())
+        };
+        // MarkerSeverity.Hint with MarkerTag.Unnecessary, drawn greyed out.
+        assert_eq!(marker("unused-import"), (1, "[1]".to_owned()));
+        // MarkerSeverity.Info, with no tag.
+        assert_eq!(marker("bad-assignment"), (2, "[]".to_owned()));
     }
 }

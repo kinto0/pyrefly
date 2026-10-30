@@ -590,12 +590,31 @@ impl Error {
         self.baseline_status
     }
 
+    /// The tag editors use to draw this diagnostic in their own way: struck
+    /// through for a deprecated name, greyed out for unreachable or unused code.
+    pub fn editor_tag(&self) -> Option<DiagnosticTag> {
+        if self.deprecated_tag {
+            Some(DiagnosticTag::Deprecated)
+        } else if matches!(
+            self.error_kind(),
+            ErrorKind::Unreachable
+                | ErrorKind::UnusedImport
+                | ErrorKind::UnusedParameter
+                | ErrorKind::UnusedVariable
+        ) {
+            Some(DiagnosticTag::Unnecessary)
+        } else {
+            None
+        }
+    }
+
     /// Create a diagnostic suitable for use in LSP.
     pub fn to_diagnostic(&self) -> Diagnostic {
         let code = self.error_kind().to_name().to_owned();
         let code_description = Uri::parse(&self.error_kind().docs_url())
             .ok()
             .map(|href| CodeDescription { href });
+        let tag = self.editor_tag();
         // TODO: Map secondary_annotations to DiagnosticRelatedInformation for LSP clients.
         // This requires constructing a Uri from the module path, which may not always succeed.
         Diagnostic {
@@ -604,7 +623,10 @@ impl Error {
                 Severity::Error => DiagnosticSeverity::Error,
                 Severity::Warn => DiagnosticSeverity::Warning,
                 Severity::Info => DiagnosticSeverity::Information,
-                Severity::Hint => DiagnosticSeverity::Hint,
+                // Editors show an untagged LSP hint as faint dots at most, so a hint
+                // without its own look is shown like `info`.
+                Severity::Hint if tag.is_some() => DiagnosticSeverity::Hint,
+                Severity::Hint => DiagnosticSeverity::Information,
                 // Ignored errors shouldn't be here
                 Severity::Ignore => DiagnosticSeverity::Information,
             }),
@@ -612,19 +634,7 @@ impl Error {
             message: self.msg().to_owned().into(),
             code: Some(lsp_types::Code::String(code)),
             code_description,
-            tags: if self.deprecated_tag {
-                Some(vec![DiagnosticTag::Deprecated])
-            } else if matches!(
-                self.error_kind(),
-                ErrorKind::Unreachable
-                    | ErrorKind::UnusedImport
-                    | ErrorKind::UnusedParameter
-                    | ErrorKind::UnusedVariable
-            ) {
-                Some(vec![DiagnosticTag::Unnecessary])
-            } else {
-                None
-            },
+            tags: tag.map(|tag| vec![tag]),
             ..Default::default()
         }
     }
@@ -1086,8 +1096,6 @@ def f(x: None) -> None:
     }
 
     // https://github.com/facebook/pyrefly/issues/5113
-    // bug: a kind with no editor tag that is set to `hint` is sent as an LSP hint,
-    // which editors barely show; it should look like `info`.
     #[test]
     fn test_hint_severity_in_lsp() {
         let module_info = Module::new(
@@ -1110,7 +1118,7 @@ def f(x: None) -> None:
         assert_eq!(unused.severity, Some(DiagnosticSeverity::Hint));
         assert_eq!(unused.tags, Some(vec![DiagnosticTag::Unnecessary]));
         let assignment = diagnostic(ErrorKind::BadAssignment);
-        assert_eq!(assignment.severity, Some(DiagnosticSeverity::Hint));
+        assert_eq!(assignment.severity, Some(DiagnosticSeverity::Information));
         assert_eq!(assignment.tags, None);
     }
 }
