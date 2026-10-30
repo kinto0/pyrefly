@@ -30,6 +30,7 @@ use tracing::warn;
 use crate::commands::config_finder::ConfigConfigurerWrapper;
 use crate::commands::config_finder::apply_unconfigured_resolver_if_applicable;
 use crate::commands::config_finder::default_config_finder_with_overrides;
+use crate::commands::config_finder::project_dirs_config_finder;
 use crate::config::config::ConfigFile;
 use crate::config::config::ConfigScope;
 use crate::config::config::ConfigSource;
@@ -81,6 +82,12 @@ pub struct FilesArgs {
     /// Files given explicitly are still checked.
     #[arg(long)]
     exclude_scripts: bool,
+    /// Check the project of this directory, limited to the files under it. The directory uses the
+    /// config that `pyrefly check` finds from it, with the `project-includes` and
+    /// `project-excludes` of that config. Repeat the flag to check several directories in one run.
+    /// A file belongs to the deepest given directory that contains it.
+    #[arg(long, value_name = "DIR", conflicts_with = "files")]
+    project_dir: Vec<PathBuf>,
 
     /// Explicitly set the Pyrefly configuration to use when type checking.
     /// In "single-file checking mode," this config is applied to all files being checked, ignoring
@@ -135,7 +142,18 @@ pub fn get_project_config_for_current_dir(
 ) -> anyhow::Result<(ArcId<ConfigFile>, Vec<ConfigError>)> {
     let current_dir = std::env::current_dir().context("cannot identify current dir")?;
     let config_finder = default_config_finder_with_overrides(args.clone(), false, wrapper);
-    let config = config_finder.directory(&current_dir).unwrap_or_else(|| {
+    let config = get_project_config_for_dir(&config_finder, &current_dir, &args);
+    Ok((config, config_finder.errors()))
+}
+
+/// The config that `config_finder` finds for `dir`, or a config synthesized at `dir` if there is
+/// none.
+fn get_project_config_for_dir(
+    config_finder: &ConfigFinder,
+    dir: &Path,
+    args: &ConfigOverrideArgs,
+) -> ArcId<ConfigFile> {
+    config_finder.directory(dir).unwrap_or_else(|| {
         // No marker found upward. Run the synthesized config through the
         // same unconfigured resolver wiring that the file-mode path uses
         // (via `DefaultConfigConfigurerWithOverrides`); without this,
@@ -144,19 +162,17 @@ pub fn get_project_config_for_current_dir(
         // file-mode upsell would never fire for project-mode checks, and
         // a nearby mypy.ini / pyrightconfig.json would be migrated for
         // file mode but ignored here.
-        let mut synthesized =
-            ConfigFile::init_at_root(&current_dir, &ProjectLayout::new(&current_dir), false);
+        let mut synthesized = ConfigFile::init_at_root(dir, &ProjectLayout::new(dir), false);
         apply_unconfigured_resolver_if_applicable(
             &mut synthesized,
-            Some(&current_dir),
+            Some(dir),
             UnconfiguredOverride::Auto,
         );
-        let (config, errors) = args.override_config_at(synthesized, Some(&current_dir));
+        let (config, errors) = args.override_config_at(synthesized, Some(dir));
         // Since this is a config we generated, these are likely internal errors.
         debug_log(errors);
         config
-    });
-    Ok((config, config_finder.errors()))
+    })
 }
 
 pub fn get_config_finder_for_snippet(
@@ -256,6 +272,144 @@ fn get_globs_and_config_for_project(
         None => UpsellDecision::Skip,
     };
     Ok((Box::new(filtered_globs), config_finder, upsell))
+}
+
+/// Get inputs for `--project-dir`. Each directory gets the files and the config that
+/// `pyrefly check` gives it, limited to the files under the directory.
+fn get_globs_and_config_for_project_dirs(
+    config: Option<PathBuf>,
+    project_dirs: Vec<PathBuf>,
+    project_excludes: Option<Globs>,
+    extend_project_excludes: &Globs,
+    args: ConfigOverrideArgs,
+    wrapper: Option<ConfigConfigurerWrapper>,
+    scope: ConfigScope,
+) -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)> {
+    let mut errors = Vec::new();
+    let explicit_config = config.map(|path| {
+        let (config, explicit_errors) = get_explicit_config(&path, args.clone());
+        errors.extend(explicit_errors);
+        config
+    });
+    let finder = default_config_finder_with_overrides(args.clone(), false, wrapper.clone());
+    let mut dirs = Vec::new();
+    for dir in project_dirs {
+        let dir = dir.absolutize();
+        if !dir.is_dir() {
+            return Err(anyhow::anyhow!(
+                "`--project-dir` path `{}` is not a directory",
+                dir.display()
+            ));
+        }
+        let config = explicit_config
+            .dupe()
+            .unwrap_or_else(|| get_project_config_for_dir(&finder, &dir, &args));
+        if config.build_system.is_some() {
+            return Err(anyhow::anyhow!(
+                "Cannot run build system in project mode, you must provide files to check"
+            ));
+        }
+        debug!(
+            "Project directory `{}` has config: {}",
+            dir.display(),
+            config
+        );
+        dirs.push((dir, config));
+    }
+    errors.extend(finder.errors());
+    // A path sorts after its ancestors, so the reverse order puts the deepest directory first.
+    dirs.sort_by(|(a, _), (b, _)| b.cmp(a));
+    dirs.dedup_by(|(a, _), (b, _)| a == b);
+
+    let mut includes: Vec<(ArcId<ConfigFile>, FilteredGlobs)> = Vec::new();
+    for (_, config) in &dirs {
+        if !includes.iter().any(|(seen, _)| seen == config) {
+            let mut globs = config.get_filtered_globs(project_excludes.clone(), scope);
+            globs.add_excludes(extend_project_excludes.globs());
+            errors.extend(globs.errors().into_iter().map(ConfigError::warn));
+            includes.push((config.dupe(), globs));
+        }
+    }
+    let upsell = match dirs
+        .iter()
+        .find_map(|(_, config)| config.synthesized_preset_reason)
+    {
+        Some(reason) => UpsellDecision::Show(reason),
+        None => UpsellDecision::Skip,
+    };
+    let config_finder = project_dirs_config_finder(dirs.clone(), args, wrapper);
+    add_config_errors(&config_finder, errors)?;
+    Ok((
+        Box::new(ProjectDirs { dirs, includes }),
+        config_finder,
+        upsell,
+    ))
+}
+
+/// The files of `--project-dir`. A file belongs to the deepest given directory that contains it,
+/// and is checked if the config of that directory includes it.
+struct ProjectDirs {
+    /// Each given directory and its config, deepest first.
+    dirs: Vec<(PathBuf, ArcId<ConfigFile>)>,
+    /// The includes of each distinct config in `dirs`.
+    includes: Vec<(ArcId<ConfigFile>, FilteredGlobs)>,
+}
+
+impl ProjectDirs {
+    /// The config of the directory that `path` belongs to.
+    fn config(&self, path: &Path) -> Option<&ArcId<ConfigFile>> {
+        self.dirs
+            .iter()
+            .find(|(dir, _)| path.starts_with(dir))
+            .map(|(_, config)| config)
+    }
+
+    /// The includes of the config of the directory that `path` belongs to.
+    fn includes(&self, path: &Path) -> Option<&FilteredGlobs> {
+        let config = self.config(path)?;
+        self.includes
+            .iter()
+            .find(|(seen, _)| seen == config)
+            .map(|(_, includes)| includes)
+    }
+}
+
+impl Includes for ProjectDirs {
+    fn roots(&self) -> Vec<PathBuf> {
+        self.dirs.iter().map(|(dir, _)| dir.clone()).collect()
+    }
+
+    fn files_iter(&self) -> anyhow::Result<Box<dyn Iterator<Item = PathBuf> + '_>> {
+        // Each config is walked once. A file is kept only by the config of its directory, so no
+        // file is returned twice.
+        let mut files = Vec::new();
+        for (config, includes) in &self.includes {
+            files.extend(
+                includes
+                    .files_iter()?
+                    .filter(|path| self.config(path) == Some(config)),
+            );
+        }
+        files.sort();
+        Ok(Box::new(files.into_iter()))
+    }
+
+    fn covers(&self, path: &Path) -> bool {
+        self.includes(path)
+            .is_some_and(|includes| includes.covers(path))
+    }
+
+    fn covers_ignoring_excludes(&self, path: &Path) -> bool {
+        self.includes(path)
+            .is_some_and(|includes| includes.covers_ignoring_excludes(path))
+    }
+
+    fn errors(&mut self) -> Vec<anyhow::Error> {
+        self.includes
+            .iter_mut()
+            .flat_map(|(_, includes)| includes.errors())
+            .collect()
+    }
 }
 
 /// Get inputs for a per-file check. If an explicit config is passed in, we use it; otherwise, we
@@ -415,7 +569,17 @@ impl FilesArgs {
             .explicit_files()
             .map(Path::to_path_buf)
             .collect();
-        let (includes, config_finder, upsell) = if files_to_check.is_empty() {
+        let (includes, config_finder, upsell) = if !self.project_dir.is_empty() {
+            get_globs_and_config_for_project_dirs(
+                self.config,
+                self.project_dir,
+                project_excludes,
+                &extend_project_excludes,
+                config_override,
+                wrapper,
+                scope,
+            )?
+        } else if files_to_check.is_empty() {
             get_globs_and_config_for_project(
                 self.config,
                 project_excludes,
@@ -458,6 +622,7 @@ impl FilesArgs {
             project_excludes: None,
             extend_project_excludes: Vec::new(),
             exclude_scripts: false,
+            project_dir: Vec::new(),
         }
         .resolve(args, wrapper)
     }

@@ -122,6 +122,13 @@ correspond to different but useful ways we expect most people to interact with P
   file listed. `project-includes` and `project-excludes` are ignored from the config file,
   but it is used for all remaining config options.
 
+`pyrefly check --project-dir <DIR>` runs project mode for a directory: it finds the config
+from `<DIR>` instead of the current working directory, and checks only the files of that
+project that are under `<DIR>`. Repeat the flag to check several projects in one run, such as
+the members of a uv workspace. A file belongs to the deepest given directory that contains it,
+and is checked with the config of that directory. `uv check --type-checker pyrefly` passes the
+root directory of each workspace member that it checks.
+
 ## Configuration Finding
 
 In both project checking mode and single-file checking mode (see [Type Checking Modes](#type-checking-modes)
