@@ -6,6 +6,7 @@
  */
 
 use pyrefly_python::dunder;
+use pyrefly_python::module_name::ModuleName;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
@@ -59,6 +60,8 @@ use crate::types::keywords::TypeMap;
 use crate::types::literal::Lit;
 use crate::types::types::Forallable;
 use crate::types::types::Type;
+
+const MODEL_CONSTRUCT: Name = Name::new_static("model_construct");
 
 /// Which constructor-copy builtin `call_dataclasses_replace` is serving. Chosen by the caller so the
 /// method itself doesn't re-derive dispatch from boolean flags.
@@ -214,6 +217,22 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
             fields.insert(Name::new_static("__attrs_init__"), init_method);
         }
+        // Only replace BaseModel's permissive signature. RootModel and user overrides
+        // already provide signatures that subclasses must inherit.
+        if metadata.is_pydantic_model()
+            && self
+                .get_non_synthesized_class_member_and_defining_class(cls, &MODEL_CONSTRUCT)
+                .is_some_and(|member| {
+                    member
+                        .defining_class
+                        .has_toplevel_qname(ModuleName::pydantic().as_str(), "BaseModel")
+                })
+        {
+            fields.insert(
+                MODEL_CONSTRUCT,
+                self.get_pydantic_model_construct(cls, dataclass, &kw_only_by_class),
+            );
+        }
         let dataclass_fields_type = self.stdlib.dict(
             self.heap.mk_class_type(self.stdlib.str().clone()),
             self.heap.mk_any_implicit(),
@@ -330,6 +349,40 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.get_dataclass_replace(cls, dataclass, &kw_only_by_class, errors),
         );
         Some(ClassSynthesizedFields::new(fields))
+    }
+
+    /// Gets the fully typed `model_construct` classmethod for a Pydantic model.
+    fn get_pydantic_model_construct(
+        &self,
+        cls: &Class,
+        dataclass: &DataclassMetadata,
+        kw_only_by_class: &SmallMap<Class, SmallSet<Name>>,
+    ) -> ClassSynthesizedField {
+        let fields_set_type = self.heap.mk_optional(
+            self.heap.mk_class_type(
+                self.stdlib
+                    .set(self.heap.mk_class_type(self.stdlib.str().clone())),
+            ),
+        );
+        let fields_set = Param::Pos(
+            Name::new_static("_fields_set"),
+            fields_set_type,
+            Required::Optional(None),
+        );
+        let mut params = vec![fields_set];
+        for (name, field, flags) in self.iter_fields(cls, dataclass, false, kw_only_by_class) {
+            let required = if flags.default.is_some() {
+                Required::Optional(None)
+            } else {
+                Required::Required
+            };
+            params.push(Param::KwOnly(name, field.ty(), required));
+        }
+        if dataclass.kws.extra {
+            params.push(Param::Kwargs(None, self.heap.mk_any_implicit()));
+        }
+        let ty = self.synthesized_method(cls, MODEL_CONSTRUCT, params, self.instantiate(cls));
+        ClassSynthesizedField::new_classvar(ty)
     }
 
     fn check_duplicate_kw_only_markers(&self, cls: &Class, errors: &ErrorCollector) {
