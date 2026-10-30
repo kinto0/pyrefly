@@ -397,6 +397,85 @@ assert_type(unwrap(outer)(), int)
 );
 
 testcase!(
+    test_functools_wrapper_loop_forms,
+    r#"
+from functools import update_wrapper, wraps
+from typing import assert_type
+
+def source(x: int) -> int:
+    return x
+
+def first(x: int) -> int:
+    return x
+
+def second(x: int) -> int:
+    return x
+
+def called(count: int) -> int:
+    fn = source
+    for _ in range(count):
+        fn = wraps(fn)(first)
+    return fn(1)
+
+def decorated(count: int) -> int:
+    fn = source
+    for _ in range(count):
+        @wraps(fn)
+        def wrapper(x: int) -> int:
+            return x
+        fn = wrapper
+    return fn(1)
+
+def alternating(count: int) -> int:
+    fn = source
+    for _ in range(count):
+        fn = update_wrapper(first, fn)
+        fn = update_wrapper(second, fn)
+    return fn(1)
+
+def conditional(count: int, flag: bool) -> int:
+    fn = source
+    for _ in range(count):
+        if flag:
+            fn = update_wrapper(first, fn)
+        else:
+            fn = update_wrapper(second, fn)
+    return fn(1)
+
+assert_type(called(3), int)
+assert_type(decorated(3), int)
+assert_type(alternating(3), int)
+assert_type(conditional(3, True), int)
+    "#,
+);
+
+testcase!(
+    bug = "generic substitution can introduce recursive wrapped metadata",
+    test_functools_generic_wrapper_loop,
+    r#"
+from functools import wraps
+from typing import Callable, assert_type
+
+def decorate[F: Callable[..., object]](fn: F):
+    @wraps(fn)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        return fn(*args, **kwargs)
+    return wrapper
+
+def source(x: int) -> int:
+    return x
+
+def repeatedly(count: int) -> object:
+    fn = source
+    for _ in range(count):  # E: Fixpoint iteration did not converge
+        fn = decorate(fn)
+    return fn(1)
+
+assert_type(repeatedly(3), object)
+    "#,
+);
+
+testcase!(
     test_inspect_unwrap_unknown_wrapping_state,
     r#"
 from functools import update_wrapper, wraps
