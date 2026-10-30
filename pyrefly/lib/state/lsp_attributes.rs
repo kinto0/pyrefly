@@ -86,7 +86,8 @@ pub(crate) fn expr_matches_name(expr: &Expr, attr_name: &ruff_python_ast::name::
     }
 }
 
-pub(crate) fn definition_from_executable_ast(
+/// Finds the declaration of `attr_name` in the scope that `context` describes.
+pub(crate) fn definition_from_ast(
     ast: &ModModule,
     context: &AttributeContext,
     attr_name: &ruff_python_ast::name::Name,

@@ -97,7 +97,7 @@ use crate::state::ide::import_regular_import_edit;
 use crate::state::ide::insert_import_edit;
 use crate::state::ide::key_to_intermediate_definition;
 use crate::state::lsp_attributes::AttributeContext;
-use crate::state::lsp_attributes::definition_from_executable_ast;
+use crate::state::lsp_attributes::definition_from_ast;
 use crate::state::lsp_attributes::expr_matches_name;
 use crate::state::require::Require;
 use crate::state::state::CancellableTransaction;
@@ -2059,19 +2059,7 @@ impl<'a> Transaction<'a> {
         if executable_handle.path().style() != ModuleStyle::Executable {
             return None;
         }
-        let _ = self.get_exports(&executable_handle);
-        let executable_module = self.get_module_info(&executable_handle)?;
-        let ast = self.get_ast(&executable_handle).unwrap_or_else(|| {
-            Ast::parse(
-                executable_module.contents(),
-                executable_module.source_type(),
-            )
-            .0
-            .into()
-        });
-        let (def_range, docstring_range) =
-            definition_from_executable_ast(ast.as_ref(), &context, attr_name)?;
-        Some((executable_module, def_range, docstring_range))
+        self.find_declaration_in_module(&executable_handle, &context, attr_name)
     }
 
     /// Find the definition in the interface used to type-check an executable module.
@@ -2118,15 +2106,26 @@ impl<'a> Transaction<'a> {
         }
         let context = AttributeContext::from_module(&definition.module, definition.range)?;
         let name = Name::new(definition.module.code_at(definition.range));
-        let _ = self.get_exports(&interface_handle);
-        let interface_module = self.get_module_info(&interface_handle)?;
-        let ast = self.get_ast(&interface_handle).unwrap_or_else(|| {
-            Ast::parse(interface_module.contents(), interface_module.source_type())
-                .0
-                .into()
-        });
-        let (range, _) = definition_from_executable_ast(ast.as_ref(), &context, &name)?;
+        let (interface_module, range, _) =
+            self.find_declaration_in_module(&interface_handle, &context, &name)?;
         Some(TextRangeWithModule::new(interface_module, range))
+    }
+
+    /// Find the declaration of `name` in the scope that `context` describes, within the module
+    /// of `handle`. Returns the module, the declaration's name range, and its docstring range.
+    fn find_declaration_in_module(
+        &self,
+        handle: &Handle,
+        context: &AttributeContext,
+        name: &Name,
+    ) -> Option<(Module, TextRange, Option<TextRange>)> {
+        let _ = self.get_exports(handle);
+        let module = self.get_module_info(handle)?;
+        let ast = self
+            .get_ast(handle)
+            .unwrap_or_else(|| Ast::parse(module.contents(), module.source_type()).0.into());
+        let (range, docstring_range) = definition_from_ast(ast.as_ref(), context, name)?;
+        Some((module, range, docstring_range))
     }
 
     pub fn key_to_export(
