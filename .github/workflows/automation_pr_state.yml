@@ -3,6 +3,9 @@ name: "Automation: PR state"
 # Runs automation based on the current PR state:
 # - Labels the PR's size.
 # - Updates "waiting-for-*" labels to indicate who should act next.
+# - Checks ready PRs from outside the team against the pull request checklist
+#   in CONTRIBUTING.md. PRs that fail are kept in "waiting-for-author", and
+#   problems are reported in a single comment that is edited in place.
 
 on:
   pull_request_target:
@@ -10,6 +13,7 @@ on:
       - opened
       - synchronize
       - reopened
+      - edited
       - closed
       - ready_for_review
       - converted_to_draft
@@ -30,13 +34,13 @@ on:
         description: 'Operation'
         type: choice
         options:
-          - Update state label on one PR
+          - Update state on one PR
           - Reconcile PRs updated since last sweep
       pr_number:
         description: 'PR number (only for updating one PR)'
         type: number
       dry_run:
-        description: 'Dry run (preview labels without applying)'
+        description: 'Dry run (preview without applying)'
         type: boolean
         default: true
 
@@ -67,7 +71,8 @@ jobs:
                    && contains(github.event.comment.body, '@'))
                   || (github.event.comment.user.login == 'meta-cla[bot]'
                       && github.event.comment.user.type == 'Bot'
-                      && contains(github.event.comment.body, '# Action Required'))))) }}
+                      && contains(github.event.comment.body, '# Action Required')))))
+          && (github.event.action != 'edited' || github.event.changes.body != null) }}
     runs-on: ubuntu-latest
     permissions:
       actions: read # find the last successful sweep
@@ -76,6 +81,7 @@ jobs:
     outputs:
       prs: ${{ steps.select.outputs.result }}
       owners: ${{ steps.select.outputs.owners }}
+      since: ${{ steps.select.outputs.since }}
     steps:
       - name: Select PRs to evaluate
         id: select
@@ -103,7 +109,7 @@ jobs:
               || context.payload.inputs?.scenario === 'Reconcile PRs updated since last sweep';
             if (context.eventName === 'workflow_dispatch') {
               const { scenario, pr_number } = context.payload.inputs;
-              if (scenario === 'Update state label on one PR') {
+              if (scenario === 'Update state on one PR') {
                 if (!pr_number) throw new Error('pr_number is required to update one PR');
                 return [Number(pr_number)];
               }
@@ -121,6 +127,8 @@ jobs:
               // A run is created before it selects PRs, even when it is re-run,
               // so every update after the previous sweep's selection is covered.
               if (last) since = Date.parse(last.created_at);
+              // Without a previous sweep, don't enroll PRs from historical CLA events.
+              core.setOutput('since', Number.isFinite(since) ? since : Date.now());
             }
             const prs = await github.paginate(github.rest.pulls.list, {
               owner, repo, state: 'open', sort: 'updated', direction: 'desc', per_page: 100,
@@ -154,14 +162,118 @@ jobs:
       group: pr-state-${{ matrix.pr }}
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write # read the PR, reviews, labels, and timeline, and update labels
+      pull-requests: write # read the PR, reviews, labels, and timeline, update labels, and comment
       checks: read # distinguish unsigned CLAs from pending checks
     steps:
+      # The next step reacts to this step's result: "passed", "failed", or
+      # "not run". The "changed" output is true when the result differs from
+      # the one previously reported in the checklist comment, which makes the
+      # next step re-evaluate the state as it does for a lifecycle event. The
+      # "summary" output describes the result and the comment for the run
+      # summary.
+      - name: Check the PR against the pull request checklist
+        id: checklist
+        uses: actions/github-script@v8
+        env:
+          PR_NUMBER: ${{ matrix.pr }}
+          OWNERS_JSON: ${{ needs.select-prs.outputs.owners }}
+          SWEEP_SINCE: ${{ needs.select-prs.outputs.since }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          result-encoding: string
+          script: |
+            const dryRun = process.env.DRY_RUN === 'true';
+            const { owner, repo } = dryRun ? { owner: 'facebook', repo: 'pyrefly' } : context.repo;
+            const pull_number = Number(process.env.PR_NUMBER);
+            const issue_number = pull_number;
+            const MARKER = '<!-- pr-check -->';
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            const owners = JSON.parse(process.env.OWNERS_JSON);
+            const author = pr.user.login.toLowerCase();
+            const labels = (await github.paginate(github.rest.issues.listLabelsOnIssue, {
+              owner, repo, issue_number, per_page: 100,
+            })).map(l => l.name);
+            const waitingForMerge = labels.includes('waiting-for-merge');
+            if (pr.user.type === 'Bot' || pr.head.ref.startsWith('export-D') || owners.includes(author)
+              || pr.state !== 'open' || pr.draft
+              || !labels.includes('cla signed')) {
+              return 'not run';
+            }
+            const timeline = await github.paginate(github.rest.issues.listEventsForTimeline, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existingCheck = timeline.find(c => c.event === 'commented' && c.user?.login === 'github-actions[bot]'
+              && c.user?.type === 'Bot' && c.body?.includes(MARKER));
+            // PRs waiting for merge only receive updates to an existing checklist comment.
+            if (waitingForMerge && !existingCheck) {
+              return 'not run';
+            }
+            const sweep = context.eventName === 'schedule'
+              || context.payload.inputs?.scenario === 'Reconcile PRs updated since last sweep';
+            const manual = context.eventName === 'workflow_dispatch' && !sweep;
+            const initialCheck = (context.eventName === 'pull_request_target'
+              && (context.payload.action === 'ready_for_review'
+                || (context.payload.action === 'labeled' && context.payload.label.name === 'cla signed')))
+              || (sweep && timeline.some(e => (e.event === 'ready_for_review'
+                || (e.event === 'labeled' && e.label?.name === 'cla signed'))
+                && Date.parse(e.created_at) >= Number(process.env.SWEEP_SINCE)));
+            if (!manual && !initialCheck && !existingCheck) {
+              return 'not run';
+            }
+
+            // "x" if the box is checked, " " if it is unchecked, or undefined if
+            // it is missing.
+            const box = (pr.body || '').replace(/<!--[\s\S]*?-->/g, '')
+              .match(/^\s*[-*]\s*\[([ x])\]\s*I am a human/im)?.[1].toLowerCase();
+            let problem;
+            if (box !== 'x') {
+              const policy = `See our [AI policy](https://github.com/${owner}/${repo}/blob/main/AI_POLICY.md).`;
+              problem = box === undefined
+                ? `Add this checkbox to the PR description and check it: \`- [x] I am a human, and I fully understand the code I am submitting.\` ${policy}`
+                : `Check the "I am a human" box in the PR description. ${policy}`;
+            }
+
+            const CHECKLIST = `[pull request checklist](https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md#making-a-pull-request)`;
+            const report = [
+              MARKER,
+              problem
+                ? `⚠️ **Action needed**: this PR is missing required items from our ${CHECKLIST}:\n\n- ${problem}`
+                : `✅ This PR follows our ${CHECKLIST}.`,
+              'Note: this comment updates automatically after changes to the PR. Updates may take up to half an hour.',
+            ].join('\n\n');
+            const writeComment = existingCheck ? existingCheck.body !== report : Boolean(problem);
+            if (!dryRun && writeComment) {
+              if (existingCheck) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existingCheck.id, body: report });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number, body: report });
+              }
+            }
+            const result = problem ? 'failed' : 'passed';
+            const comment = !writeComment ? (existingCheck ? 'comment unchanged' : 'no comment')
+              : `comment ${dryRun ? 'would be ' : ''}${existingCheck ? 'updated' : 'posted'}`;
+            core.setOutput('summary', `${result}, ${comment}`);
+            // A PR without a checklist comment counts as passed, because no
+            // problem has been reported to the author.
+            const previous = existingCheck?.body.includes('⚠️ **Action needed**') ? 'failed' : 'passed';
+            console.log(`#${pull_number}: checklist ${previous} -> ${result}, ${comment}`);
+            // Comment updates on PRs waiting for merge do not affect state labels.
+            if (waitingForMerge) {
+              return 'not run';
+            }
+            core.setOutput('changed', previous !== result);
+            return result;
+
       - name: Label the PR
         uses: actions/github-script@v8
         env:
           PR_NUMBER: ${{ matrix.pr }}
           OWNERS_JSON: ${{ needs.select-prs.outputs.owners }}
+          SWEEP_SINCE: ${{ needs.select-prs.outputs.since }}
+          CHECKLIST: ${{ steps.checklist.outputs.result }}
+          CHECKLIST_CHANGED: ${{ steps.checklist.outputs.changed }}
+          CHECKLIST_SUMMARY: ${{ steps.checklist.outputs.summary }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -187,6 +299,7 @@ jobs:
             const sweep = context.eventName === 'schedule'
               || context.payload.inputs?.scenario === 'Reconcile PRs updated since last sweep';
             const manual = context.eventName === 'workflow_dispatch' && !sweep;
+            const checklist = process.env.CHECKLIST;
             let timelineRequest;
             const listTimeline = () => timelineRequest ??= github.paginate(github.rest.issues.listEventsForTimeline, {
               owner, repo, issue_number, per_page: 100,
@@ -196,13 +309,21 @@ jobs:
             const changedAt = Math.max(...(sweep || context.eventName === 'workflow_run' ? await listTimeline() : [])
               .filter(e => ['labeled', 'unlabeled'].includes(e.event) && STATE_LABELS.includes(e.label?.name))
               .map(e => Date.parse(e.created_at)));
+            const isChecklistComment = e => e.event === 'commented' && e.user?.login === 'github-actions[bot]'
+              && e.user?.type === 'Bot' && e.body?.includes('<!-- pr-check -->');
             // A sweep stands in for event-triggered runs that may have been
             // missed, so it handles each newer triggering event the way that
-            // event's run does.
+            // event's run does. The checklist comment is edited in place, so
+            // its latest edit is its event. Only the first successful sweep
+            // after an edit handles it, because later sweeps start after it.
             const newEvents = sweep
-              ? (await listTimeline()).filter(e => Date.parse(e.created_at ?? e.submitted_at) > changedAt)
+              ? (await listTimeline()).filter(e => isChecklistComment(e)
+                ? Date.parse(e.updated_at) > Math.max(changedAt, Number(process.env.SWEEP_SINCE))
+                : Date.parse(e.created_at ?? e.submitted_at) > changedAt)
               : [];
-            if (sweep && newEvents.length === 0) {
+            const checklistChanged = checklist !== 'not run'
+              && (process.env.CHECKLIST_CHANGED === 'true' || newEvents.some(isChecklistComment));
+            if (sweep && newEvents.length === 0 && !checklistChanged) {
               console.log(`#${pull_number}: no events since the latest state label change, nothing to do`);
               return;
             }
@@ -320,7 +441,8 @@ jobs:
                     console.log(`#${pull_number}: review request cannot approve or undo waiting-for-merge, leaving as-is`);
                     return;
                   }
-                } else if (context.eventName === 'workflow_run' || (sweep && !lifecycle && !claChanged)) {
+                } else if (!checklistChanged
+                  && (context.eventName === 'workflow_run' || (sweep && !lifecycle && !claChanged))) {
                   // A relay run can also represent an ignored thread reply.
                   // Only reviews, dismissals, and re-requests newer than the
                   // latest state label change can change it.
@@ -348,11 +470,13 @@ jobs:
                     console.log(`#${pull_number}: re-request cannot undo waiting-for-merge, leaving as-is`);
                     return;
                   }
-                } else if (!lifecycle && !claChanged && !manual) {
+                } else if (!lifecycle && !claChanged && !checklistChanged && !manual) {
                   console.log(`#${pull_number}: event does not affect the state, nothing to do`);
                   return;
                 }
-                if (!claSigned) state = 'waiting-for-author';
+                if (!claSigned || (checklist === 'failed' && state === 'waiting-for-reviewer')) {
+                  state = 'waiting-for-author';
+                }
               }
             }
 
@@ -369,7 +493,7 @@ jobs:
             const action = remove.length || add ? (dryRun ? 'Would update' : 'Updated') : 'Unchanged';
             console.log(`#${pull_number}: ${action}: ${current.join(', ') || 'none'} -> ${state || 'none'}`);
             await core.summary.addTable([
-              ['PR', 'Current labels', 'New label', 'Action'].map(data => ({ data, header: true })),
+              ['PR', 'Current labels', 'New label', 'Checklist'].map(data => ({ data, header: true })),
               [`<a href="https://github.com/${owner}/${repo}/pull/${pull_number}">#${pull_number}</a>`,
-                current.join(', ') || 'none', state || 'none', action],
+                current.join(', ') || 'none', state || 'none', process.env.CHECKLIST_SUMMARY || 'not run'],
             ]).write();
