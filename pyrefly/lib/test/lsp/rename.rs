@@ -215,8 +215,8 @@ fn test_rename_shadowed_source_does_not_change_stub_or_consumers() {
     let source = "def item() -> int:\n    return 1\n";
     let stub = "def item() -> int: ...\n";
     let consumer = "from lib import item\nitem()\n";
-    // BUG: imports of `lib` resolve to `lib.pyi`, which describes `lib.py` rather than
-    // `shadow/lib.py`, so the stub and its consumers should not be renamed.
+    // Imports of `lib` resolve to `lib.pyi`, which describes `lib.py` rather than
+    // `shadow/lib.py`, so the stub and its consumers are not renamed.
     assert_eq!(
         rename_paired_symbol(
             source,
@@ -225,17 +225,10 @@ fn test_rename_shadowed_source_does_not_change_stub_or_consumers() {
             Some(source),
             source.find("item").unwrap()
         ),
-        vec![
-            (
-                "consumer.py".to_owned(),
-                consumer.replace("item", "renamed")
-            ),
-            ("lib.pyi".to_owned(), stub.replace("item", "renamed")),
-            (
-                "shadow/lib.py".to_owned(),
-                source.replace("item", "renamed")
-            ),
-        ],
+        vec![(
+            "shadow/lib.py".to_owned(),
+            source.replace("item", "renamed")
+        )],
     );
 }
 

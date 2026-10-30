@@ -2075,6 +2075,12 @@ impl<'a> Transaction<'a> {
     }
 
     /// Find the definition in the interface used to type-check an executable module.
+    ///
+    /// The interface is not used when resolving the module name with executables preferred finds
+    /// a different file, because the interface then describes that other module. Resolution can
+    /// also find no executable and fall back to the interface, for example for a `-stubs` package;
+    /// the interface is still used then. Open files have in-memory module paths, so the file
+    /// paths are compared rather than the module paths.
     fn find_corresponding_interface_definition(
         &self,
         sys_info: SysInfo,
@@ -2092,6 +2098,22 @@ impl<'a> Transaction<'a> {
             .import_handle(&source_handle, definition.module.name(), None)
             .finding()?;
         if interface_handle.path().style() != ModuleStyle::Interface {
+            return None;
+        }
+        // IDE features may open the interpreter's standard library, so its `.py` files can be
+        // sources here.
+        let include_interpreter_stdlib = true;
+        let executable_handle = self
+            .import_handle_prefer_executable(
+                &source_handle,
+                definition.module.name(),
+                None,
+                include_interpreter_stdlib,
+            )
+            .finding()?;
+        if executable_handle.path().style() == ModuleStyle::Executable
+            && executable_handle.path().as_path() != definition.module.path().as_path()
+        {
             return None;
         }
         let context = AttributeContext::from_module(&definition.module, definition.range)?;
