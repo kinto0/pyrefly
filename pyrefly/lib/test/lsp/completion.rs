@@ -1216,6 +1216,89 @@ def f(cond: bool) -> None:
     assert_eq!(polars_column_completion_labels(code), vec!["id".to_owned()]);
 }
 
+// These expectations capture the parameter fields incorrectly inherited through `**` unpacking.
+#[test]
+fn dict_completion_unpacking_parameter_context() {
+    for body in ["take(**{\"|\"})", "take(**{\"|\": 0})", "take(**dict(|))"] {
+        let caret = " ".repeat(body.find('|').unwrap() - 1);
+        let code = format!(
+            "from typing import TypedDict\nclass Config(TypedDict):\n    name: str\n    age: int\ndef take(cfg: Config) -> None: ...\n{}\n#{}^\n",
+            body.replace('|', ""),
+            caret,
+        );
+        let (handles, state) = mk_multi_file_state(&[("main", &code)], Require::Exports, false);
+        let position = extract_cursors_for_test(&code)[0];
+        let labels = state
+            .transaction()
+            .completion(
+                &handles["main"],
+                position,
+                ImportFormat::Absolute,
+                true,
+                None,
+            )
+            .into_iter()
+            .map(|item| item.label)
+            .collect::<Vec<_>>();
+        for field in ["age", "name"] {
+            let label = if body.contains("dict(") {
+                format!("{field}=")
+            } else {
+                field.to_owned()
+            };
+            assert!(labels.contains(&label), "{body}: {labels:?}");
+        }
+    }
+}
+
+// The constructor currently offers every field, including inside values and after supplied keys.
+#[test]
+fn dict_completion_constructor_keyword_positions() {
+    for (body, expected) in [
+        ("cfg: Config = dict(|)", vec!["age=", "name="]),
+        ("cfg: Config = dict(name=\"x\", |)", vec!["age=", "name="]),
+        ("cfg: Config = dict(name=\"x\", na|)", vec!["age=", "name="]),
+        ("cfg: Config = dict(na|=\"x\")", vec!["age=", "name="]),
+        ("cfg: Config = dict(name=na|)", vec!["age=", "name="]),
+        ("cfg: Config = dict(name=[na|])", vec!["age=", "name="]),
+        (
+            "cfg: Config = dict(name={\"x\": na|})",
+            vec!["age=", "name="],
+        ),
+        ("cfg: Config = dict(**na|)", vec!["age=", "name="]),
+        (
+            "cfg: Config = dict({\"name\": \"x\"}, na|)",
+            vec!["age=", "name="],
+        ),
+        ("cfg: Config = dict(name=str(na|))", vec![]),
+        ("cfg: Config = dict(name=dict(na|))", vec![]),
+    ] {
+        let caret = " ".repeat(body.find('|').unwrap() - 1);
+        let code = format!(
+            "from typing import TypedDict\nclass Config(TypedDict):\n    name: str\n    age: int\nname = \"x\"\n{}\n#{}^\n",
+            body.replace('|', ""),
+            caret,
+        );
+        let (handles, state) = mk_multi_file_state(&[("main", &code)], Require::Exports, false);
+        let position = extract_cursors_for_test(&code)[0];
+        let mut labels = state
+            .transaction()
+            .completion(
+                &handles["main"],
+                position,
+                ImportFormat::Absolute,
+                true,
+                None,
+            )
+            .into_iter()
+            .map(|item| item.label)
+            .filter(|label| matches!(label.as_str(), "age=" | "name="))
+            .collect::<Vec<_>>();
+        labels.sort();
+        assert_eq!(labels, expected, "{body}");
+    }
+}
+
 #[test]
 fn dict_completion_large_literal() {
     let entries = (0..1000)
