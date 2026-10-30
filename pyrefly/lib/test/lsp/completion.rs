@@ -1265,6 +1265,26 @@ fn dict_completion_unpacking_parameter_context() {
 }
 
 #[test]
+fn dict_completion_string_cursor_window() {
+    for (body, expected) in [
+        ("cfg: Config = {|    \"\"}", vec!["age", "name"]),
+        ("cfg: Config = {|     \"\"}", vec![]),
+        ("cfg: Config = {\"\"|}", vec!["age", "name"]),
+        ("cfg: Config = {\"\" |}", vec![]),
+        ("cfg: Config = {|    \"\": 0}", vec!["age", "name"]),
+        ("cfg: Config = {|     \"\": 0}", vec![]),
+    ] {
+        let mut labels = contextual_dict_completions(body)
+            .into_iter()
+            .filter(|item| item.kind == Some(CompletionItemKind::Field))
+            .map(|item| item.label)
+            .collect::<Vec<_>>();
+        labels.sort();
+        assert_eq!(labels, expected, "{body}");
+    }
+}
+
+#[test]
 fn dict_completion_constructor_keyword_positions() {
     for (body, expected) in [
         ("cfg: Config = dict(|)", vec!["age=", "name="]),
