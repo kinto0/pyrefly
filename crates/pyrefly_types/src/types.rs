@@ -1988,6 +1988,37 @@ impl Type {
         }
     }
 
+    /// Set a known wrapped target, widening recursive function identities to `Any`.
+    pub fn set_wrapped(&mut self, wrapped: Type) -> bool {
+        fn reaches_function(ty: &Type, kind: &FunctionKind) -> bool {
+            if let Type::Union(union) = ty {
+                return union.members.iter().any(|ty| reaches_function(ty, kind));
+            }
+            let Some(metadata) = ty.toplevel_func_metadata() else {
+                return false;
+            };
+            metadata.kind == *kind
+                || metadata
+                    .flags
+                    .wrapped
+                    .as_deref()
+                    .is_some_and(|ty| reaches_function(ty, kind))
+        }
+
+        let Some(metadata) = self.toplevel_func_metadata_mut() else {
+            return false;
+        };
+        // Repeated source identities can represent either a cycle on one object or
+        // arbitrarily many instances of the same wrapper created in a loop.
+        let wrapped = if reaches_function(&wrapped, &metadata.kind) {
+            Type::any_explicit()
+        } else {
+            wrapped
+        };
+        metadata.flags.wrapped = Some(Box::new(wrapped));
+        true
+    }
+
     pub fn has_toplevel_func_metadata(&self) -> bool {
         self.toplevel_func_metadata().is_some()
     }

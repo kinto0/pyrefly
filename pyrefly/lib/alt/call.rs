@@ -2284,9 +2284,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(mut wrapper) = self
                 .positional_arg_type(args, 0, errors)
                 .or_else(|| self.keyword_arg_type(keywords, "wrapper", errors))
-            && let Some(metadata) = wrapper.toplevel_func_metadata_mut()
+            && wrapper.set_wrapped(wrapped)
         {
-            metadata.flags.wrapped = Some(Box::new(wrapped));
             wrapper
         } else {
             res

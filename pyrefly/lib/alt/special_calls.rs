@@ -873,8 +873,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             let arg_errors = self.error_collector();
             let mut wrapper = arg.infer(self, &arg_errors);
-            if let Some(metadata) = wrapper.toplevel_func_metadata_mut() {
-                metadata.flags.wrapped = Some(Box::new(wrapped.clone()));
+            if wrapper.set_wrapped(wrapped.clone()) {
                 errors.extend(arg_errors);
                 return Some(wrapper);
             }

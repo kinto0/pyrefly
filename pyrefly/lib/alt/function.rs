@@ -2044,10 +2044,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
         let mut decorated_value =
             self.decorate_returned_callable(raw_return, metadata, &application.original_decoratee);
-        if let Some(wrapped) = wrapped
-            && let Some(metadata) = decorated_value.toplevel_func_metadata_mut()
-        {
-            metadata.flags.wrapped = Some(Box::new(wrapped));
+        if let Some(wrapped) = wrapped {
+            decorated_value.set_wrapped(wrapped);
         }
         // Given the raw `decorated_value`, which may include `Type::Quantified` type variables
         // coming from a `Forall` in the original decoratee, we need to create the proper output

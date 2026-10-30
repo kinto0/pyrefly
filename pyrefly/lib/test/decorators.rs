@@ -199,7 +199,6 @@ def build(handler: Callable[[int], int], apps: tuple[list[Callable[..., int]], .
 );
 
 testcase!(
-    bug = "wrapped function metadata grows through loop fixpoints",
     test_functools_update_wrapper_function_loop,
     r#"
 from functools import update_wrapper
@@ -213,7 +212,7 @@ def wrapper(x: int) -> int:
 
 def repeatedly(count: int) -> int:
     fn = source
-    for _ in range(count):  # E: Fixpoint iteration did not converge
+    for _ in range(count):
         fn = update_wrapper(wrapper, fn)
     return fn(1)
 
