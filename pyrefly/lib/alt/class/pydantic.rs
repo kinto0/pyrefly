@@ -12,9 +12,12 @@ use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::annotation::Annotation;
+use pyrefly_types::callable::Callable;
 use pyrefly_types::callable::Param;
+use pyrefly_types::callable::ParamList;
 use pyrefly_types::callable::Required;
 use pyrefly_types::function::FuncMetadata;
+use pyrefly_types::function::Function;
 use pyrefly_types::function::FunctionKind;
 use pyrefly_types::keywords::DataclassFieldKeywords;
 use pyrefly_types::lit_int::LitInt;
@@ -49,6 +52,7 @@ use crate::binding::binding::KeyAnnotation;
 use crate::binding::pydantic::EXTRA;
 use crate::binding::pydantic::FROZEN;
 use crate::binding::pydantic::FROZEN_DEFAULT;
+use crate::binding::pydantic::MODEL_CONSTRUCT;
 use crate::binding::pydantic::POPULATE_BY_NAME;
 use crate::binding::pydantic::PydanticConfigDict;
 use crate::binding::pydantic::ROOT;
@@ -160,6 +164,70 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let params = vec![self.class_self_param(cls, false), root_param];
         let ty = self.synthesized_method(cls, dunder::INIT, params, self.heap.mk_none());
         ClassSynthesizedField::new(ty)
+    }
+
+    /// Synthesizes BaseModel's typed signature or exposes an inherited nonstandard implementation.
+    pub fn get_pydantic_model_construct(
+        &self,
+        cls: &Class,
+        dataclass: &DataclassMetadata,
+        kw_only_by_class: &SmallMap<Class, SmallSet<Name>>,
+    ) -> Option<ClassSynthesizedField> {
+        let member =
+            self.get_non_synthesized_class_member_and_defining_class(cls, &MODEL_CONSTRUCT)?;
+        if member.defining_class == *cls {
+            return None;
+        }
+        if !member
+            .defining_class
+            .has_toplevel_qname(ModuleName::pydantic().as_str(), "BaseModel")
+        {
+            // An earlier synthesized base must not mask a real override later in the MRO.
+            let visible = self.get_class_member_ignoring_own_synthesized(cls, &MODEL_CONSTRUCT)?;
+            return (visible.value.as_ref() != member.value.as_ref()).then(|| {
+                ClassSynthesizedField {
+                    inner: member.value.into_owned().into(),
+                }
+            });
+        }
+        let fields_set_type = self.heap.mk_optional(
+            self.heap.mk_class_type(
+                self.stdlib
+                    .set(self.heap.mk_class_type(self.stdlib.str().clone())),
+            ),
+        );
+        let fields_set = Param::Pos(
+            Name::new_static("_fields_set"),
+            fields_set_type,
+            Required::Optional(None),
+        );
+        let self_type = self.heap.mk_self_type(self.as_class_type_unchecked(cls));
+        let mut params = vec![
+            Param::PosOnly(
+                Some(Name::new_static("cls")),
+                self.heap.mk_type_of(self_type.clone()),
+                Required::Required,
+            ),
+            fields_set,
+        ];
+        for (name, field, flags) in self.iter_fields(cls, dataclass, false, kw_only_by_class) {
+            let required = if flags.default.is_some() {
+                Required::Optional(None)
+            } else {
+                Required::Required
+            };
+            params.push(Param::KwOnly(name, field.ty(), required));
+        }
+        if dataclass.kws.extra {
+            params.push(Param::Kwargs(None, self.heap.mk_any_explicit()));
+        }
+        let mut metadata = FuncMetadata::method(cls, MODEL_CONSTRUCT);
+        metadata.flags.is_classmethod = true;
+        let ty = self.heap.mk_function(Function {
+            signature: Callable::list(ParamList::new(params), self_type),
+            metadata,
+        });
+        Some(ClassSynthesizedField::new(ty))
     }
 
     pub fn get_pydantic_root_model_class_field_type(
