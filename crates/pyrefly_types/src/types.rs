@@ -1988,11 +1988,19 @@ impl Type {
         }
     }
 
-    /// Set a known wrapped target, widening recursive function identities to `Any`.
+    /// Set a known wrapped target, widening unknown or repeated identities to `Any`.
+    /// Returns `false` when this type has no function metadata.
     pub fn set_wrapped(&mut self, wrapped: Type) -> bool {
-        fn reaches_function(ty: &Type, kind: &FunctionKind) -> bool {
+        fn needs_widening(ty: &Type, kind: &FunctionKind) -> bool {
             if let Type::Union(union) = ty {
-                return union.members.iter().any(|ty| reaches_function(ty, kind));
+                return union.members.iter().any(|ty| needs_widening(ty, kind));
+            }
+            // Substitution can replace an opaque target with a whole wrapped function.
+            if matches!(
+                ty,
+                Type::Quantified(_) | Type::Var(_) | Type::ElementOfTypeVarTuple(_)
+            ) {
+                return true;
             }
             let Some(metadata) = ty.toplevel_func_metadata() else {
                 return false;
@@ -2002,7 +2010,7 @@ impl Type {
                     .flags
                     .wrapped
                     .as_deref()
-                    .is_some_and(|ty| reaches_function(ty, kind))
+                    .is_some_and(|ty| needs_widening(ty, kind))
         }
 
         let Some(metadata) = self.toplevel_func_metadata_mut() else {
@@ -2010,7 +2018,7 @@ impl Type {
         };
         // Repeated source identities can represent either a cycle on one object or
         // arbitrarily many instances of the same wrapper created in a loop.
-        let wrapped = if reaches_function(&wrapped, &metadata.kind) {
+        let wrapped = if needs_widening(&wrapped, &metadata.kind) {
             Type::any_explicit()
         } else {
             wrapped

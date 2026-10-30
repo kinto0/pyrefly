@@ -450,7 +450,6 @@ assert_type(conditional(3, True), int)
 );
 
 testcase!(
-    bug = "generic substitution can introduce recursive wrapped metadata",
     test_functools_generic_wrapper_loop,
     r#"
 from functools import wraps
@@ -467,7 +466,7 @@ def source(x: int) -> int:
 
 def repeatedly(count: int) -> object:
     fn = source
-    for _ in range(count):  # E: Fixpoint iteration did not converge
+    for _ in range(count):
         fn = decorate(fn)
     return fn(1)
 
