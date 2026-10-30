@@ -139,7 +139,7 @@ fn class_field_shadowing_inlay_hint() {
 
 #[test]
 fn inherited_field_hint_insertability() {
-    // TODO: Copying an inherited declaration's bare type can discard ClassVar/Final qualifiers.
+    // Hints remain visible without edits that could discard inherited declaration qualifiers.
     for body in [
         "class A:\n    x: ClassVar[tuple[str, ...]] = ()\nclass B(A):\n    x = (value(),)\n",
         "class A:\n    x: str = ''\nclass B(A):\n    def __init__(self) -> None:\n        self.x = value()\n",
@@ -157,7 +157,7 @@ fn inherited_field_hint_insertability() {
             )
             .unwrap();
         assert_eq!(1, hints.len(), "hints for {code}");
-        assert!(hints[0].edits.is_some(), "insertability for {code}");
+        assert!(hints[0].edits.is_none(), "insertability for {code}");
     }
 }
 

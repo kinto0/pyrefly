@@ -346,10 +346,10 @@ impl<'a> Transaction<'a> {
                     if inlay_hint_config.variable_types
                         && let Some(ty) = answers.get_type_at(idx) =>
                 {
-                    let mut ty = answers
-                        .get_class_field_type_at_definition(idx)
-                        .unwrap_or(ty);
-                    let mut insertable = true;
+                    let declaration_type = answers.get_class_field_type_at_definition(idx);
+                    // A bare type annotation can discard an inherited field's ClassVar/Final qualifiers.
+                    let mut insertable = declaration_type.is_none();
+                    let mut ty = declaration_type.unwrap_or(ty);
                     if let Some(constructor) = self.new_type_constructor_signature(handle, &ty) {
                         ty = constructor;
                         insertable = false;
@@ -433,7 +433,7 @@ impl<'a> Transaction<'a> {
                         continue;
                     };
                     let mut ty = class_field.ty();
-                    let mut insertable = true;
+                    let mut insertable = !class_field.has_explicit_annotation();
                     if let Some(constructor) = self.new_type_constructor_signature(handle, &ty) {
                         ty = constructor;
                         insertable = false;
