@@ -1965,6 +1965,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 None
             }
         };
+        let wrapped_arg = self.functools_wrapped_arg(metadata, args, keywords, errors);
         let outcome = match call_target {
             CallTarget::Class(cls, constructor_kind, as_quantified_bound) => {
                 if cls.has_qname("typing", "Any") {
@@ -2226,7 +2227,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ty: res,
             overload_table,
         } = outcome;
-        let res = if let Some(func_metadata) = kw_metadata {
+        let res = if let Some((func_metadata, wrapped)) = wrapped_arg.as_ref()
+            && func_metadata.kind == FunctionKind::FunctoolsWraps
+        {
+            let mut kws = TypeMap::new();
+            kws.0
+                .insert(Name::new_static("__wrapped__"), wrapped.clone());
+            self.heap.mk_kw_call(KwCall {
+                func_metadata: func_metadata.clone(),
+                keywords: kws,
+                return_ty: res,
+            })
+        } else if let Some(func_metadata) = kw_metadata {
             // The call form `dataclass(C)` transforms `C` in place, so reject the same
             // class kinds as the `@dataclass` decorator (see `report_forbidden_dataclass_target`).
             // The decorator path never reaches here: a bare decorator is not a call.
@@ -2263,6 +2275,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 keywords: kws,
                 return_ty: res,
             })
+        } else {
+            res
+        };
+        // Keep ordinary functions as functions so descriptor binding and function flags survive.
+        let res = if let Some((metadata, wrapped)) = wrapped_arg
+            && metadata.kind == FunctionKind::FunctoolsUpdateWrapper
+            && let Some(mut wrapper) = self
+                .positional_arg_type(args, 0, errors)
+                .or_else(|| self.keyword_arg_type(keywords, "wrapper", errors))
+            && let Some(metadata) = wrapper.toplevel_func_metadata_mut()
+        {
+            metadata.flags.wrapped = Some(Box::new(wrapped));
+            wrapper
         } else {
             res
         };
@@ -2522,6 +2547,49 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.set_lambda_param_type(id, self.unions(types));
         }
         CallOutcome::of_ty(self.intersect_guarantees(&results))
+    }
+
+    fn functools_wrapped_arg(
+        &self,
+        metadata: Option<&FuncMetadata>,
+        args: &[CallArg],
+        keywords: &[CallKeyword],
+        errors: &ErrorCollector,
+    ) -> Option<(FuncMetadata, Type)> {
+        let metadata = metadata?;
+        let wrapped = match metadata.kind {
+            FunctionKind::FunctoolsWraps => self
+                .positional_arg_type(args, 0, errors)
+                .or_else(|| self.keyword_arg_type(keywords, "wrapped", errors)),
+            FunctionKind::FunctoolsUpdateWrapper => self
+                .positional_arg_type(args, 1, errors)
+                .or_else(|| self.keyword_arg_type(keywords, "wrapped", errors)),
+            _ => None,
+        }?;
+        Some((metadata.clone(), wrapped))
+    }
+
+    fn positional_arg_type(
+        &self,
+        args: &[CallArg],
+        index: usize,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        match args.get(index)? {
+            CallArg::Arg(value) => Some((*value).infer(self, errors)),
+            CallArg::Star(..) => None,
+        }
+    }
+
+    fn keyword_arg_type(
+        &self,
+        keywords: &[CallKeyword],
+        name: &str,
+        errors: &ErrorCollector,
+    ) -> Option<Type> {
+        keywords.iter().find_map(|kw| {
+            (kw.arg.is_some_and(|id| id.as_str() == name)).then(|| kw.value.infer(self, errors))
+        })
     }
 
     /// Wrapper for `callable_infer` that handles trying a call with and without a contextual hint.
@@ -3083,6 +3151,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                     )
                 }
+                Some(CalleeKind::Function(FunctionKind::InspectUnwrap))
+                    if let Some(ret) = self.call_inspect_unwrap(x, errors) =>
+                {
+                    ret
+                }
                 // `attr.evolve` validates kwargs like `dataclasses.replace`; `attr.assoc` validates
                 // against attribute names, including `init=False` fields. Both require an attrs class.
                 Some(CalleeKind::Function(
@@ -3366,6 +3439,65 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 "unittest.mock.patch target",
             );
         }
+    }
+
+    fn call_inspect_unwrap(&self, x: &ExprCall, errors: &ErrorCollector) -> Option<Type> {
+        if x.arguments.args.len() != 1 || matches!(x.arguments.args[0], Expr::Starred(_)) {
+            return None;
+        }
+        if !x.arguments.keywords.iter().all(|kw| {
+            kw.arg.as_ref().is_some_and(|id| id.as_str() == "stop")
+                && matches!(kw.value, Expr::NoneLiteral(_))
+        }) {
+            return None;
+        }
+
+        let arg = &x.arguments.args[0];
+        let ty = self.expr_infer(arg, errors);
+        Some(self.inspect_unwrapped_type(&ty, arg.range(), &mut SmallSet::new(), false))
+    }
+
+    /// Follow each wrapped chain independently, retaining uncertainty about hidden attributes.
+    fn inspect_unwrapped_type(
+        &self,
+        ty: &Type,
+        range: TextRange,
+        seen: &mut SmallSet<Type>,
+        followed_wrapped: bool,
+    ) -> Type {
+        self.distribute_over_union(ty, |ty| {
+            if !seen.insert(ty.clone()) {
+                return self.heap.mk_any_explicit();
+            }
+            let wrapped_attr = Name::new_static("__wrapped__");
+            let result = if !self.has_attr(ty, &wrapped_attr) {
+                // A callable annotation or an in-place mutation can hide `__wrapped__`.
+                // Preserve only a terminal function reached through a known wrapped edge.
+                if followed_wrapped && ty.toplevel_func_metadata().is_some() {
+                    ty.clone()
+                } else {
+                    self.heap.mk_any_explicit()
+                }
+            } else {
+                let attr_errors = self.error_swallower();
+                let next = self.type_of_attr_get(
+                    ty,
+                    &wrapped_attr,
+                    range,
+                    &attr_errors,
+                    ErrorKind::MissingAttribute,
+                    None,
+                    "__wrapped__ lookup for inspect.unwrap",
+                );
+                if attr_errors.is_empty() {
+                    self.inspect_unwrapped_type(&next, range, seen, true)
+                } else {
+                    self.heap.mk_any_explicit()
+                }
+            };
+            seen.shift_remove(ty);
+            result
+        })
     }
 
     pub fn freeform_call_infer(
