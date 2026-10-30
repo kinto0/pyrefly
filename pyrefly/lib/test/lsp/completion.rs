@@ -5,8 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::time::Instant;
-
 use lsp_types::CompletionItem;
 use lsp_types::CompletionItemKind;
 use lsp_types::CompletionItemTag;
@@ -1307,12 +1305,7 @@ fn dict_completion_large_literal() {
     let handle = handles.get("main").unwrap();
     let position = extract_cursors_for_test(&code)[0];
     let txn = state.transaction();
-    let start = Instant::now();
     let labels = dict_field_labels(&txn, handle, position);
-    eprintln!(
-        "Completion in a 1,000-entry dictionary: {:?}",
-        start.elapsed()
-    );
     assert!(labels.is_empty(), "{labels:?}");
 }
 

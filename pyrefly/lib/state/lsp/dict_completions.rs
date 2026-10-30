@@ -59,7 +59,7 @@ enum DictKeyLiteralContext {
     },
     /// Ruff parses an empty string in braces as a set until a colon is typed.
     RecoveredSetLiteral {
-        range: TextRange,
+        base_type: Type,
         literal: ExprStringLiteral,
     },
     /// An empty subscript slot, before any key string has been typed.
@@ -115,7 +115,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// Uses only this expression's expected or actual type.
+    /// Uses the expression's recorded context, its direct assignment or call argument, then its actual type.
     fn construction_contextual_type(
         &self,
         handle: &Handle,
@@ -650,22 +650,34 @@ impl<'a> Transaction<'a> {
         let mut best: Option<(u8, TextSize, DictKeyLiteralContext)> = None;
         for node in nodes {
             let best_in_expr = match node {
-                // Ruff recovers `{""}` as a set until a `:` turns it into a dict item.
-                // Treat that shape like a dict-key placeholder so completion can recover.
-                AnyNodeRef::ExprSet(set)
-                    if self
+                // Ruff recovers `{ "" }` as a set until a colon turns it into a dict item.
+                AnyNodeRef::ExprSet(set) => {
+                    let Some((priority, dist, literal)) =
+                        Self::best_string_literal_in_set(set, position)
+                    else {
+                        continue;
+                    };
+                    // Match the four-character allowance in `add_dict_key_completions`
+                    // before resolving context for an ordinary set or a distant string.
+                    if (priority == 1 && dist > TextSize::from(4))
+                        || (priority == 2 && dist != TextSize::from(0))
+                    {
+                        continue;
+                    }
+                    let Some(base_type) = self
                         .construction_contextual_type(handle, module, set.range())
-                        .is_some_and(|ty| Self::type_contains_typed_dict(&ty)) =>
-                {
-                    Self::best_string_literal_in_set(set, position).map(
-                        |(priority, dist, range, literal)| {
-                            (
-                                priority,
-                                dist,
-                                DictKeyLiteralContext::RecoveredSetLiteral { range, literal },
-                            )
+                        .filter(Self::type_contains_typed_dict)
+                    else {
+                        continue;
+                    };
+                    Some((
+                        priority,
+                        dist,
+                        DictKeyLiteralContext::RecoveredSetLiteral {
+                            base_type,
+                            literal: literal.clone(),
                         },
-                    )
+                    ))
                 }
                 AnyNodeRef::ExprDict(dict) => Self::best_string_literal_in_dict(dict, position)
                     .map(|(priority, dist, dict, literal)| {
@@ -735,22 +747,18 @@ impl<'a> Transaction<'a> {
     fn best_string_literal_in_set(
         set: &ExprSet,
         position: TextSize,
-    ) -> Option<(u8, TextSize, TextRange, ExprStringLiteral)> {
+    ) -> Option<(u8, TextSize, &ExprStringLiteral)> {
         let mut best = None;
         for elt in &set.elts {
             let Expr::StringLiteral(literal) = elt else {
                 continue;
             };
             let (priority, dist) = Self::string_literal_priority(position, literal.range());
-            let should_update = match &best {
-                Some((best_prio, best_dist, _, _)) => {
-                    priority < *best_prio || (priority == *best_prio && dist < *best_dist)
-                }
-                None => true,
-            };
-            if should_update {
-                best = Some((priority, dist, set.range(), literal.clone()));
-                if priority == 0 && dist == TextSize::from(0) {
+            if best
+                .is_none_or(|(best_prio, best_dist, _)| (priority, dist) < (best_prio, best_dist))
+            {
+                best = Some((priority, dist, literal));
+                if priority == 0 {
                     break;
                 }
             }
@@ -993,10 +1001,8 @@ impl<'a> Transaction<'a> {
                     self.extend_dict_key_suggestions(handle, None, dict.range(), &mut suggestions);
                 }
             }
-            DictKeyLiteralContext::RecoveredSetLiteral { range, .. } => {
-                if let Some(base_type) = self.construction_contextual_type(handle, module, *range)
-                    && let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type)
-                {
+            DictKeyLiteralContext::RecoveredSetLiteral { base_type, .. } => {
+                if let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type.clone()) {
                     suggestions.extend(typed_keys.into_iter().map(|(key, ty)| (key, Some(ty))));
                 }
             }
@@ -1072,24 +1078,21 @@ impl<'a> Transaction<'a> {
             }
         }
 
-        // Key access uses the container's actual type rather than the expected type of its result.
-        if let Some(base_type) = self
-            .get_type_trace(handle, base_range)
-            .filter(Self::type_contains_typed_dict)
-            && let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type)
-        {
-            for (key, ty) in typed_keys {
-                let entry = suggestions.entry(key).or_insert(None);
-                if entry.is_none() {
-                    *entry = Some(ty);
+        if let Some(base_type) = self.get_type_trace(handle, base_range) {
+            if let Some(columns) = Self::collect_dataframe_columns(&base_type) {
+                for column in columns {
+                    suggestions.entry(column).or_insert(None);
                 }
             }
-        }
-        if let Some(base_type) = self.get_type_trace(handle, base_range)
-            && let Some(columns) = Self::collect_dataframe_columns(&base_type)
-        {
-            for column in columns {
-                suggestions.entry(column).or_insert(None);
+            if Self::type_contains_typed_dict(&base_type)
+                && let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type)
+            {
+                for (key, ty) in typed_keys {
+                    let entry = suggestions.entry(key).or_insert(None);
+                    if entry.is_none() {
+                        *entry = Some(ty);
+                    }
+                }
             }
         }
     }
