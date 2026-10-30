@@ -369,7 +369,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             fields_set_type,
             Required::Optional(None),
         );
-        let mut params = vec![fields_set];
+        let cls_param = Param::PosOnly(
+            Some(Name::new_static("cls")),
+            self.heap.mk_type_of(self.instantiate(cls)),
+            Required::Required,
+        );
+        let mut params = vec![cls_param, fields_set];
         for (name, field, flags) in self.iter_fields(cls, dataclass, false, kw_only_by_class) {
             let required = if flags.default.is_some() {
                 Required::Optional(None)
@@ -381,8 +386,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if dataclass.kws.extra {
             params.push(Param::Kwargs(None, self.heap.mk_any_implicit()));
         }
-        let ty = self.synthesized_method(cls, MODEL_CONSTRUCT, params, self.instantiate(cls));
-        ClassSynthesizedField::new_classvar(ty)
+        let mut metadata = FuncMetadata::method(cls, MODEL_CONSTRUCT);
+        metadata.flags.is_classmethod = true;
+        let ty = self.heap.mk_function(Function {
+            signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
+            metadata,
+        });
+        ClassSynthesizedField::new(ty)
     }
 
     fn check_duplicate_kw_only_markers(&self, cls: &Class, errors: &ErrorCollector) {
