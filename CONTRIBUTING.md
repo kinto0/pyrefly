@@ -56,7 +56,7 @@ How it works:
 
 ### PR readiness checks
 
-Automated readiness checks run on newly opened PRs, checking items from our [PR checklist](#making-a-pull-request). If an "⚠️ **Action needed**" comment is posted on your PR, please follow the steps in the comment to ensure the PR is ready for review. The check automatically reruns when the PR is updated, with a lag of up to half an hour.
+Automated readiness checks run on newly opened PRs, checking items from our [PR checklist](#making-a-pull-request). If an "⚠️ **Action needed**" comment is posted on your PR, please follow the required steps in the comment to ensure the PR is ready for review. The comment may also include optional recommendations, which don't block review. The check automatically reruns when the PR is updated, with a lag of up to half an hour.
 
 ### PR turn tracking
 

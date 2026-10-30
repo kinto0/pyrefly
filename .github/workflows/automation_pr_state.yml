@@ -63,7 +63,7 @@ jobs:
 
   select-prs:
     if: >-
-      ${{ (!contains(fromJSON('["opened", "synchronize", "labeled", "unlabeled"]'), github.event.action)
+      ${{ (!contains(fromJSON('["labeled", "unlabeled"]'), github.event.action)
           || github.event.label.name == 'cla signed')
           && (github.event_name != 'issue_comment'
           || (github.event.issue.pull_request != null
@@ -150,8 +150,9 @@ jobs:
               .map(pr => pr.number);
 
   evaluate:
-    needs: select-prs
-    if: ${{ needs.select-prs.outputs.prs != '[]' }}
+    # Waits for the size job so that the checklist sees the current size label.
+    needs: [select-prs, size]
+    if: ${{ !cancelled() && needs.select-prs.result == 'success' && needs.select-prs.outputs.prs != '[]' }}
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -212,8 +213,10 @@ jobs:
             const sweep = context.eventName === 'schedule'
               || context.payload.inputs?.scenario === 'Reconcile PRs updated since last sweep';
             const manual = context.eventName === 'workflow_dispatch' && !sweep;
+            // "opened" runs wait for the size job, so they recheck PRs whose
+            // "cla signed" label arrived before the size label.
             const initialCheck = (context.eventName === 'pull_request_target'
-              && (context.payload.action === 'ready_for_review'
+              && (['opened', 'ready_for_review'].includes(context.payload.action)
                 || (context.payload.action === 'labeled' && context.payload.label.name === 'cla signed')))
               || (sweep && timeline.some(e => (e.event === 'ready_for_review'
                 || (e.event === 'labeled' && e.label?.name === 'cla signed'))
@@ -233,16 +236,25 @@ jobs:
                 ? `Add this checkbox to the PR description and check it: \`- [x] I am a human, and I fully understand the code I am submitting.\` ${policy}`
                 : `Check the "I am a human" box in the PR description. ${policy}`;
             }
+            const CONTRIBUTING = `https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md`;
+            const split = `[splitting it](${CONTRIBUTING}#splitting-a-pull-request)`;
+            let recommendation;
+            if (labels.includes('size/xl')) {
+              recommendation = `This PR is very large, which makes it slow and difficult to review. We strongly recommend ${split} into smaller PRs that can be merged independently. If that isn't possible, please structure it as a series of small commits. If you've already split it as far as is practical, no action is needed.`;
+            } else if (labels.includes('size/l')) {
+              recommendation = `This PR is on the larger side. If parts of it could be merged on their own, consider ${split} into separate PRs for faster review. If you've already split it as far as is practical, no action is needed.`;
+            }
 
-            const CHECKLIST = `[pull request checklist](https://github.com/${owner}/${repo}/blob/main/CONTRIBUTING.md#making-a-pull-request)`;
+            const CHECKLIST = `[pull request checklist](${CONTRIBUTING}#making-a-pull-request)`;
             const report = [
               MARKER,
               problem
                 ? `⚠️ **Action needed**: this PR is missing required items from our ${CHECKLIST}:\n\n- ${problem}`
-                : `✅ This PR follows our ${CHECKLIST}.`,
+                : `✅ This PR meets all requirements from our ${CHECKLIST}.`,
+              recommendation && `**Optional recommendations**:\n\n- ${recommendation}`,
               'Note: this comment updates automatically after changes to the PR. Updates may take up to half an hour.',
-            ].join('\n\n');
-            const writeComment = existingCheck ? existingCheck.body !== report : Boolean(problem);
+            ].filter(Boolean).join('\n\n');
+            const writeComment = existingCheck ? existingCheck.body !== report : Boolean(problem || recommendation);
             if (!dryRun && writeComment) {
               if (existingCheck) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: existingCheck.id, body: report });
