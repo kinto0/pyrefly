@@ -190,7 +190,6 @@ class DecimalField(BaseModel):
 );
 
 pydantic_testcase!(
-    bug = "Decimal range bounds reject valid numeric subtypes and unions",
     test_field_range_decimal_numeric_types,
     r#"
 from decimal import Decimal
@@ -219,24 +218,24 @@ def numeric_bounds(
     nominal: NominalBound,
 ) -> None:
     class Model(BaseModel):
-        a: Decimal = Field(ge=literal)  # E: Pydantic `ge` value has type `Literal[0]`, which is not assignable to field type `Decimal`
-        b: Decimal = Field(gt=numeric)  # E: Pydantic `gt` value has type `float | int`, which is not assignable to field type `Decimal`
-        c: Decimal = Field(le=mixed)  # E: Pydantic `le` value has type `Decimal | int`, which is not assignable to field type `Decimal`
-        d: Decimal = Field(lt=integer)  # E: Pydantic `lt` value has type `IntBound`, which is not assignable to field type `Decimal`
-        e: Decimal = Field(ge=floating)  # E: Pydantic `ge` value has type `FloatBound`, which is not assignable to field type `Decimal`
-        f: Decimal = Field(ge=enum)  # E: Pydantic `ge` value has type `Bound`, which is not assignable to field type `Decimal`
-        g: Decimal = Field(ge=nominal)  # E: Pydantic `ge` value has type `NominalBound`, which is not assignable to field type `Decimal`
-        h: Decimal | None = Field(default=None, ge=literal)  # E: Pydantic `ge` value has type `Literal[0]`, which is not assignable to field type `Decimal | None`
-        i: Annotated[Decimal, Field(ge=literal)]  # E: Pydantic `ge` value has type `Literal[0]`, which is not assignable to field type `Decimal`
-        j: Annotated[Decimal, "metadata"] | None = Field(default=None, ge=literal)  # E: Pydantic `ge` value has type `Literal[0]`, which is not assignable to field type `Decimal | None`
+        a: Decimal = Field(ge=literal)
+        b: Decimal = Field(gt=numeric)
+        c: Decimal = Field(le=mixed)
+        d: Decimal = Field(lt=integer)
+        e: Decimal = Field(ge=floating)
+        f: Decimal = Field(ge=enum)
+        g: Decimal = Field(ge=nominal)
+        h: Decimal | None = Field(default=None, ge=literal)
+        i: Annotated[Decimal, Field(ge=literal)]
+        j: Annotated[Decimal, "metadata"] | None = Field(default=None, ge=literal)
 
 def constrained[T: (int, Decimal)](bound: T) -> None:
     class Model(BaseModel):
-        a: Decimal = Field(ge=bound)  # E: Pydantic `ge` value has type `T`, which is not assignable to field type `Decimal`
+        a: Decimal = Field(ge=bound)
 
 def bounded[T: float](bound: T) -> None:
     class Model(BaseModel):
-        a: Decimal = Field(ge=bound)  # E: Pydantic `ge` value has type `T`, which is not assignable to field type `Decimal`
+        a: Decimal = Field(ge=bound)
 
 type DecimalAnnotated = Annotated[Decimal, "metadata"]
 
