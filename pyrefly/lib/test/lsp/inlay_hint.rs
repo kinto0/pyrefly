@@ -95,6 +95,49 @@ class B(A):
 }
 
 #[test]
+fn class_field_shadowing_inlay_hint() {
+    // TODO: A global write must not inherit an unrelated instance field's annotation.
+    for (body, expected) in [
+        (
+            "x = 0\nclass C:\n    global x\n    x = value()\n    def __init__(self) -> None:\n        self.x: str = 'field'\n",
+            ": str",
+        ),
+        (
+            "def f() -> None:\n    x = 0\n    class C:\n        nonlocal x\n        x = value()\n        def __init__(self) -> None:\n            self.x: str = 'field'\n",
+            ": str",
+        ),
+        (
+            "class C:\n    x: str = 'field'\n    def f(self) -> None:\n        x = value()\n",
+            ": int",
+        ),
+        ("x = value()\n", ": int"),
+    ] {
+        let code = format!("def value() -> int:\n    return 1\n{body}");
+        let position = code.find("x = value()").unwrap() + 1;
+        let (handles, state) =
+            mk_multi_file_state_assert_no_errors(&[("main", &code)], Require::Exports);
+        let hints = state
+            .transaction()
+            .inlay_hints(
+                handles.get("main").unwrap(),
+                Default::default(),
+                Default::default(),
+            )
+            .unwrap();
+        let hint = hints
+            .iter()
+            .find(|hint| usize::from(hint.position) == position)
+            .expect("expected a hint for the nonliteral assignment");
+        let label: String = hint
+            .label_parts
+            .iter()
+            .map(|(text, _)| text.as_str())
+            .collect();
+        assert_eq!(expected, label, "hint for {code}");
+    }
+}
+
+#[test]
 fn basic_test() {
     let code = r#"from typing import Literal
 

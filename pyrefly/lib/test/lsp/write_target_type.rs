@@ -68,6 +68,61 @@ fn class_field_declaration_preserves_self() {
     }
 }
 
+#[test]
+fn class_field_definition_ownership() {
+    // TODO: Global, nonlocal, and decorator writes must keep their own binding types.
+    let cases = [
+        (
+            "x = 0\nclass C:\n    global x\n    x = 1\n    def __init__(self) -> None:\n        self.x: str = 'field'\n",
+            "x = 1",
+            "str",
+        ),
+        (
+            "def f() -> None:\n    x = 0\n    class C:\n        nonlocal x\n        x = 1\n        def __init__(self) -> None:\n            self.x: str = 'field'\n",
+            "x = 1",
+            "str",
+        ),
+        (
+            "def deco(cls: type) -> type:\n    return cls\n@(x := deco)\nclass C:\n    x: str = 'field'\n",
+            "x := deco",
+            "str",
+        ),
+        (
+            "class C:\n    x: str = 'field'\n    def f(self, x: int) -> None:\n        x = 1\n",
+            "x = 1",
+            "Literal[1]",
+        ),
+    ];
+    for (code, target, expected) in cases {
+        let (handles, state) =
+            mk_multi_file_state_assert_no_errors(&[("main", code)], Require::Exports);
+        let handle = handles.get("main").unwrap();
+        let position = TextSize::try_from(code.find(target).unwrap()).unwrap();
+        let transaction = state.transaction();
+        assert_eq!(
+            expected,
+            transaction
+                .get_type_at(handle, position)
+                .unwrap()
+                .to_string(),
+            "hover for {code}",
+        );
+        for range in [
+            TextRange::empty(position),
+            TextRange::at(position, 1.into()),
+        ] {
+            assert_eq!(
+                expected,
+                transaction
+                    .get_computed_type_at_range(handle, range)
+                    .unwrap()
+                    .to_string(),
+                "computed type for {code}",
+            );
+        }
+    }
+}
+
 /// A store target reports the type that is being assigned to it. When the value
 /// does not fit the attribute's declared type, the assignment recovers with the
 /// declared type and the target reports that.
