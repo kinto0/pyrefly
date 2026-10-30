@@ -1216,27 +1216,42 @@ def f(cond: bool) -> None:
     assert_eq!(polars_column_completion_labels(code), vec!["id".to_owned()]);
 }
 
+fn contextual_dict_completions(body: &str) -> Vec<CompletionItem> {
+    let line = body.lines().last().unwrap();
+    let caret = " ".repeat(line.find('|').unwrap() - 1);
+    let body = body.replace('|', "");
+    let code = format!(
+        r#"
+from typing import TypedDict
+
+class Config(TypedDict):
+    name: str
+    age: int
+
+def take(cfg: Config) -> None: ...
+name = "x"
+options: dict[str, object] = {{}}
+
+{body}
+#{caret}^
+"#,
+    );
+    let (handles, state) = mk_multi_file_state(&[("main", &code)], Require::Exports, false);
+    let position = extract_cursors_for_test(&code)[0];
+    state.transaction().completion(
+        &handles["main"],
+        position,
+        ImportFormat::Absolute,
+        true,
+        None,
+    )
+}
+
 // An unpacked mapping contains call-argument names, not the fields of a parameter's TypedDict.
 #[test]
 fn dict_completion_unpacking_parameter_context() {
     for body in ["take(**{\"|\"})", "take(**{\"|\": 0})", "take(**dict(|))"] {
-        let caret = " ".repeat(body.find('|').unwrap() - 1);
-        let code = format!(
-            "from typing import TypedDict\nclass Config(TypedDict):\n    name: str\n    age: int\ndef take(cfg: Config) -> None: ...\n{}\n#{}^\n",
-            body.replace('|', ""),
-            caret,
-        );
-        let (handles, state) = mk_multi_file_state(&[("main", &code)], Require::Exports, false);
-        let position = extract_cursors_for_test(&code)[0];
-        let labels = state
-            .transaction()
-            .completion(
-                &handles["main"],
-                position,
-                ImportFormat::Absolute,
-                true,
-                None,
-            )
+        let labels = contextual_dict_completions(body)
             .into_iter()
             .map(|item| item.label)
             .collect::<Vec<_>>();
@@ -1255,34 +1270,31 @@ fn dict_completion_unpacking_parameter_context() {
 fn dict_completion_constructor_keyword_positions() {
     for (body, expected) in [
         ("cfg: Config = dict(|)", vec!["age=", "name="]),
+        ("cfg: Config = dict(na|)", vec!["age=", "name="]),
         ("cfg: Config = dict(name=\"x\", |)", vec!["age="]),
         ("cfg: Config = dict(name=\"x\", na|)", vec!["age="]),
         ("cfg: Config = dict(na|=\"x\")", vec!["age=", "name="]),
+        ("cfg: Config = dict(name|=\"x\", age=0)", vec!["name="]),
         ("cfg: Config = dict(name=na|)", vec![]),
         ("cfg: Config = dict(name=[na|])", vec![]),
         ("cfg: Config = dict(name={\"x\": na|})", vec![]),
         ("cfg: Config = dict(**na|)", vec![]),
         ("cfg: Config = dict({\"name\": \"x\"}, na|)", vec![]),
+        ("cfg: Config = dict(options, |)", vec![]),
         ("cfg: Config = dict(name=str(na|))", vec![]),
         ("cfg: Config = dict(name=dict(na|))", vec![]),
+        // Inline unpacked keys are not yet recognized as already supplied.
+        (
+            "cfg: Config = dict(**{\"name\": \"x\"}, |)",
+            vec!["age=", "name="],
+        ),
+        (
+            "cfg: Config = dict(**dict(name=\"x\"), |)",
+            vec!["age=", "name="],
+        ),
+        ("cfg: Config = dict(**options, |)", vec!["age=", "name="]),
     ] {
-        let caret = " ".repeat(body.find('|').unwrap() - 1);
-        let code = format!(
-            "from typing import TypedDict\nclass Config(TypedDict):\n    name: str\n    age: int\nname = \"x\"\n{}\n#{}^\n",
-            body.replace('|', ""),
-            caret,
-        );
-        let (handles, state) = mk_multi_file_state(&[("main", &code)], Require::Exports, false);
-        let position = extract_cursors_for_test(&code)[0];
-        let mut labels = state
-            .transaction()
-            .completion(
-                &handles["main"],
-                position,
-                ImportFormat::Absolute,
-                true,
-                None,
-            )
+        let mut labels = contextual_dict_completions(body)
             .into_iter()
             .map(|item| item.label)
             .filter(|label| matches!(label.as_str(), "age=" | "name="))
@@ -1412,38 +1424,16 @@ fn dict_completion_constructor_owns_cursor_and_resolves_builtin() {
         ("take(cfg=dict(|))", true),
         ("take([dict(|)])", false),
     ] {
-        let line = body.lines().last().unwrap();
-        let caret = " ".repeat(line.find('|').unwrap() - 1);
-        let body = body.replace('|', "");
-        let code = format!(
-            r#"
-from typing import TypedDict
-
-class Config(TypedDict):
-    name: str
-    age: int
-
-def take(cfg: Config) -> None: ...
-
-{body}
-#{caret}^
-"#
-        );
-        let report = get_batched_lsp_operations_report_allow_error(
-            &[("main", &code)],
-            get_default_test_report(),
-        );
-        let report = strip_ansi(&report);
-        assert_eq!(
-            report.contains("- (Variable) age=: int"),
-            expected,
-            "{report}"
-        );
-        assert_eq!(
-            report.contains("- (Variable) name=: str"),
-            expected,
-            "{report}"
-        );
+        let items = contextual_dict_completions(body);
+        for (label, detail) in [("age=", "int"), ("name=", "str")] {
+            assert_eq!(
+                items
+                    .iter()
+                    .any(|item| { item.label == label && item.detail.as_deref() == Some(detail) }),
+                expected,
+                "{body}: {items:?}",
+            );
+        }
     }
 }
 
