@@ -1112,7 +1112,7 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    /// Returns contextual fields only when the cursor belongs to a builtin dict call.
+    /// Returns unprovided contextual fields at a builtin dict keyword-name position.
     pub(crate) fn typed_dict_constructor_kwargs(
         &self,
         handle: &Handle,
@@ -1133,7 +1133,30 @@ impl<'a> Transaction<'a> {
         {
             return None;
         }
-        let base_type = self.construction_contextual_type(handle, module, call.range())?;
-        self.collect_typed_dict_keys(handle, base_type)
+        // The checker treats keyword-only dict calls as dictionary constructions. A bare name
+        // under the cursor can still be an unfinished keyword name, before `=` is typed.
+        if call.arguments.args.iter().any(
+            |arg| !matches!(arg, Expr::Name(name) if name.range().contains_inclusive(position)),
+        ) || call.arguments.keywords.iter().any(|keyword| {
+            keyword.range().contains_inclusive(position)
+                && keyword
+                    .arg
+                    .as_ref()
+                    .is_none_or(|name| position > name.range().end())
+        }) {
+            return None;
+        }
+        let base_type = self
+            .construction_contextual_type(handle, module, call.range())
+            .filter(Self::type_contains_typed_dict)?;
+        let mut fields = self.collect_typed_dict_keys(handle, base_type)?;
+        fields.retain(|field, _| {
+            !call.arguments.keywords.iter().any(|keyword| {
+                keyword.arg.as_ref().is_some_and(|name| {
+                    name.id.as_str() == field && !name.range().contains_inclusive(position)
+                })
+            })
+        });
+        Some(fields)
     }
 }

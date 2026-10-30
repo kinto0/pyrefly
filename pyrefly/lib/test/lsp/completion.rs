@@ -1251,25 +1251,18 @@ fn dict_completion_unpacking_parameter_context() {
     }
 }
 
-// The constructor currently offers every field, including inside values and after supplied keys.
 #[test]
 fn dict_completion_constructor_keyword_positions() {
     for (body, expected) in [
         ("cfg: Config = dict(|)", vec!["age=", "name="]),
-        ("cfg: Config = dict(name=\"x\", |)", vec!["age=", "name="]),
-        ("cfg: Config = dict(name=\"x\", na|)", vec!["age=", "name="]),
+        ("cfg: Config = dict(name=\"x\", |)", vec!["age="]),
+        ("cfg: Config = dict(name=\"x\", na|)", vec!["age="]),
         ("cfg: Config = dict(na|=\"x\")", vec!["age=", "name="]),
-        ("cfg: Config = dict(name=na|)", vec!["age=", "name="]),
-        ("cfg: Config = dict(name=[na|])", vec!["age=", "name="]),
-        (
-            "cfg: Config = dict(name={\"x\": na|})",
-            vec!["age=", "name="],
-        ),
-        ("cfg: Config = dict(**na|)", vec!["age=", "name="]),
-        (
-            "cfg: Config = dict({\"name\": \"x\"}, na|)",
-            vec!["age=", "name="],
-        ),
+        ("cfg: Config = dict(name=na|)", vec![]),
+        ("cfg: Config = dict(name=[na|])", vec![]),
+        ("cfg: Config = dict(name={\"x\": na|})", vec![]),
+        ("cfg: Config = dict(**na|)", vec![]),
+        ("cfg: Config = dict({\"name\": \"x\"}, na|)", vec![]),
         ("cfg: Config = dict(name=str(na|))", vec![]),
         ("cfg: Config = dict(name=dict(na|))", vec![]),
     ] {
