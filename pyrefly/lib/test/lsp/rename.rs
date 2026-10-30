@@ -8,6 +8,7 @@
 use std::fs;
 use std::ops::Range;
 
+use dupe::Dupe;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use pyrefly_build::handle::Handle;
@@ -18,16 +19,21 @@ use tempfile::TempDir;
 
 use crate::state::lsp::FindPreference;
 use crate::state::lsp::ReferenceOptions;
+use crate::state::require::Require;
 use crate::state::state::State;
 use crate::test::util::TestEnv;
 use crate::test::util::code_frame_of_source_at_range;
 use crate::test::util::get_batched_lsp_operations_report;
 
 /// Applies the reference edits used by rename to a source file, its stub, and a consumer.
+///
+/// The rename starts in `lib.py` unless `shadowing_source` is given. In that case, the rename
+/// starts in `shadow/lib.py`, a module that is also named `lib` but that imports never resolve to.
 fn rename_paired_symbol(
     source: &str,
     stub: &str,
     consumer: &str,
+    shadowing_source: Option<&str>,
     position: usize,
 ) -> Vec<(String, String)> {
     let root = TempDir::new().unwrap();
@@ -41,14 +47,24 @@ fn rename_paired_symbol(
         fs::write(&path, code).unwrap();
         env.add_real_path(name, path);
     }
+    let renamed_path = match shadowing_source {
+        Some(code) => {
+            let path = root.path().join("shadow").join("lib.py");
+            fs::create_dir(path.parent().unwrap()).unwrap();
+            fs::write(&path, code).unwrap();
+            path
+        }
+        None => root.path().join("lib.py"),
+    };
     let (state, handle) = env.to_state();
     let stub_handle = handle("lib");
     let source_handle = Handle::new(
         stub_handle.module(),
-        ModulePath::filesystem(root.path().join("lib.py")),
+        ModulePath::filesystem(renamed_path),
         *stub_handle.sys_info(),
     );
     let mut transaction = state.transaction();
+    transaction.run(&[source_handle.dupe()], Require::Everything, None);
     let definitions = transaction
         .find_definition(
             &source_handle,
@@ -75,17 +91,15 @@ fn rename_paired_symbol(
         for range in ranges.into_iter().rev() {
             code.replace_range(Range::<usize>::from(range), "renamed");
         }
-        result.push((
-            module
-                .path()
-                .as_path()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_owned(),
-            code,
-        ));
+        let relative_path = module
+            .path()
+            .as_path()
+            .strip_prefix(root.path())
+            .unwrap()
+            .components()
+            .map(|component| component.as_os_str().to_str().unwrap())
+            .join("/");
+        result.push((relative_path, code));
     }
     result.sort();
     result
@@ -138,7 +152,7 @@ fn test_rename_source_updates_stub_and_consumers() {
         ),
     ] {
         assert_eq!(
-            rename_paired_symbol(source, stub, consumer, source.find(name).unwrap()),
+            rename_paired_symbol(source, stub, consumer, None, source.find(name).unwrap()),
             vec![
                 ("consumer.py".to_owned(), consumer.replace(name, "renamed")),
                 ("lib.py".to_owned(), source.replace(name, "renamed")),
@@ -189,11 +203,40 @@ fn test_rename_local_symbols_does_not_change_stub_or_consumers() {
             let mut expected = source[..start].to_owned();
             expected.push_str(&source[start..].replace("item", "renamed"));
             assert_eq!(
-                rename_paired_symbol(&source, stub, consumer, start),
+                rename_paired_symbol(&source, stub, consumer, None, start),
                 vec![("lib.py".to_owned(), expected)],
             );
         }
     }
+}
+
+#[test]
+fn test_rename_shadowed_source_does_not_change_stub_or_consumers() {
+    let source = "def item() -> int:\n    return 1\n";
+    let stub = "def item() -> int: ...\n";
+    let consumer = "from lib import item\nitem()\n";
+    // BUG: imports of `lib` resolve to `lib.pyi`, which describes `lib.py` rather than
+    // `shadow/lib.py`, so the stub and its consumers should not be renamed.
+    assert_eq!(
+        rename_paired_symbol(
+            source,
+            stub,
+            consumer,
+            Some(source),
+            source.find("item").unwrap()
+        ),
+        vec![
+            (
+                "consumer.py".to_owned(),
+                consumer.replace("item", "renamed")
+            ),
+            ("lib.pyi".to_owned(), stub.replace("item", "renamed")),
+            (
+                "shadow/lib.py".to_owned(),
+                source.replace("item", "renamed")
+            ),
+        ],
+    );
 }
 
 fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String {
