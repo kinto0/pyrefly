@@ -1125,7 +1125,23 @@ impl<'a> Transaction<'a> {
                 AnyNodeRef::ExprCall(call) => Some(call),
                 _ => None,
             })?;
-        if !call.arguments.range.contains_inclusive(position)
+        if !call.arguments.range.contains_inclusive(position) {
+            return None;
+        }
+        // The checker treats keyword-only dict calls as dictionary constructions. A bare name
+        // under the cursor can still be an unfinished keyword name, before `=` is typed.
+        let has_positional_argument = call.arguments.args.iter().any(
+            |arg| !matches!(arg, Expr::Name(name) if name.range().contains_inclusive(position)),
+        );
+        let in_keyword_value = call.arguments.keywords.iter().any(|keyword| {
+            keyword.range().contains_inclusive(position)
+                && keyword
+                    .arg
+                    .as_ref()
+                    .is_none_or(|name| position > name.range().end())
+        });
+        if has_positional_argument
+            || in_keyword_value
             || !matches!(
                 self.get_type_trace(handle, call.func.range()),
                 Some(Type::ClassDef(class)) if class.is_builtin("dict")
@@ -1133,30 +1149,26 @@ impl<'a> Transaction<'a> {
         {
             return None;
         }
-        // The checker treats keyword-only dict calls as dictionary constructions. A bare name
-        // under the cursor can still be an unfinished keyword name, before `=` is typed.
-        if call.arguments.args.iter().any(
-            |arg| !matches!(arg, Expr::Name(name) if name.range().contains_inclusive(position)),
-        ) || call.arguments.keywords.iter().any(|keyword| {
-            keyword.range().contains_inclusive(position)
-                && keyword
-                    .arg
-                    .as_ref()
-                    .is_none_or(|name| position > name.range().end())
-        }) {
-            return None;
-        }
         let base_type = self
             .construction_contextual_type(handle, module, call.range())
             .filter(Self::type_contains_typed_dict)?;
         let mut fields = self.collect_typed_dict_keys(handle, base_type)?;
-        fields.retain(|field, _| {
-            !call.arguments.keywords.iter().any(|keyword| {
-                keyword.arg.as_ref().is_some_and(|name| {
-                    name.id.as_str() == field && !name.range().contains_inclusive(position)
-                })
-            })
-        });
+        let mut supplied = BTreeSet::new();
+        for keyword in &call.arguments.keywords {
+            if keyword
+                .arg
+                .as_ref()
+                .is_some_and(|name| name.range().contains_inclusive(position))
+            {
+                continue;
+            }
+            self.visit_keyword_entries(handle, keyword, |name, _| {
+                if let Some(name) = name {
+                    supplied.insert(name);
+                }
+            });
+        }
+        fields.retain(|field, _| !supplied.contains(field.as_str()));
         Some(fields)
     }
 }

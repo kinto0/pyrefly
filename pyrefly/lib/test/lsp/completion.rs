@@ -1283,15 +1283,8 @@ fn dict_completion_constructor_keyword_positions() {
         ("cfg: Config = dict(options, |)", vec![]),
         ("cfg: Config = dict(name=str(na|))", vec![]),
         ("cfg: Config = dict(name=dict(na|))", vec![]),
-        // Inline unpacked keys are not yet recognized as already supplied.
-        (
-            "cfg: Config = dict(**{\"name\": \"x\"}, |)",
-            vec!["age=", "name="],
-        ),
-        (
-            "cfg: Config = dict(**dict(name=\"x\"), |)",
-            vec!["age=", "name="],
-        ),
+        ("cfg: Config = dict(**{\"name\": \"x\"}, |)", vec!["age="]),
+        ("cfg: Config = dict(**dict(name=\"x\"), |)", vec!["age="]),
         ("cfg: Config = dict(**options, |)", vec!["age=", "name="]),
     ] {
         let mut labels = contextual_dict_completions(body)
