@@ -293,6 +293,110 @@ assert_type(unwrap(outer)(), int)
 );
 
 testcase!(
+    bug = "a wraps factory snapshots its target before a visible mutation",
+    test_inspect_unwrap_factory_before_mutation,
+    r#"
+from functools import update_wrapper as mutate, wraps
+from inspect import unwrap
+from typing import assert_type
+
+def leaf() -> str:
+    return "leaf"
+
+def target() -> int:
+    return 1
+
+factory = wraps(target)
+mutate(target, leaf)
+
+@factory
+def outer() -> bool:
+    return False
+
+assert_type(unwrap(outer)(), int)
+    "#,
+);
+
+testcase!(
+    bug = "visible branch and loop mutations leave captured targets stale",
+    test_inspect_unwrap_control_flow_mutations,
+    r#"
+from functools import update_wrapper, wraps
+from inspect import unwrap
+from typing import Callable, assert_type
+
+def leaf() -> str:
+    return "leaf"
+
+def branch(flag: bool) -> None:
+    def target() -> int:
+        return 1
+
+    @wraps(target)
+    def outer() -> bool:
+        return False
+
+    alias: Callable[[], int] = target
+    if flag:
+        update_wrapper(alias, leaf)
+    assert_type(unwrap(outer)(), int)
+
+def loop(count: int) -> None:
+    def target() -> int:
+        return 1
+
+    @wraps(target)
+    def outer() -> bool:
+        return False
+
+    for _ in range(count):
+        update_wrapper(target, leaf)
+    assert_type(unwrap(outer)(), int)
+
+def caught() -> None:
+    def target() -> int:
+        return 1
+
+    @wraps(target)
+    def outer() -> bool:
+        return False
+
+    try:
+        update_wrapper(target, leaf)
+        raise RuntimeError()
+    except RuntimeError:
+        assert_type(unwrap(outer)(), int)
+
+branch(True)
+loop(101)
+caught()
+    "#,
+);
+
+testcase!(
+    bug = "direct wraps applications can mutate an already captured target",
+    test_inspect_unwrap_direct_wraps_mutation,
+    r#"
+from functools import wraps
+from inspect import unwrap
+from typing import assert_type
+
+def leaf() -> str:
+    return "leaf"
+
+def target() -> int:
+    return 1
+
+@wraps(target)
+def outer() -> bool:
+    return False
+
+wraps(leaf)(target)
+assert_type(unwrap(outer)(), int)
+    "#,
+);
+
+testcase!(
     test_inspect_unwrap_unknown_wrapping_state,
     r#"
 from functools import update_wrapper, wraps
