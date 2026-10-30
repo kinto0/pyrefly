@@ -999,6 +999,8 @@ pub enum Key {
     /// The end of one suite in an `if`/`elif`/`else` chain, keyed by the clause's range. The
     /// fall-through of a chain with no `else` is keyed by the empty range at the chain's start.
     BranchEnd(TextRange),
+    /// A module-wide boolean summary of calls that may mutate function wrapping state.
+    FunctoolsWrapperMutation(TextRange),
 }
 
 impl Ranged for Key {
@@ -1039,7 +1041,7 @@ impl Ranged for Key {
             Self::SuppressedException(r) | Self::SuppressionNarrow(r) => *r,
             Self::ExceptionClass(r) => *r,
             Self::BranchTest(r) => *r,
-            Self::BranchEnd(r) => *r,
+            Self::BranchEnd(r) | Self::FunctoolsWrapperMutation(r) => *r,
         }
     }
 }
@@ -1095,6 +1097,9 @@ impl DisplayWith<ModuleInfo> for Key {
             Self::ExceptionClass(r) => write!(f, "Key::ExceptionClass({})", ctx.display(r)),
             Self::BranchTest(r) => write!(f, "Key::BranchTest({})", ctx.display(r)),
             Self::BranchEnd(r) => write!(f, "Key::BranchEnd({})", ctx.display(r)),
+            Self::FunctoolsWrapperMutation(r) => {
+                write!(f, "Key::FunctoolsWrapperMutation({})", ctx.display(r))
+            }
         }
     }
 }

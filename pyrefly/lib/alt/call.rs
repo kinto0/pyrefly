@@ -3453,6 +3453,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
         let arg = &x.arguments.args[0];
         let ty = self.expr_infer(arg, errors);
+        let has_mutation = self
+            .get_idx(self.bindings().functools_wrapper_mutation())
+            .ty()
+            .as_bool();
+        if has_mutation != Some(false) {
+            // Depth-limited solving can return a placeholder even for this constant binding.
+            // Runtime accepts arbitrary objects; the callable-only stub would reject valid calls.
+            return Some(self.heap.mk_any_explicit());
+        }
         Some(self.inspect_unwrapped_type(&ty, arg.range(), &mut SmallSet::new(), false))
     }
 
@@ -3464,8 +3473,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         seen: &mut SmallSet<Type>,
         followed_wrapped: bool,
     ) -> Type {
+        const MAX_WRAPPED_DEPTH: usize = 32;
         self.distribute_over_union(ty, |ty| {
-            if !seen.insert(ty.clone()) {
+            // Recursive class annotations can change type arguments at every wrapped edge.
+            if seen.len() >= MAX_WRAPPED_DEPTH
+                || matches!(ty, Type::ClassType(cls) if seen.iter().any(|previous| {
+                    matches!(previous, Type::ClassType(previous) if previous.class_object() == cls.class_object())
+                }))
+                || !seen.insert(ty.clone())
+            {
                 return self.heap.mk_any_explicit();
             }
             let wrapped_attr = Name::new_static("__wrapped__");

@@ -189,7 +189,6 @@ impl Incremental {
     }
 }
 
-// Bug: a newly added wrapping mutator does not invalidate a cached precise unwrap result.
 #[test]
 fn test_functools_wrapping_mutation_invalidates_unwrap() {
     let mut i = Incremental::new();
@@ -217,9 +216,10 @@ def unrelated() -> bool:
     };
     for mutation in ["", "update_wrapper(unrelated, source)", ""] {
         i.set("main", &module(mutation));
+        let expected = if mutation.is_empty() { "str" } else { "Any" };
         i.set(
             "foo",
-            "from main import result\nfrom typing import assert_type\nassert_type(result, str)\n",
+            &format!("from main import result\nfrom typing import Any, assert_type\nassert_type(result, {expected})\n"),
         );
         i.unchecked(&["main", "foo"]).check_errors();
     }

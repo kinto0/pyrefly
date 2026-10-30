@@ -84,7 +84,7 @@ testcase!(
     r#"
 from functools import update_wrapper, wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def inner(x: int) -> str:
     return str(x)
@@ -99,13 +99,13 @@ wrapped_middle = update_wrapper(middle, inner)
 wrapped_outer = update_wrapper(wrapper=outer, wrapped=wrapped_middle)
 assert_type(wrapped_outer(object()), bool)
 assert_type(wrapped_outer.__wrapped__(object()), None)
-assert_type(unwrap(wrapped_outer)(1), str)
+assert_type(unwrap(wrapped_outer)(1), Any)
 
 called_middle = wraps(inner)(middle)
 called_outer = wraps(called_middle)(outer)
 assert_type(called_outer(object()), bool)
 assert_type(called_outer.__wrapped__(object()), None)
-assert_type(unwrap(called_outer)(1), str)
+assert_type(unwrap(called_outer)(1), Any)
     "#,
 );
 
@@ -221,12 +221,11 @@ assert_type(repeatedly(3), int)
 );
 
 testcase!(
-    bug = "an ignored mutation is hidden behind a known wrapped edge",
     test_inspect_unwrap_mutated_middle,
     r#"
 from functools import update_wrapper, wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def leaf() -> str:
     return "leaf"
@@ -240,17 +239,16 @@ update_wrapper(middle, leaf)
 def outer() -> bool:
     return False
 
-assert_type(unwrap(outer)(), int)
+assert_type(unwrap(outer)(), Any)
     "#,
 );
 
 testcase!(
-    bug = "wrapped metadata retains an edge after an ignored retarget",
     test_inspect_unwrap_retargeted_function,
     r#"
 from functools import update_wrapper, wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def original() -> int:
     return 1
@@ -264,18 +262,17 @@ def wrapper() -> bool:
 
 alias = wrapper
 update_wrapper(alias, replacement)
-assert_type(unwrap(wrapper)(), int)
-assert_type(unwrap(alias)(), int)
+assert_type(unwrap(wrapper)(), Any)
+assert_type(unwrap(alias)(), Any)
     "#,
 );
 
 testcase!(
-    bug = "wrapped metadata snapshots a target before its mutation",
     test_inspect_unwrap_target_mutated_later,
     r#"
 from functools import update_wrapper, wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def leaf() -> str:
     return "leaf"
@@ -288,17 +285,16 @@ def outer() -> bool:
     return False
 
 update_wrapper(middle, leaf)
-assert_type(unwrap(outer)(), int)
+assert_type(unwrap(outer)(), Any)
     "#,
 );
 
 testcase!(
-    bug = "a wraps factory snapshots its target before a visible mutation",
     test_inspect_unwrap_factory_before_mutation,
     r#"
 from functools import update_wrapper as mutate, wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def leaf() -> str:
     return "leaf"
@@ -313,17 +309,16 @@ mutate(target, leaf)
 def outer() -> bool:
     return False
 
-assert_type(unwrap(outer)(), int)
+assert_type(unwrap(outer)(), Any)
     "#,
 );
 
 testcase!(
-    bug = "visible branch and loop mutations leave captured targets stale",
     test_inspect_unwrap_control_flow_mutations,
     r#"
 from functools import update_wrapper, wraps
 from inspect import unwrap
-from typing import Callable, assert_type
+from typing import Any, Callable, assert_type
 
 def leaf() -> str:
     return "leaf"
@@ -339,7 +334,7 @@ def branch(flag: bool) -> None:
     alias: Callable[[], int] = target
     if flag:
         update_wrapper(alias, leaf)
-    assert_type(unwrap(outer)(), int)
+    assert_type(unwrap(outer)(), Any)
 
 def loop(count: int) -> None:
     def target() -> int:
@@ -351,7 +346,7 @@ def loop(count: int) -> None:
 
     for _ in range(count):
         update_wrapper(target, leaf)
-    assert_type(unwrap(outer)(), int)
+    assert_type(unwrap(outer)(), Any)
 
 def caught() -> None:
     def target() -> int:
@@ -365,7 +360,7 @@ def caught() -> None:
         update_wrapper(target, leaf)
         raise RuntimeError()
     except RuntimeError:
-        assert_type(unwrap(outer)(), int)
+        assert_type(unwrap(outer)(), Any)
 
 branch(True)
 loop(101)
@@ -374,12 +369,11 @@ caught()
 );
 
 testcase!(
-    bug = "direct wraps applications can mutate an already captured target",
     test_inspect_unwrap_direct_wraps_mutation,
     r#"
 from functools import wraps
 from inspect import unwrap
-from typing import assert_type
+from typing import Any, assert_type
 
 def leaf() -> str:
     return "leaf"
@@ -392,7 +386,7 @@ def outer() -> bool:
     return False
 
 wraps(leaf)(target)
-assert_type(unwrap(outer)(), int)
+assert_type(unwrap(outer)(), Any)
     "#,
 );
 

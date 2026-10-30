@@ -33,8 +33,10 @@ use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::suggest::Candidate;
 use pyrefly_util::suggest::Search;
+use ruff_python_ast::AtomicNodeIndex;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprAttribute;
+use ruff_python_ast::ExprBooleanLiteral;
 use ruff_python_ast::Identifier;
 use ruff_python_ast::ModModule;
 use ruff_python_ast::Parameter;
@@ -235,6 +237,8 @@ pub struct Bindings {
     unused_variables: Vec<UnusedVariable>,
     pytest_info: Option<PytestBindingInfo>,
     promote_ranges: SmallSet<TextRange>,
+    /// Immutable module-wide wrapping uncertainty, read as a solver dependency by `inspect.unwrap`.
+    functools_wrapper_mutation: Idx<Key>,
     /// Yield and yield-from indices for each lambda that contains yields,
     /// keyed by the lambda's TextRange. Populated at binding time so the
     /// solver can look up yield info without re-walking the AST.
@@ -352,6 +356,8 @@ pub struct BindingsBuilder<'a> {
     /// set by `stmts()` and consumed by namedtuple synthesis in `stmt()`.
     pub adjacent_namedtuple_defaults: Option<Vec<Expr>>,
     pub promote_ranges: SmallSet<TextRange>,
+    /// Lexical may-mutation summary: branches, loops, and nested bodies cannot clear it.
+    pub(super) has_functools_wrapper_mutation: bool,
     pub type_checking_depth: usize,
     /// True while binding the outermost known-unreachable suite. The call that sets this flag
     /// owns resetting it after nested `stmts()` calls, suppressing duplicate diagnostics.
@@ -389,6 +395,25 @@ fn merge_ranges(mut ranges: Vec<TextRange>) -> Vec<TextRange> {
     merged
 }
 
+/// Bind a constant summary so adding or removing a mutator invalidates dependent unwrap answers.
+fn bind_functools_wrapper_mutation(
+    table: &mut BindingTable,
+    range: TextRange,
+    has_mutation: bool,
+) -> Idx<Key> {
+    table.insert(
+        Key::FunctoolsWrapperMutation(range),
+        Binding::Expr(
+            None,
+            Box::new(Expr::BooleanLiteral(ExprBooleanLiteral {
+                node_index: AtomicNodeIndex::default(),
+                range,
+                value: has_mutation,
+            })),
+        ),
+    )
+}
+
 impl Bindings {
     #[expect(dead_code)] // Useful API
     fn len(&self) -> usize {
@@ -399,7 +424,7 @@ impl Bindings {
 
     /// Create a minimal Bindings for testing purposes.
     ///
-    /// This creates a fake module with the given name and no actual bindings,
+    /// This creates a fake module with the given name and a mutation-free wrapper summary,
     /// which is useful for creating distinguishable CalcIds in tests.
     #[cfg(test)]
     pub fn for_test(name: &str) -> Self {
@@ -412,10 +437,13 @@ impl Bindings {
         let module_path = ModulePath::filesystem(PathBuf::from(format!("/test/{}.py", name)));
         let contents = Arc::new(String::new());
         let module_info = Module::new(module_name, module_path, contents);
+        let mut table = BindingTable::default();
+        let functools_wrapper_mutation =
+            bind_functools_wrapper_mutation(&mut table, TextRange::default(), false);
         Self {
             module_info,
             sys_info: SysInfo::default(),
-            table: Default::default(),
+            table,
             metadata: Arc::new(BindingsMetadata::new()),
             module_ranges: Arc::new(ModuleRanges {
                 multi_line: Vec::new(),
@@ -435,6 +463,7 @@ impl Bindings {
             shape_declarations: ShapeDeclarations::default(),
             subsequently_initialized: SmallSet::new(),
             promote_ranges: SmallSet::new(),
+            functools_wrapper_mutation,
         }
     }
 
@@ -447,6 +476,13 @@ impl Bindings {
 
     pub fn module(&self) -> &ModuleInfo {
         &self.module_info
+    }
+
+    /// The summary covers the whole module, including calls before a mutator and unrelated functions.
+    /// Without object alias tracking, captured wrapped targets cannot be trusted in such a module.
+    /// Stored factory applications, arbitrary attribute writes, and cross-module effects are not tracked.
+    pub fn functools_wrapper_mutation(&self) -> Idx<Key> {
+        self.functools_wrapper_mutation
     }
 
     pub fn sys_info(&self) -> &SysInfo {
@@ -725,6 +761,7 @@ impl Bindings {
         infer_return_types: InferReturnTypes,
         treat_all_caps_as_final: bool,
     ) -> Self {
+        let module_range = x.range;
         let pytest_info = PytestBindingInfo::from_module(&x);
         // Compute module ranges from the AST before consuming it. These are
         // needed later for error collection, which runs after the AST may
@@ -766,6 +803,7 @@ impl Bindings {
             subsequently_initialized: SmallSet::new(),
             adjacent_namedtuple_defaults: None,
             promote_ranges: SmallSet::new(),
+            has_functools_wrapper_mutation: false,
             type_checking_depth: 0,
             in_unreachable_suite: false,
             pending_gate: None,
@@ -879,6 +917,11 @@ impl Bindings {
             }
         }
         let module_deletes = scope_trace.module_deletes().clone();
+        let functools_wrapper_mutation = bind_functools_wrapper_mutation(
+            &mut builder.table,
+            module_range,
+            builder.has_functools_wrapper_mutation,
+        );
         builder.table.insert(
             KeyDjangoRelations,
             BindingDjangoRelations {
@@ -908,6 +951,7 @@ impl Bindings {
             shape_declarations: builder.shape_declarations.finish(),
             subsequently_initialized: builder.subsequently_initialized,
             promote_ranges: builder.promote_ranges,
+            functools_wrapper_mutation,
         }
     }
 

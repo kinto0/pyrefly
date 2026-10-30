@@ -986,6 +986,17 @@ impl<'a> BindingsBuilder<'a> {
                 // binding-variant choice — it drives a demand edge to
                 // `target::Exports`.
                 let special = self.as_special_export(&call.func);
+                // Factory creation (`wraps(f)`, including `@wraps(f)`) does not mutate a function.
+                // Applying the factory or calling `update_wrapper` may mutate aliased objects;
+                // argument splats and invalid calls are conservatively included in the summary.
+                if !self.has_functools_wrapper_mutation
+                    && (special == Some(SpecialExport::FunctoolsUpdateWrapper)
+                        || matches!(call.func.as_ref(), Expr::Call(factory)
+                            if self.as_special_export(&factory.func)
+                                == Some(SpecialExport::FunctoolsWraps)))
+                {
+                    self.has_functools_wrapper_mutation = true;
+                }
                 let call_range = call.range();
                 match special {
                     Some(

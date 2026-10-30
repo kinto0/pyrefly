@@ -94,6 +94,8 @@ pub enum SpecialExport {
     AttrsLegacyAttrib,
     AttrsNextGenField,
     AttrsNothing,
+    FunctoolsWraps,
+    FunctoolsUpdateWrapper,
 }
 
 impl SpecialExport {
@@ -179,6 +181,8 @@ impl SpecialExport {
             "attr" | "attrib" | "ib" => Some(Self::AttrsLegacyAttrib),
             "field" => Some(Self::AttrsNextGenField),
             "NOTHING" => Some(Self::AttrsNothing),
+            "wraps" => Some(Self::FunctoolsWraps),
+            "update_wrapper" => Some(Self::FunctoolsUpdateWrapper),
             _ => None,
         }
     }
@@ -223,6 +227,7 @@ impl SpecialExport {
                 matches!(m.as_str(), "typing" | "typing_extensions")
             }
             Self::CollectionsNamedTuple => matches!(m.as_str(), "collections"),
+            Self::FunctoolsWraps | Self::FunctoolsUpdateWrapper => m == ModuleName::functools(),
             Self::Enum | Self::StrEnum | Self::IntEnum => matches!(m.as_str(), "enum"),
             Self::Super
             | Self::Len
