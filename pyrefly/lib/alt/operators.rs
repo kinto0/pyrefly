@@ -519,7 +519,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(self.heap.mk_concrete_tuple(repeated))
     }
 
-    fn as_hint_for_display(lhs: &Type) -> Option<HintRef> {
+    fn as_hint_for_display(lhs: &Type) -> Option<HintRef<'_, '_>> {
         // In an operation between `lhs` and a container display (e.g., `[3]`, `{"a": 0)]`), the
         // type of the display should be inferred using `lhs` as a hint when the latter is a
         // container type with a display syntax. Hinting is harmless when the types don't match.
