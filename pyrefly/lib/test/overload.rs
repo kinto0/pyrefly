@@ -396,6 +396,119 @@ def exercise(flag: bool) -> None:
 "#,
 );
 
+// Reproductions from https://github.com/meta/pyrefly/issues/5634.
+testcase!(
+    bug = "Unavailable signatures reject valid calls and omitted defaults.",
+    test_missing_import_overload_fallback,
+    r#"
+from collections.abc import Callable
+from typing import Any, Literal, TypeVar, assert_type, overload
+from missing_backend import Tensor, Order, foo  # E: Cannot find module `missing_backend`
+
+@overload
+def compare(a: Tensor, kind: Literal["equal"], b: Tensor) -> bool: ...
+@overload
+def compare(a: Tensor, kind: str, b: Tensor) -> Tensor: ...
+def compare(a: Tensor, kind: str, b: Tensor) -> bool | Tensor:
+    return a == b
+
+def exercise(x: Tensor, y: Tensor) -> None:
+    compare(x, "equal", y)  # E: No matching overload found
+    compare(x, 1, y)  # E: No matching overload found
+
+def plain(a: int, order: Order = "K") -> int:
+    return a
+
+@overload
+def ones_like(a: int, order: Order = "K") -> int: ...
+@overload
+def ones_like(a: str, order: Order = "K") -> str: ...
+def ones_like(a: int | str, order: Order = "K") -> int | str:
+    return a
+
+assert_type(plain(1), int)  # E: Call uses a signature that depends on unresolved imports
+assert_type(ones_like(1), Any)  # E: No matching overload found
+assert_type(ones_like("x"), Any)  # E: No matching overload found
+
+R = TypeVar("R")
+def ident(x: R) -> Callable[[R], R]:
+    raise RuntimeError
+
+assert_type(ident(foo)(1), Any)  # E: Call uses a signature that depends on unresolved imports
+"#,
+);
+
+testcase!(
+    test_missing_import_overload_order,
+    r#"
+from typing import Any, assert_type, overload
+from missing_backend import Array  # E: Cannot find module `missing_backend`
+
+@overload
+def missing_first(value: Array, other: Any) -> Array: ...
+@overload
+def missing_first(value: int, other: Any) -> str: ...
+def missing_first(value: Any, other: Any) -> Any: ...
+
+@overload
+def known_first(value: int, other: Any) -> str: ...
+@overload
+def known_first(value: Array, other: Any) -> Array: ...
+def known_first(value: Any, other: Any) -> Any: ...
+
+def exercise(other: Any) -> None:
+    assert_type(missing_first(1, other), str)
+    assert_type(known_first(1, other), str)
+"#,
+);
+
+testcase!(
+    bug = "Unavailable signatures over-narrow gradual arguments.",
+    test_missing_import_overload_gradual_argument,
+    r#"
+from typing import Any, assert_type, overload
+from missing_backend import Array  # E: Cannot find module `missing_backend`
+
+@overload
+def alpha(cutoff: float) -> float: ...
+@overload
+def alpha(cutoff: Array) -> Array: ...
+def alpha(cutoff: Any) -> Any:
+    return cutoff
+
+def exercise(value: Any) -> None:
+    assert_type(alpha(value), float)
+    assert_type(alpha(cutoff=value), float)
+    assert_type(alpha(1.0), float)
+
+# Unannotated arguments must retain the same gradual behavior.
+def unannotated(value) -> None:
+    alpha(value)[:, None]  # E: Cannot index into `float`
+"#,
+);
+
+testcase!(
+    bug = "Unavailable signatures over-narrow gradual arguments.",
+    test_missing_import_overload_gradual_argument_spec,
+    TestEnv::new().enable_spec_compliant_overloads(),
+    r#"
+from typing import Any, assert_type, overload
+from missing_backend import Array  # E: Cannot find module `missing_backend`
+
+@overload
+def alpha(cutoff: Array) -> Array: ...
+@overload
+def alpha(cutoff: float) -> float: ...
+def alpha(cutoff: Any) -> Any:
+    return cutoff
+
+def exercise(value: Any) -> None:
+    assert_type(alpha(value), float)
+    assert_type(alpha(cutoff=value), float)
+    assert_type(alpha(1.0), float)
+"#,
+);
+
 testcase!(
     test_overload_expansion_keeps_lambda_context,
     TestEnv::new().enable_implicit_any_lambda_error(),
