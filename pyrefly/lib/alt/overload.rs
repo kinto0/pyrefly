@@ -56,6 +56,7 @@ use crate::types::callable::Params;
 use crate::types::function::FuncMetadata;
 use crate::types::function::Function;
 use crate::types::function::FunctionKind;
+use crate::types::function::UnresolvedImports;
 use crate::types::literal::Lit;
 use crate::types::quantified::Quantified;
 use crate::types::type_var::Restriction;
@@ -1020,8 +1021,29 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     })
                     .collect::<Vec<_>>();
                 let split_point = if !changed {
-                    // Shortcut: if the arguments haven't changed, we know that the first overload
-                    // matches and we can eliminate all the rest.
+                    // Only prefer resolved input contracts when there is no relevant argument
+                    // ambiguity. If every match has unresolved inputs, retain normal fallback.
+                    let has_unresolved_import_inputs = |overload: &CalledOverload<'_>| {
+                        let function = &overload.func.1;
+                        function
+                            .metadata
+                            .flags
+                            .unresolved_imports
+                            .unwrap_or_else(|| {
+                                function
+                                    .signature
+                                    .classify_unresolved_imports(overload.func.0.as_deref())
+                            })
+                            == UnresolvedImports::Inputs
+                    };
+                    if matched_overloads
+                        .iter()
+                        .any(|overload| !has_unresolved_import_inputs(overload))
+                    {
+                        matched_overloads
+                            .retain(|overload| !has_unresolved_import_inputs(overload));
+                    }
+                    // The first remaining overload matches without gradual ambiguity.
                     Some(1)
                 } else {
                     matched_overloads

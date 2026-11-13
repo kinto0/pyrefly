@@ -26,6 +26,7 @@ use starlark_map::small_set::SmallSet;
 use crate::display::TypeDisplayContext;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
+use crate::function::UnresolvedImports;
 use crate::quantified::Quantified;
 use crate::type_output::DisplayOutput;
 use crate::type_output::TypeOutput;
@@ -41,16 +42,21 @@ pub struct Callable {
 }
 
 impl Callable {
-    /// Whether a signature's parameter, return, or type-parameter types contain unresolved
-    /// import recovery. Check before substituting types inferred from call arguments.
-    pub fn contains_unresolved_imports(&self, tparams: Option<&TParams>) -> bool {
-        let mut found = false;
-        let mut check_type = |ty: &Type| found = found || ty.contains_missing_import();
-        self.visit(&mut check_type);
+    /// Classify declared import recovery before substituting receiver or argument types.
+    pub fn classify_unresolved_imports(&self, tparams: Option<&TParams>) -> UnresolvedImports {
+        let mut inputs = false;
+        let mut check_type = |ty: &Type| inputs = inputs || ty.contains_missing_import();
+        self.params.visit(&mut check_type);
         if let Some(tparams) = tparams {
             tparams.visit(&mut check_type);
         }
-        found
+        if inputs {
+            UnresolvedImports::Inputs
+        } else if self.ret.contains_missing_import() {
+            UnresolvedImports::ReturnOnly
+        } else {
+            UnresolvedImports::Resolved
+        }
     }
 
     /// Returns true if this callable has the `*args: Any, **kwargs: Any -> Any`

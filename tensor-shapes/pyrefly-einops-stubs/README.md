@@ -23,9 +23,11 @@ install an array library. Install matching shape stubs for each of these backend
 present in your environment. Existing Torch users upgrading from the base package
 must add `[torch]` to retain Torch shape stubs.
 
-Unresolved optional backend imports can cause overload selection to lose shape
-precision. Import replacement settings such as `replace-imports-with-any` and
-`ignore-missing-imports` erase the provenance of unavailable backend annotations.
+Shape precision with optional backends requires Pyrefly's missing-import overload
+preference. It favors resolved input contracts without adding call warnings,
+while preserving return-only recovery and ordinary ambiguity for gradual arguments.
+Do not configure `replace-imports-with-any` or `ignore-missing-imports` for absent
+backends: those settings erase the provenance of unavailable annotations.
 
 Literal `axes_lengths` keyword arguments are carried into the shape rules, so named
 input splits and repeated output axes remain tracked. Dynamically unpacked mappings
@@ -35,4 +37,5 @@ Run the static tests with:
 
 ```bash
 python3 tensor-shapes/pyrefly-einops-stubs/run_pyrefly.py --buck
+python3 tensor-shapes/pyrefly-einops-stubs/run_optional_backends.py --pyrefly /path/to/pyrefly
 ```

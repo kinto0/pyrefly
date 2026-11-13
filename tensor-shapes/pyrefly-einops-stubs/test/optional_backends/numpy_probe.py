@@ -13,25 +13,22 @@ import torch  # noqa: F401  # E: Cannot find module `torch`
 from einops import _NumpyResult, einsum, rearrange, reduce, repeat
 
 
-# BUG (#5634): Absent backend overloads erase known return shapes.
 def test_shapes(
     image: np.ndarray[[2, 3, 5, 7], np.dtype[np.float64]],
     matrix: np.ndarray[[2, 3], np.dtype[np.float64]],
     left: np.ndarray[[2, 3, 5], np.dtype[np.float64]],
     right: np.ndarray[[2, 5, 7], np.dtype[np.float64]],
 ) -> None:
-    assert_type(  # E: assert_type(Unknown, ndarray[[2, 5, 7, 3]]) failed
+    assert_type(
         rearrange(image, "b c h w -> b h w c"),
         np.ndarray[[2, 5, 7, 3], np.dtype[np.float64]],
     )
-    assert_type(  # E: assert_type(Unknown, _NumpyResult[[2]]) failed
-        reduce(matrix, "row col -> row", "mean"), _NumpyResult[[2]]
-    )
-    assert_type(  # E: assert_type(Unknown, ndarray[[2, 3, 4]]) failed
+    assert_type(reduce(matrix, "row col -> row", "mean"), _NumpyResult[[2]])
+    assert_type(
         repeat(matrix, "row col -> row col copies", copies=4),
         np.ndarray[[2, 3, 4], np.dtype[np.float64]],
     )
-    assert_type(  # E: assert_type(Unknown, _NumpyResult[[2, 3, 7]]) failed
+    assert_type(
         einsum(left, right, "batch row inner, batch inner col -> batch row col"),
         _NumpyResult[[2, 3, 7]],
     )

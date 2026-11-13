@@ -43,13 +43,23 @@ pub struct Function {
 }
 
 impl Function {
-    /// Preserve an existing declared classification when rebuilding a substituted function.
+    /// Preserve a declared classification when rebuilding a substituted function.
     pub fn initialize_unresolved_imports(&mut self, tparams: Option<&TParams>) {
         if self.metadata.flags.unresolved_imports.is_none() {
             self.metadata.flags.unresolved_imports =
-                Some(self.signature.contains_unresolved_imports(tparams));
+                Some(self.signature.classify_unresolved_imports(tparams));
         }
     }
+}
+
+/// Return-only import recovery does not weaken a signature's input contract.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+)]
+pub enum UnresolvedImports {
+    Resolved,
+    ReturnOnly,
+    Inputs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -270,7 +280,7 @@ pub struct FuncFlags {
     pub has_gradual_variadic_params: bool,
     /// Preserve the defined contract across receiver and argument substitution.
     /// Unclassified signatures use a structural fallback at their construction or call boundary.
-    pub unresolved_imports: Option<bool>,
+    pub unresolved_imports: Option<UnresolvedImports>,
 }
 
 impl FuncFlags {

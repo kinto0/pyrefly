@@ -28,7 +28,6 @@ def construct(array: Array, other: Other) -> Model:
 );
 
 testcase!(
-    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_overload,
     r#"
 from typing import Any, assert_type, overload
@@ -40,11 +39,11 @@ def transform(x: Array[int]) -> Array[str]: ...
 def transform(x: int) -> str: ...
 def transform(x: Any) -> Any: ...
 
-assert_type(transform(1), Any)
+assert_type(transform(1), str)
 "#,
 );
 
-// A missing-import return type participates in ordinary overload selection.
+// Return-only recovery does not affect the input contract used for overload preference.
 testcase!(
     test_signature_unresolved_import_return_only,
     r#"
@@ -134,7 +133,6 @@ x = s
 );
 
 testcase!(
-    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_missing_export,
     TestEnv::one("backend", ""),
     r#"
@@ -146,7 +144,7 @@ def transform(x: Array) -> Any: ...
 @overload
 def transform(x: int) -> str: ...
 def transform(x: Any) -> Any: ...
-assert_type(transform(1), Any)
+assert_type(transform(1), str)
 "#,
 );
 
@@ -351,7 +349,6 @@ def exercise(value: Any) -> None:
 );
 
 testcase!(
-    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_bound_input,
     r#"
 from typing import Any, assert_type, overload
@@ -364,7 +361,7 @@ def choose(value: list[str]) -> bool: ...
 def choose(value: Any) -> Any: ...
 
 values: list[str] = ["bad"]
-assert_type(choose(values), str)
+assert_type(choose(values), bool)
 "#,
 );
 
@@ -438,7 +435,6 @@ assert_type(ident(foo)(1), Any)
 );
 
 testcase!(
-    bug = "Missing imports shadow available overloads.",
     test_missing_import_overload_order,
     r#"
 from typing import Any, assert_type, overload
@@ -457,7 +453,7 @@ def known_first(value: Array, other: Any) -> Array: ...
 def known_first(value: Any, other: Any) -> Any: ...
 
 def exercise(other: Any) -> None:
-    assert_type(missing_first(1, other), Any)
+    assert_type(missing_first(1, other), str)
     assert_type(known_first(1, other), str)
 "#,
 );
@@ -487,7 +483,6 @@ def unannotated(value) -> None:
 );
 
 testcase!(
-    bug = "Missing imports shadow available overloads for concrete arguments.",
     test_missing_import_overload_gradual_argument_spec,
     TestEnv::new().enable_spec_compliant_overloads(),
     r#"
@@ -504,7 +499,7 @@ def alpha(cutoff: Any) -> Any:
 def exercise(value: Any) -> None:
     assert_type(alpha(value), Any)
     assert_type(alpha(cutoff=value), Any)
-    assert_type(alpha(1.0), Any)
+    assert_type(alpha(1.0), float)
 "#,
 );
 
@@ -556,8 +551,9 @@ def omitted(value: object) -> object: ...
 def omitted(value: Any, device: Any = None) -> Any:
     raise RuntimeError
 
-assert_type(known_arm(7), list[int])
-assert_type(omitted(7), list[int])
+# Input-wide preference includes known union arms and omitted optional annotations.
+assert_type(known_arm(7), object)
+assert_type(omitted(7), object)
 "#,
 );
 
