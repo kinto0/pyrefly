@@ -186,6 +186,42 @@ impl ClassFieldProperties {
     pub fn docstring_range(&self) -> Option<TextRange> {
         self.docstring_range
     }
+
+    /// Whether `self` and `other` declare a field the same way, wherever in the file they are.
+    /// Locations are read only by the module that declares the field.
+    fn same_declaration(&self, other: &Self) -> bool {
+        let Self {
+            is_annotated,
+            is_initialized_on_class,
+            is_defined_in_class_body,
+            attrs_field_specifier,
+            django_queryset_only,
+            range: _,
+            docstring_range: _,
+        } = self;
+        *is_annotated == other.is_annotated
+            && *is_initialized_on_class == other.is_initialized_on_class
+            && *is_defined_in_class_body == other.is_defined_in_class_body
+            && *django_queryset_only == other.django_queryset_only
+            && match (attrs_field_specifier, &other.attrs_field_specifier) {
+                (None, None) => true,
+                (Some(x), Some(y)) => {
+                    let AttrsFieldSpecifier {
+                        kind,
+                        default_is_nothing,
+                        default_decorator_method_range,
+                        converter_decorator_method_range,
+                    } = x;
+                    *kind == y.kind
+                        && *default_is_nothing == y.default_is_nothing
+                        && default_decorator_method_range.is_some()
+                            == y.default_decorator_method_range.is_some()
+                        && converter_decorator_method_range.is_some()
+                            == y.converter_decorator_method_range.is_some()
+                }
+                _ => false,
+            }
+    }
 }
 
 /// The set of fields declared on a class, with their properties.
@@ -199,6 +235,17 @@ impl ClassFields {
 
     pub fn empty() -> Self {
         Self(SmallMap::new())
+    }
+
+    /// Whether `self` and `other` declare the same fields, in the same order and the same way,
+    /// wherever in the file they are declared.
+    pub fn same_declarations(&self, other: &ClassFields) -> bool {
+        self.0.len() == other.0.len()
+            && self
+                .0
+                .iter()
+                .zip(other.0.iter())
+                .all(|((n1, p1), (n2, p2))| n1 == n2 && p1.same_declaration(p2))
     }
 
     pub fn len(&self) -> usize {

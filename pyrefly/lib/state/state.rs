@@ -10,6 +10,7 @@ use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fs::File;
@@ -179,12 +180,166 @@ pub struct ModuleDeps {
     pub names: SmallMap<Name, NameDep>,
     /// Do we depend on the wildcard export set?
     pub wildcard: bool,
-    /// Which classes do we depend on?
-    pub classes: SmallSet<ClassDefIndex>,
+    /// Which exported keys of classes, and which classes' declared fields (their rows in
+    /// `BindingsMetadata`), do we depend on?
+    pub classes: ClassReads,
     /// Which type aliases do we depend on?
     pub type_aliases: SmallSet<TypeAliasIndex>,
     /// Do we depend on module-level Django reverse relation metadata?
     pub django_relations: bool,
+}
+
+/// The exported keys of classes that a module read from another module, or that changed in a
+/// module, and the classes whose declared fields it read or that changed. Entries are packed into a
+/// `u64` each and kept sorted, with the class index in the high 32 bits:
+/// - for each class, one entry with a bit per kind of key below the top bit (`ClassReads::MRO`
+///   and the others), where `ClassReads::ROW` stands for the declared fields;
+/// - for each field key, one entry with the top bit set and a 31-bit hash of the field name.
+///
+/// Two sets share a read when they have entries for the same class whose kind bits intersect, or
+/// the same field entry. Two field names of a class with the same hash look like the same field;
+/// that can only rebuild a module that did not need to be rebuilt.
+///
+/// Inserting into the sorted `Vec` moves the entries after it, so it costs O(n) per insert. Sets
+/// hold about 3 entries on average; a module that reads hundreds of fields of one class is where
+/// this would show.
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct ClassReads(Vec<u64>);
+
+impl ClassReads {
+    const TPARAMS: u32 = 1 << 0;
+    const BASE_TYPE: u32 = 1 << 1;
+    const SYNTHESIZED_FIELDS: u32 = 1 << 2;
+    const VARIANCE: u32 = 1 << 3;
+    const METADATA: u32 = 1 << 4;
+    const MRO: u32 = 1 << 5;
+    const DISJOINT_BASE: u32 = 1 << 6;
+    const ABSTRACT_CLASS_CHECK: u32 = 1 << 7;
+    const SUBSCRIPT_SYMMETRY: u32 = 1 << 8;
+    /// The fields that the class declares.
+    const ROW: u32 = 1 << 9;
+    /// Set in the entry of a field key.
+    const FIELD: u64 = 1 << 31;
+
+    fn prefix(class: ClassDefIndex) -> u64 {
+        (class.0 as u64) << 32
+    }
+
+    fn class_of(entry: u64) -> u32 {
+        (entry >> 32) as u32
+    }
+
+    fn is_field(entry: u64) -> bool {
+        entry & Self::FIELD != 0
+    }
+
+    /// The position of the kinds entry of `class`, or where it would be.
+    fn kinds_position(&self, class: u32) -> (usize, bool) {
+        let i = self.0.partition_point(|&e| Self::class_of(e) < class);
+        let found = self
+            .0
+            .get(i)
+            .is_some_and(|&e| Self::class_of(e) == class && !Self::is_field(e));
+        (i, found)
+    }
+
+    fn insert_kinds(&mut self, class: ClassDefIndex, kinds: u32) {
+        match self.kinds_position(class.0) {
+            (i, true) => self.0[i] |= kinds as u64,
+            (i, false) => self.0.insert(i, Self::prefix(class) | kinds as u64),
+        }
+    }
+
+    fn insert_field(&mut self, class: ClassDefIndex, name: &Name) {
+        let hash = Hashed::new(name).hash().get() as u64;
+        let entry = Self::prefix(class) | Self::FIELD | (hash & (Self::FIELD - 1));
+        if let Err(i) = self.0.binary_search(&entry) {
+            self.0.insert(i, entry);
+        }
+    }
+
+    fn merge(&mut self, other: &ClassReads) {
+        if other.0.is_empty() {
+            return;
+        }
+        let mut merged = Vec::with_capacity(self.0.len() + other.0.len());
+        let (mut x, mut y) = (self.0.iter().peekable(), other.0.iter().peekable());
+        loop {
+            let next = match (x.peek(), y.peek()) {
+                (Some(&&a), Some(&&b))
+                    if Self::class_of(a) == Self::class_of(b)
+                        && !Self::is_field(a)
+                        && !Self::is_field(b) =>
+                {
+                    x.next();
+                    y.next();
+                    a | b
+                }
+                (Some(&&a), Some(&&b)) if a == b => {
+                    x.next();
+                    y.next();
+                    a
+                }
+                (Some(&&a), Some(&&b)) if a < b => {
+                    x.next();
+                    a
+                }
+                (_, Some(&&b)) => {
+                    y.next();
+                    b
+                }
+                (Some(&&a), None) => {
+                    x.next();
+                    a
+                }
+                (None, None) => break,
+            };
+            merged.push(next);
+        }
+        merged.shrink_to_fit();
+        self.0 = merged;
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Whether `self` and `other` share a read (see `ClassReads`).
+    fn intersects(&self, other: &ClassReads) -> bool {
+        let (small, large) = if self.0.len() <= other.0.len() {
+            (self, other)
+        } else {
+            (other, self)
+        };
+        small.0.iter().any(|&e| {
+            if Self::is_field(e) {
+                large.0.binary_search(&e).is_ok()
+            } else {
+                match large.kinds_position(Self::class_of(e)) {
+                    (i, true) => large.0[i] & e & (Self::FIELD - 1) != 0,
+                    (_, false) => false,
+                }
+            }
+        })
+    }
+}
+
+impl Debug for ClassReads {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(|&e| {
+                if Self::is_field(e) {
+                    format!(
+                        "class {} field #{:x}",
+                        Self::class_of(e),
+                        e & (Self::FIELD - 1)
+                    )
+                } else {
+                    format!("class {} kinds {:#b}", Self::class_of(e), e as u32)
+                }
+            }))
+            .finish()
+    }
 }
 
 /// Per-module change tracking. Represents what changed in a module's exports.
@@ -237,7 +392,7 @@ pub enum ModuleDep {
     /// existence-level only; used by call sites that want every export
     /// without establishing per-name dependencies.
     EveryExportUntracked,
-    /// Depend on a class definition (fields, metadata, etc.).
+    /// Depend on the fields that a class declares, its row in `BindingsMetadata`.
     Class(ClassDefIndex),
 }
 
@@ -256,9 +411,15 @@ impl ModuleChanges {
             AnyExportedKey::KeyExport(k) => {
                 self.0.names.entry(k.0).or_default();
             }
-            // Classes, type aliases, and django relations don't distinguish between existence and change.
+            // Class keys, type aliases, and django relations don't distinguish between existence
+            // and change: a module that read the key is affected either way.
             _ => self.add_key(key),
         }
+    }
+
+    /// Record that the fields a class declares changed, or that the class was added or removed.
+    pub fn add_class_row(&mut self, class: ClassDefIndex) {
+        self.0.classes.insert_kinds(class, ClassReads::ROW);
     }
 
     /// Merge another `ModuleChanges` into this one, mutating in place.
@@ -300,7 +461,7 @@ impl ModuleChanges {
                 }
             }
         }
-        if self.0.classes.iter().any(|c| other.0.classes.contains(c)) {
+        if self.0.classes.intersects(&other.0.classes) {
             return true;
         }
         self.0
@@ -324,17 +485,36 @@ impl ModuleDeps {
             AnyExportedKey::KeyDjangoRelations(_) => {
                 self.django_relations = true;
             }
-            AnyExportedKey::KeyTParams(KeyTParams(c))
-            | AnyExportedKey::KeyClassBaseType(KeyClassBaseType(c))
-            | AnyExportedKey::KeyClassField(KeyClassField(c, _))
-            | AnyExportedKey::KeyClassSynthesizedFields(KeyClassSynthesizedFields(c))
-            | AnyExportedKey::KeyVariance(KeyVariance(c))
-            | AnyExportedKey::KeyClassMetadata(KeyClassMetadata(c))
-            | AnyExportedKey::KeyClassMro(KeyClassMro(c))
-            | AnyExportedKey::KeyClassDisjointBase(KeyClassDisjointBase(c))
-            | AnyExportedKey::KeyAbstractClassCheck(KeyAbstractClassCheck(c))
-            | AnyExportedKey::KeyClassSubscriptSymmetry(KeyClassSubscriptSymmetry(c)) => {
-                self.classes.insert(c);
+            AnyExportedKey::KeyClassField(KeyClassField(c, name)) => {
+                self.classes.insert_field(c, &name);
+            }
+            AnyExportedKey::KeyTParams(KeyTParams(c)) => {
+                self.classes.insert_kinds(c, ClassReads::TPARAMS);
+            }
+            AnyExportedKey::KeyClassBaseType(KeyClassBaseType(c)) => {
+                self.classes.insert_kinds(c, ClassReads::BASE_TYPE);
+            }
+            AnyExportedKey::KeyClassSynthesizedFields(KeyClassSynthesizedFields(c)) => {
+                self.classes.insert_kinds(c, ClassReads::SYNTHESIZED_FIELDS);
+            }
+            AnyExportedKey::KeyVariance(KeyVariance(c)) => {
+                self.classes.insert_kinds(c, ClassReads::VARIANCE);
+            }
+            AnyExportedKey::KeyClassMetadata(KeyClassMetadata(c)) => {
+                self.classes.insert_kinds(c, ClassReads::METADATA);
+            }
+            AnyExportedKey::KeyClassMro(KeyClassMro(c)) => {
+                self.classes.insert_kinds(c, ClassReads::MRO);
+            }
+            AnyExportedKey::KeyClassDisjointBase(KeyClassDisjointBase(c)) => {
+                self.classes.insert_kinds(c, ClassReads::DISJOINT_BASE);
+            }
+            AnyExportedKey::KeyAbstractClassCheck(KeyAbstractClassCheck(c)) => {
+                self.classes
+                    .insert_kinds(c, ClassReads::ABSTRACT_CLASS_CHECK);
+            }
+            AnyExportedKey::KeyClassSubscriptSymmetry(KeyClassSubscriptSymmetry(c)) => {
+                self.classes.insert_kinds(c, ClassReads::SUBSCRIPT_SYMMETRY);
             }
         }
     }
@@ -360,7 +540,7 @@ impl ModuleDeps {
                 self.wildcard = true;
             }
             ModuleDep::Class(idx) => {
-                self.classes.insert(idx);
+                self.classes.insert_kinds(idx, ClassReads::ROW);
             }
         }
     }
@@ -383,7 +563,7 @@ impl ModuleDeps {
                 }
             }
         }
-        self.classes.extend(other.classes);
+        self.classes.merge(&other.classes);
         self.type_aliases.extend(other.type_aliases);
         self.wildcard |= other.wildcard;
         self.django_relations |= other.django_relations;
@@ -429,7 +609,7 @@ impl ModuleDeps {
         if self.django_relations && changed.0.django_relations {
             return true;
         }
-        if self.classes.iter().any(|c| changed.0.classes.contains(c)) {
+        if self.classes.intersects(&changed.0.classes) {
             return true;
         }
         self.type_aliases
@@ -1715,6 +1895,19 @@ impl<'a> Transaction<'a> {
                     .state
                     .get_solutions()
                     .expect("solutions must exist after computing Solutions");
+                // Class rows: the fields each class declares, which other modules read through
+                // `get_class_fields` rather than through an exported key. Without old answers or
+                // solutions, no module could have read them.
+                let old_metadata = match (&old_solutions, &old_answers) {
+                    (Some(solutions), _) => Some(solutions.metadata().dupe()),
+                    (None, Some(answers)) => Some(answers.bindings().metadata().dupe()),
+                    (None, None) => None,
+                };
+                if let Some(old_metadata) = old_metadata {
+                    for class in old_metadata.changed_class_rows(new_solutions.metadata()) {
+                        changed.add_class_row(class);
+                    }
+                }
                 if let Some(old_sol) = old_solutions {
                     old_sol.changed_exports(&new_solutions, &mut changed);
                 } else if let Some(old_ans) = old_answers {
@@ -4014,5 +4207,53 @@ impl State {
             .transaction
             .run(handles, require, custom_thread_pool);
         self.commit_transaction(transaction, telemetry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pyrefly_types::class::ClassDefIndex;
+    use ruff_python_ast::name::Name;
+
+    use super::ClassReads;
+
+    #[test]
+    fn test_class_reads() {
+        let c0 = ClassDefIndex(0);
+        let c1 = ClassDefIndex(1);
+        let mut reads = ClassReads::default();
+        reads.insert_kinds(c1, ClassReads::MRO);
+        reads.insert_field(c0, &Name::new_static("x"));
+        reads.insert_kinds(c0, ClassReads::ROW);
+        reads.insert_kinds(c1, ClassReads::METADATA);
+        reads.insert_field(c0, &Name::new_static("x"));
+
+        let with = |f: &dyn Fn(&mut ClassReads)| {
+            let mut changes = ClassReads::default();
+            f(&mut changes);
+            changes
+        };
+        assert!(reads.intersects(&with(&|c| c.insert_kinds(c1, ClassReads::METADATA))));
+        assert!(reads.intersects(&with(&|c| {
+            c.insert_kinds(c0, ClassReads::ROW | ClassReads::MRO)
+        })));
+        assert!(reads.intersects(&with(&|c| c.insert_field(c0, &Name::new_static("x")))));
+        assert!(!reads.intersects(&with(&|c| c.insert_kinds(c0, ClassReads::MRO))));
+        assert!(!reads.intersects(&with(&|c| c.insert_field(c0, &Name::new_static("y")))));
+        assert!(!reads.intersects(&with(&|c| c.insert_field(c1, &Name::new_static("x")))));
+        assert!(!reads.intersects(&with(&|c| c.insert_kinds(c1, ClassReads::ROW))));
+
+        // Merging keeps one kinds entry per class and drops repeated fields.
+        let mut merged = with(&|c| {
+            c.insert_kinds(c0, ClassReads::TPARAMS);
+            c.insert_field(c0, &Name::new_static("x"));
+            c.insert_field(c1, &Name::new_static("z"));
+        });
+        merged.merge(&reads);
+        let mut expected = reads.clone();
+        expected.insert_kinds(c0, ClassReads::TPARAMS);
+        expected.insert_field(c1, &Name::new_static("z"));
+        assert_eq!(merged, expected);
+        assert_eq!(merged.0.len(), 4);
     }
 }
