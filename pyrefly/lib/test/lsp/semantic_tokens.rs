@@ -1273,7 +1273,7 @@ normalized_union_class: type[SingletonE] | type[SingletonF]
         ("mixed_str_enum_class.title", "class", "property"),
         ("Holder.title", "class", "property"),
         // BUG: A should be enumMember, but normalization loses the enum literal types.
-        // https://github.com/meta/pyrefly/issues/4751
+        // https://github.com/meta/pyrefly/issues/5645
         ("normalized_union_class.A", "class", "property"),
     ] {
         let (receiver, attribute) = expression.split_once('.').unwrap();
@@ -2426,4 +2426,70 @@ fn attribute_range_skips_classification_but_visits_receiver() {
             .collect();
         assert_eq!(tokens, expected_tokens);
     }
+}
+
+#[test]
+fn enum_member_on_expression_receiver_test() {
+    let code = r#"
+from enum import Enum
+
+class E(Enum):
+    A = 1
+    B = 2
+
+def make() -> E: ...
+es: list[E] = []
+make().A
+es[0].A
+"#;
+    assert_full_semantic_tokens(
+        &[("main", code)],
+        r#"
+# main.py
+line: 1, column: 5, length: 4, text: enum
+token-type: namespace
+
+line: 1, column: 17, length: 4, text: Enum
+token-type: class
+
+line: 3, column: 6, length: 1, text: E
+token-type: class
+
+line: 3, column: 8, length: 4, text: Enum
+token-type: class
+
+line: 4, column: 4, length: 1, text: A
+token-type: variable, token-modifiers: [readonly]
+
+line: 5, column: 4, length: 1, text: B
+token-type: variable, token-modifiers: [readonly]
+
+line: 7, column: 4, length: 4, text: make
+token-type: function
+
+line: 7, column: 14, length: 1, text: E
+token-type: class
+
+line: 8, column: 0, length: 2, text: es
+token-type: variable
+
+line: 8, column: 4, length: 4, text: list
+token-type: class, token-modifiers: [defaultLibrary]
+
+line: 8, column: 9, length: 1, text: E
+token-type: class
+
+line: 9, column: 0, length: 4, text: make
+token-type: function
+
+line: 9, column: 7, length: 1, text: A
+token-type: enumMember
+
+line: 10, column: 0, length: 2, text: es
+token-type: variable
+
+line: 10, column: 6, length: 1, text: A
+token-type: enumMember
+"#,
+    );
 }
