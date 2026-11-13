@@ -3941,17 +3941,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub fn solve_tparams(&self, binding: &BindingTParams, errors: &ErrorCollector) -> TParams {
-        let result = self.calculate_class_tparams(
+        let tparams = self.calculate_class_tparams(
             &binding.name,
             binding.scoped_type_params.as_deref(),
             &binding.generic_bases,
             &binding.legacy_tparams,
             errors,
         );
-        // Truncate recursive TArgs nesting in restrictions. This prevents unbounded
-        // growth during fixpoint iteration when mutually-recursive classes reference
-        // each other in type parameter bounds.
-        result.truncate_recursive_targs()
+        let class = self.get_idx(binding.class_idx);
+        let owner = class.0.as_ref().expect(
+            "solving a class with legacy type parameters reads no other answer, so it is not recursive",
+        );
+        tparams.truncate_recursive_targs(owner)
     }
 
     pub fn solve_class_base_type(

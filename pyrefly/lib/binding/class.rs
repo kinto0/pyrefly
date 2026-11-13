@@ -622,6 +622,7 @@ impl<'a> BindingsBuilder<'a> {
             self.insert_binding(
                 KeyTParams(class_indices.def_index),
                 BindingTParams {
+                    class_idx: class_indices.class_idx,
                     name: x.name.clone(),
                     scoped_type_params,
                     generic_bases: bases

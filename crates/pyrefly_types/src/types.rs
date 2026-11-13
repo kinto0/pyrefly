@@ -185,61 +185,63 @@ impl TParams {
         self.0.extend(other.iter().cloned());
     }
 
-    /// Truncate recursive TArgs nesting in Quantified restrictions.
+    /// Strip the type arguments through which these type parameters, which belong to `owner`,
+    /// would contain themselves.
     ///
-    /// During iterative fixpoint solving, TParams can grow unboundedly when
-    /// classes reference each other in type parameter bounds (either self-referentially
-    /// like `class C[T: C]`, or mutually like Session ↔ DataFrame ↔ Catalog).
-    /// Each iteration embeds the previous iteration's TParams one level deeper
-    /// through the chain: TParams → Restriction → ClassType → TArgs → TParams → ...
-    ///
-    /// This method enforces a structural invariant: within a Quantified's restriction,
-    /// any ClassType whose TArgs embed TParams with their own non-trivial restrictions
-    /// (Bound or Constraints) has its TArgs stripped to empty. This prevents recursive
-    /// nesting while preserving TArgs for simple cases like `T: List[int]` where the
-    /// inner TParams have only unrestricted type variables.
-    pub fn truncate_recursive_targs(self) -> Self {
+    /// A bound, constraint or default can name `owner`, directly or through other classes whose
+    /// own type parameters name `owner`. Type arguments carry their class's type parameters, so
+    /// while such a cycle is solved, each iteration would embed the previous iteration's type
+    /// parameters one level deeper, and the iterations would never agree. That nesting goes
+    /// through a class type that is `owner` or whose type parameters name `owner`, so stripping
+    /// the type arguments of exactly those class types ends it. Every other type argument is kept.
+    pub fn truncate_recursive_targs(self, owner: &Class) -> Self {
+        let mut strip = |t: &mut Type| {
+            if let Type::ClassType(ct) = t
+                && !ct.targs().is_empty()
+                && (ct.class_object() == owner
+                    || Self::mentions(ct.targs().tparams(), owner, &mut SmallSet::new()))
+            {
+                *t = Type::ClassType(ClassType::new(ct.class_object().dupe(), TArgs::default()));
+            }
+        };
         let quantifieds = self
             .0
             .into_iter()
-            .map(|q| {
-                let new_restriction = match q.restriction() {
-                    Restriction::Bound(ty) => {
-                        Restriction::Bound(Self::strip_recursive_class_targs(ty.clone()))
+            .map(|mut q| {
+                match &mut q.restriction {
+                    Restriction::Bound(ty) => ty.transform_mut(&mut strip),
+                    Restriction::Constraints(tys) => {
+                        tys.iter_mut().for_each(|ty| ty.transform_mut(&mut strip))
                     }
-                    Restriction::Constraints(tys) => Restriction::Constraints(
-                        tys.iter()
-                            .map(|ty| Self::strip_recursive_class_targs(ty.clone()))
-                            .collect(),
-                    ),
-                    Restriction::ShapeExtension(extension) => {
-                        Restriction::ShapeExtension(extension.clone())
-                    }
-                    Restriction::Unrestricted => Restriction::Unrestricted,
-                };
-                q.with_restriction(new_restriction)
+                    Restriction::ShapeExtension(_) | Restriction::Unrestricted => {}
+                }
+                if let Some(default) = &mut q.default {
+                    default.transform_mut(&mut strip);
+                }
+                q
             })
             .collect();
         Self(quantifieds)
     }
 
-    /// Walk a type tree and strip TArgs from any ClassType whose TArgs' TParams
-    /// have non-trivial restrictions (Bound or Constraints). Such TParams can
-    /// participate in recursive nesting across fixpoint iterations.
-    fn strip_recursive_class_targs(ty: Type) -> Type {
-        ty.transform(&mut |t| {
-            if let Type::ClassType(ct) = t
-                && !ct.targs().is_empty()
-                && Self::tparams_have_restrictions(ct.targs().tparams())
-            {
-                *t = Type::ClassType(ClassType::new(ct.class_object().dupe(), TArgs::default()));
-            }
-        })
-    }
-
-    /// Check if any Quantified in the TParams has a non-trivial restriction.
-    fn tparams_have_restrictions(tparams: &TParams) -> bool {
-        tparams.iter().any(|q| q.restriction().is_restricted())
+    /// Whether a bound, constraint or default of `tparams` names `owner`, directly or through the
+    /// type parameters that the class types in it carry. `visited` holds the type parameters
+    /// already searched, by address, since the type arguments of one class can carry type
+    /// parameters from different iterations of a cycle.
+    fn mentions(tparams: &TParams, owner: &Class, visited: &mut SmallSet<*const TParams>) -> bool {
+        if !visited.insert(tparams as *const TParams) {
+            return false;
+        }
+        let mut found = false;
+        tparams.visit(&mut |ty: &Type| {
+            ty.universe(&mut |t| {
+                if !found && let Type::ClassType(ct) | Type::SelfType(ct) = t {
+                    found = ct.class_object() == owner
+                        || Self::mentions(ct.targs().tparams(), owner, visited);
+                }
+            })
+        });
+        found
     }
 }
 

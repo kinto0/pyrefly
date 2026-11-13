@@ -134,7 +134,7 @@ assert_words!(BindingExpect, 8);
 assert_words!(BindingTypeAlias, 6);
 assert_words!(BindingAnnotation, 11);
 assert_words!(BindingClass, 11);
-assert_words!(BindingTParams, 9);
+assert_words!(BindingTParams, 10);
 assert_words!(BindingClassBaseType, 3);
 assert_words!(BindingClassMetadata, 11);
 assert_words!(BindingDjangoRelations, 2);
@@ -3557,6 +3557,8 @@ impl DisplayWith<Bindings> for BindingClass {
 /// Binding for a class.
 #[derive(Clone, Debug)]
 pub struct BindingTParams {
+    /// The class whose type parameters these are.
+    pub class_idx: Idx<KeyClass>,
     pub name: Identifier,
     pub scoped_type_params: Option<Box<TypeParams>>,
     pub generic_bases: Box<[BaseClassGeneric]>,

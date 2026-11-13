@@ -3634,7 +3634,8 @@ fn assert_tparams_rebuild_matches_clean(before: &str, after: &str, stale: StaleM
 
 // Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so
 // changing a bound changes no export of `a` and no module that uses `Foo` is rechecked. Rechecking
-// `b` fixes `b` alone.
+// `b` fixes `b`, and `c_legacy_bound`, since `LegacyBound`'s type parameters carry `Foo`'s through
+// the bound `Foo[int]`.
 #[test]
 fn test_tparams_pep695_bound_change_propagates() {
     assert_tparams_rebuild_matches_clean(
@@ -3661,7 +3662,6 @@ fn test_tparams_pep695_bound_change_propagates() {
                 "c_bound",
                 "c_class",
                 "c_default",
-                "c_legacy_bound",
                 "c_never",
                 "c_specialize",
             ],
@@ -3671,7 +3671,8 @@ fn test_tparams_pep695_bound_change_propagates() {
 
 // Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so
 // changing constraints changes no export of `a` and no module that uses `Foo` is rechecked.
-// Rechecking `b` fixes `b` alone.
+// Rechecking `b` fixes `b`, and `c_legacy_bound`, since `LegacyBound`'s type parameters carry
+// `Foo`'s through the bound `Foo[int]`.
 #[test]
 fn test_tparams_pep695_constraints_change_propagates() {
     assert_tparams_rebuild_matches_clean(
@@ -3698,7 +3699,6 @@ fn test_tparams_pep695_constraints_change_propagates() {
                 "c_bound",
                 "c_class",
                 "c_default",
-                "c_legacy_bound",
                 "c_never",
                 "c_specialize",
             ],

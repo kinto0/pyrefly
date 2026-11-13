@@ -953,3 +953,87 @@ def check(b: Box[str], s: defs.Sub) -> None:
     b.pair("ok", 123)  # E: `int` is not assignable to upper bound `Base[Unknown]` of type variable `BoundT`
 "#,
 );
+
+// A bound keeps the type arguments of a class whose own type parameters are restricted, as long
+// as that class does not name the class being defined.
+testcase!(
+    test_legacy_bound_keeps_targs_of_restricted_class,
+    r#"
+from typing import Generic, TypeVar
+class Base: ...
+class Sub(Base): ...
+U = TypeVar("U", bound=Base)
+class Bar(Generic[U]): ...
+T = TypeVar("T", bound=Bar[Base])
+class Foo(Generic[T]): ...
+Foo[Bar[Sub]]()  # E: `Bar[Sub]` is not assignable to upper bound `Bar[Base]` of type variable `T`
+Foo[Bar[Base]]()
+"#,
+);
+
+// When the bounds of two classes name each other, the class type that closes the cycle loses its
+// type arguments: `T`'s bound is `Bar`, not `Bar[Base]`.
+testcase!(
+    bug = "A bound in a cycle loses the type arguments that close the cycle",
+    test_legacy_bound_cycle_loses_targs,
+    r#"
+from typing import Any, Generic, TypeVar
+class Base: ...
+class Sub(Base): ...
+T = TypeVar("T", bound="Bar[Base]")
+U = TypeVar("U", bound="Foo[Any] | Base")
+class Foo(Generic[T]): ...
+class Bar(Generic[U]): ...
+Foo[Bar[Sub]]()  # Should be an error: `Bar[Sub]` is not assignable to `Bar[Base]`
+Foo[int]()  # E: `int` is not assignable to upper bound `Bar` of type variable `T`
+"#,
+);
+
+testcase!(
+    test_legacy_recursive_bounds_converge,
+    r#"
+from typing import Any, Generic, TypeVar
+T = TypeVar("T", bound="Foo[Any]")
+class Foo(Generic[T]): ...
+U = TypeVar("U", bound="Baz[Any]")
+V = TypeVar("V", bound="Bar[Any]")
+class Bar(Generic[U]): ...
+class Baz(Generic[V]): ...
+C = TypeVar("C", "Qux[Any]", int)
+class Qux(Generic[C]): ...
+def f(a: Foo[Foo[Any]], b: Bar[Baz[Any]], c: Qux[int]) -> None: ...
+"#,
+);
+
+// Typeshed's `logging.LoggerAdapter` has this shape: a bound that names its own class, which
+// defines `__class_getitem__`.
+testcase!(
+    test_legacy_self_referential_bound_with_class_getitem,
+    r#"
+from typing import Any, Generic, TypeVar
+class Foo: ...
+T = TypeVar("T", bound="Foo | Bar[Any]")
+class Bar(Generic[T]):
+    def __class_getitem__(cls, item: Any, /) -> Any: ...
+"#,
+);
+
+testcase!(
+    test_legacy_recursive_defaults_converge,
+    r#"
+from typing import Generic
+from typing_extensions import TypeVar
+T = TypeVar("T", default="Foo")
+class Foo(Generic[T]): ...
+A = TypeVar("A", default="Baz")
+B = TypeVar("B", default="Bar")
+class Bar(Generic[A]): ...
+class Baz(Generic[B]): ...
+S = TypeVar("S")
+D = TypeVar("D", default="Qux[int]")
+class Qux(Generic[S, D]): ...
+x: Foo = Foo()
+y: Bar = Bar()
+z: Qux[str] = Qux()
+"#,
+);
