@@ -1,9 +1,9 @@
 {
   "total": 145,
-  "pass": 144,
-  "fail": 1,
-  "pass_rate": 0.99,
-  "differences": 1,
+  "pass": 145,
+  "fail": 0,
+  "pass_rate": 1.0,
+  "differences": 0,
   "passing": [
     "aliases_explicit.py",
     "aliases_implicit.py",
@@ -30,6 +30,7 @@
     "constructors_call_type.py",
     "constructors_callable.py",
     "constructors_consistency.py",
+    "dataclasses_descriptors.py",
     "dataclasses_final.py",
     "dataclasses_frozen.py",
     "dataclasses_hash.py",
@@ -150,8 +151,6 @@
     "typeddicts_usage.py",
     "typeforms_typeform.py"
   ],
-  "failing": {
-    "dataclasses_descriptors.py": 1
-  },
+  "failing": {},
   "comment": "@generated"
 }
