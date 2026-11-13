@@ -808,15 +808,13 @@ impl CallArgPreEval<'_> {
                     solver.maybe_error_any_argument_type(&ty, range, arg_errors);
                     return Some(ty);
                 }
-                let ty = solver
-                    .expr_with_argument_cache(
-                        x,
-                        ExprOptions::check(hint, arg_errors, call_errors, tcc, Some(call_context)),
-                        cache,
-                    )
-                    .into_ty();
-                solver.maybe_error_any_argument_type(&ty, range, arg_errors);
-                Some(ty)
+                let (checked, inferred) = solver.expr_with_argument_cache_and_inferred(
+                    x,
+                    ExprOptions::check(hint, arg_errors, call_errors, tcc, Some(call_context)),
+                    cache,
+                );
+                solver.maybe_error_any_argument_type(checked.ty(), range, arg_errors);
+                Some(inferred)
             }
             Self::Star {
                 prefix,
@@ -908,11 +906,15 @@ impl CallArgPreEval<'_> {
 pub struct MatchedParam {
     pub ty: Type,
     pub name: Option<Name>,
+    /// The type a lambda argument was inferred as when it was checked against `ty`, even if the
+    /// check failed. It is set for every lambda argument checked against `ty` and is `None` for
+    /// every other argument.
+    pub arg_ty: Option<Type>,
 }
 
 impl MatchedParam {
-    fn new(ty: Type, name: Option<Name>) -> Self {
-        Self { ty, name }
+    fn new(ty: Type, name: Option<Name>, arg_ty: Option<Type>) -> Self {
+        Self { ty, name, arg_ty }
     }
 }
 
@@ -936,9 +938,10 @@ impl ArgMap {
         argument: ArgumentKey,
         ty: Type,
         name: Option<Name>,
+        arg_ty: Option<Type>,
     ) -> Option<MatchedParam> {
         self.arg_to_param
-            .insert(argument, MatchedParam::new(ty, name))
+            .insert(argument, MatchedParam::new(ty, name, arg_ty))
     }
 }
 
@@ -1353,7 +1356,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             // We ignore positional-only parameters because they can't be passed in by name.
                             seen_names.insert(name, (ty, NameOrigin::Param, true));
                         }
-                        argmap.insert(argument, ty.clone(), name.cloned());
+                        argmap.insert(argument, ty.clone(), name.cloned(), None);
                         if match arg_pre {
                             CallArgPreEval::Expr(Expr::Lambda(_), _, _) => true,
                             CallArgPreEval::Expr(..) | CallArgPreEval::Type(..) => {
@@ -1393,7 +1396,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }) => {
                         // Store args that get matched to an unpacked *args param
                         // Matched args are typechecked separately later
-                        argmap.insert(argument, ty.clone(), name.cloned());
+                        argmap.insert(argument, ty.clone(), name.cloned(), None);
                         unpacked_vararg = Some((name, ty));
                         unpacked_vararg_matched_args.push((arg_pre.clone(), arg.range()));
                         arg_pre.post_skip();
@@ -1403,8 +1406,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         name,
                         kind: PosParamKind::Variadic,
                     }) => {
-                        argmap.insert(argument, ty.clone(), name.cloned());
-                        arg_pre.post_check(
+                        let is_lambda =
+                            matches!(arg_pre, CallArgPreEval::Expr(Expr::Lambda(_), _, _));
+                        let arg_ty = arg_pre.post_check(
                             self,
                             callable_name,
                             ty,
@@ -1417,6 +1421,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             context,
                             call_context,
                         );
+                        let lambda_ty = if is_lambda { arg_ty } else { None };
+                        argmap.insert(argument, ty.clone(), name.cloned(), lambda_ty);
                     }
                     None => {
                         arg_pre.post_infer(self, arg_errors);
@@ -1981,13 +1987,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     {
                         unexpected_keyword_error(&id.id, id.range);
                     }
-                    if let Some((origin, expected)) = &hint {
-                        let name = match origin {
-                            NameOrigin::Param => Some(id.id.clone()),
-                            NameOrigin::UnpackedKwargs(kwargs_name) => kwargs_name.cloned(),
-                        };
-                        argmap.insert(argument, (*expected).clone(), name);
-                    }
                     let tcc: &dyn Fn() -> TypeCheckContext = &|| {
                         TypeCheckContext::of_kind(if has_matching_param {
                             TypeCheckKind::CallArgument(Some(id.id.clone()), callable_name.cloned())
@@ -2000,7 +1999,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         })
                         .with_context(context.map(|ctx| ctx()))
                     };
-                    let arg_ty = if let Some(pattern) = hint
+                    let (arg_ty, lambda_ty) = if let Some(pattern) = hint
                         .as_ref()
                         .and_then(|(_, hint)| map_int_tuples_parameter_pattern(hint))
                     {
@@ -2010,7 +2009,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 MapIntTuplesPatternArgument::Type((*ty).clone())
                             }
                         };
-                        self.check_map_int_tuples_parameter_pattern(
+                        let arg_ty = self.check_map_int_tuples_parameter_pattern(
                             pattern,
                             argument,
                             kw.range,
@@ -2019,25 +2018,31 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             tcc,
                             call_context,
                             context,
-                        )
+                        );
+                        (arg_ty, None)
                     } else {
                         match kw.value.as_type_or_expr() {
-                            TypeOrExpr::Expr(x) => self
-                                .expr_with_argument_cache(
-                                    x,
-                                    match hint {
-                                        Some((_, ty)) => ExprOptions::check(
-                                            ty,
-                                            arg_errors,
-                                            call_errors,
-                                            tcc,
-                                            Some(call_context),
-                                        ),
-                                        None => ExprOptions::infer(arg_errors, None),
-                                    },
-                                    kw.value.argument_cache(),
+                            TypeOrExpr::Expr(x) => {
+                                let (checked, inferred) = self
+                                    .expr_with_argument_cache_and_inferred(
+                                        x,
+                                        match hint {
+                                            Some((_, ty)) => ExprOptions::check(
+                                                ty,
+                                                arg_errors,
+                                                call_errors,
+                                                tcc,
+                                                Some(call_context),
+                                            ),
+                                            None => ExprOptions::infer(arg_errors, None),
+                                        },
+                                        kw.value.argument_cache(),
+                                    );
+                                (
+                                    checked.into_ty(),
+                                    matches!(x, Expr::Lambda(_)).then_some(inferred),
                                 )
-                                .into_ty(),
+                            }
                             TypeOrExpr::Type(x, range) => {
                                 if let Some((_, hint)) = &hint
                                     && !hint.is_any()
@@ -2050,7 +2055,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                             .with_call_context(call_context),
                                     );
                                 }
-                                (*x).clone()
+                                ((*x).clone(), None)
                             }
                         }
                     };
@@ -2061,6 +2066,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         && let Some(capture) = &mut named_ints_capture
                     {
                         capture.insert(id.id.clone(), value, true);
+                    }
+                    if let Some((origin, expected)) = &hint {
+                        let name = match origin {
+                            NameOrigin::Param => Some(id.id.clone()),
+                            NameOrigin::UnpackedKwargs(kwargs_name) => kwargs_name.cloned(),
+                        };
+                        argmap.insert(argument, (*expected).clone(), name, lambda_ty);
                     }
                 }
             }
@@ -2197,9 +2209,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .with_call_context(call_context),
             );
         }
-        for (mut arg, hint, name, range, argument) in deferred_callbacks {
+        for (mut arg, param_ty, name, range, argument) in deferred_callbacks {
+            let is_lambda = matches!(arg, CallArgPreEval::Expr(Expr::Lambda(_), _, _));
             let call_context = &call_context.clone().with_argument(argument);
-            let mut hint = hint.clone();
+            let mut hint = param_ty.clone();
             // Read parameter bounds collected from the other arguments while leaving the return
             // type open for the argument to constrain. Every input of a DSL call in a parameter
             // type is now as solved as it will be, so the call is evaluated here.
@@ -2217,7 +2230,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 });
             }
-            arg.post_check(
+            let arg_ty = arg.post_check(
                 self,
                 callable_name,
                 &hint,
@@ -2230,6 +2243,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 context,
                 call_context,
             );
+            // Replace the entry made when the callback was deferred, now that its type is known.
+            let lambda_ty = if is_lambda { arg_ty } else { None };
+            argmap.insert(argument, param_ty.clone(), name.cloned(), lambda_ty);
         }
         let num_extra_positional_args = extra_positional_args.len();
         if let Some(arg_range) = extra_arg_pos

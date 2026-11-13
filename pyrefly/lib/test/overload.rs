@@ -2464,7 +2464,6 @@ g(x=1, y="hello")  # E: No matching overload found for function `g` called with 
 
 // Regression test for https://github.com/facebook/pyrefly/issues/5074
 testcase!(
-    bug = "Lambda arguments are shown with Unknown parameters in the first line",
     test_overload_error_shows_lambda_argument_types,
     r#"
 from typing import Callable, overload
@@ -2475,7 +2474,7 @@ class Key:
         return object()
 
 def sort_values(values: list[Key]) -> None:
-    values.sort(key=lambda value: value)  # E: No matching overload found for function `list.sort` called with arguments: (key=(value: Unknown) -> Unknown)
+    values.sort(key=lambda value: value)  # E: No matching overload found for function `list.sort` called with arguments: (key=(value: Key) -> Key)
 
 class C:
     @overload
@@ -2485,7 +2484,15 @@ class C:
     def m(self, callback, y): ...
 
 # The lambda returns `None`, so like the one above it fails its check against the closest overload.
-C().m(lambda v: None, 1.5)  # E: No matching overload found for function `C.m` called with arguments: ((v: Unknown) -> None, float)
+C().m(lambda v: None, 1.5)  # E: No matching overload found for function `C.m` called with arguments: ((v: int) -> None, float)
+
+@overload
+def va(*args: Callable[[int], int]) -> None: ...
+@overload
+def va(*args: Callable[[str], str]) -> None: ...
+def va(*args): ...
+
+va(lambda v: None)  # E: No matching overload found for function `va` called with arguments: ((v: int) -> None)
     "#,
 );
 

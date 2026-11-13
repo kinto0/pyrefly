@@ -809,6 +809,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         options: ExprOptions<'_, '_, '_>,
         cache: Option<&ArgumentCache>,
     ) -> TypeInfo {
+        self.expr_with_argument_cache_and_inferred(x, options, cache)
+            .0
+    }
+
+    /// Like `expr_with_argument_cache`, and also returns the type the argument was inferred as
+    /// before it was checked. When the check fails, the first result has the expected type so that
+    /// the failure isn't reported again downstream, while the second keeps the inferred type.
+    pub(crate) fn expr_with_argument_cache_and_inferred(
+        &self,
+        x: &Expr,
+        options: ExprOptions<'_, '_, '_>,
+        cache: Option<&ArgumentCache>,
+    ) -> (TypeInfo, Type) {
         match options.expectation {
             ExprExpectation::Check {
                 want,
@@ -829,20 +842,37 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     None => TypeCheckOptions::new(errors, context),
                 };
+                let inferred = got.ty().clone();
                 if self
                     .check_type_with_options(got.ty(), want, x.range(), check_options)
                     .is_none()
                 {
-                    got
+                    (got, inferred)
                 } else {
-                    got.with_ty(want.clone())
+                    (got.with_ty(want.clone()), inferred)
                 }
             }
             ExprExpectation::Check { .. } => {
-                self.expr_infer_argument(x, None, options.errors, options.type_form_context, cache)
+                let got = self.expr_infer_argument(
+                    x,
+                    None,
+                    options.errors,
+                    options.type_form_context,
+                    cache,
+                );
+                let inferred = got.ty().clone();
+                (got, inferred)
             }
             ExprExpectation::Infer(hint) => {
-                self.expr_infer_argument(x, hint, options.errors, options.type_form_context, cache)
+                let got = self.expr_infer_argument(
+                    x,
+                    hint,
+                    options.errors,
+                    options.type_form_context,
+                    cache,
+                );
+                let inferred = got.ty().clone();
+                (got, inferred)
             }
         }
     }

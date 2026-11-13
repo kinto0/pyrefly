@@ -686,18 +686,33 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         closest_overload_call_errors: ErrorCollector,
         mut closest_overload_argmap: ArgMap,
     ) {
-        // Build a string showing the argument types for error messages
+        // Build a string showing the argument types for error messages. Inferring each argument
+        // reports any errors in it. Without the parameter type as context, a lambda's parameters
+        // are `Unknown`, so a lambda is shown with the type the closest overload inferred for it
+        // instead, which is the type the detail lines describe.
+        let self_offset = usize::from(self_obj.is_some());
+        let arg_type = |value: &CallValue, key: ArgumentKey| {
+            let ty = value.infer(self, errors);
+            closest_overload_argmap
+                .arg_to_param
+                .get(&key)
+                .and_then(|param| param.arg_ty.clone())
+                .unwrap_or(ty)
+        };
         let mut arg_type_strs = Vec::new();
-        for arg in args {
+        for (i, arg) in args.iter().enumerate() {
             let (ty, prefix) = match arg {
-                CallArg::Arg(value) => (value.infer(self, errors), ""),
+                CallArg::Arg(value) => (
+                    arg_type(value, ArgumentKey::Positional(self_offset + i)),
+                    "",
+                ),
                 CallArg::Star(value, _) => (value.infer(self, errors), "*"),
             };
             let ty_display = self.for_display(ty);
             arg_type_strs.push(format!("{}{}", prefix, ty_display));
         }
-        for kw in keywords {
-            let ty = kw.value.infer(self, errors);
+        for (i, kw) in keywords.iter().enumerate() {
+            let ty = arg_type(&kw.value, ArgumentKey::Keyword(i));
             let ty_display = self.for_display(ty);
             if let Some(arg_name) = kw.arg {
                 arg_type_strs.push(format!("{}={}", arg_name.as_str(), ty_display));
@@ -714,7 +729,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         );
         let mut details = vec!["Possible overloads:".to_owned()];
         // Build an overlay of relevant parameters. We'll show only these parameters when printing overloads.
-        let self_offset = usize::from(self_obj.is_some());
         if self_obj.is_some() {
             // We strip `self` from the displayed signatures, so drop it from the overlay as well.
             closest_overload_argmap
