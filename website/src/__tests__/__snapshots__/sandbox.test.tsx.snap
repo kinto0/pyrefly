@@ -29,7 +29,9 @@ exports[`Sandbox Component render sandbox correctly 1`] = `
           +
         </button>
       </div>
-      <label>
+      <label
+        title="Show parameter names at call sites"
+      >
         <input
           id="parameter-hints-toggle"
           type="checkbox"

@@ -573,7 +573,10 @@ export default function Sandbox({
                     </button>
                 )}
             </div>
-            <label {...stylex.props(styles.parameterHintToggle)}>
+            <label
+                {...stylex.props(styles.parameterHintToggle)}
+                title="Show parameter names at call sites"
+            >
                 <input
                     id="parameter-hints-toggle"
                     type="checkbox"
