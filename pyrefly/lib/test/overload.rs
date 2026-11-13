@@ -509,6 +509,59 @@ def exercise(value: Any) -> None:
 );
 
 testcase!(
+    test_missing_import_return_only_fallback,
+    r#"
+from typing import Any, Literal, TypedDict, assert_type, overload
+from missing_backend import Frame  # E: Cannot find module `missing_backend`
+
+class Row(TypedDict):
+    frame: Frame
+
+class OptionalRow(TypedDict, total=False):
+    frame: Frame
+
+@overload
+def to(value: int, backend: Literal["torch"]) -> Frame: ...
+@overload
+def to(value: int, backend: str) -> int: ...
+def to(value: int, backend: str) -> Any:
+    raise RuntimeError
+
+def exercise(row: Row, optional: OptionalRow) -> None:
+    assert_type(row.get("frame"), Any)
+    assert_type(optional.get("frame"), Any | None)
+    row.get("frame").head()
+    assert_type(to(1, "torch"), Any)
+    to(1, "torch").cpu()
+"#,
+);
+
+testcase!(
+    test_missing_import_input_preference_boundary,
+    r#"
+from typing import Any, assert_type, overload
+from missing_backend import Array, Device  # E: Cannot find module `missing_backend`
+
+@overload
+def known_arm(value: int | Array) -> list[int]: ...
+@overload
+def known_arm(value: object) -> object: ...
+def known_arm(value: Any) -> Any:
+    raise RuntimeError
+
+@overload
+def omitted(value: int, device: Device | None = None) -> list[int]: ...
+@overload
+def omitted(value: object) -> object: ...
+def omitted(value: Any, device: Any = None) -> Any:
+    raise RuntimeError
+
+assert_type(known_arm(7), list[int])
+assert_type(omitted(7), list[int])
+"#,
+);
+
+testcase!(
     test_overload_expansion_keeps_lambda_context,
     TestEnv::new().enable_implicit_any_lambda_error(),
     r#"
