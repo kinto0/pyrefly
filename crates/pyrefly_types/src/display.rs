@@ -1965,7 +1965,6 @@ pub mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::class::PrecomputedTParams;
     use crate::data_frame::DataFrameKind;
     use crate::data_frame::DataFrameSchema;
     use crate::data_frame::SchemaRole;
@@ -2010,7 +2009,7 @@ pub mod tests {
             Identifier::new(Name::new(name), TextRange::empty(TextSize::new(range))),
             NestingContext::toplevel(),
             mi,
-            PrecomputedTParams::NotGeneric,
+            false,
             false,
             None,
         )

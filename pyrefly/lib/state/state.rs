@@ -148,7 +148,6 @@ use crate::state::subscriber::Subscriber;
 use crate::types::class::Class;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFields;
-use crate::types::class::PrecomputedTParams;
 use crate::types::env::TypeEnv;
 use crate::types::function::Deprecation;
 use crate::types::stdlib::Stdlib;
@@ -1950,17 +1949,17 @@ impl<'a> Transaction<'a> {
             return None;
         };
         let class = class.dupe();
-        let tparams = match class.precomputed_tparams() {
-            PrecomputedTParams::NotGeneric => None,
-            PrecomputedTParams::FromBinding => self
-                .lookup_answer(
-                    module_data,
-                    &KeyTParams(class.index()),
-                    thread_state,
-                    &answer_scope,
-                )
-                .map(Dupe::dupe),
-            PrecomputedTParams::Precomputed(tparams) => Some(tparams.dupe()),
+        let tparams = if class.has_tparams() {
+            self.lookup_answer(
+                module_data,
+                &KeyTParams(class.index()),
+                thread_state,
+                &answer_scope,
+            )
+            .filter(|tparams| !tparams.is_empty())
+            .map(Dupe::dupe)
+        } else {
+            None
         };
         Some((class, tparams))
     }
@@ -2893,11 +2892,9 @@ impl TypeEnv for TransactionTypeEnv<'_> {
     }
 
     fn class_tparams<'b>(&'b self, cls: &'b Class) -> &'b TParams {
-        let key = match cls.precomputed_tparams() {
-            PrecomputedTParams::NotGeneric => return TParams::empty_ref(),
-            PrecomputedTParams::Precomputed(tparams) => return tparams,
-            PrecomputedTParams::FromBinding => KeyTParams(cls.index()),
-        };
+        if !cls.has_tparams() {
+            return TParams::empty_ref();
+        }
         let handle = Handle::new(
             cls.module_name(),
             cls.module_path().dupe(),
@@ -2908,7 +2905,7 @@ impl TypeEnv for TransactionTypeEnv<'_> {
         self.transaction
             .lookup_answer(
                 self.transaction.get_module(&handle),
-                &key,
+                &KeyTParams(cls.index()),
                 &self.thread_state,
                 &self.answer_scope,
             )

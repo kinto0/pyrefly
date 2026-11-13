@@ -52,7 +52,6 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::class::PrecomputedTParams;
     use crate::types::TArgs;
 
     fn underlying_class() -> ClassType {
@@ -67,7 +66,7 @@ mod tests {
                 Identifier::new(Name::new("Series"), TextRange::empty(TextSize::new(0))),
                 NestingContext::toplevel(),
                 module,
-                PrecomputedTParams::NotGeneric,
+                false,
                 false,
                 None,
             ),

@@ -133,7 +133,7 @@ assert_words!(Binding, 4);
 assert_words!(BindingExpect, 8);
 assert_words!(BindingTypeAlias, 6);
 assert_words!(BindingAnnotation, 11);
-assert_words!(BindingClass, 11);
+assert_words!(BindingClass, 10);
 assert_words!(BindingTParams, 10);
 assert_words!(BindingClassBaseType, 3);
 assert_words!(BindingClassMetadata, 11);
@@ -2131,7 +2131,6 @@ impl FunctionDefData {
 #[derive(Clone, Debug)]
 pub struct ClassDefData {
     pub name: Identifier,
-    pub type_params: Option<Box<TypeParams>>,
     pub range: TextRange,
 }
 
@@ -2139,7 +2138,6 @@ impl ClassDefData {
     pub fn new(def: StmtClassDef) -> Self {
         Self {
             name: def.name,
-            type_params: def.type_params,
             range: def.range,
         }
     }
@@ -2198,10 +2196,9 @@ pub struct ClassBinding {
     pub parent: NestingContext,
     pub is_protocol: bool,
     pub deprecation: Option<Box<Deprecation>>,
-    /// Were we able to determine, using only syntactic analysis at bindings time,
-    /// that there can be no legacy tparams? If no, we need a `BindingTParams`, if yes
-    /// we can directly compute the `TParams` from the class def.
-    pub tparams_require_binding: bool,
+    /// Whether the class declares any type parameters, decided from syntax alone. A class that
+    /// does has a `KeyTParams` / `BindingTParams` pair, which computes them.
+    pub has_tparams: bool,
     pub docstring_range: Option<TextRange>,
 }
 

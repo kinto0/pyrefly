@@ -212,7 +212,6 @@ mod tests {
     use super::*;
     use crate::class::Class;
     use crate::class::ClassDefIndex;
-    use crate::class::PrecomputedTParams;
     use crate::known_class::KnownClass;
     use crate::type_var::FlagMember;
 
@@ -227,7 +226,7 @@ mod tests {
             Identifier::new(name.clone(), TextRange::empty(TextSize::new(0))),
             NestingContext::toplevel(),
             module,
-            PrecomputedTParams::NotGeneric,
+            false,
             false,
             None,
         )

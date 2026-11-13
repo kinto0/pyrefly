@@ -2543,6 +2543,7 @@ dependencies = [
 name = "pyrefly_types"
 version = "1.5.0-dev.1"
 dependencies = [
+ "append-only-vec",
  "compact_str",
  "dupe",
  "itertools 0.15.0",

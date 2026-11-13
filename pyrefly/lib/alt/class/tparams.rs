@@ -8,7 +8,6 @@
 use std::sync::Arc;
 
 use pyrefly_graph::index::Idx;
-use pyrefly_types::class::PrecomputedTParams;
 use ruff_python_ast::Identifier;
 use ruff_python_ast::TypeParams;
 use ruff_text_size::Ranged;
@@ -155,12 +154,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Returns the shared `Arc` rather than its contents, so a caller needing
     /// ownership can `dupe` it without the answer being cloned.
     pub fn get_class_tparams<'b>(&'b self, class: &'b Class) -> Option<&'b Arc<TParams>> {
-        match class.precomputed_tparams() {
-            PrecomputedTParams::NotGeneric => None,
-            PrecomputedTParams::FromBinding => {
-                self.get_from_class(class, &KeyTParams(class.index()))
-            }
-            PrecomputedTParams::Precomputed(tparams) => Some(tparams),
+        if !class.has_tparams() {
+            return None;
         }
+        // `has_tparams` is decided from syntax, so a class can have it and still resolve to no type
+        // parameters, for example when a name in a generic base turns out not to be a type
+        // variable. Report that as not generic, so that empty type arguments imply no parameters.
+        self.get_from_class(class, &KeyTParams(class.index()))
+            .filter(|tparams| !tparams.is_empty())
     }
 }

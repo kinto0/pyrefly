@@ -3926,13 +3926,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    pub fn solve_class(
-        &self,
-        cls: &BindingClass,
-        errors: &ErrorCollector,
-    ) -> NoneIfRecursive<Class> {
+    pub fn solve_class(&self, cls: &BindingClass) -> NoneIfRecursive<Class> {
         let cls = match cls {
-            BindingClass::ClassDef(x) => self.class_definition(x, errors),
+            BindingClass::ClassDef(x) => self.class_definition(x),
             BindingClass::FunctionalClassDef(def_index, x, parent) => {
                 self.functional_class_definition(*def_index, x, parent)
             }
@@ -3941,17 +3937,26 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub fn solve_tparams(&self, binding: &BindingTParams, errors: &ErrorCollector) -> TParams {
-        let tparams = self.calculate_class_tparams(
-            &binding.name,
-            binding.scoped_type_params.as_deref(),
-            &binding.generic_bases,
-            &binding.legacy_tparams,
-            errors,
-        );
+        let tparams = if binding.legacy_tparams.is_empty() {
+            self.calculate_class_tparams_no_legacy(
+                &binding.name,
+                binding.scoped_type_params.as_deref(),
+                errors,
+            )
+        } else {
+            self.calculate_class_tparams(
+                &binding.name,
+                binding.scoped_type_params.as_deref(),
+                &binding.generic_bases,
+                &binding.legacy_tparams,
+                errors,
+            )
+        };
         let class = self.get_idx(binding.class_idx);
-        let owner = class.0.as_ref().expect(
-            "solving a class with legacy type parameters reads no other answer, so it is not recursive",
-        );
+        let owner = class
+            .0
+            .as_ref()
+            .expect("solving a class reads no other answer, so it is not recursive");
         tparams.truncate_recursive_targs(owner)
     }
 

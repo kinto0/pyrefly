@@ -11,6 +11,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use append_only_vec::AppendOnlyVec;
 use dupe::Dupe;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_name::ModuleName;
@@ -25,7 +26,6 @@ use starlark_map::small_map::SmallMap;
 use crate::class::Class;
 use crate::class::ClassDefIndex;
 use crate::class::ClassType;
-use crate::class::PrecomputedTParams;
 use crate::env::TypeEnv;
 use crate::quantified::AnchorIndex;
 use crate::quantified::Quantified;
@@ -72,6 +72,9 @@ pub struct TestTypeEnv {
     /// Every module that has classes, with the number of classes defined in it so far. A new
     /// class gets the next index in its module, so no two classes defined here are equal.
     modules: RefCell<SmallMap<ModuleName, (Module, u32)>>,
+    /// The type parameters of every generic class. It is append-only, so `class_tparams` can
+    /// return borrows that live as long as the env.
+    tparams: AppendOnlyVec<(Class, Arc<TParams>)>,
 }
 
 impl TestTypeEnv {
@@ -80,6 +83,7 @@ impl TestTypeEnv {
         let mut env = Self {
             stdlib: Stdlib::for_bootstrapping(),
             modules: RefCell::new(SmallMap::new()),
+            tparams: AppendOnlyVec::new(),
         };
         let defined = RefCell::new(SmallMap::new());
         let stdlib = Stdlib::new(
@@ -236,20 +240,19 @@ impl TestTypeEnv {
         });
         let index = ClassDefIndex(*count);
         *count += 1;
-        let tparams = if tparams.is_empty() {
-            PrecomputedTParams::NotGeneric
-        } else {
-            PrecomputedTParams::Precomputed(Arc::new(tparams))
-        };
-        Class::new(
+        let cls = Class::new(
             index,
             Identifier::new(name, TextRange::default()),
             NestingContext::toplevel(),
             module.dupe(),
-            tparams,
+            !tparams.is_empty(),
             false,
             None,
-        )
+        );
+        if !tparams.is_empty() {
+            self.tparams.push((cls.dupe(), Arc::new(tparams)));
+        }
+        cls
     }
 }
 
@@ -259,13 +262,10 @@ impl TypeEnv for TestTypeEnv {
     }
 
     fn class_tparams<'a>(&'a self, cls: &'a Class) -> &'a TParams {
-        match cls.precomputed_tparams() {
-            PrecomputedTParams::NotGeneric => TParams::empty_ref(),
-            PrecomputedTParams::Precomputed(tparams) => tparams,
-            PrecomputedTParams::FromBinding => {
-                unreachable!("`TestTypeEnv` defines every class with precomputed type parameters")
-            }
-        }
+        self.tparams
+            .iter()
+            .find(|(c, _)| c == cls)
+            .map_or(TParams::empty_ref(), |(_, tparams)| tparams)
     }
 }
 
@@ -323,7 +323,7 @@ mod tests {
                 Identifier::new(Name::new("Bar"), TextRange::default()),
                 NestingContext::toplevel(),
                 real_module(path),
-                PrecomputedTParams::NotGeneric,
+                false,
                 false,
                 None,
             );

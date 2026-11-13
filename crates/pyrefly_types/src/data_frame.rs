@@ -131,7 +131,6 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::class::PrecomputedTParams;
     use crate::equality::TypeEq;
     use crate::equality::TypeEqCtx;
     use crate::types::TArgs;
@@ -148,7 +147,7 @@ mod tests {
                 Identifier::new(Name::new("DataFrame"), TextRange::empty(TextSize::new(0))),
                 NestingContext::toplevel(),
                 module,
-                PrecomputedTParams::NotGeneric,
+                false,
                 false,
                 None,
             ),

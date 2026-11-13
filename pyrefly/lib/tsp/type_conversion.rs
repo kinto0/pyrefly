@@ -281,8 +281,6 @@ fn test_class(module_name: ModuleName, name: &str) -> PyreflyClassType {
     use pyrefly_types::types::TArgs;
     use ruff_python_ast::Identifier;
 
-    use crate::types::class::PrecomputedTParams;
-
     let module = Module::new(
         module_name,
         ModulePath::bundled_typeshed(PathBuf::from(format!("{module_name}.pyi"))),
@@ -293,7 +291,7 @@ fn test_class(module_name: ModuleName, name: &str) -> PyreflyClassType {
         Identifier::new(Name::new(name), TextRange::default()),
         NestingContext::toplevel(),
         module,
-        PrecomputedTParams::NotGeneric,
+        false,
         false,
         None,
     );

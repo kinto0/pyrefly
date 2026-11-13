@@ -276,20 +276,6 @@ impl ClassFields {
     }
 }
 
-/// What is known about a class's type parameters after the binding phase.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PrecomputedTParams {
-    /// The class declares no type parameters, so there is nothing to look up.
-    NotGeneric,
-    /// The class has legacy type variables. Computing its type parameters at
-    /// binding time could produce a cycle, so they come from the class's
-    /// `KeyTParams` / `BindingTParams` pair instead.
-    FromBinding,
-    /// Computed during binding, which is possible whenever the class has no
-    /// legacy type variables.
-    Precomputed(Arc<TParams>),
-}
-
 /// The data of a class definition.
 ///
 /// Align to a cache line to prevent false sharing. `ClassDef` is stored
@@ -306,7 +292,9 @@ pub struct ClassDef {
     qname: QName,
     is_protocol: bool,
     deprecation: Option<Deprecation>,
-    precomputed_tparams: PrecomputedTParams,
+    /// Whether the class declares any type parameters. This is decided from syntax alone; the
+    /// type parameters themselves come from the class's `KeyTParams`.
+    has_tparams: bool,
 }
 
 impl Debug for ClassDef {
@@ -316,7 +304,7 @@ impl Debug for ClassDef {
             .field("qname", &self.qname)
             .field("is_protocol", &self.is_protocol)
             .field("deprecation", &self.deprecation)
-            .field("tparams", &self.precomputed_tparams)
+            .field("has_tparams", &self.has_tparams)
             // We don't print `fields` because it's way too long.
             .finish_non_exhaustive()
     }
@@ -383,7 +371,7 @@ impl Class {
         name: Identifier,
         parent: NestingContext,
         module: Module,
-        precomputed_tparams: PrecomputedTParams,
+        has_tparams: bool,
         is_protocol: bool,
         deprecation: Option<Deprecation>,
     ) -> Self {
@@ -398,7 +386,7 @@ impl Class {
             qname: QName::new(name, parent, module),
             is_protocol,
             deprecation,
-            precomputed_tparams,
+            has_tparams,
         }))
     }
 
@@ -426,8 +414,8 @@ impl Class {
         self.0.deprecation.as_ref()
     }
 
-    pub fn precomputed_tparams(&self) -> &PrecomputedTParams {
-        &self.0.precomputed_tparams
+    pub fn has_tparams(&self) -> bool {
+        self.0.has_tparams
     }
 
     pub fn index(&self) -> ClassDefIndex {

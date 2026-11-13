@@ -255,7 +255,6 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::class::PrecomputedTParams;
     use crate::test_type_env::TestTypeEnv;
     use crate::types::TArgs;
 
@@ -325,7 +324,7 @@ mod tests {
             Identifier::new(Name::new("int"), TextRange::default()),
             NestingContext::class(ShortIdentifier::new(&outer), NestingContext::toplevel()),
             module,
-            PrecomputedTParams::NotGeneric,
+            false,
             false,
             None,
         );

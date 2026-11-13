@@ -2093,3 +2093,49 @@ def bad() -> None:
     x: Nested[list[Any]] = Nested([1])  # Should be an error
  "#,
 );
+
+// A bound keeps the type arguments of a class whose own type parameters are restricted, as long
+// as that class does not name the class being defined.
+testcase!(
+    test_bound_keeps_targs_of_restricted_class,
+    r#"
+class Base: ...
+class Sub(Base): ...
+class Bar[U: Base]:
+    value: U
+class Foo[T: Bar[Base]]: ...
+Foo[Bar[Sub]]()  # E: `Bar[Sub]` is not assignable to upper bound `Bar[Base]` of type variable `T`
+Foo[Bar[Base]]()
+"#,
+);
+
+// When the bounds of two classes name each other, the class type that closes the cycle loses its
+// type arguments: `T`'s bound is `Bar`, not `Bar[Base]`.
+testcase!(
+    bug = "A bound in a cycle loses the type arguments that close the cycle",
+    test_bound_cycle_loses_targs,
+    r#"
+from typing import Any
+class Base: ...
+class Sub(Base): ...
+class Foo[T: "Bar[Base]"]: ...
+class Bar[U: "Foo[Any] | Base"]:
+    value: U
+Foo[Bar[Sub]]()  # Should be an error: `Bar[Sub]` is not assignable to `Bar[Base]`
+Foo[int]()  # E: `int` is not assignable to upper bound `Bar` of type variable `T`
+"#,
+);
+
+testcase!(
+    test_recursive_defaults_converge,
+    r#"
+from typing import assert_type
+class Foo[T = "Foo"]: ...
+class Bar[A = "Baz"]: ...
+class Baz[B = "Bar"]: ...
+class Qux[S, D = "Qux[int]"]: ...
+x: Foo = Foo()
+y: Bar = Bar()
+z: Qux[str] = Qux()
+"#,
+);

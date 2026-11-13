@@ -5,13 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::sync::Arc;
-
 use dupe::Dupe;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::class::DjangoClassMetadata;
-use pyrefly_types::class::PrecomputedTParams;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::special_form::SpecialForm;
 use ruff_python_ast::Identifier;
@@ -37,7 +34,6 @@ use crate::binding::binding::KeyClassField;
 use crate::binding::binding::KeyClassMetadata;
 use crate::binding::binding::KeyClassMro;
 use crate::binding::binding::KeyClassSubscriptSymmetry;
-use crate::error::collector::ErrorCollector;
 use crate::types::callable::Param;
 use crate::types::callable::Required;
 use crate::types::class::Class;
@@ -66,30 +62,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    pub fn class_definition(&self, binding: &ClassBinding, errors: &ErrorCollector) -> Class {
-        // Legacy type variables can produce a cycle, so their tparams are left to
-        // the class's `KeyTParams` binding. Everything else is computed here, and
-        // a class that turns out to declare nothing records no tparams at all.
-        let precomputed_tparams = if binding.tparams_require_binding {
-            PrecomputedTParams::FromBinding
-        } else {
-            let tparams = self.calculate_class_tparams_no_legacy(
-                &binding.def.name,
-                binding.def.type_params.as_deref(),
-                errors,
-            );
-            if tparams.is_empty() {
-                PrecomputedTParams::NotGeneric
-            } else {
-                PrecomputedTParams::Precomputed(Arc::new(tparams))
-            }
-        };
+    pub fn class_definition(&self, binding: &ClassBinding) -> Class {
         Class::new(
             binding.def_index,
             binding.def.name.clone(),
             binding.parent.dupe(),
             self.module().dupe(),
-            precomputed_tparams,
+            binding.has_tparams,
             binding.is_protocol,
             binding.deprecation.as_deref().cloned(),
         )
@@ -106,7 +85,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             name.clone(),
             parent.dupe(),
             self.module().dupe(),
-            PrecomputedTParams::NotGeneric,
+            false,
             false,
             None,
         )

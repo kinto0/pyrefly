@@ -3535,15 +3535,6 @@ impl StaleModules {
         a_edited: &[],
         a_and_b_edited: &[],
     };
-
-    /// `b`'s PEP 695 classes `BBound` and `BDefault` carry copies of `Foo`'s type parameters in
-    /// their bound and default, `Foo[int]`. `Class` equality ignores the type parameters that a
-    /// class carries, so `b`'s exports compare equal after the edit, and `c_never`, which uses
-    /// those classes and nothing else of `Foo`, is not rechecked and keeps the old copies.
-    const C_NEVER: Self = Self {
-        a_edited: &["c_never"],
-        a_and_b_edited: &["c_never"],
-    };
 }
 
 /// Check that changing `Foo` in module `a` from `before` to `after` and rechecking gives every
@@ -3632,115 +3623,30 @@ fn assert_tparams_rebuild_matches_clean(before: &str, after: &str, stale: StaleM
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
-// Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so
-// changing a bound changes no export of `a` and no module that uses `Foo` is rechecked. Rechecking
-// `b` fixes `b`, and `c_legacy_bound`, since `LegacyBound`'s type parameters carry `Foo`'s through
-// the bound `Foo[int]`.
 #[test]
 fn test_tparams_pep695_bound_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         "class Foo[T: int]: ...",
         "class Foo[T: str]: ...",
-        StaleModules {
-            a_edited: &[
-                "b",
-                "b_specialize",
-                "c_alias",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_explicit_alias",
-                "c_legacy_bound",
-                "c_legacy_default",
-                "c_legacy_never",
-                "c_never",
-                "c_specialize",
-                "c_type_alias",
-            ],
-            a_and_b_edited: &[
-                "b_specialize",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_never",
-                "c_specialize",
-            ],
-        },
+        StaleModules::NONE,
     );
 }
 
-// Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so
-// changing constraints changes no export of `a` and no module that uses `Foo` is rechecked.
-// Rechecking `b` fixes `b`, and `c_legacy_bound`, since `LegacyBound`'s type parameters carry
-// `Foo`'s through the bound `Foo[int]`.
 #[test]
 fn test_tparams_pep695_constraints_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         "class Foo[T: (int, bytes)]: ...",
         "class Foo[T: (str, bytes)]: ...",
-        StaleModules {
-            a_edited: &[
-                "b",
-                "b_specialize",
-                "c_alias",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_explicit_alias",
-                "c_legacy_bound",
-                "c_legacy_default",
-                "c_legacy_never",
-                "c_never",
-                "c_specialize",
-                "c_type_alias",
-            ],
-            a_and_b_edited: &[
-                "b_specialize",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_never",
-                "c_specialize",
-            ],
-        },
+        StaleModules::NONE,
     );
 }
 
-// Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so
-// changing a default changes no export of `a` and no module that uses `Foo` is rechecked.
-// Rechecking `b` fixes `b` alone.
 #[test]
 fn test_tparams_pep695_default_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         "class Foo[T = int]: ...",
         "class Foo[T = str]: ...",
-        StaleModules {
-            a_edited: &[
-                "b",
-                "b_specialize",
-                "c_alias",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_explicit_alias",
-                "c_function",
-                "c_function_variance",
-                "c_legacy_bound",
-                "c_legacy_default",
-                "c_legacy_never",
-                "c_never",
-                "c_specialize",
-                "c_type_alias",
-            ],
-            a_and_b_edited: &[
-                "b_specialize",
-                "c_bound",
-                "c_class",
-                "c_default",
-                "c_never",
-                "c_specialize",
-            ],
-        },
+        StaleModules::NONE,
     );
 }
 
@@ -3753,43 +3659,31 @@ fn test_tparams_pep695_variance_change_propagates() {
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_pep695_arity_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         "class Foo[T]: ...",
         "class Foo[T, U]: ...",
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_pep695_becoming_generic_propagates() {
-    assert_tparams_rebuild_matches_clean(
-        "class Foo: ...",
-        "class Foo[T]: ...",
-        StaleModules::C_NEVER,
-    );
+    assert_tparams_rebuild_matches_clean("class Foo: ...", "class Foo[T]: ...", StaleModules::NONE);
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_pep695_becoming_non_generic_propagates() {
-    assert_tparams_rebuild_matches_clean(
-        "class Foo[T]: ...",
-        "class Foo: ...",
-        StaleModules::C_NEVER,
-    );
+    assert_tparams_rebuild_matches_clean("class Foo[T]: ...", "class Foo: ...", StaleModules::NONE);
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_pep695_order_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         "class Foo[T: int, U: str]: ...",
         "class Foo[U: str, T: int]: ...",
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
@@ -3798,27 +3692,24 @@ fn legacy_foo(tvars: &str, class: &str) -> String {
     format!("from typing import Generic, TypeVar\n{tvars}\n{class}\n")
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_bound_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         &legacy_foo("T = TypeVar('T', bound=int)", "class Foo(Generic[T]): ..."),
         &legacy_foo("T = TypeVar('T', bound=str)", "class Foo(Generic[T]): ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_constraints_change_propagates() {
     assert_tparams_rebuild_matches_clean(
         &legacy_foo("T = TypeVar('T', int, bytes)", "class Foo(Generic[T]): ..."),
         &legacy_foo("T = TypeVar('T', str, bytes)", "class Foo(Generic[T]): ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_default_change_propagates() {
     assert_tparams_rebuild_matches_clean(
@@ -3830,60 +3721,55 @@ fn test_tparams_legacy_default_change_propagates() {
             "T = TypeVar('T', default=str)",
             "class Foo(Generic[T]): ...",
         ),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_variance_change_propagates() {
     let class = "class Foo(Generic[T]):\n    def get(self) -> T: ...";
     assert_tparams_rebuild_matches_clean(
         &legacy_foo("T = TypeVar('T')", class),
         &legacy_foo("T = TypeVar('T', covariant=True)", class),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_arity_change_propagates() {
     let tvars = "T = TypeVar('T')\nU = TypeVar('U')";
     assert_tparams_rebuild_matches_clean(
         &legacy_foo(tvars, "class Foo(Generic[T]): ..."),
         &legacy_foo(tvars, "class Foo(Generic[T, U]): ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_becoming_generic_propagates() {
     assert_tparams_rebuild_matches_clean(
         &legacy_foo("T = TypeVar('T')", "class Foo: ..."),
         &legacy_foo("T = TypeVar('T')", "class Foo(Generic[T]): ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_becoming_non_generic_propagates() {
     assert_tparams_rebuild_matches_clean(
         &legacy_foo("T = TypeVar('T')", "class Foo(Generic[T]): ..."),
         &legacy_foo("T = TypeVar('T')", "class Foo: ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
-// Bug: `c_never` keeps old copies of `Foo`'s type parameters (see `StaleModules::C_NEVER`).
 #[test]
 fn test_tparams_legacy_order_change_propagates() {
     let tvars = "T = TypeVar('T', bound=int)\nU = TypeVar('U', bound=str)";
     assert_tparams_rebuild_matches_clean(
         &legacy_foo(tvars, "class Foo(Generic[T, U]): ..."),
         &legacy_foo(tvars, "class Foo(Generic[U, T]): ..."),
-        StaleModules::C_NEVER,
+        StaleModules::NONE,
     );
 }
 
@@ -4122,8 +4008,8 @@ def g[T: str](x: T) -> T: ...
 
 /// Editing a type parameter's bound rechecks the modules that read the bound, and not the ones
 /// that only use its class.
-// Bug: `Class` carries `Foo`'s scoped type parameters, and `Class` equality ignores them, so the
-// edit changes no export of `foo` and `main`, which reads the bound, is not rechecked.
+// Bug: the bound is part of `Foo`'s `KeyTParams`, which `bar` reads to fill in `Foo`'s type
+// arguments, so `bar` is rechecked too.
 #[test]
 fn test_tparams_bound_change_rechecks_only_readers() {
     let mut i = Incremental::new();
@@ -4135,7 +4021,7 @@ fn test_tparams_bound_change_rechecks_only_readers() {
     i.set("bar", "from foo import Foo\ndef g(x: Foo) -> None: ...");
     i.check(&["foo", "main", "bar"], &["foo", "main", "bar"]);
     i.set("foo", "class Foo[T: str]: ...");
-    i.check_ignoring_expectations(&["foo", "main", "bar"], &["foo"]);
+    i.check_ignoring_expectations(&["foo", "main", "bar"], &["bar", "foo", "main"]);
 }
 
 /// The messages of the errors in the last check.

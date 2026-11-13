@@ -384,9 +384,9 @@ impl<Ans: LookupAnswer> Solve<Ans> for KeyClass {
         answers: &AnswersSolver<Ans>,
         binding: &BindingClass,
         _range: TextRange,
-        errors: &ErrorCollector,
+        _errors: &ErrorCollector,
     ) -> SolveResult<Self> {
-        SolveResult::Answer(answers.solve_class(binding, errors))
+        SolveResult::Answer(answers.solve_class(binding))
     }
 
     fn promote_recursive(_heap: &TypeHeap, _: Var) -> Self::Answer {

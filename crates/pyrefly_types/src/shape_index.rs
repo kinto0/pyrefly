@@ -1061,7 +1061,6 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
-    use crate::class::PrecomputedTParams;
     use crate::identity::IdentityIgnored;
     use crate::lit_int::LitInt;
     use crate::quantified::AnchorIndex;
@@ -1210,7 +1209,7 @@ mod tests {
                 Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
                 NestingContext::toplevel(),
                 fake_module("builtins"),
-                PrecomputedTParams::NotGeneric,
+                false,
                 false,
                 None,
             ),
@@ -1264,7 +1263,7 @@ mod tests {
                 Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
                 NestingContext::toplevel(),
                 fake_module("builtins"),
-                PrecomputedTParams::NotGeneric,
+                false,
                 false,
                 None,
             ),

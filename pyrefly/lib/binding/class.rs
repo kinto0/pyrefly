@@ -613,18 +613,21 @@ impl<'a> BindingsBuilder<'a> {
             },
         );
 
-        // Insert a `KeyTParams` / `BindingTParams` pair, but only if there is at least
-        // one generic base class - otherwise, it is not possible that legacy tparams are used.
+        // Whether a class declares type parameters is decided from syntax: it writes a scoped type
+        // parameter list, it has a shape declaration, or it names a possible legacy type variable
+        // in a generic base. The type parameters themselves are always computed by its
+        // `KeyTParams`, so that solving the class needs none of them.
         let legacy_tparams = legacy.lookup_keys();
-        let tparams_require_binding = !legacy_tparams.is_empty();
-        if tparams_require_binding {
-            let scoped_type_params = mem::take(&mut x.type_params);
+        let has_tparams = !legacy_tparams.is_empty()
+            || x.type_params.is_some()
+            || self.shape_declarations.declared_by(x.name.range).is_some();
+        if has_tparams {
             self.insert_binding(
                 KeyTParams(class_indices.def_index),
                 BindingTParams {
                     class_idx: class_indices.class_idx,
                     name: x.name.clone(),
-                    scoped_type_params,
+                    scoped_type_params: mem::take(&mut x.type_params),
                     generic_bases: bases
                         .iter()
                         .filter_map(|base| match base {
@@ -649,7 +652,7 @@ impl<'a> BindingsBuilder<'a> {
                 parent: parent.dupe(),
                 is_protocol: has_protocol_base,
                 deprecation,
-                tparams_require_binding,
+                has_tparams,
                 docstring_range,
             }),
         );
