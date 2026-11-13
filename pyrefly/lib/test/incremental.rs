@@ -4031,11 +4031,9 @@ fn error_messages(res: &IncrementalResult) -> Vec<String> {
         .map(|error| error.msg().to_owned())
 }
 
-/// Renaming a class keeps its index, so the types that refer to it, such as the return type of
-/// `make`, still compare equal. The rename must still recompute `main`, whose error names the
-/// class.
-// Bug: `Class` equality ignores the class name, so the rename changes no export of `foo`, `main`
-// is not recomputed, and its error keeps the old name.
+/// Renaming a class keeps its index, but the types that refer to it, such as the return type of
+/// `make`, compare unequal, since the name is part of the class. So the rename recomputes `main`,
+/// whose error names the class.
 #[test]
 fn test_class_rename_invalidates_class_dependency() {
     let mut i = Incremental::new();
@@ -4048,8 +4046,8 @@ fn test_class_rename_invalidates_class_dependency() {
 
     i.set("foo", "class Bar: ...\ndef make() -> Bar: ...");
     let res = i.unchecked(&["main", "foo"]);
-    res.check_recompute(&["foo"]);
-    assert_eq!(error_messages(&res), ["`Foo` is not assignable to `int`"]);
+    res.check_recompute(&["foo", "main"]);
+    assert_eq!(error_messages(&res), ["`Bar` is not assignable to `int`"]);
 }
 
 /// Deprecating a class must recompute `main`, which sees the class only through the return type
@@ -4155,10 +4153,8 @@ fn test_fewer_classes_rebuild_reports_current_classes() {
 
 /// A union keeps its class members ordered by name, so renaming a class in one module can reorder
 /// a union in another, even when no export of the first module changes and the second module reads
-/// nothing else about the class. The rebuild must still equal a clean check.
-// Bug: `Class` equality ignores the class name, so the rename changes no export of `foo` and `bar`
-// is not rechecked. `bar` keeps exporting `obj` as `Abc` and `f` as returning `Abc | Bar`, where a
-// clean check gives `Foo` and `Bar | Foo`.
+/// nothing else about the class. The rename changes `obj`, whose class has a new name, so `bar` is
+/// rechecked and its rebuild equals a clean check.
 #[test]
 fn test_class_rename_reorders_union_in_importer() {
     let foo = |name: &str| {
@@ -4180,7 +4176,7 @@ def f(c: bool):
     i.set("bar", bar);
     i.check(&["bar"], &["bar", "foo"]);
     i.set("foo", &foo("Foo"));
-    i.unchecked(&["bar"]).check_recompute(&["foo"]);
+    i.unchecked(&["bar"]).check_recompute(&["bar", "foo"]);
     let incremental = i
         .state
         .transaction()
@@ -4197,7 +4193,7 @@ def f(c: bool):
         .get_solutions(&clean.handle("bar"))
         .unwrap();
 
-    assert_ne!(exported(&incremental), exported(&expected));
+    assert_eq!(exported(&incremental), exported(&expected));
 }
 
 /// The error for a descriptor whose `__get__` cannot be called is reported at the read in `main`,

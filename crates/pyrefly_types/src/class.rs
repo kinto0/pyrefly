@@ -58,10 +58,36 @@ impl PartialEq for Class {
 }
 
 impl Eq for Class {}
-// Deprecation changes invalidate cached references without changing nominal class identity.
+
+/// Two classes are `TypeEq` when they are the same class (`PartialEq`, which with `Hash` stays
+/// identity-only, since `Class` is a map key) with the same definition facts: the name and the
+/// enclosing scopes that its printed name shows, whether it is a protocol, its deprecation, and
+/// whether it declares type parameters. A reader can use these facts from the value alone, so
+/// comparing an answer that holds the class catches a change to them. They are all decided at
+/// binding time, so the iterations of a recursive computation always agree on them. `known` is
+/// computed from the module, the name and the nesting, so it follows from those.
 impl TypeEq for Class {
     fn type_eq(&self, other: &Self, _ctx: &mut TypeEqCtx) -> bool {
-        self == other && self.deprecation() == other.deprecation()
+        if Arc::ptr_eq(&self.0, &other.0) {
+            return true;
+        }
+        let same_name = self.0.qname.id() == other.0.qname.id()
+            && match (
+                self.0.qname.parent().is_toplevel(),
+                other.0.qname.parent().is_toplevel(),
+            ) {
+                (true, true) => true,
+                (false, false) => {
+                    self.0.qname.name_relative_to_module()
+                        == other.0.qname.name_relative_to_module()
+                }
+                _ => false,
+            };
+        self == other
+            && same_name
+            && self.0.deprecation == other.0.deprecation
+            && self.0.is_protocol == other.0.is_protocol
+            && self.0.has_tparams == other.0.has_tparams
     }
 }
 
