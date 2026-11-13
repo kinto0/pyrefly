@@ -521,8 +521,6 @@ pub enum ErrorKind {
     UnreachableMatchCase,
     /// `__all__` is defined but cannot be statically analyzed.
     UnresolvableDunderAll,
-    /// Calling a signature whose types depend on unresolved imports.
-    UnresolvedImportSignature,
     /// Protocols decorated with `@runtime_checkable` can be used in `isinstance` checks
     /// The runtime only checks that an attribute with that name is present, so the
     /// type checker must warn if the types are not compatible.
@@ -727,7 +725,6 @@ impl ErrorKind {
             ErrorKind::UnreachableExceptClause => Severity::Warn,
             ErrorKind::UnreachableMatchCase => Severity::Warn,
             ErrorKind::UnresolvableDunderAll => Severity::Warn,
-            ErrorKind::UnresolvedImportSignature => Severity::Warn,
             ErrorKind::UnsupportedDynamicBase => Severity::Ignore,
             ErrorKind::UntypedClassDecorator => Severity::Ignore,
             ErrorKind::UntypedFunctionDecorator => Severity::Ignore,

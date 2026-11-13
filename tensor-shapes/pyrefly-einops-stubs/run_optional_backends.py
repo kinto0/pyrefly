@@ -26,6 +26,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pyrefly", type=Path, required=True, help="existing binary")
     parser.add_argument("--backend", choices=BACKENDS, action="append", default=[])
+    parser.add_argument("--preset", choices=("default", "strict"), default="default")
     parser.add_argument("--nocapture", action="store_true")
     args = parser.parse_args()
     package_root = Path(__file__).resolve().parent
@@ -38,7 +39,7 @@ def main() -> int:
             "--config",
             os.devnull,
             "--preset",
-            "default",
+            args.preset,
             "--python-version",
             "3.13",
             "--skip-interpreter-query",

@@ -10,7 +10,6 @@
 use crate::test::util::TestEnv;
 use crate::testcase;
 
-// Constructor phases must deduplicate equivalent diagnostics at the same call range.
 testcase!(
     test_signature_unresolved_import_constructor_details,
     r#"
@@ -24,11 +23,12 @@ class Model:
         pass
 
 def construct(array: Array, other: Other) -> Model:
-    return Model(array, other)  # E: Call uses a signature that depends on unresolved imports
+    return Model(array, other)
 "#,
 );
 
 testcase!(
+    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_overload,
     r#"
 from typing import Any, assert_type, overload
@@ -40,13 +40,11 @@ def transform(x: Array[int]) -> Array[str]: ...
 def transform(x: int) -> str: ...
 def transform(x: Any) -> Any: ...
 
-assert_type(transform(1), str)
+assert_type(transform(1), Any)
 "#,
 );
 
-// This records a debatable policy edge, not an established correctness bug.
-// Rejecting a direct missing-import return may be reasonable; a union can
-// still contain usable return alternatives. The input-only policy accepts it.
+// A missing-import return type participates in ordinary overload selection.
 testcase!(
     test_signature_unresolved_import_return_only,
     r#"
@@ -73,7 +71,7 @@ import another_missing_backend as backend  # E: Cannot find module `another_miss
 def transform(x: Array, y: Other) -> backend.Array[int]:
     return x
 
-assert_type(transform(1, 2), Any)  # E: Call uses a signature that depends on unresolved imports
+assert_type(transform(1, 2), Any)
 "#,
 );
 
@@ -102,7 +100,7 @@ Alias = Array[int]
 def transform(x: Alias) -> Alias:
     return x
 
-assert_type(transform(1), Any)  # E: Call uses a signature that depends on unresolved imports
+assert_type(transform(1), Any)
 "#,
 );
 
@@ -136,6 +134,7 @@ x = s
 );
 
 testcase!(
+    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_missing_export,
     TestEnv::one("backend", ""),
     r#"
@@ -147,7 +146,7 @@ def transform(x: Array) -> Any: ...
 @overload
 def transform(x: int) -> str: ...
 def transform(x: Any) -> Any: ...
-assert_type(transform(1), str)
+assert_type(transform(1), Any)
 "#,
 );
 
@@ -160,7 +159,7 @@ from missing_backend import Array  # E: Cannot find module `missing_backend`
 def transform[T](x: Array) -> list[T]:
     raise RuntimeError
 
-result: list[str] = transform(1)  # E: Call uses a signature that depends on unresolved imports
+result: list[str] = transform(1)
 assert_type(result, list[str])
 "#,
 );
@@ -179,7 +178,7 @@ class Right:
     def __radd__(self, other: object) -> int:
         return 0
 
-assert_type(Left() + Right(), str)  # E: Call uses a signature that depends on unresolved imports
+assert_type(Left() + Right(), str)
 "#,
 );
 
@@ -219,7 +218,7 @@ class Model:
     array: Array
     other: Other
 
-assert_type(Model(1, 2), Model)  # E: Call uses a signature that depends on unresolved imports
+assert_type(Model(1, 2), Model)
 
 @dataclass
 class GenericModel[T]:
@@ -242,8 +241,8 @@ def transform(x: Array) -> int: ...
 def transform(x: Other, y: Other) -> str: ...
 def transform(x: Any, y: Any = None) -> Any: ...
 
-assert_type(transform(1), int)  # E: Call uses a signature that depends on unresolved imports
-assert_type(transform(1, 2), str)  # E: Call uses a signature that depends on unresolved imports
+assert_type(transform(1), int)
+assert_type(transform(1, 2), str)
 
 @overload
 def ambiguous(x: Array) -> int: ...
@@ -251,7 +250,7 @@ def ambiguous(x: Array) -> int: ...
 def ambiguous(x: Other) -> str: ...
 def ambiguous(x: Any) -> Any: ...
 
-assert_type(ambiguous(1), Any)  # E: No matching overload found
+assert_type(ambiguous(1), int)
 "#,
 );
 
@@ -262,7 +261,7 @@ from typing import Any, Callable, assert_type
 from missing_backend import Array  # E: Cannot find module `missing_backend`
 
 def exercise(transform: Callable[[Array], Array]) -> None:
-    assert_type(transform(1), Any)  # E: Call uses a signature that depends on unresolved imports
+    assert_type(transform(1), Any)
 "#,
 );
 
@@ -285,7 +284,7 @@ def scalar(value: int | Array) -> int:
     return 0
 
 assert_type(scalar(7), int)
-assert_type(scalar("bad"), int)  # E: Call uses a signature that depends on unresolved imports
+assert_type(scalar("bad"), int)
 "#,
 );
 
@@ -302,7 +301,7 @@ assert_type(optional(7), int)
 assert_type(optional(7, None), int)
 assert_type(optional(7, object()), int)
 extra = object()
-assert_type(optional(7, extra), int)  # E: Call uses a signature that depends on unresolved imports
+assert_type(optional(7, extra), int)
 "#,
 );
 
@@ -347,11 +346,12 @@ def choose(value: int) -> bool: ...
 def choose(value: Any) -> Any: ...
 
 def exercise(value: Any) -> None:
-    assert_type(choose(value), bool)
+    assert_type(choose(value), str)
 "#,
 );
 
 testcase!(
+    bug = "Missing imports shadow available overloads.",
     test_signature_unresolved_import_bound_input,
     r#"
 from typing import Any, assert_type, overload
@@ -364,7 +364,7 @@ def choose(value: list[str]) -> bool: ...
 def choose(value: Any) -> Any: ...
 
 values: list[str] = ["bad"]
-assert_type(choose(values), bool)
+assert_type(choose(values), str)
 "#,
 );
 
@@ -398,7 +398,6 @@ def exercise(flag: bool) -> None:
 
 // Reproductions from https://github.com/meta/pyrefly/issues/5634.
 testcase!(
-    bug = "Unavailable signatures reject valid calls and omitted defaults.",
     test_missing_import_overload_fallback,
     r#"
 from collections.abc import Callable
@@ -413,7 +412,7 @@ def compare(a: Tensor, kind: str, b: Tensor) -> bool | Tensor:
     return a == b
 
 def exercise(x: Tensor, y: Tensor) -> None:
-    compare(x, "equal", y)  # E: No matching overload found
+    assert_type(compare(x, "equal", y), bool)
     compare(x, 1, y)  # E: No matching overload found
 
 def plain(a: int, order: Order = "K") -> int:
@@ -426,19 +425,20 @@ def ones_like(a: str, order: Order = "K") -> str: ...
 def ones_like(a: int | str, order: Order = "K") -> int | str:
     return a
 
-assert_type(plain(1), int)  # E: Call uses a signature that depends on unresolved imports
-assert_type(ones_like(1), Any)  # E: No matching overload found
-assert_type(ones_like("x"), Any)  # E: No matching overload found
+assert_type(plain(1), int)
+assert_type(ones_like(1), int)
+assert_type(ones_like("x"), str)
 
 R = TypeVar("R")
 def ident(x: R) -> Callable[[R], R]:
     raise RuntimeError
 
-assert_type(ident(foo)(1), Any)  # E: Call uses a signature that depends on unresolved imports
+assert_type(ident(foo)(1), Any)
 "#,
 );
 
 testcase!(
+    bug = "Missing imports shadow available overloads.",
     test_missing_import_overload_order,
     r#"
 from typing import Any, assert_type, overload
@@ -457,13 +457,12 @@ def known_first(value: Array, other: Any) -> Array: ...
 def known_first(value: Any, other: Any) -> Any: ...
 
 def exercise(other: Any) -> None:
-    assert_type(missing_first(1, other), str)
+    assert_type(missing_first(1, other), Any)
     assert_type(known_first(1, other), str)
 "#,
 );
 
 testcase!(
-    bug = "Unavailable signatures over-narrow gradual arguments.",
     test_missing_import_overload_gradual_argument,
     r#"
 from typing import Any, assert_type, overload
@@ -477,18 +476,18 @@ def alpha(cutoff: Any) -> Any:
     return cutoff
 
 def exercise(value: Any) -> None:
-    assert_type(alpha(value), float)
-    assert_type(alpha(cutoff=value), float)
+    assert_type(alpha(value), Any)
+    assert_type(alpha(cutoff=value), Any)
     assert_type(alpha(1.0), float)
 
 # Unannotated arguments must retain the same gradual behavior.
 def unannotated(value) -> None:
-    alpha(value)[:, None]  # E: Cannot index into `float`
+    alpha(value)[:, None]
 "#,
 );
 
 testcase!(
-    bug = "Unavailable signatures over-narrow gradual arguments.",
+    bug = "Missing imports shadow available overloads for concrete arguments.",
     test_missing_import_overload_gradual_argument_spec,
     TestEnv::new().enable_spec_compliant_overloads(),
     r#"
@@ -503,9 +502,9 @@ def alpha(cutoff: Any) -> Any:
     return cutoff
 
 def exercise(value: Any) -> None:
-    assert_type(alpha(value), float)
-    assert_type(alpha(cutoff=value), float)
-    assert_type(alpha(1.0), float)
+    assert_type(alpha(value), Any)
+    assert_type(alpha(cutoff=value), Any)
+    assert_type(alpha(1.0), Any)
 "#,
 );
 
