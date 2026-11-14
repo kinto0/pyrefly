@@ -1279,3 +1279,84 @@ p2 = partial(p1, 1)
 reveal_type(p2)  # E: revealed type: partial[int]
 "#,
 );
+
+testcase!(
+    bug = "Placeholder detection discards errors inside a recognized expression",
+    test_partial_placeholder_expression_diagnostics,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
+    r#"
+from functools import partial, Placeholder
+from typing import reveal_type
+
+def f(x: int, y: int) -> int: ...
+def make_hole(n: int):
+    return Placeholder
+
+class Holder:
+    hole = Placeholder
+
+def make_holder(n: int) -> Holder:
+    return Holder()
+
+def condition() -> bool: ...
+
+make_hole("bad")  # E: Argument `Literal['bad']` is not assignable to parameter `n` with type `int`
+make_hole()  # E: Missing argument `n`
+p = partial(f, make_hole("bad"), 2)  # WANT: bad argument to make_hole
+partial(f, make_hole(), 2)  # WANT: missing argument to make_hole
+partial(f, make_holder("bad").hole, 2)  # WANT: bad argument to make_holder
+partial(f, Placeholder if condition(1) else Placeholder, 2)  # WANT: excess argument to condition
+reveal_type(p)  # E: revealed type: (x: int, /) -> int
+"#,
+);
+
+testcase!(
+    bug = "Keyword Placeholder detection discards errors inside its value expression",
+    test_partial_placeholder_keyword_expression_diagnostics,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
+    r#"
+from functools import partial, Placeholder
+
+def f(x: int, y: int) -> int: ...
+def make_hole(n: int):
+    return Placeholder
+
+partial(f, x=make_hole("bad"))  # E: cannot use functools.Placeholder as keyword argument
+"#,
+);
+
+testcase!(
+    test_partial_placeholder_preserves_contextual_arguments,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
+    r#"
+from functools import partial
+from typing import Callable, reveal_type
+
+def apply(cb: Callable[[int], int], y: int) -> int: ...
+def condition() -> bool: ...
+p = partial(apply, (lambda x: x + 1) if condition() else (lambda x: x + 2), 2)
+reveal_type(p)  # E: revealed type: () -> int
+
+def empty[T]() -> list[T]:
+    return []
+def seq(xs: list[int], y: int) -> int: ...
+q = partial(seq, empty(), 1)
+reveal_type(q)  # E: revealed type: () -> int
+
+partial(apply, lambda x: x + 1, 2)
+partial(seq, [], 1)
+"#,
+);
+
+functools_testcase!(
+    test_partial_nested_bound_arguments,
+    r#"
+from functools import partial
+from typing import reveal_type
+
+def f(x: object) -> object: ...
+p = partial(f, partial(f, partial(f, partial(f, partial(f, partial(f,
+    partial(f, partial(f, partial(f, partial(f, partial(f, partial(f, 1))))))))))))
+reveal_type(p)  # E: revealed type: () -> object
+"#,
+);
