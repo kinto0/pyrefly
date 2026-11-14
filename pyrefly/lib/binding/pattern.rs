@@ -1175,7 +1175,7 @@ impl<'a> BindingsBuilder<'a> {
         if exhaustive {
             self.finish_exhaustive_fork();
         } else {
-            let narrow_entries = if match_subject.is_synthetic()
+            let narrow_entries = if match_subject.has_local_subject()
                 && let Some((op, range)) = &negated_prev_subject
             {
                 vec![(subject_idx, Box::new(op.clone()), *range)]

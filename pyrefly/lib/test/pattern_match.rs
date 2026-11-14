@@ -2443,6 +2443,23 @@ def f(begin: int | None, end: int | None) -> int:
 "#,
 );
 
+// https://github.com/pyrefly-org/pyrefly/issues/5206
+testcase!(
+    test_match_tuple_refutable_cases_are_exhaustive_return,
+    r#"
+def f(x: bool, y: bool) -> int:
+    match x, y:
+        case True, True:
+            return 0
+        case True, False:
+            return 1
+        case False, True:
+            return 2
+        case False, False:
+            return 3
+"#,
+);
+
 testcase!(
     test_match_starred_tuple_subject_is_not_fixed_arity,
     r#"
