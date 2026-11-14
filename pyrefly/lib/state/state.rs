@@ -664,7 +664,7 @@ struct ModuleData {
     // Copy-on-write: shared with in-flight transactions until first write.
     // `clone_for_mutation` bumps the refcount instead of cloning the maps, so
     // modules that are loaded but never rebuilt pay no clone.
-    imports: Arc<HashMap<ModuleName, FindingOrError<ModulePath>, BuildNoHash>>,
+    imports: Arc<HashMap<ModuleName, FindingOrError<Handle>, BuildNoHash>>,
     deps: Arc<HashMap<Handle, ModuleDeps>>,
     rdeps: Arc<HashSet<Handle>>,
     /// Last-computed value of `tensor_shapes_available` for this module.
@@ -684,9 +684,9 @@ struct ModuleDataMut {
     /// Pre-rebuild data saved for diffing at the Solutions step.
     /// Populated during `clean()`, consumed during `demand()` at Solutions.
     old: Mutex<OldData>,
-    /// Import resolution cache: module names from import statements → resolved paths.
+    /// Import resolution cache: module names from import statements → resolved handles.
     /// Only contains deps that were resolved via `find_import`.
-    imports: RwLock<Arc<HashMap<ModuleName, FindingOrError<ModulePath>, BuildNoHash>>>,
+    imports: RwLock<Arc<HashMap<ModuleName, FindingOrError<Handle>, BuildNoHash>>>,
     /// All forward dependencies keyed by Handle.
     /// Invariant: If deps contains h2, then h2.rdeps.contains(self.handle).
     /// To ensure atomicity, rdeps is modified while holding the deps write lock.
@@ -1138,7 +1138,11 @@ impl<'a> Transaction<'a> {
 
     /// Look up the `ClassFields` for a class, which may be defined in another module.
     pub fn get_class_fields(&self, source_handle: &Handle, class: &Class) -> Option<ClassFields> {
-        let handle = source_handle.for_module(class.module_name(), class.module_path().dupe());
+        let handle = self.imported_handle(
+            source_handle,
+            class.module_name(),
+            class.module_path().dupe(),
+        );
         Some(
             self.get_bindings_metadata(&handle)?
                 .get_class_checked(class.index())?
@@ -1391,6 +1395,23 @@ impl<'a> Transaction<'a> {
             .collect()
     }
 
+    /// The handle of the module `module` at `path`, looked up from `importer`. Every lookup from
+    /// `importer` into another module uses it, whether or not `importer` imports that module, so
+    /// that all of them reach the same module.
+    pub fn imported_handle(
+        &self,
+        importer: &Handle,
+        module: ModuleName,
+        path: ModulePath,
+    ) -> Handle {
+        let config = self
+            .get_config(importer)
+            .unwrap_or_else(|| self.data.state.get_config(importer));
+        self.data
+            .state
+            .imported_handle_with_config(importer, &config, module, path)
+    }
+
     /// Compute transitive dependency closure for the given handle.
     /// Note that for IDE services, if the given handle is an in-memory one, then you are probably
     /// not getting what you want, because the set of rdeps of in-memory file for IDE service will
@@ -1508,13 +1529,20 @@ impl<'a> Transaction<'a> {
         module: ModuleName,
         path: Option<&ModulePath>,
     ) -> FindingOrError<Handle> {
+        let config = self.get_module(handle).config.read().dupe();
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
-            None => self
-                .get_cached_loader(&self.get_module(handle).config.read())
-                .find_import(module, Some(handle.path()), Some(&self.timing)),
+            None => self.get_cached_loader(&config).find_import(
+                module,
+                Some(handle.path()),
+                Some(&self.timing),
+            ),
         };
-        path.map(|path| Handle::new(module, path, handle.sys_info().dupe()))
+        path.map(|path| {
+            self.data
+                .state
+                .imported_handle_with_config(handle, &config, module, path)
+        })
     }
 
     /// Create a handle for source lookup, including modules replaced with `Any`.
@@ -1526,7 +1554,8 @@ impl<'a> Transaction<'a> {
         fallback_style: Option<ModuleStyle>,
         include_interpreter_stdlib: bool,
     ) -> FindingOrError<Handle> {
-        self.get_cached_loader(&self.get_module(handle).config.read())
+        let config = self.get_module(handle).config.read().dupe();
+        self.get_cached_loader(&config)
             .find_import_including_replaced(
                 module,
                 Some(handle.path()),
@@ -1535,7 +1564,11 @@ impl<'a> Transaction<'a> {
                 include_interpreter_stdlib,
                 Some(&self.timing),
             )
-            .map(|path| Handle::new(module, path, handle.sys_info().dupe()))
+            .map(|path| {
+                self.data
+                    .state
+                    .imported_handle_with_config(handle, &config, module, path)
+            })
     }
 
     /// Create a handle for import `module` within the handle `handle`, preferring `.py` over `.pyi`
@@ -1546,10 +1579,11 @@ impl<'a> Transaction<'a> {
         path: Option<&ModulePath>,
         include_interpreter_stdlib: bool,
     ) -> FindingOrError<Handle> {
+        let config = self.get_module(handle).config.read().dupe();
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
             None => self
-                .get_cached_loader(&self.get_module(handle).config.read())
+                .get_cached_loader(&config)
                 .find_import_prefer_executable(
                     module,
                     Some(handle.path()),
@@ -1557,7 +1591,11 @@ impl<'a> Transaction<'a> {
                     Some(&self.timing),
                 ),
         };
-        path.map(|path| Handle::new(module, path, handle.sys_info().dupe()))
+        path.map(|path| {
+            self.data
+                .state
+                .imported_handle_with_config(handle, &config, module, path)
+        })
     }
 
     /// Create a handle for import `module` within the handle `handle`
@@ -1658,18 +1696,28 @@ impl<'a> Transaction<'a> {
 
         // Validate the find flag.
         if dirty.find() {
-            let loader = self.get_cached_loader(&module_data.config.read());
+            let config = module_data.config.read().dupe();
+            let loader = self.get_cached_loader(&config);
             let mut is_dirty = false;
 
             // Only check imports (not all deps), since only import-statement deps
-            // need `find_import` re-validation. The cached value is the same type
-            // returned by `find_import`, so we just compare for equality.
+            // need `find_import` re-validation. The cache holds the handle built from
+            // the result of `find_import`, so we rebuild it and compare.
             for (module_name, cached) in module_data.imports.read().iter() {
-                let fresh = loader.find_import(
-                    *module_name,
-                    Some(module_data.handle.path()),
-                    Some(&self.timing),
-                );
+                let fresh = loader
+                    .find_import(
+                        *module_name,
+                        Some(module_data.handle.path()),
+                        Some(&self.timing),
+                    )
+                    .map(|path| {
+                        self.data.state.imported_handle_with_config(
+                            &module_data.handle,
+                            &config,
+                            *module_name,
+                            path,
+                        )
+                    });
                 if *cached != fresh {
                     is_dirty = true;
                     break;
@@ -2181,11 +2229,17 @@ impl<'a> Transaction<'a> {
             }
             ExportLocation::OtherModule(other_module, alias) => {
                 let actual_name = alias.as_ref().unwrap_or(name);
-                let loader = self.get_cached_loader(&module_data.config.read());
-                let other_path = loader
+                let config = module_data.config.read().dupe();
+                let other_path = self
+                    .get_cached_loader(&config)
                     .find_import(*other_module, Some(handle.path()), Some(&self.timing))
                     .finding()?;
-                let other_handle = Handle::new(*other_module, other_path, handle.sys_info().dupe());
+                let other_handle = self.data.state.imported_handle_with_config(
+                    handle,
+                    &config,
+                    *other_module,
+                    other_path,
+                );
                 self.lookup_export_location(&other_handle, actual_name)
             }
         }
@@ -3072,7 +3126,8 @@ impl<'a> Transaction<'a> {
 /// env is not `Sync`.
 pub struct TransactionTypeEnv<'a> {
     transaction: &'a Transaction<'a>,
-    /// The module this env was created for. Other modules are looked up with its `SysInfo`.
+    /// The module this env was created for. Other modules are looked up with the handles it gets
+    /// for them.
     handle: Handle,
     stdlib: Arc<Stdlib>,
     thread_state: ThreadState,
@@ -3088,10 +3143,10 @@ impl TypeEnv for TransactionTypeEnv<'_> {
         if !cls.has_tparams() {
             return TParams::empty_ref();
         }
-        let handle = Handle::new(
+        let handle = self.transaction.imported_handle(
+            &self.handle,
             cls.module_name(),
             cls.module_path().dupe(),
-            self.handle.sys_info().dupe(),
         );
         // There is no answer only if the class's module was rebuilt without this class, in which
         // case the solver also treats the class as having no type parameters.
@@ -3115,7 +3170,8 @@ pub(crate) struct TransactionHandle<'a> {
     /// TransactionHandle because sys_info is invariant. Both are needed: one file can
     /// be imported under several module names, and each name is a distinct module.
     /// Each entry also remembers the target module, so that repeated lookups of
-    /// the same module skip the transaction's shared module map.
+    /// the same module skip the transaction's shared module map and do not build the
+    /// target's handle again.
     deferred_deps: RefCell<FxHashMap<(ModuleName, ModulePath), DeferredDeps<'a>>>,
     /// Cache of cross-module `BindingsMetadata` for class field lookups.
     /// Keyed by `ArcId::id()` (pointer-as-usize) to avoid atomic refcount
@@ -3164,16 +3220,13 @@ impl<'a> TransactionHandle<'a> {
         path: Option<&ModulePath>,
         dep: ModuleDep,
     ) -> FindingOrError<&'a ArcId<ModuleDataMut>> {
-        let resolve = move |path: &ModulePath| {
+        // `handle` builds the target's handle. It runs only when the target has no entry yet.
+        let resolve = move |path: &ModulePath, handle: &dyn Fn() -> Handle| {
             let mut deferred_deps = self.deferred_deps.borrow_mut();
             let deferred = deferred_deps
                 .entry((module, path.dupe()))
                 .or_insert_with(|| {
-                    let handle = Handle::new(
-                        module,
-                        path.dupe(),
-                        self.module_data.handle.sys_info().dupe(),
-                    );
+                    let handle = handle();
                     let module_data = self.transaction.get_imported_module(&handle);
                     DeferredDeps {
                         handle,
@@ -3184,26 +3237,38 @@ impl<'a> TransactionHandle<'a> {
             deferred.deps.add_dep(dep);
             deferred.module_data
         };
+        let imported_handle = |config: &ConfigFile, path: ModulePath| {
+            self.transaction.data.state.imported_handle_with_config(
+                &self.module_data.handle,
+                config,
+                module,
+                path,
+            )
+        };
         match path {
             // Explicit path — already resolved. Bypass imports entirely. Most lookups take this
             // path, so it resolves directly rather than through a `FindingOrError`.
-            Some(path) => FindingOrError::new_finding(resolve(path)),
+            Some(path) => FindingOrError::new_finding(resolve(path, &|| {
+                imported_handle(&self.module_data.config.read(), path.dupe())
+            })),
             None => {
                 // No path — needs find_import. Check imports cache first.
                 let imports_read = self.module_data.imports.read();
-                let path = match imports_read.get(&module) {
-                    Some(path) => path.dupe(),
+                let handle = match imports_read.get(&module) {
+                    Some(handle) => handle.dupe(),
                     None => {
                         drop(imports_read);
                         let fi_start = Timer::start();
+                        let config = self.module_data.config.read().dupe();
                         let finding = self
                             .transaction
-                            .get_cached_loader(&self.module_data.config.read())
+                            .get_cached_loader(&config)
                             .find_import(
                                 module,
                                 Some(self.module_data.handle.path()),
                                 Some(self.transaction.timing()),
-                            );
+                            )
+                            .map(|path| imported_handle(&config, path));
                         let fi_ns = fi_start.elapsed().as_nanos() as u64;
                         self.transaction
                             .timing()
@@ -3218,7 +3283,7 @@ impl<'a> TransactionHandle<'a> {
                         finding
                     }
                 };
-                path.map(|path| resolve(&path))
+                handle.map(|handle| resolve(handle.path(), &|| handle.dupe()))
             }
         }
     }
@@ -3916,6 +3981,17 @@ impl State {
             self.config_finder
                 .python_file(handle.module_kind(), handle.path())
         }
+    }
+
+    /// `Transaction::imported_handle`, for a caller that has already read the importer's config.
+    fn imported_handle_with_config(
+        &self,
+        importer: &Handle,
+        _importer_config: &ConfigFile,
+        module: ModuleName,
+        path: ModulePath,
+    ) -> Handle {
+        Handle::new(module, path, importer.sys_info().dupe())
     }
 
     pub fn new_transaction<'a>(
