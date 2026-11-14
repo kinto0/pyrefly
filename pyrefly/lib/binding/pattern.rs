@@ -228,31 +228,41 @@ impl<'a> BindingsBuilder<'a> {
         }
     }
 
-    /// The atomic narrow op a leaf sub-pattern imposes on its element, if any.
+    /// The narrow op a sub-pattern imposes on its sequence element, expressed on `facet`, if any.
     ///
     /// Used to build a subject narrowed by every sibling element constraint, so non-narrowing
     /// element captures in a sequence pattern see the narrowed parent type after applying narrowing
     /// from other elements of the sequence.
-    fn sequence_element_atomic_op(pattern: &Pattern) -> Option<AtomicNarrowOp> {
-        match pattern {
-            Pattern::MatchClass(x) => Some(AtomicNarrowOp::IsInstance(
-                (*x.cls).clone(),
-                NarrowSource::Pattern,
-            )),
-            Pattern::MatchValue(p) => Some(AtomicNarrowOp::Eq((*p.value).clone())),
-            Pattern::MatchSingleton(p) => {
-                Some(AtomicNarrowOp::Is(Ast::pattern_match_singleton_to_expr(p)))
+    fn sequence_element_narrow_op(pattern: &Pattern, facet: &FacetSubject) -> Option<NarrowOp> {
+        let atomic = match pattern {
+            Pattern::MatchClass(x) => {
+                AtomicNarrowOp::IsInstance((*x.cls).clone(), NarrowSource::Pattern)
             }
-            Pattern::MatchAs(p) => p
-                .pattern
-                .as_deref()
-                .and_then(Self::sequence_element_atomic_op),
-            _ => None,
-        }
+            Pattern::MatchValue(p) => AtomicNarrowOp::Eq((*p.value).clone()),
+            Pattern::MatchSingleton(p) => {
+                AtomicNarrowOp::Is(Ast::pattern_match_singleton_to_expr(p))
+            }
+            Pattern::MatchAs(p) => {
+                return p
+                    .pattern
+                    .as_deref()
+                    .and_then(|p| Self::sequence_element_narrow_op(p, facet));
+            }
+            Pattern::MatchOr(x) => {
+                return x
+                    .patterns
+                    .iter()
+                    .map(|p| Self::sequence_element_narrow_op(p, facet))
+                    .collect::<Option<Vec<_>>>()
+                    .map(NarrowOp::Or);
+            }
+            _ => return None,
+        };
+        Some(NarrowOp::Atomic(Some(facet.clone()), atomic))
     }
 
     /// Whether a sequence element sub-pattern's refutability is fully captured by
-    /// `sequence_element_atomic_op`, or it is irrefutable. Only when every element is
+    /// `sequence_element_narrow_op`, or it is irrefutable. Only when every element is
     /// fully characterized is it sound to strip the spurious capture `Placeholder`s and let
     /// the arm's negation subtract its covered union member for subsequent cases & exhaustiveness checks.
     /// This behavior is conservative; a refutable element we can't fully express (nested patterns, class pattern with refutable sub-patterns)
@@ -271,6 +281,10 @@ impl<'a> BindingsBuilder<'a> {
                 .iter()
                 .chain(x.arguments.keywords.iter().map(|kw| &kw.pattern))
                 .all(|p| p.is_irrefutable() || p.is_wildcard()),
+            Pattern::MatchOr(x) => x
+                .patterns
+                .iter()
+                .all(Self::sequence_element_fully_characterized),
             Pattern::MatchValue(_) | Pattern::MatchSingleton(_) | Pattern::MatchStar(_) => true,
             _ => false,
         }
@@ -474,18 +488,14 @@ impl<'a> BindingsBuilder<'a> {
                         .iter()
                         .enumerate()
                         .filter_map(|(i, p)| {
-                            Self::sequence_element_atomic_op(p).map(|atomic| {
-                                NarrowOp::Atomic(
-                                    Some(FacetSubject {
-                                        chain: UnresolvedFacetChain::new(Vec1::new(
-                                            UnresolvedFacetKind::Index(i as i64),
-                                        )),
-                                        origin: facet_origin,
-                                        allow_never_collapse: false,
-                                    }),
-                                    atomic,
-                                )
-                            })
+                            let facet = FacetSubject {
+                                chain: UnresolvedFacetChain::new(Vec1::new(
+                                    UnresolvedFacetKind::Index(i as i64),
+                                )),
+                                origin: facet_origin,
+                                allow_never_collapse: false,
+                            };
+                            Self::sequence_element_narrow_op(p, &facet)
                         })
                         .collect()
                 } else {

@@ -2702,3 +2702,18 @@ def f(a: A, b: bool) -> None:
             assert_never(never)
 "#,
 );
+
+// https://github.com/pyrefly-org/pyrefly/issues/5622
+testcase!(
+    test_sequence_pattern_or_element_exhaustive,
+    r#"
+from typing import Literal, assert_never
+
+def f(value: Literal[1, 2]) -> None:
+    match (value,):
+        case (1 | 2,):
+            pass
+        case remaining:
+            assert_never(remaining)
+"#,
+);
