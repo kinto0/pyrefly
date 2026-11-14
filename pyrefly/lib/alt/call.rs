@@ -41,6 +41,7 @@ use crate::alt::answers::AttributeReferenceKind;
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::attr::NoAccessReason;
+use crate::alt::callable::ArgMap;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallKeyword;
 use crate::alt::callable::CallValue;
@@ -169,6 +170,7 @@ pub struct IntersectionCallTarget {
 pub struct CallOutcome {
     pub ty: Type,
     pub overload_table: OverloadTable,
+    pub argmap: ArgMap,
 }
 
 impl CallOutcome {
@@ -176,6 +178,7 @@ impl CallOutcome {
         Self {
             ty,
             overload_table: OverloadTable::default(),
+            argmap: ArgMap::new(),
         }
     }
 }
@@ -1489,6 +1492,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let CallOutcome {
                     ty: ret,
                     overload_table,
+                    ..
                 } = self.call_infer_with_callee_range(
                     self.dunder_new_call_target(
                         new_method.clone(),
@@ -2090,7 +2094,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ctor_targs,
             ),
             CallTarget::FunctionOverload(overloads, metadata) => {
-                let (ty, _callable, overload_table) = self.call_overloads(
+                let (ty, _callable, overload_table, argmap) = self.call_overloads(
                     overloads,
                     &metadata,
                     None,
@@ -2104,10 +2108,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     hint,
                     ctor_targs,
                 );
-                CallOutcome { ty, overload_table }
+                CallOutcome {
+                    ty,
+                    overload_table,
+                    argmap,
+                }
             }
             CallTarget::BoundMethodOverload(obj, overloads, meta) => {
-                let (ty, _callable, overload_table) = self.call_overloads(
+                let (ty, _callable, overload_table, argmap) = self.call_overloads(
                     overloads,
                     &meta,
                     Some(obj),
@@ -2121,15 +2129,20 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     hint,
                     ctor_targs,
                 );
-                CallOutcome { ty, overload_table }
+                CallOutcome {
+                    ty,
+                    overload_table,
+                    argmap,
+                }
             }
             CallTarget::Union(targets) => {
                 let call = CallWithTypes::new();
                 let args = call.vec_call_arg(args, self, errors);
                 let keywords = call.vec_call_keyword(keywords, self, errors);
+                let mut argmap = ArgMap::new();
                 let ty = self.unions(targets.into_map(|t| {
                     let ctor_targs = None; // hack
-                    self.call_infer_with_callee_range(
+                    let outcome = self.call_infer_with_callee_range(
                         t,
                         &args,
                         &keywords,
@@ -2141,10 +2154,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         context,
                         hint,
                         ctor_targs,
-                    )
-                    .ty
+                    );
+                    // Inputs were flattened before dispatch, so their types are shared.
+                    if argmap.arg_to_param.is_empty() {
+                        argmap = outcome.argmap;
+                    }
+                    outcome.ty
                 }));
-                CallOutcome::of_ty(ty)
+                CallOutcome {
+                    ty,
+                    overload_table: OverloadTable::default(),
+                    argmap,
+                }
             }
             CallTarget::Intersect(targets) => self.call_intersection(
                 targets,
@@ -2177,6 +2198,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let CallOutcome {
             ty: res,
             overload_table,
+            argmap,
         } = outcome;
         let res = if let Some((func_metadata, wrapped)) = wrapped_arg.as_ref()
             && func_metadata.kind == FunctionKind::FunctoolsWraps
@@ -2244,6 +2266,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         CallOutcome {
             ty: res,
             overload_table,
+            argmap,
         }
     }
 
@@ -2637,8 +2660,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             *targs = chosen_targs;
         }
-        let (ty, specialization_errors, return_type_errors, _expected_types, _, overload_table) =
-            chosen_res;
+        let (ty, specialization_errors, return_type_errors, argmap, _, overload_table) = chosen_res;
         if let Ok(errors) = Vec1::try_from_vec(specialization_errors) {
             self.add_specialization_errors(errors, arguments_range, call_errors, context);
         }
@@ -2648,7 +2670,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return_errors,
             context,
         );
-        CallOutcome { ty, overload_table }
+        CallOutcome {
+            ty,
+            overload_table,
+            argmap,
+        }
     }
 
     pub fn call_infer(

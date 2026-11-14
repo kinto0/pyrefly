@@ -331,7 +331,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         hint: Option<HintRef>,
         // If we're constructing a class, its type arguments. A successful call will fill these in.
         ctor_targs: Option<&mut TArgs>,
-    ) -> (Type, Callable, OverloadTable) {
+    ) -> (Type, Callable, OverloadTable, ArgMap) {
         // There may be Expr values in args and keywords.
         // If we infer them for each overload, we may end up inferring them multiple times.
         // If those overloads contain nested overloads, then we can easily end up with O(2^n) perf.
@@ -444,7 +444,27 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         // Several signatures matched and their results are unioned, so no single
                         // table of solutions describes the call any more.
                         let table = OverloadTable::default();
-                        let argmap = first_overload.argmap.clone();
+                        let mut argmap = first_overload.argmap.clone();
+                        // Expansion checks individual union members; retain the original inputs.
+                        for (key, param) in &mut argmap.arg_to_param {
+                            let value = match key {
+                                ArgumentKey::Positional(index) => index
+                                    .checked_sub(usize::from(self_obj.is_some()))
+                                    .and_then(|index| args.get(index))
+                                    .and_then(|arg| match arg {
+                                        CallArg::Arg(value) => Some(*value),
+                                        CallArg::Star(..) => None,
+                                    }),
+                                ArgumentKey::Keyword(index) => {
+                                    keywords.get(*index).map(|keyword| keyword.value)
+                                }
+                            };
+                            if let Some(value) = value
+                                && let TypeOrExpr::Type(ty, _) = value.as_type_or_expr()
+                            {
+                                param.arg_ty = Some(ty.clone());
+                            }
+                        }
                         let arg_errors = self.error_collector();
                         let specialization_errors = first_overload.specialization_errors.clone();
                         let return_type_errors = matched_overloads
@@ -566,6 +586,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 closest_overload.res,
                 closest_overload.func.1.signature.clone(),
                 closest_overload.table,
+                closest_overload.argmap,
             )
         } else {
             if let Ok(specialization_errors) =
@@ -589,12 +610,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 context,
                 &closest_overload.func.1.signature,
                 closest_overload.call_errors,
-                closest_overload.argmap,
+                &closest_overload.argmap,
             );
             (
                 self.heap.mk_any_error(),
                 closest_overload.func.1.signature.clone(),
                 OverloadTable::default(),
+                closest_overload.argmap,
             )
         }
     }
@@ -684,7 +706,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         context: Option<&dyn Fn() -> ErrorContext>,
         closest_overload_signature: &Callable,
         closest_overload_call_errors: ErrorCollector,
-        mut closest_overload_argmap: ArgMap,
+        closest_overload_argmap: &ArgMap,
     ) {
         // Build a string showing the argument types for error messages. Inferring each argument
         // reports any errors in it. Without the parameter type as context, a lambda's parameters
@@ -693,11 +715,17 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let self_offset = usize::from(self_obj.is_some());
         let arg_type = |value: &CallValue, key: ArgumentKey| {
             let ty = value.infer(self, errors);
-            closest_overload_argmap
-                .arg_to_param
-                .get(&key)
-                .and_then(|param| param.arg_ty.clone())
-                .unwrap_or(ty)
+            if matches!(value.as_type_or_expr(), TypeOrExpr::Expr(Expr::Lambda(_))) {
+                closest_overload_argmap
+                    .arg_to_param
+                    .get(&key)
+                    .and_then(|param| param.arg_ty.clone())
+                    .unwrap_or(ty)
+            } else {
+                // Container displays can acquire a parameter type during contextual checking.
+                // Only lambdas use the saved contextual input in the error header.
+                ty
+            }
         };
         let mut arg_type_strs = Vec::new();
         for (i, arg) in args.iter().enumerate() {
@@ -729,12 +757,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         );
         let mut details = vec!["Possible overloads:".to_owned()];
         // Build an overlay of relevant parameters. We'll show only these parameters when printing overloads.
-        if self_obj.is_some() {
-            // We strip `self` from the displayed signatures, so drop it from the overlay as well.
-            closest_overload_argmap
-                .arg_to_param
-                .remove(&ArgumentKey::Positional(0));
-        }
         let signature_overlay = {
             // If call errors is empty, the call failed due to an arity mismatch. Show all
             // parameters so the user can see the number of parameters in each signature.
@@ -753,9 +775,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // parameters that were not matched.
                 let names = closest_overload_argmap
                     .arg_to_param
-                    .into_values()
-                    .map(|p| p.name)
-                    .chain(closest_overload_argmap.unmatched_params)
+                    .iter()
+                    // The implicit receiver is omitted from displayed signatures.
+                    .filter(|(key, _)| self_obj.is_none() || **key != ArgumentKey::Positional(0))
+                    .map(|(_, param)| param.name.clone())
+                    .chain(closest_overload_argmap.unmatched_params.iter().cloned())
                     .collect::<Option<SmallSet<_>>>();
                 match names {
                     Some(names) => ParamOverlay::Subset(names),

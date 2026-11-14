@@ -906,9 +906,8 @@ impl CallArgPreEval<'_> {
 pub struct MatchedParam {
     pub ty: Type,
     pub name: Option<Name>,
-    /// The type a lambda argument was inferred as when it was checked against `ty`, even if the
-    /// check failed. It is set for every lambda argument checked against `ty` and is `None` for
-    /// every other argument.
+    /// The inferred input before its check against `ty`, including failed checks.
+    /// Unpacking and specialized pattern checks can leave this unavailable.
     pub arg_ty: Option<Type>,
 }
 
@@ -923,6 +922,7 @@ pub struct ArgMap {
     pub arg_to_param: HashMap<ArgumentKey, MatchedParam>,
     /// Required parameters that were left unmatched
     pub unmatched_params: SmallSet<Option<Name>>,
+    self_offset: usize,
 }
 
 impl ArgMap {
@@ -930,6 +930,7 @@ impl ArgMap {
         Self {
             arg_to_param: HashMap::new(),
             unmatched_params: SmallSet::new(),
+            self_offset: 0,
         }
     }
 
@@ -1161,6 +1162,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         call_context: &CallContext<'_>,
     ) -> ArgMap {
         let mut argmap = ArgMap::new();
+        argmap.self_offset = usize::from(self_arg.is_some());
         // We want to work mostly with references, but some things are taken from elsewhere,
         // so have some owners to capture them.
         let param_list_owner = Owner::new();
@@ -1356,7 +1358,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             // We ignore positional-only parameters because they can't be passed in by name.
                             seen_names.insert(name, (ty, NameOrigin::Param, true));
                         }
-                        argmap.insert(argument, ty.clone(), name.cloned(), None);
                         if match arg_pre {
                             CallArgPreEval::Expr(Expr::Lambda(_), _, _) => true,
                             CallArgPreEval::Expr(..) | CallArgPreEval::Type(..) => {
@@ -1365,6 +1366,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             }
                             _ => false,
                         } {
+                            // Reserve the same source key that the deferred check will fill.
+                            argmap.insert(argument, ty.clone(), name.cloned(), None);
                             deferred_callbacks.push((
                                 arg_pre.clone(),
                                 ty,
@@ -1374,7 +1377,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ));
                             arg_pre.mark_done();
                         } else {
-                            arg_pre.post_check(
+                            let arg_ty = arg_pre.post_check(
                                 self,
                                 callable_name,
                                 ty,
@@ -1387,6 +1390,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 context,
                                 call_context,
                             );
+                            let arg_ty = if matches!(arg, CallArg::Arg(_)) {
+                                arg_ty
+                            } else {
+                                None
+                            };
+                            argmap.insert(argument, ty.clone(), name.cloned(), arg_ty);
                         }
                     }
                     Some(PosParam {
@@ -1406,8 +1415,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         name,
                         kind: PosParamKind::Variadic,
                     }) => {
-                        let is_lambda =
-                            matches!(arg_pre, CallArgPreEval::Expr(Expr::Lambda(_), _, _));
                         let arg_ty = arg_pre.post_check(
                             self,
                             callable_name,
@@ -1421,8 +1428,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             context,
                             call_context,
                         );
-                        let lambda_ty = if is_lambda { arg_ty } else { None };
-                        argmap.insert(argument, ty.clone(), name.cloned(), lambda_ty);
+                        let arg_ty = if matches!(arg, CallArg::Arg(_)) {
+                            arg_ty
+                        } else {
+                            None
+                        };
+                        argmap.insert(argument, ty.clone(), name.cloned(), arg_ty);
                     }
                     None => {
                         arg_pre.post_infer(self, arg_errors);
@@ -1999,7 +2010,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         })
                         .with_context(context.map(|ctx| ctx()))
                     };
-                    let (arg_ty, lambda_ty) = if let Some(pattern) = hint
+                    let (arg_ty, inferred_input) = if let Some(pattern) = hint
                         .as_ref()
                         .and_then(|(_, hint)| map_int_tuples_parameter_pattern(hint))
                     {
@@ -2038,10 +2049,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         },
                                         kw.value.argument_cache(),
                                     );
-                                (
-                                    checked.into_ty(),
-                                    matches!(x, Expr::Lambda(_)).then_some(inferred),
-                                )
+                                (checked.into_ty(), Some(inferred))
                             }
                             TypeOrExpr::Type(x, range) => {
                                 if let Some((_, hint)) = &hint
@@ -2055,7 +2063,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                             .with_call_context(call_context),
                                     );
                                 }
-                                ((*x).clone(), None)
+                                ((*x).clone(), Some((*x).clone()))
                             }
                         }
                     };
@@ -2072,7 +2080,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             NameOrigin::Param => Some(id.id.clone()),
                             NameOrigin::UnpackedKwargs(kwargs_name) => kwargs_name.cloned(),
                         };
-                        argmap.insert(argument, (*expected).clone(), name, lambda_ty);
+                        argmap.insert(argument, (*expected).clone(), name, inferred_input);
                     }
                 }
             }
@@ -2210,7 +2218,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
         }
         for (mut arg, param_ty, name, range, argument) in deferred_callbacks {
-            let is_lambda = matches!(arg, CallArgPreEval::Expr(Expr::Lambda(_), _, _));
             let call_context = &call_context.clone().with_argument(argument);
             let mut hint = param_ty.clone();
             // Read parameter bounds collected from the other arguments while leaving the return
@@ -2244,8 +2251,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 call_context,
             );
             // Replace the entry made when the callback was deferred, now that its type is known.
-            let lambda_ty = if is_lambda { arg_ty } else { None };
-            argmap.insert(argument, param_ty.clone(), name.cloned(), lambda_ty);
+            argmap.insert(argument, param_ty.clone(), name.cloned(), arg_ty);
         }
         let num_extra_positional_args = extra_positional_args.len();
         if let Some(arg_range) = extra_arg_pos
