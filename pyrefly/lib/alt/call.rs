@@ -1150,34 +1150,32 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         return_errors: &ErrorCollector,
         context: Option<&dyn Fn() -> ErrorContext>,
         hint: Option<HintRef>,
-    ) -> Option<Type> {
+    ) -> Option<CallOutcome> {
         let dunder_call = self.get_metaclass_dunder_call(cls)?;
         // Clone targs because we don't want instantiations from metaclass __call__
         let mut ctor_targs = cls.targs().clone();
-        let mut ret = self
-            .call_infer_with_callee_range(
-                self.as_call_target_or_error(
-                    dunder_call,
-                    CallStyle::Method(&dunder::CALL),
-                    arguments_range,
-                    errors,
-                    context,
-                ),
-                args,
-                keywords,
+        let mut ret = self.call_infer_with_callee_range(
+            self.as_call_target_or_error(
+                dunder_call,
+                CallStyle::Method(&dunder::CALL),
                 arguments_range,
-                None,
-                arg_errors,
                 errors,
-                return_errors,
                 context,
-                hint,
-                Some(&mut ctor_targs),
-            )
-            .ty;
+            ),
+            args,
+            keywords,
+            arguments_range,
+            None,
+            arg_errors,
+            errors,
+            return_errors,
+            context,
+            hint,
+            Some(&mut ctor_targs),
+        );
         self.solver()
             .finish_class_targs(&mut ctor_targs, self.uniques);
-        ret.subst_mut(&ctor_targs.substitution_map());
+        ret.ty.subst_mut(&ctor_targs.substitution_map());
         Some(ret)
     }
 
@@ -1415,7 +1413,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let return_errors = self.error_collector();
         // The solutions the constructor call settled on.
         let mut ctor_table = None;
-        if let Some(ret) = self.call_metaclass(
+        let mut constructor_argmap = None;
+        if let Some(CallOutcome {
+            ty: ret, argmap, ..
+        }) = self.call_metaclass(
             &cls,
             arguments_range,
             args,
@@ -1426,6 +1427,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             context,
             hint,
         ) {
+            constructor_argmap = Some(argmap);
             if let Some(metaclass_dunder_call) = self.get_metaclass_dunder_call(&cls) {
                 if let Some(callee_range) = callee_range
                     && let Some(metaclass) = class_metadata.custom_metaclass()
@@ -1492,7 +1494,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let CallOutcome {
                     ty: ret,
                     overload_table,
-                    ..
+                    argmap,
                 } = self.call_infer_with_callee_range(
                     self.dunder_new_call_target(
                         new_method.clone(),
@@ -1513,6 +1515,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     hint,
                     Some(cls.targs_mut()),
                 );
+                // __new__ was checked against [cls, *args]. Constructor-specific checks
+                // consume args, so exclude the synthetic cls from their source input view.
+                constructor_argmap = Some(argmap.without_first_positional_argument());
                 if !overload_table.is_empty() {
                     ctor_table = Some(overload_table);
                 }
@@ -1571,6 +1576,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let dunder_init_errors = self.error_collector();
             let CallOutcome {
                 overload_table: init_table,
+                argmap,
                 ..
             } = self.call_infer_with_callee_range(
                 self.as_call_target_or_error(
@@ -1591,6 +1597,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 hint,
                 Some(cls.targs_mut()),
             );
+            constructor_argmap = Some(argmap);
             if !init_table.is_empty() {
                 ctor_table = Some(init_table);
             }
@@ -1613,11 +1620,29 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if class_metadata.is_pydantic_model()
             && let Some(dataclass) = class_metadata.dataclass_metadata()
         {
+            // Without a checked constructor call, an erased initializer needs one gradual pass.
+            let argmap = constructor_argmap.get_or_insert_with(|| {
+                self.call_infer(
+                    CallTarget::Callable(TargetWithTParams(
+                        None,
+                        Callable::list(ParamList::everything(), self.heap.mk_none()),
+                    )),
+                    args,
+                    keywords,
+                    arguments_range,
+                    &self.error_swallower(),
+                    None,
+                    None,
+                    None,
+                )
+                .argmap
+            });
             self.check_pydantic_argument_constraints(
                 cls.class_object(),
                 dataclass,
                 args,
                 keywords,
+                argmap,
                 &errors,
             );
         }

@@ -216,7 +216,7 @@ fn test_nested_constructor_arguments() -> anyhow::Result<()> {
     let mut code =
         "from pydantic import BaseModel\n\nclass N0(BaseModel):\n    x: int = 0\n".to_owned();
     let mut expression = "N0(x=1)".to_owned();
-    let depth = 12;
+    let depth = 24;
     for index in 1..=depth {
         code.push_str(&format!(
             "\nclass N{index}(BaseModel):\n    a: N{}\n    c: int = 0\n",

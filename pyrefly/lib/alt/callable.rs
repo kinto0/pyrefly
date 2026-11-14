@@ -922,7 +922,9 @@ pub struct ArgMap {
     pub arg_to_param: HashMap<ArgumentKey, MatchedParam>,
     /// Required parameters that were left unmatched
     pub unmatched_params: SmallSet<Option<Name>>,
-    self_offset: usize,
+    /// Positional slots skipped before the first exposed source argument.
+    /// Counts implicit receivers and synthetic prefixes omitted from that source view.
+    positional_offset: usize,
 }
 
 impl ArgMap {
@@ -930,8 +932,26 @@ impl ArgMap {
         Self {
             arg_to_param: HashMap::new(),
             unmatched_params: SmallSet::new(),
-            self_offset: 0,
+            positional_offset: 0,
         }
+    }
+
+    /// Read the inferred input using the exposed source call's argument indices.
+    pub(crate) fn source_argument_type(&self, argument: ArgumentKey) -> Option<&Type> {
+        let argument = match argument {
+            ArgumentKey::Positional(index) => {
+                ArgumentKey::Positional(index + self.positional_offset)
+            }
+            ArgumentKey::Keyword(index) => ArgumentKey::Keyword(index),
+        };
+        self.arg_to_param.get(&argument)?.arg_ty.as_ref()
+    }
+
+    /// Expose inputs for a source call that omits this call's leading argument.
+    /// Stored matching keys stay unchanged; only source positional lookups shift.
+    pub(crate) fn without_first_positional_argument(mut self) -> Self {
+        self.positional_offset += 1;
+        self
     }
 
     fn insert(
@@ -1162,7 +1182,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         call_context: &CallContext<'_>,
     ) -> ArgMap {
         let mut argmap = ArgMap::new();
-        argmap.self_offset = usize::from(self_arg.is_some());
         // We want to work mostly with references, but some things are taken from elsewhere,
         // so have some owners to capture them.
         let param_list_owner = Owner::new();
@@ -2644,6 +2663,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             (None, callable_qs)
         };
         call_boundary.defer_quantified(remaining_callable_qs);
+        // Count only receivers supplied outside args. __new__ can later move a cls
+        // already in args into self_obj without changing the source argument list.
+        let implicit_receiver_count = usize::from(self_obj.is_some());
         if let Some(targs) = ctor_targs.as_mut() {
             let qs = self.solver().freshen_class_targs(targs, self.uniques);
             extend_shape_extension_vars_from_targs(&mut shape_extension_vars, targs);
@@ -2671,7 +2693,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             arguments_range,
         });
         let self_arg = self_obj.as_ref().map(|ty| CallArg::ty(ty, arguments_range));
-        let argmap = match callable.params {
+        let mut argmap = match callable.params {
             Params::List(params) | Params::Partial(params) => self.callable_infer_params(
                 callable_name,
                 &params,
@@ -2687,14 +2709,35 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 &call_context,
             ),
             Params::Ellipsis | Params::Materialization => {
-                // Deal with Callable[..., R]
-                for arg in self_arg.iter().chain(args.iter()) {
-                    arg.pre_eval(self, arg_errors).post_infer(self, arg_errors)
+                let mut argmap = ArgMap::new();
+                for (index, arg) in self_arg.iter().chain(args.iter()).enumerate() {
+                    match arg {
+                        CallArg::Arg(value) => {
+                            let ty = value.infer(self, arg_errors);
+                            argmap.insert(
+                                ArgumentKey::Positional(index),
+                                self.heap.mk_any_implicit(),
+                                None,
+                                Some(ty),
+                            );
+                        }
+                        CallArg::Star(..) => {
+                            arg.pre_eval(self, arg_errors).post_infer(self, arg_errors);
+                        }
+                    }
                 }
-                for keyword in keywords {
-                    keyword.value.infer(self, arg_errors);
+                for (index, keyword) in keywords.iter().enumerate() {
+                    let ty = keyword.value.infer(self, arg_errors);
+                    if keyword.arg.is_some() {
+                        argmap.insert(
+                            ArgumentKey::Keyword(index),
+                            self.heap.mk_any_implicit(),
+                            None,
+                            Some(ty),
+                        );
+                    }
                 }
-                ArgMap::new()
+                argmap
             }
             Params::ParamSpec(concatenate, p) => {
                 let p = self.solver().expand(p);
@@ -2780,6 +2823,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
         };
+        argmap.positional_offset = implicit_receiver_count;
         if let Some(self_qs) = self_qs {
             call_boundary.defer_quantified(self_qs);
         }

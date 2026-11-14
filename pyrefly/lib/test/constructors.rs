@@ -5,8 +5,79 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use pyrefly_python::dunder;
+use pyrefly_types::callable::Callable;
+use pyrefly_types::callable::Params;
+use pyrefly_types::function::FuncMetadata;
+use ruff_text_size::TextRange;
+
+use crate::alt::callable::CallArg;
+use crate::solver::solver::ArgumentKey;
 use crate::test::util::TestEnv;
+use crate::test::util::get_class;
+use crate::test::util::mk_state;
 use crate::testcase;
+
+#[test]
+fn test_explicit_new_receiver_with_ellipsis_inputs() {
+    let (handle, state) = mk_state("class Model: pass");
+    let transaction = state.transaction();
+    let class = get_class("Model", &handle, &state.reader());
+    transaction
+        .ad_hoc_solve(&handle, "explicit_new_receiver", |solver| {
+            let mut cls = solver.as_class_type_unchecked(&class);
+            let model_type = solver.heap.mk_class_type(cls.clone());
+            let receiver = solver.heap.mk_type_of(model_type.clone());
+            let first = solver.heap.mk_none();
+            let second = solver.heap.mk_any_explicit();
+            let range = TextRange::default();
+            let args = [
+                CallArg::ty(&receiver, range),
+                CallArg::ty(&first, range),
+                CallArg::ty(&second, range),
+            ];
+            let metadata = FuncMetadata::method(&class, dunder::NEW);
+            let errors = solver.error_collector();
+            let (_, specialization_errors, return_errors, argmap, _, _) = solver.callable_infer(
+                Callable {
+                    params: Params::Ellipsis,
+                    ret: model_type,
+                },
+                Some(&metadata.kind),
+                None,
+                None,
+                &args,
+                &[],
+                range,
+                &errors,
+                &errors,
+                None,
+                None,
+                None,
+                Some(cls.targs_mut()),
+            );
+            assert!(specialization_errors.is_empty());
+            assert!(return_errors.is_empty());
+            assert!(!errors.has_hard());
+            assert_eq!(
+                argmap.source_argument_type(ArgumentKey::Positional(0)),
+                Some(&receiver),
+                "the explicit cls remains a source input of the __new__ call",
+            );
+            let constructor_inputs = argmap.without_first_positional_argument();
+            assert_eq!(
+                constructor_inputs.source_argument_type(ArgumentKey::Positional(0)),
+                Some(&first),
+                "the constructor source view excludes the synthetic cls",
+            );
+            assert_eq!(
+                constructor_inputs.source_argument_type(ArgumentKey::Positional(1)),
+                Some(&second),
+                "rebasing preserves the second user argument",
+            );
+        })
+        .expect("the test module has been solved");
+}
 
 testcase!(
     test_constructor_prepared_argument_contexts,

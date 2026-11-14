@@ -35,6 +35,7 @@ use starlark_map::small_set::SmallSet;
 
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
+use crate::alt::callable::ArgMap;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallKeyword;
 use crate::alt::class::class_field::DataclassMember;
@@ -68,6 +69,7 @@ use crate::binding::pydantic::VALIDATE_BY_ALIAS;
 use crate::binding::pydantic::VALIDATE_BY_NAME;
 use crate::binding::pydantic::VALIDATION_FLAGS;
 use crate::error::collector::ErrorCollector;
+use crate::solver::solver::ArgumentKey;
 use crate::types::class::Class;
 use crate::types::types::Type;
 
@@ -984,6 +986,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         dataclass: &DataclassMetadata,
         args: &[CallArg],
         keywords: &[CallKeyword],
+        argmap: &ArgMap,
         errors: &ErrorCollector,
     ) {
         let constraints = self.collect_pydantic_constraint_params(cls, dataclass);
@@ -991,18 +994,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return;
         };
 
-        let infer_errors = self.error_swallower();
         for (index, arg) in args.iter().enumerate() {
             match arg {
-                CallArg::Arg(value) => {
-                    let value_ty = value.infer(self, &infer_errors);
-                    if let Some(info) = constraints.get(&PydanticParamKey::Position(index)) {
-                        self.emit_pydantic_argument_constraint(
-                            &value_ty,
-                            info,
-                            arg.range(),
-                            errors,
-                        );
+                CallArg::Arg(_) => {
+                    if let Some(info) = constraints.get(&PydanticParamKey::Position(index))
+                        && let Some(value_ty) =
+                            argmap.source_argument_type(ArgumentKey::Positional(index))
+                    {
+                        self.emit_pydantic_argument_constraint(value_ty, info, arg.range(), errors);
                     }
                 }
                 CallArg::Star(..) => {
@@ -1012,14 +1011,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
         }
 
-        for kw in keywords {
+        for (index, kw) in keywords.iter().enumerate() {
             let Some(identifier) = kw.arg.as_ref() else {
                 continue;
             };
             let key = PydanticParamKey::Name(identifier.id.clone());
-            if let Some(info) = constraints.get(&key) {
-                let value_ty = kw.value.infer(self, &infer_errors);
-                self.emit_pydantic_argument_constraint(&value_ty, info, kw.range, errors);
+            if let Some(info) = constraints.get(&key)
+                && let Some(value_ty) = argmap.source_argument_type(ArgumentKey::Keyword(index))
+            {
+                self.emit_pydantic_argument_constraint(value_ty, info, kw.range, errors);
             }
         }
     }
