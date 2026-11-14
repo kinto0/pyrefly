@@ -42,6 +42,10 @@ pub struct Handle {
     module: ModuleNameWithKind,
     path: ModulePath,
     sys_info: SysInfo,
+    /// The site-package path of the Python environment this module is checked in, when that is an
+    /// importer's environment rather than its own config's. One file can therefore have several
+    /// handles.
+    importer_site_package_path: Option<SitePackagePath>,
 }
 
 impl Handle {
@@ -51,10 +55,12 @@ impl Handle {
             module: ModuleNameWithKind::guaranteed(module),
             path,
             sys_info,
+            importer_site_package_path: None,
         }
     }
 
-    /// A handle for another module in the same Python environment as this one.
+    /// A handle for another module with the same `SysInfo`, checked in the Python environment of
+    /// its own config.
     pub fn for_module(&self, module: ModuleName, path: ModulePath) -> Self {
         Self::new(module, path, self.sys_info.dupe())
     }
@@ -69,6 +75,16 @@ impl Handle {
             module,
             path,
             sys_info,
+            importer_site_package_path: None,
+        }
+    }
+
+    /// This module, checked in the Python environment with site-package path `path`, or in the
+    /// Python environment of its own config if `path` is `None`.
+    pub fn with_importer_site_package_path(self, path: Option<SitePackagePath>) -> Self {
+        Self {
+            importer_site_package_path: path,
+            ..self
         }
     }
 
@@ -90,6 +106,10 @@ impl Handle {
         &self.sys_info
     }
 
+    pub fn importer_site_package_path(&self) -> Option<SitePackagePath> {
+        self.importer_site_package_path
+    }
+
     /// Returns true if this handle's module name was created using fallback heuristics.
     /// When true, the module name is not reliable for determining project structure.
     pub fn is_fallback(&self) -> bool {
@@ -97,8 +117,20 @@ impl Handle {
     }
 
     /// The fields that equality and ordering compare.
-    fn key(&self) -> (&ModuleNameWithKind, &ModulePath, &SysInfo) {
-        (&self.module, &self.path, &self.sys_info)
+    fn key(
+        &self,
+    ) -> (
+        &ModuleNameWithKind,
+        &ModulePath,
+        &SysInfo,
+        Option<SitePackagePath>,
+    ) {
+        (
+            &self.module,
+            &self.path,
+            &self.sys_info,
+            self.importer_site_package_path,
+        )
     }
 }
 
@@ -111,6 +143,9 @@ impl PartialEq for Handle {
 impl Eq for Handle {}
 
 impl Hash for Handle {
+    /// Leaves out the importer's site-package path, which equality compares. Handles that differ
+    /// only there are copies of one module in other Python environments, which are rare, and
+    /// hashing one fewer field keeps the maps keyed by `Handle` as fast as before.
     fn hash<H: Hasher>(&self, state: &mut H) {
         (&self.module, &self.path, &self.sys_info).hash(state);
     }

@@ -4006,7 +4006,7 @@ impl Server {
 
         let mut deleted_uris: Vec<Uri> = Vec::new();
         let handles: Vec<Handle> = transaction
-            .handles()
+            .loaded_handles_one_per_file()
             .into_iter()
             .filter(|handle| {
                 // Skip Memory handles — they exist only for open-file diagnostics.

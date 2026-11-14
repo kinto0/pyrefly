@@ -2006,32 +2006,41 @@ fn import_handle(transaction: &Transaction, handle: &Handle, module: &str) -> Ha
         .unwrap()
 }
 
-/// A library with its own config and environment, found through an app's site-package path.
-/// Bug (https://github.com/meta/pyrefly/issues/3556): the library resolves `dep` in its own
-/// environment, so it has a different `dep.C` from the app, and passing the app's `dep.C` to it
-/// is an error.
+/// A library with its own config and environment, found through an app's site-package path, is
+/// checked in the app's environment. The app's copy of the library resolves `dep` to the same
+/// module as the app, so passing the app's `dep.C` to it is not an error. Each app gets its own
+/// copy, and the library checked on its own still resolves `dep` in its own environment. See
+/// https://github.com/meta/pyrefly/issues/3556.
 #[test]
 fn test_library_imported_from_another_environment() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
     write_apps_and_library(root, &["../lib_env"]);
-    let (state, [main, main2, _]) = check_apps(root, Require::Exports);
-    let transaction = state.transaction();
+    let (state, [main, main2, mylib]) = check_apps(root, Require::Exports);
+    let mut transaction = state.transaction();
+    let errors = transaction
+        .get_errors([&main, &main2])
+        .collect_display_errors();
+    assert!(errors.is_empty(), "expected no errors, got {errors:?}");
+    assert_ne!(
+        import_handle(&transaction, &main, "mylib"),
+        import_handle(&transaction, &main2, "mylib")
+    );
     for main in [&main, &main2] {
-        let errors = transaction.get_errors([main]).collect_display_errors();
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert_eq!(
-            errors[0].msg_header(),
-            "Argument `C` is not assignable to parameter `x` with type `C` in function `mylib.f`"
-        );
         let app_mylib = import_handle(&transaction, main, "mylib");
         assert_eq!(
-            import_handle(&transaction, &app_mylib, "dep")
-                .path()
-                .as_path(),
-            root.join("lib_env").join("dep.py")
+            import_handle(&transaction, &app_mylib, "dep"),
+            import_handle(&transaction, main, "dep")
         );
     }
+
+    transaction.run(&[mylib.dupe()], Require::Everything, None);
+    let errors = transaction.get_errors([&mylib]).collect_display_errors();
+    assert!(errors.is_empty(), "expected no errors, got {errors:?}");
+    assert_eq!(
+        import_handle(&transaction, &mylib, "dep").path().as_path(),
+        root.join("lib_env").join("dep.py")
+    );
 }
 
 /// From an app, go to definition, go to type definition and the docstring in a hover read the
@@ -2077,10 +2086,10 @@ fn test_library_definitions_from_app() {
     );
 }
 
-/// The library's config first uses the app's environment, so the app and the library resolve `dep`
-/// to the same module. Bug (https://github.com/meta/pyrefly/issues/3556): when the library's
-/// config switches to the library's own environment, the library resolves `dep` in `lib_env` and
-/// the app's call is an error.
+/// The library's config first uses the app's environment, so the app imports the library's own
+/// module. When the config switches to the library's own environment, the app must recheck its
+/// import and get a copy in its environment. Without the recheck, the library resolves `dep` in
+/// `lib_env` and the app's call is an error.
 #[test]
 fn test_library_environment_change_rechecks_importer() {
     let temp_dir = TempDir::new().unwrap();
@@ -2118,13 +2127,14 @@ fn test_library_environment_change_rechecks_importer() {
             modified: vec![lib_config],
             ..Default::default()
         }),
-        1
+        0
     );
 }
 
 /// The app reads a field of a library class whose module it never imports, because the library
-/// imports that module inside a function. Bug (https://github.com/meta/pyrefly/issues/3556): the
-/// field has the library's `dep.C`, so assigning it to the app's `dep.C` is an error.
+/// imports that module inside a function. Looking up the class's fields uses the class's module
+/// path rather than an import, and still finds the copy checked in the app's environment, so the
+/// field has the app's `dep.C`.
 #[test]
 fn test_library_class_fields_without_import() {
     let temp_dir = TempDir::new().unwrap();
@@ -2150,12 +2160,12 @@ fn test_library_class_fields_without_import() {
         .transaction()
         .get_errors([&main])
         .collect_display_errors();
-    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors.is_empty(), "expected no errors, got {errors:?}");
 }
 
-/// A Python environment outside any config: its modules have the default config. A module the app
-/// imports from it resolves its own imports to the same modules as the app, so the app's
-/// assignment is not an error.
+/// A Python environment outside any config: its modules have the default config, so a module the
+/// app imports from it is checked in the app's environment and resolves its own imports there.
+/// Checking that module on its own, as opening it in an editor does, makes a second copy.
 #[test]
 fn test_environment_outside_any_config() {
     let temp_dir = TempDir::new().unwrap();
@@ -2188,11 +2198,21 @@ fn test_environment_outside_any_config() {
         .get_errors([&main, &dep])
         .collect_display_errors();
     assert!(errors.is_empty(), "expected no errors, got {errors:?}");
+
+    let app_dep = import_handle(&transaction, &main, "dep");
+    assert!(app_dep.importer_site_package_path().is_some());
+    assert_eq!(
+        import_handle(&transaction, &app_dep, "dep2"),
+        import_handle(&transaction, &main, "dep2")
+    );
+    assert_eq!(dep.importer_site_package_path(), None);
+    assert_eq!(app_dep.path(), dep.path());
 }
 
 /// The library has an error and is checked in the apps' environments, then also on its own. Each
-/// time, all errors, as `pyrefly check --check-all` reports them, include the library's error
-/// once.
+/// time, all errors, as `pyrefly check --check-all` and workspace diagnostics report them, include
+/// the library's error once: from an app's copy while that is the only one loaded, and from the
+/// library's own handle once that is loaded.
 #[test]
 fn test_library_all_errors_reported_once() {
     let temp_dir = TempDir::new().unwrap();
@@ -2204,7 +2224,17 @@ fn test_library_all_errors_reported_once() {
     // `--check-all` keeps the errors of every module.
     let (state, [_, _, mylib]) = check_apps(root, Require::Errors);
     let mut transaction = state.transaction();
-    let check = |transaction: &Transaction| {
+    let check = |transaction: &Transaction, own_handle: bool| {
+        let lib_handles = transaction
+            .loaded_handles_one_per_file()
+            .into_iter()
+            .filter(|handle| handle.path().as_path() == lib_path)
+            .collect::<Vec<_>>();
+        assert_eq!(lib_handles.len(), 1, "{lib_handles:?}");
+        assert_eq!(
+            lib_handles[0].importer_site_package_path().is_none(),
+            own_handle
+        );
         let errors = transaction
             .get_all_errors()
             .collect_display_errors()
@@ -2213,7 +2243,7 @@ fn test_library_all_errors_reported_once() {
             .collect::<Vec<_>>();
         assert_eq!(errors.len(), 1, "{errors:?}");
     };
-    check(&transaction);
+    check(&transaction, false);
     transaction.run(&[mylib], Require::Errors, None);
-    check(&transaction);
+    check(&transaction, true);
 }

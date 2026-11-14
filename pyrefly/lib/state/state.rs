@@ -32,6 +32,7 @@ use std::time::Duration;
 use dupe::Dupe;
 use enum_iterator::Sequence;
 use fxhash::FxHashMap;
+use itertools::Either;
 use itertools::Itertools;
 use pyrefly_build::handle::Handle;
 use pyrefly_build::handle::SitePackagePath;
@@ -1212,70 +1213,32 @@ impl<'a> Transaction<'a> {
         )
     }
 
-    pub fn get_all_errors(&self) -> Errors {
-        if self.data.updated_modules.is_empty() {
-            // Optimized path
-            return Errors::new(
-                self.readable
-                    .modules
-                    .values()
-                    .filter_map(|x| {
-                        let load = x.state.get_load()?;
-                        let parse_errors = x.state.parse_errors();
-                        let binding_errors = x.state.binding_errors();
-                        let solve_diagnostics = x.state.solve_errors();
-                        let module_ranges = x.state.module_ranges();
-                        Some((
-                            load,
-                            parse_errors,
-                            binding_errors,
-                            solve_diagnostics,
-                            module_ranges,
-                            x.config.dupe(),
-                        ))
-                    })
-                    .collect(),
-            );
-        }
-        let mut res = self
-            .data
-            .updated_modules
-            .iter_unordered()
-            .filter_map(|x| {
-                let load = x.1.state.get_load()?;
-                let parse_errors = x.1.state.parse_errors();
-                let binding_errors = x.1.state.binding_errors();
-                let solve_diagnostics = x.1.state.solve_errors();
-                let module_ranges = x.1.state.module_ranges();
-                Some((
-                    load,
-                    parse_errors,
-                    binding_errors,
-                    solve_diagnostics,
-                    module_ranges,
-                    x.1.config.read().dupe(),
-                ))
+    /// The loaded handles, one per file. A file checked in several Python environments has a
+    /// handle for each, which differ only in the importer's site-package path. Keep the handle of
+    /// the file's own environment if it was checked there, or one importer's copy otherwise.
+    pub fn loaded_handles_one_per_file(&self) -> Vec<Handle> {
+        let file = |handle: &Handle| {
+            (
+                handle.module(),
+                handle.path().dupe(),
+                handle.sys_info().dupe(),
+            )
+        };
+        self.handles()
+            .into_iter()
+            .filter(|handle| self.get_load(handle).is_some())
+            // Put each file's handles together, with the handle of its own environment first.
+            .sorted_by(|a, b| {
+                (file(a), a.importer_site_package_path().is_some())
+                    .cmp(&(file(b), b.importer_site_package_path().is_some()))
             })
-            .collect::<Vec<_>>();
-        for (k, v) in self.readable.modules.iter() {
-            if self.data.updated_modules.get(k).is_none()
-                && let Some(load) = v.state.get_load()
-            {
-                let parse_errors = v.state.parse_errors();
-                let binding_errors = v.state.binding_errors();
-                let solve_diagnostics = v.state.solve_errors();
-                let module_ranges = v.state.module_ranges();
-                res.push((
-                    load,
-                    parse_errors,
-                    binding_errors,
-                    solve_diagnostics,
-                    module_ranges,
-                    v.config.dupe(),
-                ));
-            }
-        }
-        Errors::new(res)
+            .dedup_by(|a, b| file(a) == file(b))
+            .collect()
+    }
+
+    /// The errors of every loaded module, reporting each file once.
+    pub fn get_all_errors(&self) -> Errors {
+        self.get_errors(&self.loaded_handles_one_per_file())
     }
 
     pub fn config_finder(&self) -> &ConfigFinder {
@@ -1535,11 +1498,9 @@ impl<'a> Transaction<'a> {
         let config = self.get_module(handle).config.read().dupe();
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
-            None => self.get_cached_loader(&config, None).find_import(
-                module,
-                Some(handle.path()),
-                Some(&self.timing),
-            ),
+            None => self
+                .get_cached_loader(&config, handle.importer_site_package_path())
+                .find_import(module, Some(handle.path()), Some(&self.timing)),
         };
         path.map(|path| {
             self.data
@@ -1558,7 +1519,7 @@ impl<'a> Transaction<'a> {
         include_interpreter_stdlib: bool,
     ) -> FindingOrError<Handle> {
         let config = self.get_module(handle).config.read().dupe();
-        self.get_cached_loader(&config, None)
+        self.get_cached_loader(&config, handle.importer_site_package_path())
             .find_import_including_replaced(
                 module,
                 Some(handle.path()),
@@ -1586,7 +1547,7 @@ impl<'a> Transaction<'a> {
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
             None => self
-                .get_cached_loader(&config, None)
+                .get_cached_loader(&config, handle.importer_site_package_path())
                 .find_import_prefer_executable(
                     module,
                     Some(handle.path()),
@@ -1700,7 +1661,8 @@ impl<'a> Transaction<'a> {
         // Validate the find flag.
         if dirty.find() {
             let config = module_data.config.read().dupe();
-            let loader = self.get_cached_loader(&config, None);
+            let loader =
+                self.get_cached_loader(&config, module_data.handle.importer_site_package_path());
             let mut is_dirty = false;
 
             // Only check imports (not all deps), since only import-statement deps
@@ -2234,7 +2196,7 @@ impl<'a> Transaction<'a> {
                 let actual_name = alias.as_ref().unwrap_or(name);
                 let config = module_data.config.read().dupe();
                 let other_path = self
-                    .get_cached_loader(&config, None)
+                    .get_cached_loader(&config, handle.importer_site_package_path())
                     .find_import(*other_module, Some(handle.path()), Some(&self.timing))
                     .finding()?;
                 let other_handle = self.data.state.imported_handle_with_config(
@@ -2335,7 +2297,7 @@ impl<'a> Transaction<'a> {
         handle: &Handle,
         timing: Option<&TransactionTimingCounters>,
     ) -> bool {
-        self.get_cached_loader(config, None)
+        self.get_cached_loader(config, handle.importer_site_package_path())
             .find_import_for_tensor_shapes(Some(handle.path()), timing)
             .finding()
             // This is Pyrefly resolvability, not runtime importability: a
@@ -3192,8 +3154,9 @@ pub(crate) struct TransactionHandle<'a> {
     /// Locally accumulated deps, flushed to `module_data.deps` on drop.
     /// This batches N lock acquisitions per handle lifetime into 1.
     /// Keyed by module name and path, which identify the target module within a
-    /// TransactionHandle because sys_info is invariant. Both are needed: one file can
-    /// be imported under several module names, and each name is a distinct module.
+    /// TransactionHandle because sys_info and the importer's Python environment are
+    /// invariant. Both are needed: one file can be imported under several module names,
+    /// and each name is a distinct module.
     /// Each entry also remembers the target module, so that repeated lookups of
     /// the same module skip the transaction's shared module map and do not build the
     /// target's handle again.
@@ -3287,7 +3250,10 @@ impl<'a> TransactionHandle<'a> {
                         let config = self.module_data.config.read().dupe();
                         let finding = self
                             .transaction
-                            .get_cached_loader(&config, None)
+                            .get_cached_loader(
+                                &config,
+                                self.module_data.handle.importer_site_package_path(),
+                            )
                             .find_import(
                                 module,
                                 Some(self.module_data.handle.path()),
@@ -4009,14 +3975,43 @@ impl State {
     }
 
     /// `Transaction::imported_handle`, for a caller that has already read the importer's config.
+    ///
+    /// A module under the importer's site-package path whose own config has a different
+    /// site-package path is checked in the importer's Python environment: it keeps its own config,
+    /// and resolves its imports with the importer's site-package path in place of its own. A module outside a config, such as one in a virtual
+    /// environment elsewhere, has the default config, so it is checked this way too. Every other
+    /// module keeps a plain handle, so a module whose own config already uses the importer's
+    /// site-package path is checked only once.
     fn imported_handle_with_config(
         &self,
         importer: &Handle,
-        _importer_config: &ConfigFile,
+        importer_config: &ConfigFile,
         module: ModuleName,
         path: ModulePath,
     ) -> Handle {
-        Handle::new(module, path, importer.sys_info().dupe())
+        let handle = Handle::new(module, path, importer.sys_info().dupe());
+        // The importer's site-package path: the one on its handle if it is itself checked in an
+        // importer's environment, or its config's otherwise.
+        let importer_env = importer.importer_site_package_path();
+        let importer_site_package_path = || match &importer_env {
+            Some(site_package_path) => Either::Left(site_package_path.paths().iter()),
+            None => Either::Right(importer_config.site_package_path()),
+        };
+        let in_importer_site_packages =
+            importer_site_package_path().any(|dir| handle.path().as_path().starts_with(dir));
+        if in_importer_site_packages
+            && !self
+                .get_config(&handle)
+                .site_package_path()
+                .eq(importer_site_package_path())
+        {
+            let site_package_path = importer_env.unwrap_or_else(|| {
+                SitePackagePath::new(importer_config.site_package_path().cloned().collect())
+            });
+            handle.with_importer_site_package_path(Some(site_package_path))
+        } else {
+            handle
+        }
     }
 
     pub fn new_transaction<'a>(
