@@ -22,6 +22,7 @@ use pyrefly_build::source_db::LiveSourceDatabase;
 use pyrefly_build::source_db::ModuleEnumerator;
 use pyrefly_build::source_db::SourceDatabase;
 use pyrefly_build::source_db::map_db::MapDatabase;
+use pyrefly_python::module::TextRangeWithModule;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::module_path::ModuleStyle;
@@ -36,6 +37,7 @@ use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
 use pyrefly_util::thread_pool::ThreadCount;
 use pyrefly_util::thread_pool::ThreadPool;
 use ruff_python_ast::name::Name;
+use ruff_text_size::TextSize;
 use starlark_map::small_set::SmallSet;
 use tempfile::TempDir;
 
@@ -51,6 +53,8 @@ use crate::config::error_kind::Severity;
 use crate::config::finder::ConfigFinder;
 use crate::error::error::Error;
 use crate::error::error::print_errors;
+use crate::lsp::non_wasm::module_helpers::handle_from_module_path;
+use crate::lsp::wasm::hover::get_hover;
 use crate::module::bundled::BundledStub;
 use crate::module::bundled::set_readonly;
 use crate::module::finder::DirEntryCache;
@@ -58,9 +62,11 @@ use crate::module::finder::FindImportOptions;
 use crate::module::finder::find_import;
 use crate::module::typeshed::typeshed;
 use crate::state::load::FileContents;
+use crate::state::lsp::FindPreference;
 use crate::state::require::Require;
 use crate::state::require::RequireLevels;
 use crate::state::state::State;
+use crate::state::state::Transaction;
 use crate::test::util::TestEnv;
 use crate::tsp::type_conversion::resolve_export_location;
 use crate::types::class::Class;
@@ -1928,4 +1934,286 @@ fn test_stdlib_cached_on_recheck() {
         "Cached stdlib should skip pre-warming entirely"
     );
     state.commit_transaction(t2, None);
+}
+
+/// Writes apps `app` and `app2` and a library `lib`, each with its own config and Python
+/// environment, and each environment with a module `dep`. The apps find the library through their
+/// site-package paths. The library's config uses `lib_site_package_path`, relative to `lib`.
+fn write_apps_and_library(root: &Path, lib_site_package_path: &[&str]) {
+    let config = |site_package_path: &[&str]| {
+        format!(
+            "site-packages-path = [{}]\nskip-interpreter-query = true\n",
+            site_package_path
+                .iter()
+                .map(|path| format!("'{path}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    for (app, env) in [("app", "app_env"), ("app2", "app2_env")] {
+        fs::create_dir_all(root.join(app)).unwrap();
+        fs::create_dir_all(root.join(env)).unwrap();
+        fs::write(
+            root.join(app).join(ConfigFile::PYREFLY_FILE_NAME),
+            config(&[&format!("../{env}"), "../lib"]),
+        )
+        .unwrap();
+        fs::write(root.join(env).join("dep.py"), "class C: ...\n").unwrap();
+        fs::write(
+            root.join(app).join("main.py"),
+            "import dep\nimport mylib\nmylib.f(x=dep.C())\nmylib.K().m()\nk = mylib.K\n",
+        )
+        .unwrap();
+    }
+    fs::create_dir_all(root.join("lib")).unwrap();
+    fs::create_dir_all(root.join("lib_env")).unwrap();
+    fs::write(
+        root.join("lib").join(ConfigFile::PYREFLY_FILE_NAME),
+        config(lib_site_package_path),
+    )
+    .unwrap();
+    fs::write(root.join("lib_env").join("dep.py"), "class C: ...\n").unwrap();
+    fs::write(
+        root.join("lib").join("mylib.py"),
+        r#"import dep
+def f(x: dep.C) -> None: ...
+class K:
+    """The K class."""
+    def m(self) -> None: ...
+"#,
+    )
+    .unwrap();
+}
+
+/// Checks the apps written by `write_apps_and_library` and returns the state and the handles of
+/// `app/main.py`, `app2/main.py` and `lib/mylib.py`.
+fn check_apps(root: &Path, require: Require) -> (State, [Handle; 3]) {
+    let state = State::new(default_config_finder(None), TEST_THREAD_COUNT);
+    let handles = ["app/main.py", "app2/main.py", "lib/mylib.py"]
+        .map(|path| handle_from_module_path(&state, ModulePath::filesystem(root.join(path))));
+    let mut transaction = state.new_committable_transaction(require, None);
+    transaction
+        .as_mut()
+        .run(&handles[..2], Require::Everything, None);
+    state.commit_transaction(transaction, None);
+    (state, handles)
+}
+
+fn import_handle(transaction: &Transaction, handle: &Handle, module: &str) -> Handle {
+    transaction
+        .import_handle(handle, ModuleName::from_str(module), None)
+        .finding()
+        .unwrap()
+}
+
+/// A library with its own config and environment, found through an app's site-package path.
+/// Bug (https://github.com/meta/pyrefly/issues/3556): the library resolves `dep` in its own
+/// environment, so it has a different `dep.C` from the app, and passing the app's `dep.C` to it
+/// is an error.
+#[test]
+fn test_library_imported_from_another_environment() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    let (state, [main, main2, _]) = check_apps(root, Require::Exports);
+    let transaction = state.transaction();
+    for main in [&main, &main2] {
+        let errors = transaction.get_errors([main]).collect_display_errors();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(
+            errors[0].msg_header(),
+            "Argument `C` is not assignable to parameter `x` with type `C` in function `mylib.f`"
+        );
+        let app_mylib = import_handle(&transaction, main, "mylib");
+        assert_eq!(
+            import_handle(&transaction, &app_mylib, "dep")
+                .path()
+                .as_path(),
+            root.join("lib_env").join("dep.py")
+        );
+    }
+}
+
+/// From an app, go to definition, go to type definition and the docstring in a hover read the
+/// app's copy of the library, which is the only one loaded.
+#[test]
+fn test_library_definitions_from_app() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    let (state, [main, _, _]) = check_apps(root, Require::Exports);
+    let transaction = state.transaction();
+    let code = fs::read_to_string(root.join("app").join("main.py")).unwrap();
+    let position = |text: &str| TextSize::try_from(code.find(text).unwrap()).unwrap();
+    let paths = |definitions: &[TextRangeWithModule]| {
+        definitions
+            .iter()
+            .map(|definition| definition.module.path().as_path().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let mylib = vec![root.join("lib").join("mylib.py")];
+    assert_eq!(
+        paths(
+            &transaction
+                .goto_type_definition(&main, position("f("))
+                .unwrap()
+        ),
+        mylib
+    );
+    let method = transaction
+        .find_definition(&main, position("m()"), FindPreference::default())
+        .unwrap();
+    assert_eq!(
+        method
+            .iter()
+            .map(|definition| definition.module.path().as_path().to_owned())
+            .collect::<Vec<_>>(),
+        mylib
+    );
+    let hover = get_hover(&transaction, &main, position("k ="), false).unwrap();
+    assert!(
+        format!("{:?}", hover.contents).contains("The K class."),
+        "{hover:?}"
+    );
+}
+
+/// The library's config first uses the app's environment, so the app and the library resolve `dep`
+/// to the same module. Bug (https://github.com/meta/pyrefly/issues/3556): when the library's
+/// config switches to the library's own environment, the library resolves `dep` in `lib_env` and
+/// the app's call is an error.
+#[test]
+fn test_library_environment_change_rechecks_importer() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../app_env", "."]);
+    let state = State::new(default_config_finder(None), TEST_THREAD_COUNT);
+    let main = handle_from_module_path(
+        &state,
+        ModulePath::filesystem(root.join("app").join("main.py")),
+    );
+    let error_count_after = |events: CategorizedEvents| {
+        let mut transaction = state.new_committable_transaction(Require::Everything, None);
+        transaction.as_mut().invalidate_events(&events);
+        transaction
+            .as_mut()
+            .run(&[main.dupe()], Require::Everything, None);
+        let count = transaction
+            .as_mut()
+            .get_errors([&main])
+            .collect_display_errors()
+            .len();
+        state.commit_transaction(transaction, None);
+        count
+    };
+
+    assert_eq!(error_count_after(CategorizedEvents::default()), 0);
+    let lib_config = root.join("lib").join(ConfigFile::PYREFLY_FILE_NAME);
+    fs::write(
+        &lib_config,
+        "site-packages-path = ['../lib_env']\nskip-interpreter-query = true\n",
+    )
+    .unwrap();
+    assert_eq!(
+        error_count_after(CategorizedEvents {
+            modified: vec![lib_config],
+            ..Default::default()
+        }),
+        1
+    );
+}
+
+/// The app reads a field of a library class whose module it never imports, because the library
+/// imports that module inside a function. Bug (https://github.com/meta/pyrefly/issues/3556): the
+/// field has the library's `dep.C`, so assigning it to the app's `dep.C` is an error.
+#[test]
+fn test_library_class_fields_without_import() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    fs::write(
+        root.join("lib").join("fields.py"),
+        "import dep\nclass B:\n    c: dep.C\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("lib").join("factory.py"),
+        "def make():\n    from fields import B\n    return B()\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("app").join("main.py"),
+        "import dep\nimport factory\nc: dep.C = factory.make().c\n",
+    )
+    .unwrap();
+    let (state, [main, _, _]) = check_apps(root, Require::Exports);
+    let errors = state
+        .transaction()
+        .get_errors([&main])
+        .collect_display_errors();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+}
+
+/// A Python environment outside any config: its modules have the default config. A module the app
+/// imports from it resolves its own imports to the same modules as the app, so the app's
+/// assignment is not an error.
+#[test]
+fn test_environment_outside_any_config() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::create_dir_all(root.join("env")).unwrap();
+    fs::write(
+        root.join("app").join(ConfigFile::PYREFLY_FILE_NAME),
+        "site-packages-path = ['../env']\nskip-interpreter-query = true\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("env").join("dep.py"),
+        "import dep2\nclass C:\n    d: dep2.D\n",
+    )
+    .unwrap();
+    fs::write(root.join("env").join("dep2.py"), "class D: ...\n").unwrap();
+    fs::write(
+        root.join("app").join("main.py"),
+        "import dep\nimport dep2\nd: dep2.D = dep.C().d\n",
+    )
+    .unwrap();
+    let state = State::new(default_config_finder(None), TEST_THREAD_COUNT);
+    let handle =
+        |path: &str| handle_from_module_path(&state, ModulePath::filesystem(root.join(path)));
+    let (main, dep) = (handle("app/main.py"), handle("env/dep.py"));
+    let mut transaction = state.new_transaction(Require::Exports, None);
+    transaction.run(&[main.dupe(), dep.dupe()], Require::Everything, None);
+    let errors = transaction
+        .get_errors([&main, &dep])
+        .collect_display_errors();
+    assert!(errors.is_empty(), "expected no errors, got {errors:?}");
+}
+
+/// The library has an error and is checked in the apps' environments, then also on its own. Each
+/// time, all errors, as `pyrefly check --check-all` reports them, include the library's error
+/// once.
+#[test]
+fn test_library_all_errors_reported_once() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    let lib_path = root.join("lib").join("mylib.py");
+    let code = fs::read_to_string(&lib_path).unwrap();
+    fs::write(&lib_path, format!("{code}x: int = ''\n")).unwrap();
+    // `--check-all` keeps the errors of every module.
+    let (state, [_, _, mylib]) = check_apps(root, Require::Errors);
+    let mut transaction = state.transaction();
+    let check = |transaction: &Transaction| {
+        let errors = transaction
+            .get_all_errors()
+            .collect_display_errors()
+            .into_iter()
+            .filter(|error| error.path().as_path() == lib_path)
+            .collect::<Vec<_>>();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+    };
+    check(&transaction);
+    transaction.run(&[mylib], Require::Errors, None);
+    check(&transaction);
 }
