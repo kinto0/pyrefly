@@ -8675,3 +8675,111 @@ def outer() -> None:
         .is_empty()
     );
 }
+
+#[test]
+fn insert_inferred_type_on_conditional_global_write() {
+    let code = "\
+def make() -> int:
+    return 1
+
+def write(flag: bool) -> None:
+    if flag:
+        global item
+    item = make()
+";
+    let actions = inferred_annotation_actions(
+        &[("main", code)],
+        range_of(code, "item = make()"),
+        Default::default(),
+    );
+    // An annotated assignment is invalid for a mutable capture.
+    assert_eq!(
+        actions,
+        vec![(
+            "Insert inferred type `: int`".to_owned(),
+            code.replace("item = make()", "item: int = make()"),
+        )]
+    );
+}
+
+#[test]
+fn insert_inferred_type_on_global_write_in_conditional_function() {
+    let code = "\
+def make() -> int:
+    return 1
+
+if True:
+    def write() -> None:
+        global item
+        item = make()
+";
+    let actions = inferred_annotation_actions(
+        &[("main", code)],
+        range_of(code, "item = make()"),
+        Default::default(),
+    );
+    // An annotated assignment is invalid for a mutable capture.
+    assert_eq!(
+        actions,
+        vec![(
+            "Insert inferred type `: int`".to_owned(),
+            code.replace("item = make()", "item: int = make()"),
+        )]
+    );
+}
+
+#[test]
+fn insert_inferred_type_on_conditional_nonlocal_write() {
+    let code = "\
+def make() -> int:
+    return 1
+
+def outer() -> None:
+    item = 1
+    def write(flag: bool) -> None:
+        if flag:
+            nonlocal item
+        item = make()
+";
+    let actions = inferred_annotation_actions(
+        &[("main", code)],
+        range_of(code, "item = make()"),
+        Default::default(),
+    );
+    // An annotated assignment is invalid for a mutable capture.
+    assert_eq!(
+        actions,
+        vec![(
+            "Insert inferred type `: int`".to_owned(),
+            code.replace("item = make()", "item: int = make()"),
+        )]
+    );
+}
+
+#[test]
+fn insert_inferred_type_on_local_shadow_of_global_capture() {
+    let code = "\
+def make() -> int:
+    return 1
+
+def write() -> None:
+    global item
+    item = 1
+
+def local():
+    item = make()
+    return item
+";
+    let actions = inferred_annotation_actions(
+        &[("main", code)],
+        range_of(code, "item = make()"),
+        Default::default(),
+    );
+    assert_eq!(
+        actions,
+        vec![(
+            "Insert inferred type `: int`".to_owned(),
+            code.replace("item = make()", "item: int = make()"),
+        )]
+    );
+}
