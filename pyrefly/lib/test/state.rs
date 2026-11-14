@@ -37,6 +37,7 @@ use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
 use pyrefly_util::thread_pool::ThreadCount;
 use pyrefly_util::thread_pool::ThreadPool;
 use ruff_python_ast::name::Name;
+use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 use starlark_map::small_set::SmallSet;
 use tempfile::TempDir;
@@ -63,6 +64,7 @@ use crate::module::finder::find_import;
 use crate::module::typeshed::typeshed;
 use crate::state::load::FileContents;
 use crate::state::lsp::FindPreference;
+use crate::state::lsp::ReferenceOptions;
 use crate::state::require::Require;
 use crate::state::require::RequireLevels;
 use crate::state::state::State;
@@ -2086,6 +2088,46 @@ fn test_library_definitions_from_app() {
     );
 }
 
+/// The library is imported from two environments and also checked on its own. Bug: its reverse
+/// dependencies, and find references on one of its functions, miss both apps, because the apps
+/// depend on their copies of the library.
+#[test]
+fn test_library_references_from_each_environment() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    let (state, [main, _, mylib]) = check_apps(root, Require::Exports);
+    let mut transaction = state.transaction();
+    let mut rdeps = transaction
+        .get_rdeps(&mylib)
+        .into_iter()
+        .map(|handle| handle.path().as_path().to_owned())
+        .collect::<Vec<_>>();
+    rdeps.sort();
+    assert_eq!(rdeps, Vec::<PathBuf>::new());
+
+    transaction.run(&[mylib.dupe()], Require::Everything, None);
+    let code = fs::read_to_string(root.join("app").join("main.py")).unwrap();
+    let position = TextSize::try_from(code.find("f(").unwrap()).unwrap();
+    let definitions = transaction
+        .find_definition(&main, position, FindPreference::default())
+        .unwrap();
+    let definition = definitions.first();
+    let mut references = transaction
+        .find_global_references_from_definition(
+            *main.sys_info(),
+            definition.metadata.clone(),
+            TextRangeWithModule::new(definition.module.clone(), definition.definition_range),
+            ReferenceOptions::textual_only(true),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(module, ranges)| (module.path().as_path().to_owned(), ranges.len()))
+        .collect::<Vec<_>>();
+    references.sort();
+    assert_eq!(references, vec![(mylib.path().as_path().to_owned(), 1)]);
+}
+
 /// The library's config first uses the app's environment, so the app imports the library's own
 /// module. When the config switches to the library's own environment, the app must recheck its
 /// import and get a copy in its environment. Without the recheck, the library resolves `dep` in
@@ -2207,6 +2249,60 @@ fn test_environment_outside_any_config() {
     );
     assert_eq!(dep.importer_site_package_path(), None);
     assert_eq!(app_dep.path(), dep.path());
+}
+
+/// With the library file open and edited, find references reads the library file from the editor
+/// only: neither its file on disk nor the app's copy of that file adds references. Bug: the
+/// references miss the app, because the app depends on its copy of the library.
+#[test]
+fn test_library_open_in_editor_references() {
+    let temp_dir = TempDir::new().unwrap();
+    let root = temp_dir.path();
+    write_apps_and_library(root, &["../lib_env"]);
+    let state = State::new(default_config_finder(None), TEST_THREAD_COUNT);
+    let lib_path = root.join("lib").join("mylib.py");
+    // Shift the text in the editor, so that its ranges differ from the file on disk.
+    let code = format!("\n\n{}", fs::read_to_string(&lib_path).unwrap());
+    let main = handle_from_module_path(
+        &state,
+        ModulePath::filesystem(root.join("app").join("main.py")),
+    );
+    let mylib = handle_from_module_path(&state, ModulePath::memory(lib_path.clone()));
+    let mut transaction = state.new_committable_transaction(Require::Exports, None);
+    transaction.as_mut().set_memory(vec![(
+        lib_path.clone(),
+        Some(Arc::new(FileContents::from_source(code.clone()))),
+    )]);
+    transaction
+        .as_mut()
+        .run(&[main.dupe(), mylib.dupe()], Require::Everything, None);
+    state.commit_transaction(transaction, None);
+
+    let mut transaction = state.transaction();
+    let position = TextSize::try_from(code.find("f(").unwrap()).unwrap();
+    let definitions = transaction
+        .find_definition(&mylib, position, FindPreference::default())
+        .unwrap();
+    let definition = definitions.first();
+    let mut references = transaction
+        .find_global_references_from_definition(
+            *mylib.sys_info(),
+            definition.metadata.clone(),
+            TextRangeWithModule::new(definition.module.clone(), definition.definition_range),
+            ReferenceOptions::textual_only(true),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|(module, ranges)| (module.path().dupe(), ranges))
+        .collect::<Vec<_>>();
+    references.sort_by_key(|(path, _)| path.dupe());
+    let range = |code: &str| {
+        TextRange::at(
+            TextSize::try_from(code.find("f(").unwrap()).unwrap(),
+            TextSize::new(1),
+        )
+    };
+    assert_eq!(references, vec![(mylib.path().dupe(), vec![range(&code)])]);
 }
 
 /// The library has an error and is checked in the apps' environments, then also on its own. Each
