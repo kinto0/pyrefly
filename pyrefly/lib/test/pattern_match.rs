@@ -2684,3 +2684,21 @@ def duplicate_partial(a: A) -> None:
             pass
 "#,
 );
+
+testcase!(
+    test_tuple_match_class_pattern_with_capture_exhaustive,
+    r#"
+from typing import assert_never
+
+class A:
+    __match_args__ = ("x",)
+    x: int
+
+def f(a: A, b: bool) -> None:
+    match a, b:
+        case A(x), _:
+            pass
+        case _ as never:
+            assert_never(never)
+"#,
+);

@@ -255,7 +255,7 @@ impl<'a> BindingsBuilder<'a> {
     /// `sequence_element_atomic_op`, or it is irrefutable. Only when every element is
     /// fully characterized is it sound to strip the spurious capture `Placeholder`s and let
     /// the arm's negation subtract its covered union member for subsequent cases & exhaustiveness checks.
-    /// This behavior is conservative; a refutable element we can't fully express (nested patterns, class pattern with sub-arguments)
+    /// This behavior is conservative; a refutable element we can't fully express (nested patterns, class pattern with refutable sub-patterns)
     /// keeps its `Placeholder`.
     fn sequence_element_fully_characterized(pattern: &Pattern) -> bool {
         match pattern {
@@ -263,9 +263,14 @@ impl<'a> BindingsBuilder<'a> {
                 .pattern
                 .as_deref()
                 .is_none_or(Self::sequence_element_fully_characterized),
-            Pattern::MatchClass(x) => {
-                x.arguments.patterns.is_empty() && x.arguments.keywords.is_empty()
-            }
+            // With only irrefutable arguments (captures and wildcards), a class pattern matches
+            // exactly the instances of the class.
+            Pattern::MatchClass(x) => x
+                .arguments
+                .patterns
+                .iter()
+                .chain(x.arguments.keywords.iter().map(|kw| &kw.pattern))
+                .all(|p| p.is_irrefutable() || p.is_wildcard()),
             Pattern::MatchValue(_) | Pattern::MatchSingleton(_) | Pattern::MatchStar(_) => true,
             _ => false,
         }
