@@ -61,7 +61,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let any_explicit = self.heap.mk_any_explicit();
         let mut kws_for_check = Vec::with_capacity(kws.len());
         for kw in kws {
-            if is_placeholder_arg(self, &kw.value) {
+            if is_placeholder_arg(self, &kw.value, errors) {
                 self.error(
                     errors,
                     kw.range(),
@@ -238,7 +238,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let is_placeholder: Vec<bool> = args[1..]
             .iter()
             .map(|arg| match arg {
-                CallArg::Arg(x) => is_placeholder_arg(self, x),
+                CallArg::Arg(x) => is_placeholder_arg(self, x, errors),
                 CallArg::Star(..) => false,
             })
             .collect();
@@ -730,20 +730,26 @@ fn partial_params(
     Some(ParamList::new(remaining))
 }
 
-fn is_placeholder_arg<Ans: LookupAnswer>(solver: &AnswersSolver<Ans>, x: &CallValue) -> bool {
+fn is_placeholder_arg<Ans: LookupAnswer>(
+    solver: &AnswersSolver<Ans>,
+    x: &CallValue,
+    errors: &ErrorCollector,
+) -> bool {
     match x.as_type_or_expr() {
-        TypeOrExpr::Type(ty, _) => is_functools_placeholder(solver, ty),
+        TypeOrExpr::Type(ty, _) => {
+            is_functools_placeholder(solver, &solver.solver().expand(ty.clone()))
+        }
         TypeOrExpr::Expr(
-            Expr::Name(_)
-            | Expr::Attribute(_)
-            | Expr::Subscript(_)
-            | Expr::Named(_)
-            | Expr::Call(_)
-            | Expr::If(_),
-        ) => {
-            let ty = x.infer(solver, &solver.error_collector());
-            let ty = solver.solver().expand(ty);
-            is_functools_placeholder(solver, &ty)
+            Expr::Name(_) | Expr::Attribute(_) | Expr::Subscript(_) | Expr::Named(_),
+        ) if solver.bindings().sys_info().version().at_least(3, 14) => {
+            // Non-placeholders are checked again against the target's parameter hint.
+            let trial = solver.error_collector();
+            let ty = solver.solver().expand(x.infer(solver, &trial));
+            let is_placeholder = is_functools_placeholder(solver, &ty);
+            if is_placeholder {
+                errors.extend(trial);
+            }
+            is_placeholder
         }
         _ => false,
     }

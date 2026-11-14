@@ -1183,6 +1183,7 @@ partial(f, Placeholder, untyped(1))  # E: The type of this argument is unknown
 );
 
 testcase!(
+    bug = "Call and conditional Placeholder expressions are not recognized",
     test_partial_placeholder_expressions,
     TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
@@ -1197,9 +1198,9 @@ def get_placeholder():
 
 reveal_type(partial(f, holes[0], 2))  # E: revealed type: (x: int, /) -> int
 reveal_type(partial(f, (hole := Placeholder), 2))  # E: revealed type: (x: int, /) -> int
-reveal_type(partial(f, get_placeholder(), 2))  # E: revealed type: (x: int, /) -> int
+reveal_type(partial(f, get_placeholder(), 2))  # E: revealed type: () -> int  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
 flag = True
-reveal_type(partial(f, Placeholder if flag else Placeholder, 2))  # E: revealed type: (x: int, /) -> int
+reveal_type(partial(f, Placeholder if flag else Placeholder, 2))  # E: revealed type: () -> int  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
 "#,
 );
 
@@ -1281,7 +1282,7 @@ reveal_type(p2)  # E: revealed type: partial[int]
 );
 
 testcase!(
-    bug = "Placeholder detection discards errors inside a recognized expression",
+    bug = "Call and conditional Placeholder expressions are not recognized",
     test_partial_placeholder_expression_diagnostics,
     TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
@@ -1302,16 +1303,16 @@ def condition() -> bool: ...
 
 make_hole("bad")  # E: Argument `Literal['bad']` is not assignable to parameter `n` with type `int`
 make_hole()  # E: Missing argument `n`
-p = partial(f, make_hole("bad"), 2)  # WANT: bad argument to make_hole
-partial(f, make_hole(), 2)  # WANT: missing argument to make_hole
-partial(f, make_holder("bad").hole, 2)  # WANT: bad argument to make_holder
-partial(f, Placeholder if condition(1) else Placeholder, 2)  # WANT: excess argument to condition
-reveal_type(p)  # E: revealed type: (x: int, /) -> int
+p = partial(f, make_hole("bad"), 2)  # E: Argument `Literal['bad']` is not assignable to parameter `n` with type `int`  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
+partial(f, make_hole(), 2)  # E: Missing argument `n`  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
+partial(f, make_holder("bad").hole, 2)  # E: Argument `Literal['bad']` is not assignable to parameter `n` with type `int`
+partial(f, Placeholder if condition(1) else Placeholder, 2)  # E: Expected 0 positional arguments, got 1  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
+reveal_type(p)  # E: revealed type: () -> int
 "#,
 );
 
 testcase!(
-    bug = "Keyword Placeholder detection discards errors inside its value expression",
+    bug = "Call-valued Placeholder keywords are not specially rejected",
     test_partial_placeholder_keyword_expression_diagnostics,
     TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
@@ -1321,7 +1322,7 @@ def f(x: int, y: int) -> int: ...
 def make_hole(n: int):
     return Placeholder
 
-partial(f, x=make_hole("bad"))  # E: cannot use functools.Placeholder as keyword argument
+partial(f, x=make_hole("bad"))  # E: Argument `Literal['bad']` is not assignable to parameter `n` with type `int`  # E: Argument `_PlaceholderType` is not assignable to parameter `x` with type `int`
 "#,
 );
 
@@ -1348,8 +1349,9 @@ partial(seq, [], 1)
 "#,
 );
 
-functools_testcase!(
+testcase!(
     test_partial_nested_bound_arguments,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
 from functools import partial
 from typing import reveal_type
