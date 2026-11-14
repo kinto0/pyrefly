@@ -7,36 +7,47 @@
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://discord.gg/Cf7mFQtW7W)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Pyrefly is a type checker and language server for Python, which provides
-lightning-fast type checking along with IDE features such as code navigation,
-semantic highlighting, and code completion. It is available as a
-[command-line tool](https://pyrefly.org/en/docs/installation/) and an extension
-for popular IDEs and editors such as
-[VSCode](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly),
-[Neovim](https://pyrefly.org/en/docs/IDE/#neovim),
-[Zed](https://zed.dev/extensions/pyrefly), and
-[more](https://pyrefly.org/en/docs/IDE/).
+Pyrefly is a type checker and language server for Python, written in Rust. It
+provides fast type checking along with IDE features such as code navigation,
+semantic highlighting, and code completion.
 
-See the [Pyrefly website](https://pyrefly.org) for full documentation and how to
-add Pyrefly to your editor of choice.
+## Who Uses Pyrefly
 
-Pyrefly's current development status is [stable](https://github.com/facebook/pyrefly/releases/tag/1.0.0).
+- **[Google](https://opensource.googleblog.com/2026/10/adopting-pyrefly-as-the-python-type-checker-at-google.html)**: the Python type checker for Google's monorepo, replacing Pytype ([blog post](https://opensource.googleblog.com/2026/10/adopting-pyrefly-as-the-python-type-checker-at-google.html)).
+- **[Microsoft Pylance](https://github.com/microsoft/pylance-release)**: can use Pyrefly for type checking through the [Type Server Protocol (TSP)](https://github.com/microsoft/pylance-release/blob/main/docs/tsp/type-server-protocol.md) ([announcement](https://devblogs.microsoft.com/python/announcing-tsp/)).
+- **[Instagram](https://www.instagram.com/)**: the default type checker for 20 million lines of Python at Meta.
+- Open source projects type checked with Pyrefly:
+  - [PyTorch](https://github.com/pytorch/pytorch)
+  - [JAX](https://github.com/jax-ml/jax)
+  - [NumPy](https://github.com/numpy/numpy)
+  - [SciPy](https://github.com/scipy/scipy)
+  - [scikit-learn](https://github.com/scikit-learn/scikit-learn)
+  - [Polars](https://github.com/pola-rs/polars)
+  - [pandas-stubs](https://github.com/pandas-dev/pandas-stubs)
+- **[Dify](https://github.com/langgenius/dify)**: Pyrefly reports type coverage in CI ([case study](https://pyrefly.org/blog/dify-pyrefly-coverage-ci/)).
+- **[Positron](https://positron.posit.co/blog/posts/2026-03-31-python-type-checkers/)**: Pyrefly is the default Python language server.
 
-### Key Features
+If your project uses Pyrefly, [create an issue](https://github.com/facebook/pyrefly/issues) to add it to this list.
+
+## Key Features
 
 - **Fast.** Pyrefly checks over 1.85 million lines of code per second, type checking projects like PyTorch 15x faster than Mypy and Pyright. In the IDE, rechecks typically complete in under 10 milliseconds after saving a file.
-- **Production-proven at scale.** Pyrefly is the default type checker for Instagram's 20-million-line Python codebase at Meta, and has been adopted by large open source projects including PyTorch and JAX.
-- **Full-featured language server.** Code navigation, autocomplete, hover information, inlay hints, semantic highlighting, and more, with consistent results across the CLI and your editor of choice.
-- **Understands real-world Python.** Built-in support for frameworks and tools like [Pydantic](https://pyrefly.org/en/docs/pydantic/), [Django](https://pyrefly.org/en/docs/django/), and [pytest](https://pyrefly.org/en/docs/pytest/), with model validation, field types, fixture navigation, and autocomplete that work out of the box.
-- **Adoption-ready.** Migrate from Mypy or Pyright with `pyrefly init`, silence existing errors with `pyrefly suppress`, and generate type annotations with `pyrefly infer`. Start with one file and expand at your own pace.
+- **Full-featured language server.** Go-to-definition, autocomplete, hover, inlay hints, semantic highlighting, and more, with consistent results across the CLI and your editor.
+- **Editor support.** [VS Code](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly), [Neovim](https://pyrefly.org/en/docs/IDE/#neovim), [Zed](https://zed.dev/extensions/pyrefly), and [more](https://pyrefly.org/en/docs/IDE/).
+- **Understands real-world Python.** Built-in support for [Pydantic](https://pyrefly.org/en/docs/pydantic/), [Django](https://pyrefly.org/en/docs/django/), and [pytest](https://pyrefly.org/en/docs/pytest/).
+- **Tensor shape checking.** Experimental [tensor shape checking](https://pyrefly.org/en/docs/tensor-shapes/) finds shape mismatches in PyTorch code.
+- **Adoption-ready.** Migrate from Mypy or Pyright with `pyrefly init`, silence existing errors with `pyrefly suppress`, and add annotations with `pyrefly infer`. Start with one file and grow at your own pace.
 
-### Getting Started
+Pyrefly is [stable](https://github.com/facebook/pyrefly/releases/tag/1.0.0).
+See the [Pyrefly website](https://pyrefly.org) for full documentation.
 
-- Try out pyrefly in your browser: [Sandbox](https://pyrefly.org/sandbox/)
+## Getting Started
+
+- Try it in your browser: [Sandbox](https://pyrefly.org/sandbox/)
 - Get the command-line tool: `pip install pyrefly`
 - Get the IDE extension: [IDE installation page](https://pyrefly.org/en/docs/IDE/)
 
-### Version Policy
+## Version Policy
 
 Pyrefly releases new minor versions (`1.x.0`) monthly and patch versions in between
 as-needed for critical fixes. Pyrefly does *not* follow strict semantic versioning:
