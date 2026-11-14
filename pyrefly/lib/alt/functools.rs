@@ -7,7 +7,10 @@
 
 //! Type-checks `functools.partial(...)` bound arguments and synthesizes the remaining signature.
 
+use std::borrow::Cow;
+
 use itertools::Itertools;
+use pyrefly_python::ast::Ast;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::typed_dict::ExtraItems;
@@ -26,6 +29,7 @@ use crate::alt::call::CallTargetLookup;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallKeyword;
 use crate::alt::callable::CallValue;
+use crate::alt::callable::CallWithTypes;
 use crate::alt::expr::TypeOrExpr;
 use crate::alt::unwrap::HintRef;
 use crate::config::error_kind::ErrorKind;
@@ -58,10 +62,29 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Type::ClassDef(partial_cls) = partial_ty else {
             unreachable!("call_functools_partial dispatched on a non-class callee");
         };
+        // Hoist hint-independent inference; contextual arguments remain expressions.
+        let call = CallWithTypes::new();
+        let supports_placeholders = self.bindings().sys_info().version().at_least(3, 14);
+        let mut prepared_args = Cow::Borrowed(args);
+        if supports_placeholders {
+            for (i, arg) in args.iter().enumerate().skip(1) {
+                if let CallArg::Arg(value) = arg
+                    && can_prepare_partial_arg(*value)
+                {
+                    prepared_args.to_mut()[i] = call.call_arg(arg, self, errors);
+                }
+            }
+        }
+        let args = prepared_args.as_ref();
         let any_explicit = self.heap.mk_any_explicit();
         let mut kws_for_check = Vec::with_capacity(kws.len());
         for kw in kws {
-            if is_placeholder_arg(self, &kw.value, errors) {
+            let kw = if supports_placeholders && can_prepare_partial_arg(kw.value) {
+                call.call_keyword(kw, self, errors)
+            } else {
+                kw.clone()
+            };
+            if is_placeholder_arg(self, &kw.value) {
                 self.error(
                     errors,
                     kw.range(),
@@ -74,7 +97,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     value: CallValue::Plain(TypeOrExpr::Type(&any_explicit, kw.value.range())),
                 });
             } else {
-                kws_for_check.push(kw.clone());
+                kws_for_check.push(kw);
             }
         }
         let Some(CallArg::Arg(target)) = args.first() else {
@@ -232,13 +255,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // The remaining parameters are keyed by the names the bound keywords consume. A `**` splat of an
         // `Unpack[TypedDict]` binds exactly the TypedDict's declared fields, so expand it to those
         // names; a splat of any other type can't be reduced structurally, so defer to the stub.
-        let Some(bound_kw_names) = self.partial_bound_kw_names(kws) else {
+        let Some(bound_kw_names) = self.partial_bound_kw_names(&kws_for_check) else {
             return fallback(self);
         };
         let is_placeholder: Vec<bool> = args[1..]
             .iter()
             .map(|arg| match arg {
-                CallArg::Arg(x) => is_placeholder_arg(self, x, errors),
+                CallArg::Arg(x) => is_placeholder_arg(self, x),
                 CallArg::Star(..) => false,
             })
             .collect();
@@ -730,32 +753,21 @@ fn partial_params(
     Some(ParamList::new(remaining))
 }
 
-fn is_placeholder_arg<Ans: LookupAnswer>(
-    solver: &AnswersSolver<Ans>,
-    x: &CallValue,
-    errors: &ErrorCollector,
-) -> bool {
-    match x.as_type_or_expr() {
-        TypeOrExpr::Type(ty, _) => {
-            is_functools_placeholder(solver, &solver.solver().expand(ty.clone()))
-        }
-        TypeOrExpr::Expr(
-            Expr::Name(_) | Expr::Attribute(_) | Expr::Subscript(_) | Expr::Named(_),
-        ) if solver.bindings().sys_info().version().at_least(3, 14) => {
-            // Non-placeholders are checked again against the target's parameter hint.
-            let trial = solver.error_collector();
-            let ty = solver.solver().expand(x.infer(solver, &trial));
-            let is_placeholder = is_functools_placeholder(solver, &ty);
-            if is_placeholder {
-                errors.extend(trial);
-            }
-            is_placeholder
+fn can_prepare_partial_arg(value: CallValue) -> bool {
+    match value.as_type_or_expr() {
+        TypeOrExpr::Expr(Expr::Name(_) | Expr::Attribute(_) | Expr::Subscript(_)) => true,
+        TypeOrExpr::Expr(Expr::Named(named)) => {
+            matches!(&*named.target, Expr::Name(name) if !Ast::is_synthesized_empty_name(name))
         }
         _ => false,
     }
 }
 
-fn is_functools_placeholder<Ans: LookupAnswer>(solver: &AnswersSolver<Ans>, ty: &Type) -> bool {
+fn is_placeholder_arg<Ans: LookupAnswer>(solver: &AnswersSolver<Ans>, x: &CallValue) -> bool {
+    let TypeOrExpr::Type(ty, _) = x.as_type_or_expr() else {
+        return false;
+    };
+    let ty = solver.solver().expand(ty.clone());
     matches!(
         ty,
         Type::ClassType(cls)
