@@ -813,6 +813,9 @@ impl<'a> BindingsBuilder<'a> {
                 expr: value,
                 legacy_tparams: tparams,
                 is_in_function_scope: self.scopes.in_function_scope(),
+                is_mutable_capture: (self.scopes.in_class_body()
+                    || !self.scopes.in_module_or_class_top_level())
+                    && self.scopes.is_mutable_capture(&name.id),
                 class_key: self.scopes.current_class_key(),
                 first_use: FirstUse::Undetermined,
                 def_idx: if uses_first_use { Some(def_idx) } else { None },

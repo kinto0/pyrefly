@@ -8692,14 +8692,7 @@ def write(flag: bool) -> None:
         range_of(code, "item = make()"),
         Default::default(),
     );
-    // An annotated assignment is invalid for a mutable capture.
-    assert_eq!(
-        actions,
-        vec![(
-            "Insert inferred type `: int`".to_owned(),
-            code.replace("item = make()", "item: int = make()"),
-        )]
-    );
+    assert!(actions.is_empty());
 }
 
 #[test]
@@ -8718,14 +8711,7 @@ if True:
         range_of(code, "item = make()"),
         Default::default(),
     );
-    // An annotated assignment is invalid for a mutable capture.
-    assert_eq!(
-        actions,
-        vec![(
-            "Insert inferred type `: int`".to_owned(),
-            code.replace("item = make()", "item: int = make()"),
-        )]
-    );
+    assert!(actions.is_empty());
 }
 
 #[test]
@@ -8746,14 +8732,7 @@ def outer() -> None:
         range_of(code, "item = make()"),
         Default::default(),
     );
-    // An annotated assignment is invalid for a mutable capture.
-    assert_eq!(
-        actions,
-        vec![(
-            "Insert inferred type `: int`".to_owned(),
-            code.replace("item = make()", "item: int = make()"),
-        )]
-    );
+    assert!(actions.is_empty());
 }
 
 #[test]

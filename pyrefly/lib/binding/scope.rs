@@ -3303,7 +3303,7 @@ impl Scopes {
     }
 
     /// Check if a name is declared as `global` or `nonlocal` in the current scope.
-    fn is_mutable_capture(&self, name: &Name) -> bool {
+    pub fn is_mutable_capture(&self, name: &Name) -> bool {
         self.current()
             .stat
             .0

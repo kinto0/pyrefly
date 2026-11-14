@@ -21,7 +21,6 @@ use ruff_python_ast::ExprDict;
 use ruff_python_ast::ExprList;
 use ruff_python_ast::ModModule;
 use ruff_python_ast::ParameterWithDefault;
-use ruff_python_ast::Stmt;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
@@ -283,8 +282,7 @@ impl<'a> Transaction<'a> {
                         // applies to receiver-bearing unpacked rebinds.
                         Binding::NameAssign(x) if !x.is_pinned() => {
                             // `global` and `nonlocal` names cannot take an annotated assignment.
-                            if self.capture_forbids_annotation(handle, key.range().start(), &x.name)
-                            {
+                            if x.is_mutable_capture {
                                 insertable = false;
                             }
                             (Some(&*x.expr), false)
@@ -411,33 +409,6 @@ impl<'a> Transaction<'a> {
         }
 
         Some(res)
-    }
-
-    /// `global` and `nonlocal` names cannot take an annotated assignment in that scope.
-    fn capture_forbids_annotation(&self, handle: &Handle, position: TextSize, name: &Name) -> bool {
-        fn declared(stmts: &[Stmt], position: TextSize, name: &Name) -> Option<bool> {
-            for stmt in stmts {
-                let body = match stmt {
-                    Stmt::FunctionDef(func) if func.range().contains(position) => {
-                        func.body.as_slice()
-                    }
-                    Stmt::ClassDef(class) if class.range().contains(position) => {
-                        class.body.as_slice()
-                    }
-                    _ => continue,
-                };
-                return Some(declared(body, position, name).unwrap_or_else(|| {
-                    body.iter().any(|stmt| match stmt {
-                        Stmt::Global(global) => global.names.iter().any(|id| id.id == *name),
-                        Stmt::Nonlocal(nonlocal) => nonlocal.names.iter().any(|id| id.id == *name),
-                        _ => false,
-                    })
-                }));
-            }
-            None
-        }
-        self.get_ast(handle)
-            .is_some_and(|ast| declared(&ast.body, position, name).unwrap_or(false))
     }
 
     /// Helper to extract the element expression from an unpacked source.

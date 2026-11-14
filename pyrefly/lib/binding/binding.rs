@@ -2400,6 +2400,8 @@ pub struct NameAssign {
     pub expr: Box<Expr>,
     pub legacy_tparams: Option<Box<[Idx<KeyLegacyTypeParam>]>>,
     pub is_in_function_scope: bool,
+    /// Known global/nonlocal writes outside module scope cannot take inline annotations.
+    pub is_mutable_capture: bool,
     /// The class whose body directly contains this assignment, if any.
     pub class_key: Option<Idx<KeyClass>>,
     pub first_use: FirstUse,
