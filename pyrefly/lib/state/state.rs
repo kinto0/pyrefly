@@ -16,6 +16,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
+use std::iter;
 use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
@@ -1335,7 +1336,8 @@ impl<'a> Transaction<'a> {
         self.get_load(handle).map(|x| x.module_info.dupe())
     }
 
-    /// Return the modules that directly depend on this one.
+    /// Return the modules that directly depend on this one, or on any copy of it checked in
+    /// another Python environment.
     ///
     /// A dependency edge means the depending module's result was computed from
     /// this file's contents, which is exactly the question safe deletion asks,
@@ -1352,12 +1354,28 @@ impl<'a> Transaction<'a> {
     /// has open look unused.
     pub fn get_rdeps(&self, handle: &Handle) -> HashSet<Handle> {
         let path = handle.path().as_path();
-        self.get_module(handle)
-            .rdeps
-            .lock()
-            .iter()
-            .filter(|rdep| rdep.path().as_path() != path)
-            .cloned()
+        let mut rdeps = HashSet::new();
+        for copy in self.copies(handle) {
+            rdeps.extend(
+                self.get_module(&copy)
+                    .rdeps
+                    .lock()
+                    .iter()
+                    .filter(|rdep| rdep.path().as_path() != path)
+                    .cloned(),
+            );
+        }
+        rdeps
+    }
+
+    /// `handle` and the handles this transaction holds for the same module checked in other
+    /// Python environments. This is one lookup per interned site-package path, rather than a scan
+    /// of every module. The interner is global, so it can hold paths that no module here uses.
+    fn copies(&self, handle: &Handle) -> Vec<Handle> {
+        iter::once(None)
+            .chain(SitePackagePath::all().map(Some))
+            .map(|path| handle.dupe().with_importer_site_package_path(path))
+            .filter(|copy| copy == handle || self.get_require(copy).is_some())
             .collect()
     }
 
@@ -1379,12 +1397,14 @@ impl<'a> Transaction<'a> {
     }
 
     /// Compute transitive dependency closure for the given handle.
+    /// The closure starts from every copy of the module checked in another Python environment,
+    /// since each copy has its own dependents.
     /// Note that for IDE services, if the given handle is an in-memory one, then you are probably
     /// not getting what you want, because the set of rdeps of in-memory file for IDE service will
     /// only contain itself.
     pub fn get_transitive_rdeps(&self, handle: Handle) -> HashSet<Handle> {
         let mut transitive_rdeps = HashSet::new();
-        let mut work_list = vec![handle];
+        let mut work_list = self.copies(&handle);
         while let Some(handle) = work_list.pop() {
             if !transitive_rdeps.insert(handle.dupe()) {
                 continue;

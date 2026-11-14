@@ -2088,15 +2088,15 @@ fn test_library_definitions_from_app() {
     );
 }
 
-/// The library is imported from two environments and also checked on its own. Bug: its reverse
-/// dependencies, and find references on one of its functions, miss both apps, because the apps
-/// depend on their copies of the library.
+/// The library is imported from two environments and also checked on its own. Its reverse
+/// dependencies, and find references on one of its functions, include both apps, and list each
+/// file once.
 #[test]
 fn test_library_references_from_each_environment() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
     write_apps_and_library(root, &["../lib_env"]);
-    let (state, [main, _, mylib]) = check_apps(root, Require::Exports);
+    let (state, [main, main2, mylib]) = check_apps(root, Require::Exports);
     let mut transaction = state.transaction();
     let mut rdeps = transaction
         .get_rdeps(&mylib)
@@ -2104,7 +2104,13 @@ fn test_library_references_from_each_environment() {
         .map(|handle| handle.path().as_path().to_owned())
         .collect::<Vec<_>>();
     rdeps.sort();
-    assert_eq!(rdeps, Vec::<PathBuf>::new());
+    assert_eq!(
+        rdeps,
+        vec![
+            main.path().as_path().to_owned(),
+            main2.path().as_path().to_owned()
+        ]
+    );
 
     transaction.run(&[mylib.dupe()], Require::Everything, None);
     let code = fs::read_to_string(root.join("app").join("main.py")).unwrap();
@@ -2125,7 +2131,14 @@ fn test_library_references_from_each_environment() {
         .map(|(module, ranges)| (module.path().as_path().to_owned(), ranges.len()))
         .collect::<Vec<_>>();
     references.sort();
-    assert_eq!(references, vec![(mylib.path().as_path().to_owned(), 1)]);
+    assert_eq!(
+        references,
+        vec![
+            (main.path().as_path().to_owned(), 1),
+            (main2.path().as_path().to_owned(), 1),
+            (mylib.path().as_path().to_owned(), 1)
+        ]
+    );
 }
 
 /// The library's config first uses the app's environment, so the app imports the library's own
@@ -2252,8 +2265,7 @@ fn test_environment_outside_any_config() {
 }
 
 /// With the library file open and edited, find references reads the library file from the editor
-/// only: neither its file on disk nor the app's copy of that file adds references. Bug: the
-/// references miss the app, because the app depends on its copy of the library.
+/// only: neither its file on disk nor the app's copy of that file adds references.
 #[test]
 fn test_library_open_in_editor_references() {
     let temp_dir = TempDir::new().unwrap();
@@ -2296,13 +2308,19 @@ fn test_library_open_in_editor_references() {
         .map(|(module, ranges)| (module.path().dupe(), ranges))
         .collect::<Vec<_>>();
     references.sort_by_key(|(path, _)| path.dupe());
+    let main_code = fs::read_to_string(root.join("app").join("main.py")).unwrap();
     let range = |code: &str| {
         TextRange::at(
             TextSize::try_from(code.find("f(").unwrap()).unwrap(),
             TextSize::new(1),
         )
     };
-    assert_eq!(references, vec![(mylib.path().dupe(), vec![range(&code)])]);
+    let mut expected = vec![
+        (main.path().dupe(), vec![range(&main_code)]),
+        (mylib.path().dupe(), vec![range(&code)]),
+    ];
+    expected.sort_by_key(|(path, _)| path.dupe());
+    assert_eq!(references, expected);
 }
 
 /// The library has an error and is checked in the apps' environments, then also on its own. Each

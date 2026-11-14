@@ -34,6 +34,11 @@ impl SitePackagePath {
     pub fn paths(&self) -> &[PathBuf] {
         &self.0
     }
+
+    /// Every site-package path interned so far.
+    pub fn all() -> impl Iterator<Item = Self> {
+        SITE_PACKAGE_PATH_INTERNER.iter().map(Self)
+    }
 }
 
 /// A handle to a Python module, containing its name, path, and system information.
