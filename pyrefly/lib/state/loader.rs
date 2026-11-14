@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use dupe::Dupe;
+use pyrefly_build::handle::SitePackagePath;
 use pyrefly_config::error_kind::ErrorKind;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
@@ -255,6 +256,27 @@ pub struct LoaderFindCache {
 }
 
 impl LoaderFindCache {
+    /// A loader that resolves imports with `config`, but in the Python environment with
+    /// site-package path `site_package_path` rather than `config`'s own, if one is given.
+    pub fn new_in_environment(
+        config: &ArcId<ConfigFile>,
+        site_package_path: Option<SitePackagePath>,
+    ) -> Self {
+        let Some(site_package_path) = site_package_path else {
+            return Self::new(config.dupe());
+        };
+        // Clear the paths queried from the interpreter as well, so that `site_package_path()`
+        // is exactly `site_package_path`.
+        let mut config = ConfigFile::clone(config);
+        config.python_environment.site_package_path = Some(site_package_path.paths().to_vec());
+        config
+            .python_environment
+            .interpreter_site_package_path
+            .clear();
+        config.python_environment.interpreter_editable_path.clear();
+        Self::new(ArcId::new(config))
+    }
+
     pub fn new(config: ArcId<ConfigFile>) -> Self {
         // When no config feature uses origin, all import resolutions produce
         // the same result regardless of which file is importing. We can then

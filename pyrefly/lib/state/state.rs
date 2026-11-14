@@ -34,6 +34,7 @@ use enum_iterator::Sequence;
 use fxhash::FxHashMap;
 use itertools::Itertools;
 use pyrefly_build::handle::Handle;
+use pyrefly_build::handle::SitePackagePath;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
@@ -774,7 +775,9 @@ impl ModuleDataMut {
 struct StateData {
     stdlib: SmallMap<SysInfo, Arc<Stdlib>>,
     modules: HashMap<Handle, ModuleData>,
-    loaders: SmallMap<ArcId<ConfigFile>, Arc<LoaderFindCache>>,
+    /// Keyed by config and by the Python environment that the loader resolves imports in, if it
+    /// is not the config's own.
+    loaders: SmallMap<(ArcId<ConfigFile>, Option<SitePackagePath>), Arc<LoaderFindCache>>,
     /// The contents for ModulePath::memory values
     memory: MemoryFiles,
     /// The current epoch, gets incremented every time we recompute
@@ -872,7 +875,7 @@ pub(crate) struct TransactionData<'a> {
     state: &'a State,
     stdlib: SmallMap<SysInfo, Arc<Stdlib>>,
     updated_modules: LockedMap<Handle, ArcId<ModuleDataMut>>,
-    updated_loaders: LockedMap<ArcId<ConfigFile>, Arc<LoaderFindCache>>,
+    updated_loaders: LockedMap<(ArcId<ConfigFile>, Option<SitePackagePath>), Arc<LoaderFindCache>>,
     memory_overlay: MemoryFilesOverlay,
     default_require: Require,
     /// The epoch when this transaction was created
@@ -1532,7 +1535,7 @@ impl<'a> Transaction<'a> {
         let config = self.get_module(handle).config.read().dupe();
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
-            None => self.get_cached_loader(&config).find_import(
+            None => self.get_cached_loader(&config, None).find_import(
                 module,
                 Some(handle.path()),
                 Some(&self.timing),
@@ -1555,7 +1558,7 @@ impl<'a> Transaction<'a> {
         include_interpreter_stdlib: bool,
     ) -> FindingOrError<Handle> {
         let config = self.get_module(handle).config.read().dupe();
-        self.get_cached_loader(&config)
+        self.get_cached_loader(&config, None)
             .find_import_including_replaced(
                 module,
                 Some(handle.path()),
@@ -1583,7 +1586,7 @@ impl<'a> Transaction<'a> {
         let path = match path {
             Some(path) => FindingOrError::new_finding(path.dupe()),
             None => self
-                .get_cached_loader(&config)
+                .get_cached_loader(&config, None)
                 .find_import_prefer_executable(
                     module,
                     Some(handle.path()),
@@ -1697,7 +1700,7 @@ impl<'a> Transaction<'a> {
         // Validate the find flag.
         if dirty.find() {
             let config = module_data.config.read().dupe();
-            let loader = self.get_cached_loader(&config);
+            let loader = self.get_cached_loader(&config, None);
             let mut is_dirty = false;
 
             // Only check imports (not all deps), since only import-statement deps
@@ -2231,7 +2234,7 @@ impl<'a> Transaction<'a> {
                 let actual_name = alias.as_ref().unwrap_or(name);
                 let config = module_data.config.read().dupe();
                 let other_path = self
-                    .get_cached_loader(&config)
+                    .get_cached_loader(&config, None)
                     .find_import(*other_module, Some(handle.path()), Some(&self.timing))
                     .finding()?;
                 let other_handle = self.data.state.imported_handle_with_config(
@@ -2305,12 +2308,22 @@ impl<'a> Transaction<'a> {
         MemoryFilesLookup::new(&self.readable.memory, &self.data.memory_overlay)
     }
 
-    fn get_cached_loader(&self, loader: &ArcId<ConfigFile>) -> Arc<LoaderFindCache> {
+    /// The loader for `config`, resolving imports in the Python environment with site-package path
+    /// `site_package_path` if one is given, or in `config`'s own otherwise.
+    fn get_cached_loader(
+        &self,
+        config: &ArcId<ConfigFile>,
+        site_package_path: Option<SitePackagePath>,
+    ) -> Arc<LoaderFindCache> {
+        let key = (config.dupe(), site_package_path);
         self.data
             .updated_loaders
-            .ensure(loader, || match self.readable.loaders.get(loader) {
+            .ensure(&key, || match self.readable.loaders.get(&key) {
                 Some(v) => v.dupe(),
-                None => Arc::new(LoaderFindCache::new(loader.dupe())),
+                None => Arc::new(LoaderFindCache::new_in_environment(
+                    config,
+                    site_package_path,
+                )),
             })
             .0
             .dupe()
@@ -2322,7 +2335,7 @@ impl<'a> Transaction<'a> {
         handle: &Handle,
         timing: Option<&TransactionTimingCounters>,
     ) -> bool {
-        self.get_cached_loader(config)
+        self.get_cached_loader(config, None)
             .find_import_for_tensor_shapes(Some(handle.path()), timing)
             .finding()
             // This is Pyrefly resolvability, not runtime importability: a
@@ -2391,7 +2404,7 @@ impl<'a> Transaction<'a> {
             stdlib_config.python_environment.python_version = Some(k.version());
             stdlib_config.configure();
             let stdlib_config = ArcId::new(stdlib_config);
-            let loader = self.get_cached_loader(&stdlib_config);
+            let loader = self.get_cached_loader(&stdlib_config, None);
             self.data
                 .stdlib
                 .insert_hashed(k.to_owned(), Arc::new(Stdlib::for_bootstrapping()));
@@ -2776,11 +2789,19 @@ impl<'a> Transaction<'a> {
     /// E.g. you have include paths, and a new file appeared earlier on the path.
     fn invalidate_find(&mut self) {
         let new_loaders = LockedMap::new();
-        for loader in self.data.updated_loaders.keys() {
-            new_loaders.insert(loader.dupe(), Arc::new(LoaderFindCache::new(loader.dupe())));
-        }
-        for loader in self.readable.loaders.keys() {
-            new_loaders.insert(loader.dupe(), Arc::new(LoaderFindCache::new(loader.dupe())));
+        for (config, site_package_path) in self
+            .data
+            .updated_loaders
+            .keys()
+            .chain(self.readable.loaders.keys())
+        {
+            new_loaders.insert(
+                (config.dupe(), *site_package_path),
+                Arc::new(LoaderFindCache::new_in_environment(
+                    config,
+                    *site_package_path,
+                )),
+            );
         }
         self.data.updated_loaders = new_loaders;
 
@@ -2848,13 +2869,17 @@ impl<'a> Transaction<'a> {
             .updated_loaders
             .iter_unordered()
             .chain(self.readable.loaders.iter())
-            .filter(|(c, _)| !configs.contains(*c))
-            .for_each(|(c, l)| {
-                new_loaders.insert(c.dupe(), l.dupe());
+            .for_each(|((config, site_package_path), loader)| {
+                let loader = if configs.contains(config) {
+                    Arc::new(LoaderFindCache::new_in_environment(
+                        config,
+                        *site_package_path,
+                    ))
+                } else {
+                    loader.dupe()
+                };
+                new_loaders.insert((config.dupe(), *site_package_path), loader);
             });
-        configs.iter().for_each(|config| {
-            new_loaders.insert(config.dupe(), Arc::new(LoaderFindCache::new(config.dupe())));
-        });
         self.data.updated_loaders = new_loaders;
 
         // Then mark all handles under that config as dirty.
@@ -3262,7 +3287,7 @@ impl<'a> TransactionHandle<'a> {
                         let config = self.module_data.config.read().dupe();
                         let finding = self
                             .transaction
-                            .get_cached_loader(&config)
+                            .get_cached_loader(&config, None)
                             .find_import(
                                 module,
                                 Some(self.module_data.handle.path()),
@@ -4229,11 +4254,11 @@ impl State {
         let active_configs: HashSet<usize> =
             state.modules.values().map(|m| m.config.id()).collect();
         let old_loaders = mem::take(&mut state.loaders);
-        for (config, loader) in old_loaders {
-            if active_configs.contains(&config.id()) {
-                state.loaders.insert(config, loader);
+        for (key, loader) in old_loaders {
+            if active_configs.contains(&key.0.id()) {
+                state.loaders.insert(key, loader);
             } else {
-                stale_loaders.push((config, loader));
+                stale_loaders.push((key, loader));
             }
         }
 

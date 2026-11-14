@@ -5,11 +5,33 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::path::PathBuf;
+
 use dupe::Dupe;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_name::ModuleNameWithKind;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::sys_info::SysInfo;
+use static_interner::Intern;
+use static_interner::Interner;
+
+static SITE_PACKAGE_PATH_INTERNER: Interner<Vec<PathBuf>> = Interner::new();
+
+/// The site-package path of a Python environment. Interned so that copying, comparing and
+/// hashing it is cheap. There is about one value per Python environment, so the memory that
+/// interning never frees is negligible.
+#[derive(Clone, Dupe, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SitePackagePath(Intern<Vec<PathBuf>>);
+
+impl SitePackagePath {
+    pub fn new(paths: Vec<PathBuf>) -> Self {
+        Self(SITE_PACKAGE_PATH_INTERNER.intern(paths))
+    }
+
+    pub fn paths(&self) -> &[PathBuf] {
+        &self.0
+    }
+}
 
 /// A handle to a Python module, containing its name, path, and system information.
 #[derive(Debug, Clone, Dupe, PartialEq, Eq, PartialOrd, Ord, Hash)]
