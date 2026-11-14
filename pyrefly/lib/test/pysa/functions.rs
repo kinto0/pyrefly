@@ -484,6 +484,12 @@ class MyClass:
             )
             .with_is_property_setter(true)
             .with_defining_class(get_class_ref("test", "MyClass", context))
+            .with_decorator_callees(HashMap::from([(
+                create_location(6, 6, 6, 16),
+                vec![Target::Overrides(get_method_ref(
+                    "builtins", "property", "setter", context,
+                ))],
+            )]))
             .with_name_location(Some(create_location(7, 9, 7, 12))),
         ]
     },
@@ -1805,10 +1811,18 @@ class B(A):
             .with_is_property_setter(true)
             .with_is_stub(true)
             .with_defining_class(get_class_ref("test", "A", context))
-            .with_decorator_callees(HashMap::from([(
-                create_location(11, 6, 11, 20),
-                vec![Target::Function(abstractmethod_ref.clone())],
-            )]))
+            .with_decorator_callees(HashMap::from([
+                (
+                    create_location(10, 6, 10, 24),
+                    vec![Target::Overrides(get_method_ref(
+                        "builtins", "property", "setter", context,
+                    ))],
+                ),
+                (
+                    create_location(11, 6, 11, 20),
+                    vec![Target::Function(abstractmethod_ref.clone())],
+                ),
+            ]))
             .with_name_location(Some(create_location(12, 9, 12, 20))),
             create_function_definition(
                 "my_property",
@@ -1859,6 +1873,12 @@ class B(A):
             )
             .with_is_property_setter(true)
             .with_defining_class(get_class_ref("test", "B", context))
+            .with_decorator_callees(HashMap::from([(
+                create_location(20, 6, 20, 24),
+                vec![Target::Overrides(get_method_ref(
+                    "builtins", "property", "setter", context,
+                ))],
+            )]))
             .with_overridden_base_method(get_property_setter_ref(
                 "test",
                 "A",

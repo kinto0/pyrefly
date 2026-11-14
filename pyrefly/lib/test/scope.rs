@@ -2090,6 +2090,18 @@ def A() -> A: ...  # E: Expected a type form, got instance of `() -> Unknown`
 );
 
 testcase!(
+    test_circular_ref_through_property,
+    r#"
+from __future__ import annotations
+class A:
+    x: int
+class B:
+    @property
+    def A(self) -> A.x: ...  # E: Object of class `property` has no attribute `x`
+    "#,
+);
+
+testcase!(
     test_forward_reference_to_shadowing_method,
     r#"
 class A:

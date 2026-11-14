@@ -3746,6 +3746,21 @@ DefaultMeta.__class__.mro(DefaultMeta)
 );
 
 testcase!(
+    test_class_property_dunder_class,
+    r#"
+from typing import assert_type
+
+class C:
+    @property
+    def __class__(self) -> int:
+        return 0
+
+C.__class__.mro(C)
+assert_type(C().__class__, int)
+"#,
+);
+
+testcase!(
     bug = "type[TypedDict()] should be type",
     test_attribute_access_on_type_typeddict,
     r#"

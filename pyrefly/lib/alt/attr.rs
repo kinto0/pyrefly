@@ -2055,23 +2055,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         {
                             let metadata = self.get_metadata_for_class(class.class_object());
                             let metaclass = metadata.metaclass(self.stdlib);
-                            if !metaclass.class_object().is(KnownClass::Type) {
-                                let metaclass_attr =
-                                    self.get_metaclass_attribute(class, metaclass, attr_name);
-                                match metaclass_attr {
-                                    Some(meta_attr)
-                                        if self.class_attribute_is_data_descriptor(&meta_attr)
-                                            || matches!(
-                                                meta_attr,
-                                                ClassAttribute::Property(_, _, _)
-                                            ) =>
-                                    {
-                                        acc.found_class_attribute(meta_attr, base)
-                                    }
-                                    _ => acc.found_class_attribute(attr, base),
+                            let metaclass_attr =
+                                self.get_metaclass_attribute(class, metaclass, attr_name);
+                            match metaclass_attr {
+                                Some(meta_attr)
+                                    if self.class_attribute_is_data_descriptor(&meta_attr)
+                                        || matches!(
+                                            meta_attr,
+                                            ClassAttribute::Property(_, _, _)
+                                        ) =>
+                                {
+                                    acc.found_class_attribute(meta_attr, base)
                                 }
-                            } else {
-                                acc.found_class_attribute(attr, base)
+                                _ => acc.found_class_attribute(attr, base),
                             }
                         } else {
                             acc.found_class_attribute(attr, base)
@@ -2360,6 +2356,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 acc.not_found(NotFoundOn::ClassInstance(cls.class_object().clone(), base))
             }
+            // Dunders on a property-decorated function resolve against `builtins.property`.
+            AttributeBase1::Property(_) => self.lookup_magic_dunder_attr1(
+                AttributeBase1::ClassInstance(self.stdlib.property().clone()),
+                dunder_name,
+                acc,
+            ),
             // A bound method is a `types.MethodType`, which does not override
             // `__setattr__`/`__delattr__`, so it does not accept arbitrary attribute
             // assignment (this fails at runtime). Without this arm the base would fall
