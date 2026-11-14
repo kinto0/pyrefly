@@ -11,6 +11,24 @@ use crate::test::util::TestEnv;
 use crate::testcase;
 
 testcase!(
+    test_overload_error_keeps_non_lambda_input_types,
+    r#"
+from typing import overload
+
+@overload
+def consume(items: list[str], *, label: int) -> None: ...
+@overload
+def consume(items: list[bytes], *, label: str) -> None: ...
+def consume(items, *, label): ...
+
+consume([], label=None)  # E: called with arguments: (list[@_], label=None)
+consume([1], label=None)  # E: called with arguments: (list[int], label=None)
+consume({"value": 1}, label=None)  # E: called with arguments: (dict[str, int], label=None)
+consume(list[int](), label=None)  # E: called with arguments: (list[int], label=None)
+"#,
+);
+
+testcase!(
     test_signature_unresolved_import_constructor_details,
     r#"
 from missing_backend import Array, Other  # E: Cannot find module `missing_backend`

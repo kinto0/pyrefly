@@ -12,6 +12,45 @@ use pyrefly_util::thread_pool::ThreadCount;
 use crate::test::util::TestEnv;
 use crate::testcase;
 
+testcase!(
+    test_deferred_callbacks_keep_matched_keys_with_unpacking,
+    TestEnv::new().enable_implicit_any_lambda_error(),
+    r#"
+from typing import Callable, assert_type
+
+class Invoker:
+    def run[T](
+        self,
+        left: int,
+        right: str,
+        first: Callable[[T], T],
+        second: Callable[[T], T],
+        sample: T,
+        *rest: T,
+    ) -> T:
+        return second(first(sample))
+
+def check(rest: tuple[int, ...]) -> None:
+    invoker = Invoker()
+    plain = invoker.run(
+        1, "prefix",
+        lambda value: assert_type(value, int),
+        lambda value: assert_type(value, int),
+        0, *rest,
+    )
+    # One source argument supplies two parameters before the deferred callbacks.
+    prefix: tuple[int, str] = (1, "prefix")
+    expanded = invoker.run(
+        *prefix,
+        lambda value: assert_type(value, int),
+        lambda value: assert_type(value, int),
+        0, *rest,
+    )
+    assert_type(plain, int)
+    assert_type(expanded, int)
+"#,
+);
+
 // `CallArgPreEval::advance_after_match` is shared with shape-specific call matching. Keep this
 // regression in the general callable suite so the refactor cannot change ordinary variadic
 // type-variable consumption.
