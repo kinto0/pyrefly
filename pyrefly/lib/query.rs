@@ -157,6 +157,11 @@ pub struct Query {
     files: Mutex<SmallSet<(ModuleName, ModulePath)>>,
     /// Cache for type resolution
     type_cache: TypeCache,
+    /// An empty in-memory module that `new` loads and `change_files` reloads, so that
+    /// `ad_hoc_solve` always finds answers for it. Queries resolve their types in a snippet module
+    /// and solve here; a solver reads each class from the module that defines it, so the answer
+    /// does not depend on which module hosts the solve.
+    host: Handle,
 }
 
 const CALLEE_KIND_FUNCTION: &str = "function";
@@ -1089,12 +1094,29 @@ impl<'a> CalleesWithLocation<'a> {
 impl Query {
     pub fn new(config_finder: ConfigFinder, thread_count: ThreadCount) -> Self {
         let state = State::new(config_finder, thread_count);
-        Self {
+        let sys_info = SysInfo::default();
+        let host_path = PathBuf::from("__pyrefly_query_host__.py");
+        let host = Handle::new(
+            ModuleName::from_str("__pyrefly_query_host__"),
+            ModulePath::memory(host_path.clone()),
+            sys_info.dupe(),
+        );
+        let mut transaction = state.new_committable_transaction(Require::Exports, None);
+        transaction.as_mut().set_memory(vec![(
+            host_path,
+            Some(Arc::new(FileContents::from_source(String::new()))),
+        )]);
+        state.commit_transaction(transaction, None);
+        let query = Self {
             state,
-            sys_info: SysInfo::default(),
+            sys_info,
             files: Mutex::new(SmallSet::new()),
             type_cache: TypeCache::new(),
-        }
+            host: host.dupe(),
+        };
+        // Registering the host as a file keeps it loaded across `change_files`.
+        query.add_files(vec![(host.module(), host.path().dupe())]);
+        query
     }
 
     fn make_handle(&self, name: ModuleName, path: ModulePath) -> Handle {
@@ -1655,7 +1677,9 @@ impl Query {
         unreachable!("No type aliases in ast")
     }
 
-    /// Return `Err` if you can't resolve them to types, otherwise return `lt <: gt`.
+    /// Return `Err` if you can't resolve them to types. Otherwise return whether `lt` is a TypedDict
+    /// when `gt` is `TypedDictionary` or `NonTotalTypedDictionary`, and `lt <: gt` for any other
+    /// `gt`.
     pub fn is_subtype(
         &self,
         name: ModuleName,
@@ -1678,27 +1702,12 @@ impl Query {
         let need_gt = !is_typed_dict_request && cached_gt.is_none();
 
         // Fast path: everything is cached
-        if !need_lt && (!need_gt || is_typed_dict_request) {
-            let sub_ty = cached_lt.unwrap();
-            if is_typed_dict_request {
-                let t = self.state.transaction();
-                let h = self.make_handle(name, ModulePath::filesystem(path));
-                return Ok(t
-                    .ad_hoc_solve(&h, "query_is_typed_dict", |solver| {
-                        solver.is_typed_dict(&sub_ty)
-                    })
-                    .unwrap_or(false));
-            } else {
-                let super_ty = cached_gt.unwrap();
-                let t = self.state.transaction();
-                let h = self.make_handle(name, ModulePath::filesystem(path));
-                let result = t
-                    .ad_hoc_solve(&h, "query_is_subset_eq", |solver| {
-                        solver.is_subset_eq(&sub_ty, &super_ty)
-                    })
-                    .unwrap_or(false);
-                return Ok(result);
-            }
+        if !need_lt && !need_gt {
+            return self.solve_is_subtype(
+                &self.state.transaction(),
+                &cached_lt.unwrap(),
+                cached_gt.as_ref(),
+            );
         }
 
         // Slow path: compute missing types
@@ -1743,20 +1752,22 @@ impl Query {
             (false, false) => unreachable!("handled by fast path"),
         };
 
-        // Compute final result
-        let result = if is_typed_dict_request {
-            t.ad_hoc_solve(&h, "query_is_typed_dict", |solver| {
-                solver.is_typed_dict(&sub_ty)
-            })
-            .unwrap_or(false)
-        } else {
-            t.ad_hoc_solve(&h, "query_is_subset_eq", |solver| {
-                solver.is_subset_eq(&sub_ty, &super_ty_opt.unwrap())
-            })
-            .unwrap_or(false)
-        };
+        self.solve_is_subtype(&t, &sub_ty, super_ty_opt.as_ref())
+    }
 
-        Ok(result)
+    /// Answer an `is_subtype` request from its types: whether `sub_ty` is a TypedDict when
+    /// `super_ty` is `None`, and whether `sub_ty <: super_ty` otherwise.
+    fn solve_is_subtype(
+        &self,
+        t: &Transaction,
+        sub_ty: &Type,
+        super_ty: Option<&Type>,
+    ) -> Result<bool, String> {
+        t.ad_hoc_solve(&self.host, "query_is_subtype", |solver| match super_ty {
+            Some(super_ty) => solver.is_subset_eq(sub_ty, super_ty),
+            None => solver.is_typed_dict(sub_ty),
+        })
+        .ok_or_else(|| "The query host module is not loaded".to_owned())
     }
 
     /// Resolve a qualified callable name, returning diagnostics for invalid expressions.

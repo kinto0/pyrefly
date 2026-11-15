@@ -970,3 +970,42 @@ class C:
     assert!(is_final("PLAIN"), "`PLAIN` is declared `Final`");
     assert!(is_final("MARKER"), "`MARKER` is declared `Final`");
 }
+
+#[test]
+fn test_is_subtype_answers_are_stable_without_loaded_files() {
+    let tdir = TempDir::new().unwrap();
+    fs_anyhow::write(
+        &tdir.path().join("model.py"),
+        "from typing import TypedDict\nclass Base: ...\nclass C(Base): ...\nclass TD(TypedDict):\n    x: int\n",
+    )
+    .unwrap();
+    init_test();
+    let mut config = ConfigFile::default();
+    config.search_path_from_args.push(tdir.path().to_path_buf());
+    config.python_environment.set_empty_to_default();
+    config.configure();
+    let query = Query::new(
+        ConfigFinder::new_constant(ArcId::new(config)),
+        TEST_THREAD_COUNT,
+    );
+
+    // No file is loaded, so the requests name a module that is not loaded.
+    let module = ModuleName::from_str("scratch");
+    let scratch_path = tdir.path().join("scratch.py");
+    let is_subtype = |lt: &str, gt: &str| query.is_subtype(module, scratch_path.clone(), lt, gt);
+    for (lt, gt, expected) in [
+        ("model.C", "model.Base", true),
+        ("model.Base", "model.C", false),
+        ("model.TD", "TypedDictionary", true),
+        ("model.TD", "NonTotalTypedDictionary", true),
+        ("model.C", "TypedDictionary", false),
+    ] {
+        // The second request finds both types in the cache that earlier requests filled.
+        assert_eq!(is_subtype(lt, gt), Ok(expected), "`{lt}` against `{gt}`");
+        assert_eq!(
+            is_subtype(lt, gt),
+            Ok(expected),
+            "`{lt}` against `{gt}`, cached"
+        );
+    }
+}
