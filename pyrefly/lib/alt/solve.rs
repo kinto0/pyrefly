@@ -58,6 +58,7 @@ use vec1::Vec1;
 use crate::alt::answers::AttributeReferenceKind;
 use crate::alt::answers::IndexedAttribute;
 use crate::alt::answers::LookupAnswer;
+use crate::alt::answers::LookupModule;
 use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::answers_solver::TypeCheckOptions;
 use crate::alt::call::CallTargetLookup;
@@ -6158,7 +6159,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 error_builder.emit();
             }
-            self.get_from_export(m, None, &KeyExport(name.clone()))
+            self.get_from_export(LookupModule::Import(m), &KeyExport(name.clone()))
                 .clone()
         };
         let Some(fallback) = &x.fallback else {
@@ -8497,15 +8498,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return None;
         }
         let name = Name::new(value);
-        let module = self.module().name();
-        let (resolve_module, resolve_path) = if self.exports.export_exists(module, &name) {
-            (module, Some(self.module().path()))
+        let module = if self.exports.export_exists(self.module().name(), &name) {
+            LookupModule::Exact(self.module().key())
         } else if self.exports.export_exists(ModuleName::builtins(), &name) {
-            (ModuleName::builtins(), None)
+            LookupModule::Import(ModuleName::builtins())
         } else {
             return None;
         };
-        let export_ty = self.get_from_export(resolve_module, resolve_path, &KeyExport(name));
+        let export_ty = self.get_from_export(module, &KeyExport(name));
         let silent = ErrorCollector::new(errors.module().dupe(), ErrorStyle::Never);
         let ty = self.untype_opt((*export_ty).clone(), x.range(), &silent)?;
         let typeform_ty = self.heap.mk_typeform(ty);

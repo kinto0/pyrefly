@@ -28,6 +28,7 @@ use std::time::Instant;
 use dupe::Dupe;
 use dupe::OptionDupedExt;
 use pyrefly_graph::index::Idx;
+use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_util::display::DisplayWith;
@@ -1216,14 +1217,32 @@ impl Solutions {
     }
 }
 
+/// The module that a cross-module lookup reads from.
+#[derive(Debug, Clone, Copy, Dupe)]
+pub enum LookupModule {
+    /// The module that this name resolves to when imported from the current module.
+    Import(ModuleName),
+    /// The module loaded from exactly this name and path. Lookups compare the key with
+    /// `ModuleKey::exact`, so the in-memory and on-disk versions of a file stay separate.
+    Exact(ModuleKey),
+}
+
+impl LookupModule {
+    pub fn name(self) -> ModuleName {
+        match self {
+            Self::Import(name) => name,
+            Self::Exact(key) => key.name(),
+        }
+    }
+}
+
 pub trait LookupAnswer: Sized {
-    /// Look up the value. If present, the `path` is a hint which can optimize certain cases.
+    /// Look up the value of `k` in `module`.
     ///
     /// Return None if the file is undergoing concurrent modification.
     fn get<'answer, K: Solve<Self> + Exported>(
         &self,
-        module: ModuleName,
-        path: Option<&ModulePath>,
+        module: LookupModule,
         k: &K,
         stack: &'answer ThreadState,
         answer_scope: &'answer AnswerScope,

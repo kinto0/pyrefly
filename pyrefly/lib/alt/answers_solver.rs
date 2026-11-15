@@ -32,8 +32,9 @@ use pyrefly_graph::calculation::Calculation;
 #[cfg(test)]
 use pyrefly_graph::calculation::ProposalResult;
 use pyrefly_graph::index::Idx;
+use pyrefly_python::module_key::ExactModuleKey;
+use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
-use pyrefly_python::module_path::ModulePath;
 use pyrefly_types::class::ClassType;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::known_class::KnownClass;
@@ -59,6 +60,7 @@ use crate::alt::answers::AnswerTable;
 use crate::alt::answers::Answers;
 use crate::alt::answers::AnyAnswer;
 use crate::alt::answers::LookupAnswer;
+use crate::alt::answers::LookupModule;
 use crate::alt::answers::OverloadedCallee;
 use crate::alt::answers::Solutions;
 use crate::alt::answers::SolutionsEntry;
@@ -1934,8 +1936,8 @@ impl Scc {
 }
 
 struct LambdaBindingFrame {
-    parameters: SmallSet<(ModuleName, ModulePath, LambdaParamId)>,
-    answers: FxHashMap<(ModuleName, ModulePath, Idx<Key>), TypeInfo>,
+    parameters: SmallSet<(ExactModuleKey, LambdaParamId)>,
+    answers: FxHashMap<(ExactModuleKey, Idx<Key>), TypeInfo>,
     generation: u64,
 }
 
@@ -1983,9 +1985,9 @@ pub struct ThreadState {
     /// Solve-time mapping from per-module lambda parameter IDs to their
     /// contextually inferred types in the current solve.
     ///
-    /// The `ModulePath` is needed to distinguish the in-memory and on-disk
-    /// versions of the same module, which can coexist in the IDE (issue #3789).
-    lambda_param_types: RefCell<FxHashMap<(ModuleName, ModulePath, LambdaParamId), Type>>,
+    /// The exact module key distinguishes the in-memory and on-disk versions
+    /// of the same module, which can coexist in the IDE (issue #3789).
+    lambda_param_types: RefCell<FxHashMap<(ExactModuleKey, LambdaParamId), Type>>,
     /// Each inference attempt owns its narrowed answers. Nested lambda attempts use separate
     /// frames; changing an enclosing parameter invalidates its frame and all nested frames.
     lambda_binding_frames: RefCell<Vec<LambdaBindingFrame>>,
@@ -2363,7 +2365,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// fewer classes. A class of this module can be stale too, when it comes from a mutually
     /// recursive module whose answers predate this module's rebuild.
     pub fn get_class_fields(&self, cls: &Class) -> Option<&ClassFields> {
-        if cls.module_path() == self.module().path() {
+        if cls.module().key().exact() == self.module().key().exact() {
             return self.bindings().get_class_fields(cls.index());
         }
         self.answers.get_class_fields(cls)
@@ -2382,7 +2384,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .push(LambdaBindingFrame {
                 parameters: parameters
                     .into_iter()
-                    .map(|id| (self.module().name(), self.module().path().dupe(), id))
+                    .map(|id| (self.module().key().exact(), id))
                     .collect(),
                 answers: FxHashMap::default(),
                 generation,
@@ -2395,7 +2397,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn invalidate_lambda_binding_context(
         &self,
-        parameter: Option<&(ModuleName, ModulePath, LambdaParamId)>,
+        parameter: Option<&(ExactModuleKey, LambdaParamId)>,
     ) {
         let mut frames = self.thread_state.lambda_binding_frames.borrow_mut();
         let start = match parameter {
@@ -2415,7 +2417,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub(crate) fn set_lambda_param_type(&self, id: LambdaParamId, ty: Type) {
-        let key = (self.module().name(), self.module().path().dupe(), id);
+        let key = (self.module().key().exact(), id);
         // Solver Vars can change without changing their syntax. Only closed, identical hints
         // establish that an installation leaves its parameter's dependency state unchanged.
         if ty.collect_all_vars().is_empty()
@@ -2426,7 +2428,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.thread_state
             .lambda_param_types
             .borrow_mut()
-            .insert(key.clone(), ty);
+            .insert(key, ty);
         self.invalidate_lambda_binding_context(Some(&key));
     }
 
@@ -2437,7 +2439,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         binding: &Binding,
     ) -> Option<TypeInfo> {
         let parameter = self.bindings().lambda_parameter_origin(idx)?;
-        let parameter_key = (self.module().name(), self.module().path().dupe(), parameter);
+        let parameter_key = (self.module().key().exact(), parameter);
         let has_context = self
             .thread_state
             .lambda_binding_frames
@@ -2449,7 +2451,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let _context = self.enter_lambda_binding_context([parameter]);
             return self.lambda_binding_answer(idx, binding);
         }
-        let key = (self.module().name(), self.module().path().dupe(), idx);
+        let key = (self.module().key().exact(), idx);
         let generation = {
             let frames = self.thread_state.lambda_binding_frames.borrow();
             let frame = frames
@@ -2482,7 +2484,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.thread_state
             .lambda_param_types
             .borrow()
-            .get(&(self.module().name(), self.module().path().dupe(), id))
+            .get(&(self.module().key().exact(), id))
             .cloned()
     }
 
@@ -2503,7 +2505,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.invalidate_lambda_binding_context(None);
         let mut types = self.thread_state.lambda_param_types.borrow_mut();
         for (id, ty) in snapshot {
-            let key = (self.module().name(), self.module().path().dupe(), *id);
+            let key = (self.module().key().exact(), *id);
             match ty {
                 Some(ty) => {
                     types.insert(key, ty.clone());
@@ -2552,8 +2554,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub fn django_reverse_relations_index(&self) -> &'answer DjangoReverseRelationIndex {
         self.answers
             .get(
-                self.module().name(),
-                Some(self.module().path()),
+                LookupModule::Exact(self.module().key()),
                 &KeyDjangoRelations,
                 self.thread_state,
                 self.answer_scope,
@@ -3654,8 +3655,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn get_from_module<K: Solve<Ans> + Exported>(
         &self,
-        module: ModuleName,
-        path: Option<&ModulePath>,
+        module: LookupModule,
         k: &K,
     ) -> Option<&'answer K::Answer>
     where
@@ -3663,32 +3663,32 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
         SolutionsTable: TableKeyed<K, Value = SolutionsEntry<K>>,
     {
-        if module == self.module().name() && path == Some(self.module().path()) {
+        if let LookupModule::Exact(key) = module
+            && key.exact() == self.module().key().exact()
+        {
             // We are working in our own module, so don't have to go back to the `LookupAnswer` trait.
             // But even though we are looking at our own module, we might be using our own type via an import
             // from a mutually recursive module, so have to deal with key_to_idx finding nothing due to incremental.
             Some(self.get_idx(self.bindings().key_to_idx_hashed_opt(Hashed::new(k))?))
         } else {
             self.answers
-                .get(module, path, k, self.thread_state, self.answer_scope)
+                .get(module, k, self.thread_state, self.answer_scope)
         }
     }
 
-    pub fn get_from_export(
-        &self,
-        module: ModuleName,
-        path: Option<&ModulePath>,
-        k: &KeyExport,
-    ) -> &'answer Type {
-        self.get_from_module(module, path, k).unwrap_or_else(|| {
-            panic!("We should have checked Exports before calling this, {module} {k:?}")
+    pub fn get_from_export(&self, module: LookupModule, k: &KeyExport) -> &'answer Type {
+        self.get_from_module(module, k).unwrap_or_else(|| {
+            panic!(
+                "We should have checked Exports before calling this, {} {k:?}",
+                module.name()
+            )
         })
     }
 
     pub fn try_get_from_export(&self, module: ModuleName, attr: Name) -> Option<&'answer Type> {
         self.exports
             .export_exists(module, &attr)
-            .then(|| self.get_from_export(module, None, &KeyExport(attr)))
+            .then(|| self.get_from_export(LookupModule::Import(module), &KeyExport(attr)))
     }
 
     /// Might return None if the class is no longer present on the underlying module.
@@ -3702,7 +3702,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
         SolutionsTable: TableKeyed<K, Value = SolutionsEntry<K>>,
     {
-        self.get_from_module(cls.module_name(), Some(cls.module_path()), k)
+        self.get_from_module(LookupModule::Exact(cls.module().key()), k)
     }
 
     /// Resolve a type alias, borrowing it when no substitution is needed.
@@ -3717,8 +3717,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match data {
             TypeAliasData::Ref(r) => {
                 let ta = self.get_from_module(
-                    r.module_name,
-                    Some(&r.module_path),
+                    LookupModule::Exact(ModuleKey::new(r.module_name, &r.module_path)),
                     &KeyTypeAlias(r.index),
                 );
                 let Some(ta) = ta else {

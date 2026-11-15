@@ -25,6 +25,7 @@ use crate::ignore::Ignore;
 use crate::ignore::SuppressionEffect;
 use crate::ignore::Tool;
 use crate::ignore::TypeIgnoreUnknownTagBehavior;
+use crate::module_key::ModuleKey;
 use crate::module_name::ModuleName;
 use crate::module_path::ModulePath;
 
@@ -49,6 +50,7 @@ pub struct Module(ArcId<ModuleInner>);
 struct ModuleInner {
     name: ModuleName,
     path: ModulePath,
+    key: ModuleKey,
     ignore: OnceLock<Ignore>,
     is_generated: bool,
     contents: LinedBuffer,
@@ -71,6 +73,7 @@ impl Module {
         let contents = LinedBuffer::new(contents);
         Self(ArcId::new(ModuleInner {
             name,
+            key: ModuleKey::new(name, &path),
             path,
             ignore: OnceLock::new(),
             is_generated,
@@ -85,6 +88,7 @@ impl Module {
         let contents = LinedBuffer::new(contents);
         Self(ArcId::new(ModuleInner {
             name,
+            key: ModuleKey::new(name, &path),
             path,
             ignore: OnceLock::new(),
             is_generated,
@@ -195,6 +199,10 @@ impl Module {
 
     pub fn name(&self) -> ModuleName {
         self.0.name
+    }
+
+    pub fn key(&self) -> ModuleKey {
+        self.0.key
     }
 
     pub fn suppression_effect(

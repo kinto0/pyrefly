@@ -5,6 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::sync::Arc;
+
+use dupe::Dupe;
 use pyrefly_build::handle::Handle;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
@@ -13,6 +16,8 @@ use pyrefly_util::fs_anyhow;
 
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyExport;
+use crate::state::load::FileContents;
+use crate::state::require::Require;
 use crate::test::util::TestEnv;
 use crate::testcase;
 
@@ -3451,3 +3456,52 @@ reveal_type(foo.C())  # E: revealed type: foo.C
 reveal_type(bar.C())  # E: revealed type: bar.C
 "#,
 );
+
+// A file open in memory and the same file on disk are separate modules, each loaded and solved
+// from its own contents, but they define the same classes. Here the in-memory `foo` reaches the
+// on-disk `foo` through `bar`: the two `C`s are the same class, and lookups of the on-disk `C`'s
+// data read the on-disk module.
+#[test]
+fn test_same_file_in_memory_and_on_disk() {
+    let temp = tempfile::tempdir().unwrap();
+    let foo_py = temp.path().join("foo.py");
+    let bar_py = temp.path().join("bar.py");
+    fs_anyhow::write(&foo_py, "class C:\n    x: str = ''\n").unwrap();
+    fs_anyhow::write(&bar_py, "from foo import C\nc = C()\n").unwrap();
+    let mut env = TestEnv::new();
+    env.add_real_path("foo", foo_py.clone());
+    env.add_real_path("bar", bar_py);
+    let (state, handle) = env.to_state();
+    let disk_handle = handle("foo");
+    let memory_handle = Handle::new(
+        disk_handle.module(),
+        ModulePath::memory(foo_py.clone()),
+        *disk_handle.sys_info(),
+    );
+    let memory = r#"
+from typing import assert_type
+import bar
+class C:
+    x: int = 0
+assert_type(bar.c, C)
+assert_type(bar.c.x, str)
+assert_type(C().x, int)
+"#;
+    let mut transaction = state.new_committable_transaction(Require::Errors, None);
+    transaction.as_mut().set_memory(vec![(
+        foo_py,
+        Some(Arc::new(FileContents::from_source(memory.to_owned()))),
+    )]);
+    transaction
+        .as_mut()
+        .run(&[memory_handle.dupe()], Require::Errors, None);
+    let errors = transaction
+        .as_ref()
+        .get_errors([&memory_handle])
+        .collect_errors()
+        .ordinary
+        .iter()
+        .map(|e| e.msg())
+        .collect::<Vec<_>>();
+    assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+}

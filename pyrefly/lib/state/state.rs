@@ -38,6 +38,8 @@ use itertools::Itertools;
 use pyrefly_build::handle::Handle;
 use pyrefly_build::handle::SitePackagePath;
 use pyrefly_python::module::Module;
+use pyrefly_python::module_key::ExactModuleKey;
+use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::module_path::ModulePathDetails;
@@ -80,6 +82,7 @@ use crate::alt::answers::AnswerTable;
 use crate::alt::answers::Answers;
 use crate::alt::answers::AnyAnswer;
 use crate::alt::answers::LookupAnswer;
+use crate::alt::answers::LookupModule;
 use crate::alt::answers::Solutions;
 use crate::alt::answers::SolutionsEntry;
 use crate::alt::answers::SolutionsTable;
@@ -3173,14 +3176,15 @@ pub(crate) struct TransactionHandle<'a> {
     module_data: &'a ArcId<ModuleDataMut>,
     /// Locally accumulated deps, flushed to `module_data.deps` on drop.
     /// This batches N lock acquisitions per handle lifetime into 1.
-    /// Keyed by module name and path, which identify the target module within a
+    /// Keyed by the exact module name and path, which identify the target module within a
     /// TransactionHandle because sys_info and the importer's Python environment are
     /// invariant. Both are needed: one file can be imported under several module names,
-    /// and each name is a distinct module.
+    /// and each name is a distinct module. The key is exact, so the in-memory and on-disk
+    /// versions of one file are separate entries.
     /// Each entry also remembers the target module, so that repeated lookups of
     /// the same module skip the transaction's shared module map and do not build the
     /// target's handle again.
-    deferred_deps: RefCell<FxHashMap<(ModuleName, ModulePath), DeferredDeps<'a>>>,
+    deferred_deps: RefCell<FxHashMap<ExactModuleKey, DeferredDeps<'a>>>,
     /// Cache of cross-module `BindingsMetadata` for class field lookups.
     /// Keyed by `ArcId::id()` (pointer-as-usize) to avoid atomic refcount
     /// operations and to get a cheap 8-byte hash key.
@@ -3224,28 +3228,25 @@ enum TargetAnswers<'a> {
 impl<'a> TransactionHandle<'a> {
     fn get_module(
         &self,
-        module: ModuleName,
-        path: Option<&ModulePath>,
+        module: LookupModule,
         dep: ModuleDep,
     ) -> FindingOrError<&'a ArcId<ModuleDataMut>> {
         // `handle` builds the target's handle. It runs only when the target has no entry yet.
-        let resolve = move |path: &ModulePath, handle: &dyn Fn() -> Handle| {
+        let resolve = move |key: ModuleKey, handle: &dyn Fn() -> Handle| {
             let mut deferred_deps = self.deferred_deps.borrow_mut();
-            let deferred = deferred_deps
-                .entry((module, path.dupe()))
-                .or_insert_with(|| {
-                    let handle = handle();
-                    let module_data = self.transaction.get_imported_module(&handle);
-                    DeferredDeps {
-                        handle,
-                        module_data,
-                        deps: ModuleDeps::default(),
-                    }
-                });
+            let deferred = deferred_deps.entry(key.exact()).or_insert_with(|| {
+                let handle = handle();
+                let module_data = self.transaction.get_imported_module(&handle);
+                DeferredDeps {
+                    handle,
+                    module_data,
+                    deps: ModuleDeps::default(),
+                }
+            });
             deferred.deps.add_dep(dep);
             deferred.module_data
         };
-        let imported_handle = |config: &ConfigFile, path: ModulePath| {
+        let imported_handle = |config: &ConfigFile, module: ModuleName, path: ModulePath| {
             self.transaction.data.state.imported_handle_with_config(
                 &self.module_data.handle,
                 config,
@@ -3253,14 +3254,18 @@ impl<'a> TransactionHandle<'a> {
                 path,
             )
         };
-        match path {
-            // Explicit path — already resolved. Bypass imports entirely. Most lookups take this
+        match module {
+            // Explicit module — already resolved. Bypass imports entirely. Most lookups take this
             // path, so it resolves directly rather than through a `FindingOrError`.
-            Some(path) => FindingOrError::new_finding(resolve(path, &|| {
-                imported_handle(&self.module_data.config.read(), path.dupe())
+            LookupModule::Exact(key) => FindingOrError::new_finding(resolve(key, &|| {
+                imported_handle(
+                    &self.module_data.config.read(),
+                    key.name(),
+                    key.path().dupe(),
+                )
             })),
-            None => {
-                // No path — needs find_import. Check imports cache first.
+            LookupModule::Import(module) => {
+                // Resolve the import with find_import, checking the imports cache first.
                 let imports_read = self.module_data.imports.read();
                 let handle = match imports_read.get(&module) {
                     Some(handle) => handle.dupe(),
@@ -3279,7 +3284,7 @@ impl<'a> TransactionHandle<'a> {
                                 Some(self.module_data.handle.path()),
                                 Some(self.transaction.timing()),
                             )
-                            .map(|path| imported_handle(&config, path));
+                            .map(|path| imported_handle(&config, module, path));
                         let fi_ns = fi_start.elapsed().as_nanos() as u64;
                         self.transaction
                             .timing()
@@ -3294,7 +3299,8 @@ impl<'a> TransactionHandle<'a> {
                         finding
                     }
                 };
-                handle.map(|handle| resolve(handle.path(), &|| handle.dupe()))
+                handle
+                    .map(|handle| resolve(ModuleKey::new(module, handle.path()), &|| handle.dupe()))
             }
         }
     }
@@ -3307,7 +3313,9 @@ impl<'a> TransactionHandle<'a> {
         dep: ModuleDep,
     ) -> Option<T> {
         let label = dep.demand_label();
-        let module_data = self.get_module(module, None, dep).finding()?;
+        let module_data = self
+            .get_module(LookupModule::Import(module), dep)
+            .finding()?;
         self.transaction.record_demand_exports_event(
             self.module_data.handle.module(),
             module,
@@ -3335,13 +3343,14 @@ impl<'a> TransactionHandle<'a> {
     /// enum so callers only need to handle the "answers available" case.
     fn lookup_target_answers(&self, calc_id: &CalcId) -> TargetAnswers<'a> {
         let bindings = calc_id.bindings();
-        let module = bindings.module().name();
-        let path = bindings.module().path();
 
         // Look up the target module. Use default ModuleDep since cross-module
         // operations don't establish new dependencies.
         let module_data = match self
-            .get_module(module, Some(path), ModuleDep::Exists)
+            .get_module(
+                LookupModule::Exact(bindings.module().key()),
+                ModuleDep::Exists,
+            )
             .finding()
         {
             Some(data) => data,
@@ -3459,7 +3468,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
         // the incremental change-detection path only kicks in for
         // modules that have a stored Load result, so we demand Load
         // here to keep file edits to the target observable.
-        self.get_module(module, None, ModuleDep::Exists)
+        self.get_module(LookupModule::Import(module), ModuleDep::Exists)
             .map(|module_data| {
                 self.transaction.record_demand_load_event(
                     self.module_data.handle.module(),
@@ -3668,8 +3677,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
 impl<'a> LookupAnswer for TransactionHandle<'a> {
     fn get<'answer, K: Solve<Self> + Exported>(
         &self,
-        module: ModuleName,
-        path: Option<&ModulePath>,
+        module: LookupModule,
         k: &K,
         thread_state: &'answer ThreadState,
         answer_scope: &'answer AnswerScope,
@@ -3682,21 +3690,24 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
         // The unwrap is safe because we must have said there were no exports,
         // so no one can be trying to get at them
         let module_data = self
-            .get_module(module, path, ModuleDep::Key(k.to_anykey()))
+            .get_module(module, ModuleDep::Key(k.to_anykey()))
             .finding()
             .unwrap();
         // Hold the span guard for the duration of the lookup so that a panic
         // inside `lookup_answer` still closes the span (keeping the per-thread
         // demand stack balanced on this worker for subsequent demands).
-        let _demand_span =
-            self.transaction
-                .enter_demand_answer_span(self.module_data.handle.module(), module, k);
+        let _demand_span = self.transaction.enter_demand_answer_span(
+            self.module_data.handle.module(),
+            module.name(),
+            k,
+        );
         let res = self
             .transaction
             .lookup_answer(module_data, k, thread_state, answer_scope);
         if res.is_none() {
             let msg = format!(
-                "LookupAnswer::get failed to find key, {module} {k:?} (concurrent changes?)"
+                "LookupAnswer::get failed to find key, {} {k:?} (concurrent changes?)",
+                module.name()
             );
             if self.transaction.data.state.run_count.load(Ordering::SeqCst) <= 1 {
                 // We failed to find the key, but we are the only one running, and have never had any invalidation.
@@ -3778,8 +3789,7 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
         // both module resolution and dep tracking through deferred_deps.
         let module_data = self
             .get_module(
-                cls.module_name(),
-                Some(cls.module_path()),
+                LookupModule::Exact(cls.module().key()),
                 ModuleDep::Class(cls.index()),
             )
             .finding()

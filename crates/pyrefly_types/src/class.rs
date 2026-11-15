@@ -20,6 +20,7 @@ use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module::Module;
+use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::nesting_context::NestingContext;
@@ -563,13 +564,10 @@ impl Class {
     }
 
     /// Key to use for equality purposes. If we have the same module and index,
-    /// we must point at the same class underneath.
-    fn key_eq(&self) -> (ClassDefIndex, ModuleName, ModulePath) {
-        (
-            self.0.def_index,
-            self.0.qname.module_name(),
-            self.0.qname.module_path().to_key_eq(),
-        )
+    /// we must point at the same class underneath. `ModuleKey` equality treats a
+    /// file open in memory and the same file on disk as one module.
+    fn key_eq(&self) -> (ClassDefIndex, ModuleKey) {
+        (self.0.def_index, self.0.qname.module().key())
     }
 
     /// Key to use for comparison purposes. Main used to sort identifiers in union,

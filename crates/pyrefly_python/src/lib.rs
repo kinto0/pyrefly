@@ -26,6 +26,7 @@ pub mod folding;
 pub mod ignore;
 pub mod keywords;
 pub mod module;
+pub mod module_key;
 pub mod module_name;
 pub mod module_path;
 pub mod nesting_context;
