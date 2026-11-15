@@ -3892,13 +3892,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
             ClassFieldInner::Descriptor { descriptor, .. } => {
-                if let Some(base) = instance.to_descriptor_base() {
-                    ClassAttribute::descriptor(descriptor, base)
-                } else {
-                    // Unreachable because only TypedDicts can hit this, and we never
-                    // construct Descriptors for typed dicts.
-                    unreachable!("A descriptor attribute should always have a valid base")
-                }
+                ClassAttribute::descriptor(descriptor, instance.to_descriptor_base())
             }
             ClassFieldInner::Method {
                 mut ty,
@@ -3983,21 +3977,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     };
                 }
                 match (descriptor_union, ty) {
-                    (true, Type::Union(union)) => {
-                        let Some(base) = instance.to_descriptor_base() else {
-                            // Unreachable because only TypedDicts can hit this, and we never construct
-                            // descriptor reads for typed dicts.
-                            unreachable!(
-                                "descriptor reads cannot be constructed for TypedDict instances"
-                            )
-                        };
-                        ClassAttribute::DescriptorRead {
-                            union,
-                            base,
-                            read_only_reason,
-                            is_instance_var: false,
-                        }
-                    }
+                    (true, Type::Union(union)) => ClassAttribute::DescriptorRead {
+                        union,
+                        base: instance.to_descriptor_base(),
+                        read_only_reason,
+                        is_instance_var: false,
+                    },
                     (_, ty) => {
                         if let Some(reason) = read_only_reason {
                             ClassAttribute::read_only(ty, reason)

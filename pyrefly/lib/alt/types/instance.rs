@@ -157,23 +157,22 @@ impl<'a> Instance<'a> {
         }
     }
 
-    pub fn to_descriptor_base(&self) -> Option<DescriptorBase> {
+    pub fn to_descriptor_base(&self) -> DescriptorBase {
         match &self.kind {
-            // There's no situation in which you can stick a usable descriptor in a TypedDict.
+            InstanceKind::SelfType => {
+                DescriptorBase::SelfInstance(ClassType::new(self.class.dupe(), self.targs.clone()))
+            }
+            InstanceKind::ClassType(cls) => DescriptorBase::Instance((*cls).clone()),
+            // A descriptor is never constructed for a TypedDict field, which is a dict key
+            // rather than an attribute, so `TypedDict` needs no special case here.
             // TODO(rechen): a descriptor in a TypedDict should be an error at class creation time.
-            InstanceKind::TypedDict => None,
-            InstanceKind::SelfType => Some(DescriptorBase::SelfInstance(ClassType::new(
-                self.class.dupe(),
-                self.targs.clone(),
-            ))),
-            InstanceKind::ClassType(cls) => Some(DescriptorBase::Instance((*cls).clone())),
-            InstanceKind::Protocol(..)
+            InstanceKind::TypedDict
+            | InstanceKind::Protocol(..)
             | InstanceKind::Metaclass(..)
             | InstanceKind::TypeVar(..)
-            | InstanceKind::LiteralString => Some(DescriptorBase::Instance(ClassType::new(
-                self.class.dupe(),
-                self.targs.clone(),
-            ))),
+            | InstanceKind::LiteralString => {
+                DescriptorBase::Instance(ClassType::new(self.class.dupe(), self.targs.clone()))
+            }
         }
     }
 }
