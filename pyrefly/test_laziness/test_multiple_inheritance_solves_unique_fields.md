@@ -48,7 +48,7 @@ a: Solutions
 b: Answers
 c: Answers
 
-(92 builtin demands hidden)
+(88 builtin demands hidden)
 a -> b::Exports(is_special_export)
 a -> c::Exports(is_special_export)
 a -> b::Load(module_exists)
@@ -61,10 +61,10 @@ a -> c::Exports(export_exists)
 a -> c::Exports(is_implicit_reexport)
 a -> c::Exports(get_deprecated)
 a -> c::KeyExport(Name("B2"))
-a -> b::KeyClassMetadata(ClassDefIndex(0))
-a -> c::KeyClassMetadata(ClassDefIndex(0))
 a -> b::KeyClassBaseType(ClassDefIndex(0))
 a -> c::KeyClassBaseType(ClassDefIndex(0))
+a -> b::KeyClassMetadata(ClassDefIndex(0))
+a -> c::KeyClassMetadata(ClassDefIndex(0))
 a -> b::KeyClassMro(ClassDefIndex(0))
 a -> c::KeyClassMro(ClassDefIndex(0))
 a -> b::KeyClassField(ClassDefIndex(0), Name("p1"))

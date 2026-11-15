@@ -212,9 +212,8 @@ pub struct TypeQueryTiming {
 /// already carries a value-shape property.
 ///
 /// These traits are emitted for value shapes such as `Type::Tuple`,
-/// `Type::TypedDict`, and `Type::PartialTypedDict`.
-/// They are not synthesized from class metadata, and therefore are not emitted
-/// for class/type-position shapes that would require metadata lookup.
+/// `Type::ClassType` naming a TypedDict, and `Type::PartialTypedDict`. They are
+/// emitted only for value shapes, not for class/type-position shapes.
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TypeShapeTrait {
@@ -317,6 +316,16 @@ struct TypeShapeContext<'a> {
 }
 
 impl TypeShapeContext<'_> {
+    /// A declared TypedDict instance is an ordinary `ClassType`, so the report layer has to
+    /// ask for the class's metadata to keep tagging it with the `TypedDict` shape trait.
+    pub(crate) fn is_typed_dict_class(&self, class: &Class) -> bool {
+        self.transaction
+            .ad_hoc_solve(self.source_handle, "query_is_typed_dict_class", |solver| {
+                solver.is_typed_dict_class(class)
+            })
+            .expect("the source handle is solved before a TypeShapeContext is built")
+    }
+
     fn declared_type_param_arity_for_class(&self, class: &Class) -> Option<usize> {
         if !class.has_tparams() {
             return None;
@@ -757,16 +766,26 @@ impl<'a> CalleesWithLocation<'a> {
     fn class_info_for_qname(qname: &QName, is_typed_dict: bool) -> Vec<(String, bool)> {
         vec![(Self::qname_to_string(qname), is_typed_dict)]
     }
-    fn class_info_from_bound_obj(ty: &Type) -> Vec<(String, bool)> {
+    /// A declared TypedDict instance is an ordinary `ClassType`, so recovering the
+    /// TypedDict-ness that `target_from_bound_method_type` reports means asking for the
+    /// class's metadata. Only the instance case can be a TypedDict receiver: `SelfType`
+    /// and `ClassDef` never name one, because a TypedDict has no methods of its own.
+    fn class_info_from_bound_obj(&self, ty: &Type) -> Vec<(String, bool)> {
         match ty {
             Type::SelfType(c) => Self::class_info_for_qname(c.qname(), false),
             // TODO: wrap in 'type'
-            Type::Type(t) => Self::class_info_from_bound_obj(t),
-            Type::ClassType(c) | Type::SpecializedClassDef(c) => {
-                Self::class_info_for_qname(c.qname(), false)
+            Type::Type(t) => self.class_info_from_bound_obj(t),
+            Type::ClassType(c) => {
+                let is_typed_dict = self
+                    .transaction
+                    .ad_hoc_solve(&self.handle, "query_callee_is_typed_dict", |solver| {
+                        solver.is_typed_dict_class(c.class_object())
+                    })
+                    .expect("the queried handle is solved before callees are gathered");
+                Self::class_info_for_qname(c.qname(), is_typed_dict)
             }
+            Type::SpecializedClassDef(c) => Self::class_info_for_qname(c.qname(), false),
             Type::ClassDef(c) => Self::class_info_for_qname(c.qname(), false),
-            Type::TypedDict(d) => Self::class_info_for_qname(d.qname(), true),
             Type::AnonymousTypedDict(_) => vec![],
             Type::Literal(lit) if matches!(lit.value, Lit::Str(_)) => {
                 vec![(String::from("builtins.str"), false)]
@@ -782,12 +801,12 @@ impl<'a> CalleesWithLocation<'a> {
             }
             Type::Quantified(q) => match &q.restriction {
                 // for explicit bound - use name of the type used as bound
-                Restriction::Bound(b) => Self::class_info_from_bound_obj(b),
+                Restriction::Bound(b) => self.class_info_from_bound_obj(b),
                 // no bound - use name of the type variable (not very useful but not worse than status quo)
                 Restriction::Unrestricted => vec![(q.name().to_string(), false)],
                 Restriction::Constraints(tys) => tys
                     .iter()
-                    .flat_map(Self::class_info_from_bound_obj)
+                    .flat_map(|t| self.class_info_from_bound_obj(t))
                     .collect_vec(),
                 Restriction::ShapeExtension(extension) => extension
                     .upper_bound_class_names()
@@ -798,11 +817,11 @@ impl<'a> CalleesWithLocation<'a> {
             Type::Union(u) => u
                 .members
                 .iter()
-                .flat_map(Self::class_info_from_bound_obj)
+                .flat_map(|t| self.class_info_from_bound_obj(t))
                 .collect_vec(),
             Type::Intersect(intersection) => {
                 let (_members, fallback) = &**intersection;
-                Self::class_info_from_bound_obj(fallback)
+                self.class_info_from_bound_obj(fallback)
             }
             _ => panic!("unexpected type: {ty:?}"),
         }
@@ -926,7 +945,6 @@ impl<'a> CalleesWithLocation<'a> {
                     .class_object(),
             ),
             Type::SelfType(c) | Type::ClassType(c) => self.find_init_or_new(c.class_object()),
-            Type::TypedDict(inner) => self.find_init_or_new(inner.class_object()),
             Type::Quantified(q) => match &q.restriction {
                 Restriction::Bound(bound) => self.init_or_new_from_type(bound, callee_range),
                 Restriction::Constraints(tys) => self.init_or_new_from_union(tys, callee_range),
@@ -993,7 +1011,8 @@ impl<'a> CalleesWithLocation<'a> {
                 let (_members, fallback) = &**intersection;
                 self.callee_from_type(fallback, call_target, callee_range, call_arguments)
             }
-            Type::BoundMethod(m) => Self::class_info_from_bound_obj(&m.obj)
+            Type::BoundMethod(m) => self
+                .class_info_from_bound_obj(&m.obj)
                 .into_iter()
                 .map(|(class_name, class_is_typed_dict)| Callee {
                     kind: Self::callee_method_kind_from_bound_method_type(&m.func),
@@ -1662,7 +1681,13 @@ impl Query {
         if !need_lt && (!need_gt || is_typed_dict_request) {
             let sub_ty = cached_lt.unwrap();
             if is_typed_dict_request {
-                return Ok(sub_ty.is_typed_dict());
+                let t = self.state.transaction();
+                let h = self.make_handle(name, ModulePath::filesystem(path));
+                return Ok(t
+                    .ad_hoc_solve(&h, "query_is_typed_dict", |solver| {
+                        solver.is_typed_dict(&sub_ty)
+                    })
+                    .unwrap_or(false));
             } else {
                 let super_ty = cached_gt.unwrap();
                 let t = self.state.transaction();
@@ -1720,7 +1745,10 @@ impl Query {
 
         // Compute final result
         let result = if is_typed_dict_request {
-            sub_ty.is_typed_dict()
+            t.ad_hoc_solve(&h, "query_is_typed_dict", |solver| {
+                solver.is_typed_dict(&sub_ty)
+            })
+            .unwrap_or(false)
         } else {
             t.ad_hoc_solve(&h, "query_is_subset_eq", |solver| {
                 solver.is_subset_eq(&sub_ty, &super_ty_opt.unwrap())

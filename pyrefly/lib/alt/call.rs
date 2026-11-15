@@ -18,7 +18,6 @@ use pyrefly_types::function::BodyKind;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::special_form::SpecialForm;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::CalleeKind;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
@@ -459,15 +458,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
             Type::ClassDef(cls) => match self.instantiate(&cls) {
-                // `instantiate` can only return `ClassType` or `TypedDict`
+                // `instantiate` can only return `ClassType`
+                Type::ClassType(cls) if self.is_typed_dict_class(cls.class_object()) => {
+                    CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(cls)))
+                }
                 Type::ClassType(cls) => CallTargetLookup::Ok(Box::new(CallTarget::Class(
                     cls,
                     ConstructorKind::BareClassName,
                     None,
                 ))),
-                Type::TypedDict(typed_dict) => CallTargetLookup::Ok(Box::new(
-                    CallTarget::TypedDict(typed_dict.as_class_type()),
-                )),
                 _ => unreachable!(),
             },
             Type::SpecializedClassDef(cls) => CallTargetLookup::Ok(Box::new(CallTarget::Class(
@@ -840,11 +839,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     None => CallTargetLookup::Error(Type::SelfType(cls), vec![]),
                 }
             }
-            Type::Type(f) if matches!(&*f, Type::TypedDict(_)) => {
-                let Type::TypedDict(typed_dict) = *f else {
-                    unreachable!("guarded by matches! above")
-                };
-                CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict.as_class_type())))
+            Type::Type(ref f)
+                if let Type::ClassType(cls) = &**f
+                    && self.is_typed_dict_class(cls.class_object()) =>
+            {
+                CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(cls.clone())))
             }
             Type::Type(ref f) if let Type::AnonymousTypedDict(td) = &**f => {
                 let value_ty = td.compute_value_type(self.heap);
@@ -1742,12 +1741,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let vs = self
                 .solver()
                 .freshen_class_targs(typed_dict.targs_mut(), self.uniques);
-            let matched_hint = self.is_subset_eq(
-                &self
-                    .heap
-                    .mk_typed_dict(TypedDictInner::from_class_type(&typed_dict)),
-                hint,
-            );
+            let matched_hint =
+                self.is_subset_eq(&self.heap.mk_class_type(typed_dict.clone()), hint);
             self.solver().generalize_class_targs_for_constructor_hint(
                 typed_dict.targs_mut(),
                 &SmallSet::new(),
@@ -1786,7 +1781,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .finish_quantified(vs, self.solver().config.infer_with_first_use)
             .err();
         ConstructedInstance {
-            ty: Type::TypedDict(TypedDictInner::from_class_type(&typed_dict)),
+            ty: Type::ClassType(typed_dict),
             matched_hint,
             arg_errors,
             return_errors,

@@ -36,8 +36,8 @@ forced their export sets during binding.
    during binding.
 3. **Full function signature on import** — resolves 11 keys per imported
    function regardless of usage.
-4. **Class metadata for annotation-only usage** — `is_typed_dict()` check
-   on every class-as-annotation.
+4. **Class metadata for annotation-only usage** — resolved. A class
+   named only in an annotation costs just its `KeyExport`.
 5. **Eagerly resolved builtins** — resolved. This used to cost ~150
    `KeyExport` + cascading demands per module; remaining builtin
    demands should come from referenced builtin names and small lookup
@@ -95,28 +95,23 @@ resolved when the function is actually called or its type is inspected.
 `KeyDecoratedFunction` → `KeyUndecoratedFunction` → return annotation
 → legacy type param checks.
 
-## Class metadata resolved for annotation-only usage
+## Class metadata for annotation-only usage
 
-When a class is used only as a type annotation (`x: Foo`), pyrefly
-resolves `KeyClassMetadata` (1 cross-module demand). This is much
-better than instantiation (6 metadata demands) but still unnecessary.
+This opportunity has been addressed. Using a class only as a type
+annotation (`x: Foo`) used to resolve `KeyClassMetadata` as well as
+`KeyExport`, because promoting the class to an instance type asked
+whether it was a TypedDict. That question reads the class's metadata,
+which resolves its base classes and can cascade up the MRO.
 
-**Visible in:** `test_import_class_as_annotation.md` — 2 demands:
-`KeyExport("Foo")` + `KeyClassMetadata(0)`.
+**Visible in:** `test_import_class_as_annotation.md` — one demand,
+`KeyExport("Foo")`.
 
-**Why it happens:** `type_of_instance` in targs.rs:358 calls
-`get_metadata_for_class` to check `is_typed_dict()`. This is needed
-because `Type::ClassType` and `Type::TypedDict` are different enum
-variants — the code must decide which to construct when promoting a
-class reference to a type form. The `is_typed_dict` check requires
-resolving the class's base classes to see if any ancestor is
-`TypedDict`, which can cascade up the MRO.
+**Current behavior:** A declared TypedDict instance is an ordinary
+`ClassType`, so promotion builds one without reading metadata, and the
+sites that need TypedDict behavior ask for the metadata themselves.
 
-**Ideal behavior:** Unify `ClassType` and `TypedDict` into a single
-type variant so the TypedDict distinction can be deferred until
-TypedDict-specific features are actually used (field lookup,
-structural matching, etc.). This would eliminate the metadata demand
-for annotation-only class usage.
+**Regression signal:** A `KeyClassMetadata` demand reappearing in
+`test_import_class_as_annotation.md`.
 
 ## LookupExport during binding forces transitive exports
 

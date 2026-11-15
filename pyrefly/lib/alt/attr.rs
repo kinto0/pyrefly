@@ -2637,6 +2637,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn as_attribute_base1(&self, ty: Type, acc: &mut Vec<AttributeBase1>) {
         match ty {
+            Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
+                acc.push(AttributeBase1::TypedDict(ct))
+            }
             Type::ClassType(class_type) => acc.push(AttributeBase1::ClassInstance(class_type)),
             Type::ClassDef(cls) => acc.push(AttributeBase1::ClassObject(ClassBase::ClassDef(
                 self.as_class_type_unchecked(&cls),
@@ -2646,7 +2649,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::SelfType(class_type) => acc.push(AttributeBase1::SelfType(class_type)),
             Type::Type(ty) => self.as_attribute_base1_of_type(*ty, acc),
-            Type::TypedDict(td) => acc.push(AttributeBase1::TypedDict(td.as_class_type())),
             Type::PartialTypedDict(ct) => acc.push(AttributeBase1::TypedDict(ct)),
             Type::AnonymousTypedDict(td) => {
                 let value_ty = td.compute_value_type(self.heap);
@@ -2927,10 +2929,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::SelfType(class_type) => {
                 acc.push(AttributeBase1::ClassObject(ClassBase::SelfType(class_type)))
             }
-            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => acc
-                .push(AttributeBase1::ClassObject(ClassBase::ClassDef(
+            Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
+                acc.push(AttributeBase1::ClassObject(ClassBase::ClassDef(
                     self.stdlib.typed_dict_fallback().clone(),
-                ))),
+                )))
+            }
             Type::LiteralString(_) => acc.push(AttributeBase1::ClassObject(ClassBase::ClassType(
                 self.stdlib.str().clone(),
             ))),

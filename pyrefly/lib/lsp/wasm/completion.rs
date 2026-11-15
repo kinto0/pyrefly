@@ -421,11 +421,7 @@ impl Transaction<'_> {
                                     .ad_hoc_solve(
                                         handle,
                                         "completion_typed_dict_kwargs",
-                                        |solver| {
-                                            solver
-                                                .type_order()
-                                                .typed_dict_fields(&typed_dict.as_class_type())
-                                        },
+                                        |solver| solver.type_order().typed_dict_fields(typed_dict),
                                     )
                                     .into_iter()
                                     .flatten()

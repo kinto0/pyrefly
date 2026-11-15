@@ -241,19 +241,13 @@ pub(crate) fn type_to_structured(
             );
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
-        Type::TypedDict(_) | Type::PartialTypedDict(_) => {
-            let (qname, trait_name) = match ty {
-                Type::TypedDict(td) => (qname_to_full_string(td.qname()), "typed_dict"),
-                Type::PartialTypedDict(ct) => {
-                    (qname_to_full_string(ct.qname()), "partial_typed_dict")
-                }
-                _ => unreachable!("guarded by the match pattern above"),
-            };
-            let hash = hash_class(&qname, &[], &[trait_name]);
+        Type::PartialTypedDict(ct) => {
+            let qname = qname_to_full_string(ct.qname());
+            let hash = hash_class(&qname, &[], &["partial_typed_dict"]);
             let sty = StructuredType::Class {
                 qname,
                 args: vec![],
-                traits: vec![trait_name.to_owned()],
+                traits: vec!["partial_typed_dict".to_owned()],
             };
             table.insert(sty, hash)
         }

@@ -432,12 +432,12 @@ class D:
 
 def td_first(x: A):
     if isinstance(x, B):
-        reveal_type(x.make())  # E: revealed type: dict[str, int] & TD
-        reveal_type(x.field)  # E: revealed type: dict[str, int] & TD
+        reveal_type(x.make())  # E: revealed type: TD & dict[str, int]
+        reveal_type(x.field)  # E: revealed type: TD & dict[str, int]
 def dict_first(x: C):
     if isinstance(x, D):
-        reveal_type(x.make())  # E: revealed type: dict[str, int] & TD
-        reveal_type(x.field)  # E: revealed type: dict[str, int] & TD
+        reveal_type(x.make())  # E: revealed type: TD & dict[str, int]
+        reveal_type(x.field)  # E: revealed type: TD & dict[str, int]
 
 witness: TD = {"key": 1}
 assert isinstance(witness, dict) and witness["key"] == 1
@@ -781,8 +781,8 @@ def typed_dicts(a: A):
         reveal_type(a.field)  # E: revealed type: Flag & Left & Right
 def dictionary(d: D):
     if isinstance(d, A) and isinstance(d, B):
-        reveal_type(d.make())  # E: revealed type: dict[str, object] & Left & Right
-        reveal_type(d.field)  # E: revealed type: dict[str, object] & Left & Right
+        reveal_type(d.make())  # E: revealed type: Left & Right & dict[str, object]
+        reveal_type(d.field)  # E: revealed type: Left & Right & dict[str, object]
 witness = {"left": 1, "right": "ok", "flag": True}
 assert witness["left"] == 1 and witness["right"] == "ok" and witness["flag"] is True
 "#,

@@ -3200,3 +3200,60 @@ def matching_value() -> None:
     d["b"] = {"y": 2}
 "#,
 );
+
+// A generic TypedDict satisfies a TypeVar bound naming it. Solving a class's type parameters
+// rewrites the classes inside a bound, to stop the parameters from nesting deeper on every
+// fixpoint iteration. A TypedDict resolves its fields by substituting its type arguments, so a
+// rewrite that dropped them would leave the fields as the TypedDict's own type variables, and
+// it would stop matching even itself.
+testcase!(
+    test_generic_typed_dict_satisfies_type_var_bound,
+    r#"
+from typing import Any, Generic, TypedDict, TypeVar
+
+class Ctx(TypedDict, total=False):
+    source: str
+
+class AuthCtx(Ctx, total=False):
+    extra: int
+
+CtxT = TypeVar("CtxT", bound=Ctx)
+
+class Res(TypedDict, Generic[CtxT], total=False):
+    context: CtxT
+
+class AuthRes(Res[AuthCtx], total=False):
+    auth: bool
+
+ResT = TypeVar("ResT", bound=Res[Any])
+
+class Mgr(Generic[ResT]):
+    pass
+
+class UsesSelf(Mgr[Res[Ctx]]):
+    pass
+
+class UsesSubclass(Mgr[AuthRes]):
+    pass
+
+def uses_annotation(m: Mgr[AuthRes]) -> None:
+    pass
+"#,
+);
+
+// `x and y` returns `x` only when `x` is falsy. A TypedDict whose keys are all optional can be
+// falsy, so it is marked like any other class instance, and a truthy result is always `y`.
+testcase!(
+    test_typed_dict_boolean_and_result_truthy_narrow,
+    r#"
+from typing import TypedDict, assert_type
+
+class Foo(TypedDict, total=False):
+    x: int
+
+def f(foo: Foo | None) -> None:
+    x = foo and foo.get("x")
+    if x:
+        assert_type(x, int)
+"#,
+);

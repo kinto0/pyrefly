@@ -333,7 +333,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let class_of = |ty: &Type| match ty {
             Type::ClassType(class) => Some(class.class_object().dupe()),
             Type::Tuple(_) => Some(self.stdlib.tuple_object().dupe()),
-            Type::TypedDict(dict) => Some(dict.class_object().dupe()),
             Type::Int(_) => Some(self.stdlib.int().class_object().dupe()),
             _ => None,
         };
@@ -538,6 +537,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .filter_map(|base_type_and_position| {
                 // Return Ok() if the base class is valid, or Err() if it is not.
                 match base_type_and_position {
+                    // A NewType cannot be based on a TypedDict. The error is reported in
+                    // `class_metadata_of`; don't record a base class for it here.
+                    (Type::ClassType(c), _)
+                        if is_new_type && self.is_typed_dict_class(c.class_object()) =>
+                    {
+                        None
+                    }
                     (Type::ClassType(c), base_position) => {
                         let bases = self.get_base_types_for_class(c.class_object());
                         // Propagate has_strict from parent class
@@ -550,26 +556,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         let class_ty = self.erase_tuple_type(tuple);
                         let bases = self.get_base_types_for_class(class_ty.class_object());
                         Some((class_ty, bases, base_position))
-                    }
-                    (Type::TypedDict(typed_dict), base_position) => {
-                        if is_new_type {
-                            // Error will be reported in `class_metadata_of`
-                            None
-                        } else {
-                            // HACK HACK HACK - TypedDict instances behave very differently from instances of other
-                            // classes, so we don't represent them as ClassType in normal typechecking logic. However,
-                            // class ancestors are represented as ClassType all over the code base, and changing this
-                            // would be quite painful. So we convert TypedDict to ClassType in this one spot. Please do
-                            // not do this anywhere else.
-                            Some((
-                                ClassType::new(
-                                    typed_dict.class_object().dupe(),
-                                    typed_dict.targs().clone(),
-                                ),
-                                self.get_base_types_for_class(typed_dict.class_object()),
-                                base_position,
-                            ))
-                        }
                     }
                     (Type::Type(f), base_position) if f.is_any() => {
                         // `type[Any]` is equivalent to `type` or `Type`

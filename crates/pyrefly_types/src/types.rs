@@ -74,7 +74,6 @@ use crate::type_var::Restriction;
 use crate::type_var::TypeVar;
 use crate::type_var_tuple::TypeVarTuple;
 use crate::typed_dict::AnonymousTypedDictInner;
-use crate::typed_dict::TypedDictInner;
 
 /// An introduced synthetic variable to range over as yet unknown types.
 #[derive(Debug, Copy, Clone, Dupe, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -922,13 +921,10 @@ pub enum Type {
     ///
     /// Instances of classes have this type.
     ClassType(ClassType),
-    /// Instances of TypedDicts declared as classes have this type, and a term of the form
-    /// `TD[arg1, arg2]` would have the form `Type::Type(box Type::TypedDict(TD, [arg1, arg2]))`.
-    /// Note that TypedDict class definitions are still represented as `ClassDef(TD)`, just
-    /// like regular classes.
-    TypedDict(TypedDictInner),
     /// A TypedDict inferred from a dict literal with known string keys. It has no class
-    /// object, so unlike `TypedDict` it cannot be described by a `Class` and `TArgs`.
+    /// object, so unlike a declared TypedDict it cannot be described by a `Class` and `TArgs`,
+    /// and needs its own variant. A declared TypedDict instance is a plain `ClassType`; ask
+    /// its `ClassMetadata` whether it is a TypedDict.
     AnonymousTypedDict(Box<AnonymousTypedDictInner>),
     /// Represents a "partial" version of a TypedDict that can be merged into the TypedDict
     /// (e.g., via its `update` method).
@@ -1061,7 +1057,6 @@ impl Visit for Type {
             Type::ClassDef(x) => x.visit(f),
             Type::SpecializedClassDef(x) => x.visit(f),
             Type::ClassType(x) => x.visit(f),
-            Type::TypedDict(x) => x.visit(f),
             Type::AnonymousTypedDict(x) => x.visit(f),
             Type::PartialTypedDict(x) => x.visit(f),
             Type::IntTuple(x) => x.visit(f),
@@ -1125,7 +1120,6 @@ impl VisitMut for Type {
             Type::ClassDef(x) => x.visit_mut(f),
             Type::SpecializedClassDef(x) => x.visit_mut(f),
             Type::ClassType(x) => x.visit_mut(f),
-            Type::TypedDict(x) => x.visit_mut(f),
             Type::AnonymousTypedDict(x) => x.visit_mut(f),
             Type::PartialTypedDict(x) => x.visit_mut(f),
             Type::IntTuple(x) => x.visit_mut(f),
@@ -1331,13 +1325,13 @@ impl Type {
         matches!(self, Type::Unpack(..))
     }
 
-    /// The `TypedDict` of an `Unpack[TypedDict]`, the annotation form a `**kwargs`
-    /// parameter uses to accept each field as a keyword argument. `None` for any
-    /// other type, including `Unpack` of a non-`TypedDict` such as a `TypeVarTuple`.
-    pub fn unpacked_typed_dict(&self) -> Option<&TypedDictInner> {
+    /// The TypedDict of an `Unpack[TypedDict]`, the annotation form a `**kwargs` parameter
+    /// uses to accept each field as a keyword argument. `None` for any other type, including
+    /// `Unpack` of a non-TypedDict such as a `TypeVarTuple`.
+    pub fn unpacked_typed_dict(&self) -> Option<&ClassType> {
         match self {
-            Type::Unpack(inner, _) if let Type::TypedDict(typed_dict) = &**inner => {
-                Some(typed_dict)
+            Type::Unpack(inner, UnpackKind::Kwargs) if let Type::ClassType(ct) = &**inner => {
+                Some(ct)
             }
             _ => None,
         }
@@ -1417,13 +1411,6 @@ impl Type {
         matches!(self, Type::ClassType(cls) if cls.is(KnownClass::Object))
     }
 
-    pub fn is_typed_dict(&self) -> bool {
-        matches!(
-            self,
-            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_)
-        )
-    }
-
     pub fn is_error(&self) -> bool {
         matches!(self, Type::Any(style) if style.is_error())
     }
@@ -1479,7 +1466,6 @@ impl Type {
             // * Not checking the rest of the ClassType is a critical performance optimization
             //   when visiting Vars. See https://github.com/facebook/pyrefly/issues/2016.
             Type::ClassType(cls) => recurse_targs(cls.targs()),
-            Type::TypedDict(td) => recurse_targs(td.targs()),
             // `Self` is a keyword, not a user-written type variable reference, so we don't
             // recurse into it when looking for type variable references.
             Type::SelfType(_) => {}
@@ -1499,7 +1485,6 @@ impl Type {
         // IMPORTANT: keep this match in sync with `recurse_type_variable_positions`
         match self {
             Type::ClassType(cls) => recurse_targs(cls.targs_mut()),
-            Type::TypedDict(td) => recurse_targs(td.targs_mut()),
             Type::SelfType(_) | Type::Literal(_) => {}
             _ => self.recurse_mut(f),
         }
@@ -2434,7 +2419,6 @@ impl Type {
             Type::ClassDef(cls) => Some(cls.qname()),
             Type::SpecializedClassDef(c) => Some(c.qname()),
             Type::ClassType(c) => Some(c.qname()),
-            Type::TypedDict(c) => Some(c.qname()),
             Type::PartialTypedDict(c) => Some(c.qname()),
             Type::TypeVar(t) => Some(t.qname()),
             Type::TypeVarTuple(t) => Some(t.qname()),
@@ -2531,7 +2515,6 @@ impl Type {
             | Type::ClassDef(_)
             | Type::SpecializedClassDef(_)
             | Type::ClassType(_)
-            | Type::TypedDict(_)
             | Type::AnonymousTypedDict(_)
             | Type::PartialTypedDict(_)
             | Type::IntTuple(_)

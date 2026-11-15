@@ -41,7 +41,6 @@ use crate::types::quantified::QuantifiedOrigin;
 use crate::types::tuple::Tuple;
 use crate::types::type_var::PreInferenceVariance;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDictInner;
 use crate::types::types::Forall;
 use crate::types::types::Forallable;
 use crate::types::types::Substitution;
@@ -375,12 +374,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ClassType::new(class.dupe(), self.targs_of_tparams(class))
     }
 
-    /// Gets this Class as a TypedDict with its tparams as the arguments.
-    pub fn as_typed_dict_unchecked(&self, class: &Class) -> TypedDictInner {
-        let targs = self.targs_of_tparams(class);
-        TypedDictInner::new(class.clone(), targs)
-    }
-
     /// Instantiates a class or typed dictionary with fresh variables for its type parameters.
     pub fn instantiate_fresh_class(&self, cls: &Class) -> (QuantifiedHandle, Type) {
         let ty = self.instantiate(cls);
@@ -457,14 +450,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
+    /// Deliberately does not consult `ClassMetadata`. A TypedDict instance is an ordinary
+    /// `ClassType`; the sites that need TypedDict behavior check the metadata themselves. This
+    /// keeps a class used only as an annotation from forcing its metadata, which would resolve
+    /// its bases and cascade up the MRO.
     fn type_of_instance(&self, cls: &Class, targs: TArgs) -> Type {
-        let metadata = self.get_metadata_for_class(cls);
-        if metadata.is_typed_dict() {
-            self.heap
-                .mk_typed_dict(TypedDictInner::new(cls.dupe(), targs))
-        } else {
-            self.heap.mk_class_type(ClassType::new(cls.dupe(), targs))
-        }
+        self.heap.mk_class_type(ClassType::new(cls.dupe(), targs))
     }
 
     /// Type arguments applied to something with no type parameters. There is

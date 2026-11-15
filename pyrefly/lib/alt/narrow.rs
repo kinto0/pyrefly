@@ -203,16 +203,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             } else {
                 right.clone()
             }
-        } else if left.is_typed_dict() != right.is_typed_dict() {
+        } else if self.is_typed_dict(left) != self.is_typed_dict(right) {
             // Use runtime representation of TypedDict for intersections w/ non-TypedDicts
             // Normally, TypedDict is not assignable to dict to avoid unsafe aliasing
             let runtime_class = self.heap.mk_class_type(self.stdlib.dict(
                 self.heap.mk_class_type(self.stdlib.str().clone()),
                 self.heap.mk_class_type(self.stdlib.object().clone()),
             ));
-            if left.is_typed_dict() && self.is_subset_eq(&runtime_class, right) {
+            if self.is_typed_dict(left) && self.is_subset_eq(&runtime_class, right) {
                 left.clone()
-            } else if right.is_typed_dict() && self.is_subset_eq(&runtime_class, left) {
+            } else if self.is_typed_dict(right) && self.is_subset_eq(&runtime_class, left) {
                 right.clone()
             } else {
                 self.heap.mk_never()
@@ -492,12 +492,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(first) = concrete.next() else {
             return gradual;
         };
-        let is_mapping_member = |ty: &Type| {
-            matches!(
-                ty,
-                Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_)
-            ) || matches!(ty, Type::ClassType(class) if class.class_object() == self.stdlib.dict_object() || class.class_object() == self.stdlib.mapping_object())
-        };
+        let is_dict_or_mapping = |ty: &Type| matches!(ty, Type::ClassType(class) if class.class_object() == self.stdlib.dict_object() || class.class_object() == self.stdlib.mapping_object());
+        let is_mapping_member = |ty: &Type| self.is_typed_dict(ty) || is_dict_or_mapping(ty);
         let is_mapping_view = |ty: &Type| match ty {
             Type::Intersect(intersection) => intersection.0.iter().all(&is_mapping_member),
             ty => is_mapping_member(ty),
@@ -524,7 +520,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         intersect(vec![left.clone(), right.clone()], right.clone(), self.heap)
                     } else if let Some(refined) = self.refine_gradual_intersection(left, right) {
                         refined
-                    } else if matches!((left, right), (Type::TypedDict(_) | Type::AnonymousTypedDict(_), Type::ClassType(cls)) | (Type::ClassType(cls), Type::TypedDict(_) | Type::AnonymousTypedDict(_)) if cls.class_object() == self.stdlib.dict_object() || cls.class_object() == self.stdlib.mapping_object())
+                    } else if (self.is_typed_dict(left) && is_dict_or_mapping(right))
+                        || (is_dict_or_mapping(left) && self.is_typed_dict(right))
                         || ((matches!(left, Type::Intersect(_))
                             || matches!(right, Type::Intersect(_)))
                             && is_mapping_view(left)
@@ -563,6 +560,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // Normalize types with a precise nominal runtime class, where disjointness is high signal.
         // Return `None` for structural and gradual forms to avoid noisy invalid-cast diagnostics.
         let runtime_type = |ty: &Type| match ty {
+            Type::ClassType(cls) if self.is_typed_dict_class(cls.class_object()) => Some(
+                self.heap.mk_class_type(
+                    self.stdlib
+                        .dict(self.heap.mk_any_implicit(), self.heap.mk_any_implicit()),
+                ),
+            ),
             Type::ClassType(cls) if !cls.class_object().is_protocol() => {
                 let mut cls = cls.clone();
                 for arg in cls.targs_mut().as_mut() {
@@ -587,7 +590,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.heap
                     .mk_class_type(self.stdlib.tuple(self.heap.mk_any_implicit())),
             ),
-            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => Some(
+            Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => Some(
                 self.heap.mk_class_type(
                     self.stdlib
                         .dict(self.heap.mk_any_implicit(), self.heap.mk_any_implicit()),
@@ -629,7 +632,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if self.is_toplevel_gradual(left) {
                 return left.clone();
             }
-            if left.is_typed_dict() && !right.is_typed_dict() {
+            if self.is_typed_dict(left) && !self.is_typed_dict(right) {
                 // Use runtime representation of TypedDict for subtraction w/ non-TypedDicts
                 // Normally, TypedDict is not assignable to dict to avoid unsafe aliasing
                 let runtime_class = self.heap.mk_class_type(self.stdlib.dict(
@@ -1371,11 +1374,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// The key names of a TypedDict, declared or anonymous. `None` for any other type.
     fn typed_dict_key_names(&self, ty: &Type) -> Option<Vec<Name>> {
         match ty {
-            Type::TypedDict(typed_dict) => Some(
-                self.typed_dict_fields(&typed_dict.as_class_type())
-                    .into_keys()
-                    .collect(),
-            ),
+            Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
+                Some(self.typed_dict_fields(ct).into_keys().collect())
+            }
             Type::AnonymousTypedDict(typed_dict) => Some(
                 typed_dict
                     .fields
@@ -1390,19 +1391,22 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Keep the union members consistent with `key` being present or absent.
     fn narrow_key_membership(&self, ty: &Type, key: &Name, present: bool) -> Type {
         self.distribute_over_union(ty, |member| {
-            let Type::TypedDict(typed_dict) = member else {
+            let Type::ClassType(typed_dict) = member else {
                 return member.clone();
             };
+            if !self.is_typed_dict_class(typed_dict.class_object()) {
+                return member.clone();
+            }
             if present {
-                match self.typed_dict_field(&typed_dict.as_class_type(), key) {
+                match self.typed_dict_field(typed_dict, key) {
                     Some(_) => member.clone(),
-                    None => match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
+                    None => match self.typed_dict_extra_items(typed_dict) {
                         ExtraItems::Closed => self.heap.mk_never(),
                         ExtraItems::Default | ExtraItems::Extra(_) => member.clone(),
                     },
                 }
             } else {
-                match self.typed_dict_field(&typed_dict.as_class_type(), key) {
+                match self.typed_dict_field(typed_dict, key) {
                     Some(field) if field.required => self.heap.mk_never(),
                     Some(_) | None => member.clone(),
                 }

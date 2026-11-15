@@ -287,6 +287,9 @@ pub(super) fn type_to_indexed_shape(
             insert_indexed_named(table, "typing.Type", vec![inner], None, Vec::new())
         }
         Type::ClassType(class_type) => {
+            if context.is_typed_dict_class(class_type.class_object()) {
+                return typed_dict_to_indexed_shape(context, class_type, false, table);
+            }
             let args = class_type
                 .targs()
                 .as_slice()
@@ -300,9 +303,6 @@ pub(super) fn type_to_indexed_shape(
                 None,
                 Vec::new(),
             )
-        }
-        Type::TypedDict(typed_dict) => {
-            typed_dict_to_indexed_shape(context, &typed_dict.as_class_type(), false, table)
         }
         Type::AnonymousTypedDict(typed_dict) => {
             anonymous_typed_dict_to_indexed_shape(context, typed_dict, table)

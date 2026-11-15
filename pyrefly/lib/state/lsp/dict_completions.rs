@@ -162,23 +162,23 @@ impl<'a> Transaction<'a> {
         self.get_type_trace(handle, range)
     }
 
-    fn type_contains_typed_dict(ty: &Type) -> bool {
-        match ty {
-            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => true,
-            Type::Union(u) => u.members.iter().any(Self::type_contains_typed_dict),
-            _ => false,
-        }
+    /// A declared TypedDict instance is an ordinary `ClassType`, so recognizing one needs a solver.
+    fn type_contains_typed_dict(&self, handle: &Handle, ty: &Type) -> bool {
+        self.ad_hoc_solve(handle, "type_contains_typed_dict", |solver| {
+            !Self::typed_dict_members(&solver, ty.clone()).is_empty()
+        }) == Some(true)
     }
 
-    fn typed_dict_members(base_type: Type) -> Vec<Type> {
+    fn typed_dict_members<'b>(
+        solver: &AnswersSolver<TransactionHandle<'b>>,
+        base_type: Type,
+    ) -> Vec<Type> {
         let mut members = Vec::new();
         let mut stack = vec![base_type];
         while let Some(ty) = stack.pop() {
             match ty {
-                Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
-                    members.push(ty)
-                }
                 Type::Union(u) => stack.extend(u.members),
+                ty if solver.is_typed_dict(&ty) => members.push(ty),
                 _ => {}
             }
         }
@@ -193,10 +193,9 @@ impl<'a> Transaction<'a> {
             .into_iter()
             .filter_map(|member| {
                 let fields = match &member {
-                    Type::TypedDict(td) => {
-                        solver.type_order().typed_dict_fields(&td.as_class_type())
+                    Type::ClassType(ct) | Type::PartialTypedDict(ct) => {
+                        solver.type_order().typed_dict_fields(ct)
                     }
-                    Type::PartialTypedDict(ct) => solver.type_order().typed_dict_fields(ct),
                     Type::AnonymousTypedDict(td) => td.fields.iter().cloned().collect(),
                     _ => return None,
                 }
@@ -218,7 +217,7 @@ impl<'a> Transaction<'a> {
     ) -> Option<Vec<Type>> {
         let base_type = self.construction_contextual_type(handle, module, dict.range())?;
         self.ad_hoc_solve(handle, "dict_literal_typed_dict_members", |solver| {
-            let members = Self::typed_dict_members(base_type);
+            let members = Self::typed_dict_members(&solver, base_type);
             if members.is_empty() {
                 return Vec::new();
             }
@@ -647,7 +646,7 @@ impl<'a> Transaction<'a> {
                     }
                     let Some(base_type) = self
                         .construction_contextual_type(handle, module, set.range())
-                        .filter(Self::type_contains_typed_dict)
+                        .filter(|ty| self.type_contains_typed_dict(handle, ty))
                     else {
                         continue;
                     };
@@ -820,30 +819,11 @@ impl<'a> Transaction<'a> {
         base_type: Type,
     ) -> Option<BTreeMap<String, Type>> {
         self.ad_hoc_solve(handle, "typed_dict_keys", |solver| {
+            let members = Self::typed_dict_members(&solver, base_type);
             let mut map = BTreeMap::new();
-            for member in Self::typed_dict_members(base_type) {
-                match member {
-                    Type::TypedDict(td) => {
-                        for (name, field) in
-                            solver.type_order().typed_dict_fields(&td.as_class_type())
-                        {
-                            map.entry(name.to_string())
-                                .or_insert_with(|| field.ty.clone());
-                        }
-                    }
-                    Type::PartialTypedDict(ct) => {
-                        for (name, field) in solver.type_order().typed_dict_fields(&ct) {
-                            map.entry(name.to_string())
-                                .or_insert_with(|| field.ty.clone());
-                        }
-                    }
-                    Type::AnonymousTypedDict(td) => {
-                        for (name, field) in td.fields.iter() {
-                            map.entry(name.to_string())
-                                .or_insert_with(|| field.ty.clone());
-                        }
-                    }
-                    _ => {}
+            for (_, fields) in Self::typed_dict_member_field_maps(&solver, members) {
+                for (name, ty) in fields {
+                    map.entry(name).or_insert(ty);
                 }
             }
             map
@@ -1110,7 +1090,7 @@ impl<'a> Transaction<'a> {
         covering_nodes: &[AnyNodeRef],
         completions: &mut Vec<RankedCompletion>,
     ) {
-        if !Self::type_contains_typed_dict(base_type) {
+        if !self.type_contains_typed_dict(handle, base_type) {
             return;
         }
         let Some(module_info) = self.get_module_info(handle) else {
@@ -1210,7 +1190,7 @@ impl<'a> Transaction<'a> {
         }
         let base_type = self
             .construction_contextual_type(handle, module, call.range())
-            .filter(Self::type_contains_typed_dict)?;
+            .filter(|ty| self.type_contains_typed_dict(handle, ty))?;
         let mut fields = self.collect_typed_dict_keys(handle, base_type)?;
         let mut supplied = BTreeSet::new();
         for keyword in &call.arguments.keywords {

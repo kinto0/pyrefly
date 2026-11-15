@@ -689,6 +689,37 @@ fn test_get_computed_type_tuple_unpacked() {
 }
 
 #[test]
+fn test_get_computed_type_generic_typed_dict_has_type_args() {
+    // A generic TypedDict is an ordinary parameterized class, so `Box[int]` reports
+    // its specialization through `typeArgs` the same way any other generic class does.
+    let (mut tsp, file_uri, snapshot) = setup_project(
+        "from typing import Generic, TypedDict, TypeVar\nT = TypeVar(\"T\")\nclass Box(TypedDict, Generic[T]):\n    item: T\nb: Box[int] = {\"item\": 1}\n",
+    );
+
+    let result = get_computed_type_ok(&mut tsp, &file_uri, 4, 0, snapshot);
+    assert_kind(&result, TypeKind::Class);
+
+    let decl = result.get("declaration").expect("Expected declaration");
+    assert_eq!(decl.get("name").and_then(|v| v.as_str()), Some("Box"));
+
+    let type_args = result
+        .get("typeArgs")
+        .and_then(|v| v.as_array())
+        .unwrap_or_else(|| panic!("Expected typeArgs on a generic TypedDict: {result}"));
+    assert_eq!(type_args.len(), 1, "Expected one type arg in: {result}");
+    assert_eq!(
+        type_args[0]
+            .get("declaration")
+            .and_then(|d| d.get("name"))
+            .and_then(|v| v.as_str()),
+        Some("int"),
+        "Expected `Box[int]`'s type arg to be `int` in: {result}",
+    );
+
+    tsp.shutdown();
+}
+
+#[test]
 fn test_get_computed_type_dict_is_class() {
     // `d: dict[str, int]` with an annotation to get a dict ClassType
     let (mut tsp, file_uri, snapshot) = setup_project("d: dict[str, int] = {\"key\": 1}\n");

@@ -153,8 +153,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) {
         let ty = self.expr_infer(&keyword.value, errors);
-        if let Type::TypedDict(typed_dict) = &ty {
-            for (name, field) in self.typed_dict_fields(&typed_dict.as_class_type()) {
+        if let Type::ClassType(typed_dict) = &ty
+            && self.is_typed_dict_class(typed_dict.class_object())
+        {
+            for (name, field) in self.typed_dict_fields(typed_dict) {
                 keywords.push((name, Annotation::new_type(field.ty)));
             }
         } else if let Type::AnonymousTypedDict(typed_dict) = &ty {
@@ -1678,6 +1680,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> BaseClassParseResult<'s> {
         let range = base.range();
         let parse_base_class_type = |ty| match ty {
+            ty @ Type::ClassType(_)
+                if is_new_type
+                    && let Type::ClassType(c) = &ty
+                    && self.is_typed_dict_class(c.class_object()) =>
+            {
+                BaseClassParseResult::InvalidType(ty, range)
+            }
             Type::ClassType(c) => {
                 let base_cls = c.class_object();
                 let base_class_metadata = self.get_metadata_for_class(base_cls);
@@ -1701,22 +1710,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         has_dynamic_base: false,
                     }
                 })
-            }
-            Type::TypedDict(typed_dict) => {
-                if is_new_type {
-                    BaseClassParseResult::InvalidType(typed_dict.to_type(self.heap), range)
-                } else {
-                    let class_object = typed_dict.class_object();
-                    let class_metadata = self.get_metadata_for_class(class_object);
-                    BaseClassParseResult::Parsed({
-                        ParsedBaseClass {
-                            class_object: class_object.dupe(),
-                            range,
-                            metadata: class_metadata,
-                            has_dynamic_base: false,
-                        }
-                    })
-                }
             }
             // An anonymous TypedDict cannot be used as a base class.
             ty @ Type::AnonymousTypedDict(_) => BaseClassParseResult::InvalidType(ty, range),

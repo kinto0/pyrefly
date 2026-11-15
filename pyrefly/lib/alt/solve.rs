@@ -2718,9 +2718,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Option<bool> {
         let range = x.range();
         let contains_class_object = self.uses_class_object_attribute_lookup(ty);
-        let intrinsic_value = if let Type::TypedDict(td) = ty
+        let intrinsic_value = if let Type::ClassType(td) = ty
+            && self.is_typed_dict_class(td.class_object())
             && self
-                .typed_dict_fields(&td.as_class_type())
+                .typed_dict_fields(td)
                 .values()
                 .any(|field| field.required)
         {
@@ -6549,6 +6550,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn subscript_assign_arm_allows_narrowing(&self, arm: &Type) -> bool {
         match arm {
             Type::Any(_) => false,
+            // A TypedDict's `__setitem__` writes exactly the field type its `__getitem__`
+            // reads, so an assignment always narrows.
+            Type::ClassType(cls) if self.is_typed_dict_class(cls.class_object()) => true,
             Type::ClassType(cls) => self.get_subscript_symmetry_for_class(cls.class_object()),
             _ => true,
         }
@@ -6903,11 +6907,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let assigned_ty = self.distribute_over_union(&base, |base| {
             self.distribute_over_union(&slice_ty, |key| {
                 match (base, key) {
-                    (Type::TypedDict(typed_dict), key)
-                        if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
+                    (Type::ClassType(typed_dict), key)
+                        if self.is_typed_dict_class(typed_dict.class_object())
+                            && let Some(field_name) = self.literal_typed_dict_key_name(key) =>
                     {
                         self.check_assign_to_typed_dict_literal_subscript(
-                            &typed_dict.as_class_type(),
+                            typed_dict,
                             &field_name,
                             value,
                             subscript.slice.range(),
@@ -6915,14 +6920,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                         )
                     }
-                    (Type::TypedDict(typed_dict), key)
-                        if self.is_subset_eq(
-                            key,
-                            &self.heap.mk_class_type(self.stdlib.str().clone()),
-                        ) && let Some(field_ty) = self
-                            .get_typed_dict_value_type_as_builtins_dict(
-                                &typed_dict.as_class_type(),
-                            ) =>
+                    (Type::ClassType(typed_dict), key)
+                        if self.is_typed_dict_class(typed_dict.class_object())
+                            && self.is_subset_eq(
+                                key,
+                                &self.heap.mk_class_type(self.stdlib.str().clone()),
+                            )
+                            && let Some(field_ty) =
+                                self.get_typed_dict_value_type_as_builtins_dict(typed_dict) =>
                     {
                         self.check_assign_to_typed_dict_field(
                             typed_dict.name(),
@@ -7308,9 +7313,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 {
                     let key = Name::new(key);
                     match binding.ty() {
-                        Type::TypedDict(typed_dict)
-                            if let Some(field) =
-                                self.typed_dict_field(&typed_dict.as_class_type(), &key) =>
+                        Type::ClassType(typed_dict)
+                            if self.is_typed_dict_class(typed_dict.class_object())
+                                && let Some(field) = self.typed_dict_field(typed_dict, &key) =>
                         {
                             return field.ty;
                         }
@@ -8139,6 +8144,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     // Approximate the result of calling `type()` on something of type T.
     pub fn type_of(&self, ty: Type) -> Type {
         match ty {
+            Type::ClassType(ref cls) if self.is_typed_dict_class(cls.class_object()) => {
+                self.heap.mk_class_def(self.stdlib.dict_object().clone())
+            }
             Type::ClassType(_) | Type::SelfType(_) => self.heap.mk_type_of(ty),
             Type::Literal(lit) => self.heap.mk_class_def(
                 lit.value
@@ -8153,7 +8161,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .heap
                 .mk_class_def(self.stdlib.none_type().class_object().clone()),
             Type::Tuple(_) => self.heap.mk_class_def(self.stdlib.tuple_object().clone()),
-            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
+            Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
                 self.heap.mk_class_def(self.stdlib.dict_object().clone())
             }
             Type::Union(f) if !f.members.is_empty() => {
@@ -8185,7 +8193,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         if type_form_context != TypeFormContext::ParameterKwargsAnnotation
-            && matches!(ty, Type::Unpack(ref inner, _) if matches!(&**inner, Type::TypedDict(_)))
+            && matches!(&ty, Type::Unpack(inner, _) if self.is_typed_dict(inner))
         {
             return self.error(
                 errors,
@@ -8195,7 +8203,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
         }
         if type_form_context == TypeFormContext::ParameterKwargsAnnotation
-            && matches!(ty, Type::Unpack(ref inner, _) if !matches!(**inner, Type::TypedDict(_)))
+            && matches!(&ty, Type::Unpack(inner, _) if !self.is_typed_dict(inner))
         {
             return self.error(
                 errors,
@@ -8385,25 +8393,26 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let slice_ty = self.expr_infer(&x.slice, errors);
                 self.map_over_union(&base, |base| {
                     self.map_over_union(&slice_ty, |key| match (base, key) {
-                        (Type::TypedDict(typed_dict), key)
-                            if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
+                        (Type::ClassType(typed_dict), key)
+                            if self.is_typed_dict_class(typed_dict.class_object())
+                                && let Some(field_name) = self.literal_typed_dict_key_name(key) =>
                         {
                             self.check_del_typed_dict_literal_key(
-                                &typed_dict.as_class_type(),
+                                typed_dict,
                                 &field_name,
                                 x.slice.range(),
                                 errors,
                             );
                         }
-                        (Type::TypedDict(typed_dict), key)
-                            if self.is_subset_eq(
-                                key,
-                                &self.heap.mk_class_type(self.stdlib.str().clone()),
-                            ) && self
-                                .get_typed_dict_value_type_as_builtins_dict(
-                                    &typed_dict.as_class_type(),
+                        (Type::ClassType(typed_dict), key)
+                            if self.is_typed_dict_class(typed_dict.class_object())
+                                && self.is_subset_eq(
+                                    key,
+                                    &self.heap.mk_class_type(self.stdlib.str().clone()),
                                 )
-                                .is_some() =>
+                                && self
+                                    .get_typed_dict_value_type_as_builtins_dict(typed_dict)
+                                    .is_some() =>
                         {
                             self.check_del_typed_dict_field(
                                 typed_dict.name(),

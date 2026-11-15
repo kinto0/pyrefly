@@ -742,6 +742,43 @@ def stringify[K: Flag[int | str | tuple[int, ...] | None]](value: K) -> str:
 }
 
 #[test]
+fn test_callees_typed_dict_method_reports_typed_dict_target() {
+    let tdir = TempDir::new().unwrap();
+    let file_path = tdir.path().join("main.py");
+    // Methods called on a declared TypedDict are reported under the `TypedDictionary`
+    // pseudo-module rather than the class the method is defined on, so that Pysa can
+    // model every TypedDict's methods with a single target.
+    let code = r#"
+from typing import TypedDict
+
+class Movie(TypedDict):
+    name: str
+
+def f(m: Movie) -> None:
+    m.get("name")
+"#;
+    fs_anyhow::write(&file_path, code).unwrap();
+
+    let query = create_query();
+    let module_name = ModuleName::from_str("main");
+    let path = ModulePath::filesystem(file_path.clone());
+
+    let errors = query.add_files(vec![(module_name, path.clone())]);
+    assert!(errors.is_empty(), "Unexpected errors: {errors:?}");
+
+    let targets = query
+        .get_callees_with_location(module_name, path, None)
+        .unwrap()
+        .into_iter()
+        .map(|(_, callee)| callee.target)
+        .collect::<Vec<_>>();
+    assert!(
+        targets.iter().any(|t| t == "TypedDictionary.get"),
+        "expected a `TypedDictionary.get` callee, got: {targets:?}",
+    );
+}
+
+#[test]
 fn test_callees_attribute_narrow_does_not_overwrite_rhs_trace() {
     // Regression test: narrowing on an attribute facet (e.g. `c.p == k.v`) used to
     // record the LHS property getter's trace against the narrow expression's range,

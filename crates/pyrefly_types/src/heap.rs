@@ -46,7 +46,6 @@ use crate::type_alias::TypeAliasData;
 use crate::type_var::TypeVar;
 use crate::type_var_tuple::TypeVarTuple;
 use crate::typed_dict::AnonymousTypedDictInner;
-use crate::typed_dict::TypedDictInner;
 use crate::types::AnyStyle;
 use crate::types::BoundMethod;
 use crate::types::Forall;
@@ -366,11 +365,6 @@ impl TypeHeap {
     /// Create a `Type::Intersect` from members and a fallback type.
     pub fn mk_intersect(&self, members: Vec<Type>, fallback: Type) -> Type {
         Type::Intersect(Box::new((members, fallback)))
-    }
-
-    /// Create a `Type::TypedDict` from a declared TypedDict.
-    pub fn mk_typed_dict(&self, typed_dict: TypedDictInner) -> Type {
-        Type::TypedDict(typed_dict)
     }
 
     /// Create a `Type::AnonymousTypedDict` from a TypedDict inferred from a dict literal.

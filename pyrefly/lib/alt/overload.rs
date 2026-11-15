@@ -982,11 +982,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
                 let nkeywords_unknown = keywords.iter().any(|kw| {
-                    kw.arg.is_none()
-                        && !matches!(
-                            kw.value.infer(self, errors),
-                            Type::TypedDict(_) | Type::AnonymousTypedDict(_)
-                        )
+                    kw.arg.is_none() && !self.is_typed_dict(&kw.value.infer(self, errors))
                 });
                 if nkeywords_unknown {
                     let has_kwargs = |o: &CalledOverload<'_>| {

@@ -1247,8 +1247,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
                 TypeOrExpr::Type(ty, _) => match ty {
-                    Type::TypedDict(typed_dict) => {
-                        for (name, field) in self.typed_dict_fields(&typed_dict.as_class_type()) {
+                    Type::ClassType(typed_dict)
+                        if self.is_typed_dict_class(typed_dict.class_object()) =>
+                    {
+                        for (name, field) in self.typed_dict_fields(typed_dict) {
                             if field.required {
                                 keyword_arg_names.insert(name);
                             }
@@ -1763,9 +1765,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     kwparams.insert(name, (ty, NameOrigin::Param, required));
                 }
                 Param::Kwargs(name, ty) if let Some(typed_dict) = ty.unpacked_typed_dict() => {
-                    self.typed_dict_fields(&typed_dict.as_class_type())
-                        .into_iter()
-                        .for_each(|(field_name, field)| {
+                    self.typed_dict_fields(typed_dict).into_iter().for_each(
+                        |(field_name, field)| {
                             kwparams.insert(
                                 name_owner.push(field_name),
                                 (
@@ -1778,8 +1779,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     },
                                 ),
                             );
-                        });
-                    kwargs = match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
+                        },
+                    );
+                    kwargs = match self.typed_dict_extra_items(typed_dict) {
                         ExtraItems::Closed => None,
                         ExtraItems::Extra(extra) => {
                             Some((name.as_ref(), Some(type_owner.push(extra.ty))))
@@ -1830,12 +1832,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // match the callee's kwargs or any of its unmatched keyword params. An
                     // anonymous TypedDict comes from a dict display, whose keys are all known.
                     let typed_dict = match &ty {
-                        Type::TypedDict(td) => Some((
-                            td.name().clone(),
-                            self.typed_dict_fields(&td.as_class_type()),
-                            self.typed_dict_extra_items(&td.as_class_type()),
-                            false,
-                        )),
+                        Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
+                            Some((
+                                ct.name().clone(),
+                                self.typed_dict_fields(ct),
+                                self.typed_dict_extra_items(ct),
+                                false,
+                            ))
+                        }
                         Type::AnonymousTypedDict(td) => Some((
                             ANONYMOUS_TYPED_DICT.clone(),
                             td.fields.iter().cloned().collect(),

@@ -4152,7 +4152,7 @@ def f(x: A):
 testcase!(
     test_typed_dict_truthiness_narrowing,
     r#"
-from typing import TypedDict, assert_type, NotRequired
+from typing import TypedDict, assert_type, NotRequired, reveal_type
 class RequiredDict(TypedDict):
     val: int
 class EmptyDict(TypedDict):
@@ -4161,7 +4161,7 @@ def test_narrowing(x: RequiredDict | None, y: EmptyDict | None):
     xval = x and x['val']
     assert_type(xval, int | None)
     yval = y and y.get('val')
-    assert_type(yval, int | None | EmptyDict)
+    reveal_type(yval)  # E: revealed type: (EmptyDict & Falsy) | int | None
 "#,
 );
 

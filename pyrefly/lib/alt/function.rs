@@ -37,6 +37,7 @@ use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::TParamsSource;
+use pyrefly_types::types::UnpackKind;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -1749,10 +1750,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 paramspec_kwargs = Some(q.clone());
             }
 
-            if let Type::Unpack(unpack, ..) = &ty
-                && let Type::TypedDict(typed_dict) = &**unpack
+            if let Type::Unpack(unpack, UnpackKind::Kwargs) = &ty
+                && let Type::ClassType(typed_dict) = &**unpack
             {
-                for (name, _) in self.typed_dict_fields(&typed_dict.as_class_type()) {
+                for (name, _) in self.typed_dict_fields(typed_dict) {
                     if params.iter().any(|param| {
                         matches!(
                             param,

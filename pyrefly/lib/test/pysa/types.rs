@@ -23,7 +23,6 @@ use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::TypedDictField;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Type;
 use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
@@ -739,7 +738,7 @@ class MyTypedDict(TypedDict):
                 .answers_context
                 .answers
                 .heap()
-                .mk_typed_dict(TypedDictInner::new(
+                .mk_class_type(ClassType::new(
                     get_class("test", "MyTypedDict", &context),
                     Default::default()
                 )),

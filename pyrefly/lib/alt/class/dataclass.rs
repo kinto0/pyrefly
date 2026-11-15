@@ -557,7 +557,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::ClassType(cls) if is_valid_target(cls) => dataclasses.push(ty.clone()),
             _ => {
                 has_non_attrs_class = has_non_attrs_class
-                    || (kind.requires_attrs() && matches!(ty, Type::ClassType(_)));
+                    || (kind.requires_attrs()
+                        && matches!(ty, Type::ClassType(cls) if !self.is_typed_dict_class(cls.class_object())));
                 non_dataclasses.push(ty.clone());
             }
         });

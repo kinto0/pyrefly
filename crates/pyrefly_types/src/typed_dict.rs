@@ -7,22 +7,17 @@
 
 use std::sync::LazyLock;
 
-use dupe::Dupe;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
-use pyrefly_python::qname::QName;
 use ruff_python_ast::name::Name;
 
 use crate::annotation::Qualifier;
-use crate::class::Class;
-use crate::class::ClassType;
 use crate::heap::TypeHeap;
 use crate::read_only::ReadOnlyReason;
 use crate::simplify;
 use crate::stdlib::Stdlib;
 use crate::types::Substitution;
-use crate::types::TArgs;
 use crate::types::Type;
 
 #[derive(
@@ -47,54 +42,6 @@ impl TypedDictField {
             required: self.required,
             read_only_reason: self.read_only_reason,
         }
-    }
-}
-
-#[derive(
-    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
-)]
-pub struct TypedDictInner {
-    class: Class,
-    args: TArgs,
-}
-
-impl TypedDictInner {
-    pub fn new(class: Class, args: TArgs) -> Self {
-        Self { class, args }
-    }
-
-    pub fn qname(&self) -> &QName {
-        self.class.qname()
-    }
-
-    pub fn name(&self) -> &Name {
-        self.class.name()
-    }
-
-    pub fn class_object(&self) -> &Class {
-        &self.class
-    }
-
-    pub fn targs(&self) -> &TArgs {
-        &self.args
-    }
-
-    pub fn targs_mut(&mut self) -> &mut TArgs {
-        &mut self.args
-    }
-
-    /// A declared TypedDict is described by exactly the class and type arguments that make up
-    /// a `ClassType`, so the two are freely interconvertible.
-    pub fn as_class_type(&self) -> ClassType {
-        ClassType::new(self.class.dupe(), self.args.clone())
-    }
-
-    pub fn from_class_type(class_type: &ClassType) -> Self {
-        Self::new(class_type.class_object().dupe(), class_type.targs().clone())
-    }
-
-    pub fn to_type(self, heap: &TypeHeap) -> Type {
-        heap.mk_typed_dict(self)
     }
 }
 

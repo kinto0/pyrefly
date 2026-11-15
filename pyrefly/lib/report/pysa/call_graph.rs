@@ -1635,13 +1635,6 @@ impl<'a> CallGraphVisitor<'a> {
                 )),
                 is_class_def: false,
             },
-            Type::TypedDict(typed_dict) => ReceiverClassResult {
-                class: Some(ClassRef::from_class(
-                    typed_dict.class_object(),
-                    self.module_context,
-                )),
-                is_class_def: false,
-            },
             Type::Quantified(quantified) => match quantified.restriction() {
                 Restriction::Bound(bound) => {
                     // Use the bound of the type var as the base class.
@@ -2000,9 +1993,6 @@ impl<'a> CallGraphVisitor<'a> {
             Some(Type::LiteralString(..)) => {
                 let str_class = self.module_answers_context.stdlib.str().class_object();
                 call_targets_from_method_name_with_class(str_class)
-            }
-            Some(Type::TypedDict(typed_dict)) => {
-                call_targets_from_method_name_with_class(typed_dict.class_object())
             }
             Some(Type::PartialTypedDict(class_type)) => {
                 call_targets_from_method_name_with_class(class_type.class_object())

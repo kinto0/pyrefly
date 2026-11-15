@@ -326,7 +326,6 @@ fn get_classes_of_type(type_: &Type, context: &ModuleContext) -> ClassNamesFromT
         Type::Tuple(_) => {
             ClassNamesFromType::from_class(context.answers_context.stdlib.tuple_object(), context)
         }
-        Type::TypedDict(inner) => ClassNamesFromType::from_class(inner.class_object(), context),
         Type::AnonymousTypedDict(_) => {
             ClassNamesFromType::from_class(context.answers_context.stdlib.dict_object(), context)
         }

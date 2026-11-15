@@ -39,7 +39,6 @@ use pyrefly_types::function::FuncMetadata;
 use pyrefly_types::function::FunctionKind;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::type_alias::TypeAliasData;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::lock::Mutex;
 use pyrefly_util::prelude::SliceExt;
@@ -2794,7 +2793,7 @@ impl<'a> Transaction<'a> {
         handle: &Handle,
         position: TextSize,
         covering_nodes: &[AnyNodeRef],
-    ) -> Option<(TypedDictInner, Name)> {
+    ) -> Option<(ClassType, Name)> {
         let subscript = covering_nodes.iter().find_map(|node| match node {
             AnyNodeRef::ExprSubscript(subscript) => Some(subscript),
             _ => None,
@@ -2808,19 +2807,23 @@ impl<'a> Transaction<'a> {
 
         let name = Name::new(key.value.to_str());
         let base_type = self.get_type_trace(handle, subscript.value.range())?;
-        let typed_dict = match base_type {
-            Type::TypedDict(typed_dict) => typed_dict,
-            Type::PartialTypedDict(class_type) => TypedDictInner::from_class_type(&class_type),
-            _ => return None,
+        let (Type::ClassType(typed_dict) | Type::PartialTypedDict(typed_dict)) = &base_type else {
+            return None;
         };
-        Some((typed_dict, name))
+        if self.ad_hoc_solve(handle, "typed_dict_key_at", |solver| {
+            solver.is_typed_dict(&base_type)
+        }) != Some(true)
+        {
+            return None;
+        }
+        Some((typed_dict.clone(), name))
     }
 
     /// Resolve a TypedDict key to its field declaration.
     fn find_definition_for_typed_dict_key(
         &self,
         handle: &Handle,
-        typed_dict: &TypedDictInner,
+        typed_dict: &ClassType,
         name: &Name,
     ) -> Option<FindDefinitionItemWithDocstring> {
         self.ad_hoc_solve(handle, "typed_dict_key_definition", |solver| {

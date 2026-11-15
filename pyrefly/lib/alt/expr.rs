@@ -2264,17 +2264,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let flattened_items = Ast::flatten_dict_items(items);
         if let Some(hint) = hint {
             for hint_ty in hint.types() {
-                let owner = Owner::new();
                 let (typed_dict, is_update) = match hint_ty {
-                    // Both declared forms produce an owned `ClassType`, so they have to be
-                    // materialized before they can be borrowed.
-                    Type::TypedDict(td) => (
-                        TypedDictHint::Declared(owner.push(td.as_class_type())),
-                        false,
-                    ),
-                    Type::PartialTypedDict(ct) => {
-                        (TypedDictHint::Declared(owner.push(ct.clone())), true)
+                    Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
+                        (TypedDictHint::Declared(ct), false)
                     }
+                    Type::PartialTypedDict(ct) => (TypedDictHint::Declared(ct), true),
                     Type::AnonymousTypedDict(inner) => (TypedDictHint::Anonymous(inner), false),
                     _ => continue,
                 };
@@ -2787,7 +2781,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if ty.is_any() {
             return false;
         }
-        if ty.is_typed_dict() {
+        if self.is_typed_dict(ty) {
             return true;
         }
         let dict_type = self.heap.mk_class_type(
@@ -2803,14 +2797,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ///   and looking at the `__bool__` method, if it is present).
     /// - `None` if it's truthiness is not statically known.
     pub fn as_bool(&self, ty: &Type, range: TextRange, errors: &ErrorCollector) -> Option<bool> {
-        if let Type::TypedDict(td) = ty {
+        if let Type::ClassType(ct) = ty
+            && self.is_typed_dict_class(ct.class_object())
+        {
             // If a TypedDict has ANY required keys, it can never be empty.
             // Therefore, it is always Truthy.
-            if self
-                .typed_dict_fields(&td.as_class_type())
-                .values()
-                .any(|field| field.required)
-            {
+            if self.typed_dict_fields(ct).values().any(|f| f.required) {
                 return Some(true);
             }
         } else if let Type::ClassType(cls) = ty {
@@ -3163,7 +3155,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// is the result of looking up the class `tparams` and synthesizing default `targs` that
     /// are gradual if needed (e.g. `list` is treated as `list[Any]` when used as an annotation).
     ///
-    /// This function canonicalizes to `Type::ClassType` or `Type::TypedDict`
+    /// This function canonicalizes to `Type::ClassType`.
     pub fn canonicalize_all_class_types(
         &self,
         ty: Type,
@@ -3603,7 +3595,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::Intersect(x) = &base {
                 let (specialized, generic): (Vec<_>, Vec<_>) = x.0.iter().partition(|member| {
                     is_builtin_sequence(member)
-                        || matches!(member, Type::TypedDict(_) | Type::AnonymousTypedDict(_))
+                        || matches!(member, Type::AnonymousTypedDict(_))
+                        || matches!(member, Type::ClassType(cls) if self.is_typed_dict_class(cls.class_object()))
                 });
                 if !specialized.is_empty() {
                     let index_ty = &*slice_ty;
@@ -4039,6 +4032,90 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         Some(&|| ErrorContext::Index(self.for_display(receiver.clone()))),
                     )
                 }
+                Type::ClassType(ref typed_dict)
+                    if self.is_typed_dict_class(typed_dict.class_object()) =>
+                {
+                    let key_ty = &*slice_ty;
+                    self.distribute_over_union(key_ty, |ty| match self.literal_typed_dict_key_name(ty) {
+                        Some(key_name) => {
+                            if let Some(field) =
+                                self.typed_dict_field(typed_dict, &key_name)
+                            {
+                                if !field.required && !key_present {
+                                    errors
+                                        .error_builder(
+                                            slice.range(),
+                                            ErrorKind::NotRequiredKeyAccess,
+                                            format!(
+                                                "TypedDict key `{}` may be absent",
+                                                key_name
+                                            ),
+                                        )
+                                        .with_detail(format!(
+                                            "Hint: guard this access with `'{}' in obj` or `obj.get('{}')`",
+                                            key_name, key_name
+                                        ))
+                                        .emit();
+                                }
+                                field.ty.clone()
+                            } else {
+                                match self.typed_dict_extra_items(typed_dict) {
+                                    ExtraItems::Extra(extra) => extra.ty,
+                                    extra_items if key_present => {
+                                        extra_items.extra_item(self.stdlib).ty
+                                    }
+                                    _ => {
+                                        let mut builder = errors.error_builder(
+                                            slice.range(),
+                                            ErrorKind::BadTypedDictKey,
+                                            format!(
+                                                "TypedDict `{}` does not have key `{key_name}`",
+                                                typed_dict.name()
+                                            ),
+                                        );
+                                        let fields = self.typed_dict_fields(typed_dict);
+                                        if let Some(suggestion) = best_suggestion(
+                                            &key_name,
+                                            fields
+                                                .keys()
+                                                .map(|candidate| Candidate::measured(candidate, 0)),
+                                        ) {
+                                            builder = builder.with_detail(format!(
+                                                "Did you mean `{suggestion}`?"
+                                            ));
+                                        }
+                                        builder.emit();
+                                        self.heap.mk_any_error()
+                                    }
+                                }
+                            }
+                        }
+                        None => {
+                            if self.is_subset_eq(
+                                ty,
+                                &self.heap.mk_class_type(self.stdlib.str().clone()),
+                            )
+                                && !matches!(
+                                    self.typed_dict_extra_items(typed_dict),
+                                    ExtraItems::Default
+                                )
+                            {
+                                self.get_typed_dict_value_type(typed_dict)
+                            } else {
+                                self.error(
+                                    errors,
+                                    slice.range(),
+                                    ErrorKind::BadTypedDictKey,
+                                    format!(
+                                        "Invalid key for TypedDict `{}`, got `{}`",
+                                        typed_dict.name(),
+                                        self.for_display(ty.clone())
+                                    ),
+                                )
+                            }
+                        }
+                    })
+                }
                 Type::ClassType(_) | Type::SelfType(_) => {
                     let receiver = target.with_base(&base).getitem_receiver();
                     self.call_method_or_error(
@@ -4167,88 +4244,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             unreachable!("restricted TypeVar cannot be unrestricted")
                         }
                     }
-                }
-                Type::TypedDict(typed_dict) => {
-                    let key_ty = &*slice_ty;
-                    self.distribute_over_union(key_ty, |ty| match self.literal_typed_dict_key_name(ty) {
-                        Some(key_name) => {
-                            if let Some(field) =
-                                self.typed_dict_field(&typed_dict.as_class_type(), &key_name)
-                            {
-                                if !field.required && !key_present {
-                                    errors
-                                        .error_builder(
-                                            slice.range(),
-                                            ErrorKind::NotRequiredKeyAccess,
-                                            format!(
-                                                "TypedDict key `{}` may be absent",
-                                                key_name
-                                            ),
-                                        )
-                                        .with_detail(format!(
-                                            "Hint: guard this access with `'{}' in obj` or `obj.get('{}')`",
-                                            key_name, key_name
-                                        ))
-                                        .emit();
-                                }
-                                field.ty.clone()
-                            } else {
-                                match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
-                                    ExtraItems::Extra(extra) => extra.ty,
-                                    extra_items if key_present => {
-                                        extra_items.extra_item(self.stdlib).ty
-                                    }
-                                    _ => {
-                                        let mut builder = errors.error_builder(
-                                            slice.range(),
-                                            ErrorKind::BadTypedDictKey,
-                                            format!(
-                                                "TypedDict `{}` does not have key `{key_name}`",
-                                                typed_dict.name()
-                                            ),
-                                        );
-                                        let fields = self.typed_dict_fields(&typed_dict.as_class_type());
-                                        if let Some(suggestion) = best_suggestion(
-                                            &key_name,
-                                            fields
-                                                .keys()
-                                                .map(|candidate| Candidate::measured(candidate, 0)),
-                                        ) {
-                                            builder = builder.with_detail(format!(
-                                                "Did you mean `{suggestion}`?"
-                                            ));
-                                        }
-                                        builder.emit();
-                                        self.heap.mk_any_error()
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            if self.is_subset_eq(
-                                ty,
-                                &self.heap.mk_class_type(self.stdlib.str().clone()),
-                            )
-                                && !matches!(
-                                    self.typed_dict_extra_items(&typed_dict.as_class_type()),
-                                    ExtraItems::Default
-                                )
-                            {
-                                self.get_typed_dict_value_type(&typed_dict.as_class_type())
-                            } else {
-                                self.error(
-                                    errors,
-                                    slice.range(),
-                                    ErrorKind::BadTypedDictKey,
-                                    format!(
-                                        "Invalid key for TypedDict `{}`, got `{}`",
-                                        typed_dict.name(),
-                                        self.for_display(ty.clone())
-                                    ),
-                                )
-                            }
-                        }
-                    })
                 }
                 Type::AnonymousTypedDict(typed_dict) => {
                     // Every key of an anonymous TypedDict is optional and its extra items type is
@@ -4911,8 +4906,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let targs = self.parse_class_type_args(cls, xs.iter(), type_form_context, errors);
             match self.specialize(cls, targs, range, errors) {
                 Type::ClassType(class_type) => Type::SpecializedClassDef(class_type),
-                Type::TypedDict(typed_dict) => self.heap.mk_type_of(Type::TypedDict(typed_dict)),
-                _ => unreachable!("specializing a class produces a class or TypedDict instance"),
+                _ => unreachable!("specializing a class produces a class instance"),
             }
         }
     }

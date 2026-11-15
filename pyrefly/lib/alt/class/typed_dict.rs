@@ -218,8 +218,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     Some(HintRef::soft(&partial_td_ty)),
                     item_errors,
                 );
-                if let Type::TypedDict(unpacked) = &item_ty {
-                    let unpacked_fields = self.typed_dict_fields(&unpacked.as_class_type());
+                if let Type::ClassType(unpacked) = &item_ty
+                    && self.is_typed_dict_class(unpacked.class_object())
+                {
+                    let unpacked_fields = self.typed_dict_fields(unpacked);
                     for (key, field) in &unpacked_fields {
                         if field.required {
                             keys.insert(key.clone());
@@ -270,6 +272,24 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
         }
+    }
+
+    /// Is this the type of a TypedDict instance -- declared, anonymous or partial?
+    ///
+    /// A declared TypedDict instance is an ordinary `ClassType`, so recognizing one requires
+    /// its `ClassMetadata`. Only call this where the TypedDict distinction actually matters;
+    /// asking for every class would reintroduce the eager metadata demand that representing
+    /// TypedDicts as `ClassType` removed.
+    pub fn is_typed_dict(&self, ty: &Type) -> bool {
+        match ty {
+            Type::ClassType(ct) => self.is_typed_dict_class(ct.class_object()),
+            Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_typed_dict_class(&self, cls: &Class) -> bool {
+        self.get_metadata_for_class(cls).is_typed_dict()
     }
 
     /// The extra items of `cls`, expressed in terms of `cls`'s own type parameters. A class

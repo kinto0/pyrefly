@@ -37,6 +37,7 @@ use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::Forall;
 use pyrefly_types::types::Overload;
 use pyrefly_types::types::OverloadType;
+use pyrefly_types::types::UnpackKind;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::name::Name;
@@ -524,63 +525,62 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             .heap
             .mk_class_type(self.type_order.stdlib().object().clone());
         // Expand typed dict kwargs if necessary, check regular kwargs
+        // `UnpackKind::Kwargs` is produced only for a `**kwargs: Unpack[TD]` annotation, and
+        // `validate_type_form` has already rejected any inner type that is not a TypedDict, so
+        // these arms do not need to consult class metadata to recognize one.
         let l_kwargs = match (l_kwargs, u_kwargs) {
-            (Some(l @ Type::Var(_)), Some(ref u @ Type::Unpack(ref u_inner, _)))
-                if l_keywords.is_empty() && matches!(&**u_inner, Type::TypedDict(_)) =>
+            (Some(l @ Type::Var(_)), Some(ref u @ Type::Unpack(_, UnpackKind::Kwargs)))
+                if l_keywords.is_empty() =>
             {
                 self.is_subset_eq(u, &l)?;
                 Some(object_type)
             }
-            (Some(Type::Unpack(l_inner, _)), Some(Type::Unpack(u_inner, _)))
-                if matches!(
-                    (&*l_inner, &*u_inner),
-                    (Type::TypedDict(_), Type::TypedDict(_))
-                ) =>
+            (
+                Some(Type::Unpack(l_inner, UnpackKind::Kwargs)),
+                Some(Type::Unpack(u_inner, UnpackKind::Kwargs)),
+            ) if matches!(
+                (&*l_inner, &*u_inner),
+                (Type::ClassType(_), Type::ClassType(_))
+            ) =>
             {
-                let Type::TypedDict(l_typed_dict) = *l_inner else {
+                let (Type::ClassType(l_typed_dict), Type::ClassType(u_typed_dict)) =
+                    (*l_inner, *u_inner)
+                else {
                     unreachable!("guarded by matches! above")
                 };
-                let Type::TypedDict(u_typed_dict) = *u_inner else {
-                    unreachable!("guarded by matches! above")
-                };
-                for (name, ty, required) in self
-                    .type_order
-                    .typed_dict_kw_param_info(&l_typed_dict.as_class_type())
+                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&l_typed_dict)
                 {
                     l_keywords.insert(name, (ty, required == Required::Required));
                 }
-                for (name, ty, required) in self
-                    .type_order
-                    .typed_dict_kw_param_info(&u_typed_dict.as_class_type())
+                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
                 {
                     u_keywords.insert(name, (ty, required == Required::Required));
                 }
                 Some(object_type)
             }
-            (Some(Type::Unpack(l_inner, _)), _) if matches!(*l_inner, Type::TypedDict(_)) => {
-                let Type::TypedDict(l_typed_dict) = *l_inner else {
+            (Some(Type::Unpack(l_inner, UnpackKind::Kwargs)), _)
+                if matches!(*l_inner, Type::ClassType(_)) =>
+            {
+                let Type::ClassType(l_typed_dict) = *l_inner else {
                     unreachable!("guarded by matches! above")
                 };
-                for (name, ty, required) in self
-                    .type_order
-                    .typed_dict_kw_param_info(&l_typed_dict.as_class_type())
+                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&l_typed_dict)
                 {
                     l_keywords.insert(name, (ty, required == Required::Required));
                 }
                 Some(object_type)
             }
-            (l_kwargs, Some(Type::Unpack(u_inner, _)))
-                if matches!(*u_inner, Type::TypedDict(_)) =>
+            (l_kwargs, Some(Type::Unpack(u_inner, UnpackKind::Kwargs)))
+                if matches!(*u_inner, Type::ClassType(_)) =>
             {
-                let Type::TypedDict(u_typed_dict) = *u_inner else {
+                let Type::ClassType(u_typed_dict) = *u_inner else {
                     unreachable!("guarded by matches! above")
                 };
                 // Allow expanding Unpack[TypedDict] kwargs against explicit keyword params
                 // only when the other side also has **kwargs or the TypedDict is closed.
                 if l_kwargs.is_none()
                     && !matches!(
-                        self.type_order
-                            .typed_dict_extra_items(&u_typed_dict.as_class_type()),
+                        self.type_order.typed_dict_extra_items(&u_typed_dict),
                         ExtraItems::Closed
                     )
                 {
@@ -588,9 +588,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         u_typed_dict.name().clone(),
                     ));
                 }
-                for (name, ty, required) in self
-                    .type_order
-                    .typed_dict_kw_param_info(&u_typed_dict.as_class_type())
+                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
                 {
                     u_keywords.insert(name, (ty, required == Required::Required));
                 }
@@ -2355,19 +2353,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 )?;
                 self.is_subset_eq(&l_sig.ret, &u_sig.ret)
             }
-            (Type::AnonymousTypedDict(got), Type::TypedDict(want)) => {
-                self.is_subset_anonymous_typed_dict(got, &want.as_class_type())
-            }
-            (Type::TypedDict(got), Type::TypedDict(want)) => {
-                self.is_subset_typed_dict(&got.as_class_type(), &want.as_class_type())
-            }
-            (Type::TypedDict(got), Type::PartialTypedDict(want)) => {
-                let got = GotTypedDict {
-                    name: got.name().clone(),
-                    fields: self.type_order.typed_dict_fields(&got.as_class_type()),
-                    extra_items: self.type_order.typed_dict_extra_items(&got.as_class_type()),
-                };
-                self.is_subset_partial_typed_dict(got, want)
+            (Type::AnonymousTypedDict(got), Type::ClassType(want))
+                if self.type_order.is_typed_dict_class(want.class_object()) =>
+            {
+                self.is_subset_anonymous_typed_dict(got, want)
             }
             (Type::AnonymousTypedDict(got), Type::PartialTypedDict(want)) => {
                 // Every key of an anonymous TypedDict is optional and read-write, and its extra
@@ -2398,12 +2387,6 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     self.is_subset_eq(&got_field.ty, want_ty)
                 })
             }
-            (Type::TypedDict(_), Type::SelfType(cls))
-                if cls == self.type_order.stdlib().typed_dict_fallback() =>
-            {
-                // Allow substituting a TypedDict for Self when we call methods
-                Ok(())
-            }
             (Type::AnonymousTypedDict(td), _) => {
                 let stdlib = self.type_order.stdlib();
                 self.is_subset_eq(
@@ -2424,46 +2407,70 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     )),
                 )
             }
-            (Type::TypedDict(_), Type::ClassType(want))
-                if !self.type_order.is_protocol(want.class_object())
-                    && !self.type_order.has_superclass(
-                        self.type_order.stdlib().mapping_object(),
-                        want.class_object(),
-                    )
-                    && !self.type_order.has_superclass(
-                        self.type_order.stdlib().dict_object(),
-                        want.class_object(),
-                    ) =>
+            // Recognizing a declared TypedDict takes a metadata lookup, which every class instance
+            // on the left pays, so all of the TypedDict cases share this one check.
+            (Type::ClassType(got), _)
+                if self.type_order.is_typed_dict_class(got.class_object()) =>
             {
-                // A declared TypedDict's nominal carrier is either Mapping or dict. Reject
-                // classes unrelated to both before calculating its value type, which may
-                // require solving recursive fields of the TypedDict currently being defined.
-                Err(SubsetError::Other)
-            }
-            (Type::TypedDict(td), _) => {
-                let stdlib = self.type_order.stdlib();
-                if let Some(value_type) = self
-                    .type_order
-                    .get_typed_dict_value_type_as_builtins_dict(&td.as_class_type())
-                {
-                    self.is_subset_eq(
-                        &self.solver.heap.mk_class_type(stdlib.dict(
-                            self.solver.heap.mk_class_type(stdlib.str().clone()),
-                            value_type,
-                        )),
-                        want,
-                    )
-                } else {
-                    self.is_subset_eq(
-                        &self.solver.heap.mk_class_type(
-                            stdlib.mapping(
-                                self.solver.heap.mk_class_type(stdlib.str().clone()),
-                                self.type_order
-                                    .get_typed_dict_value_type(&td.as_class_type()),
-                            ),
-                        ),
-                        want,
-                    )
+                match want {
+                    Type::ClassType(want)
+                        if self.type_order.is_typed_dict_class(want.class_object()) =>
+                    {
+                        self.is_subset_typed_dict(got, want)
+                    }
+                    Type::PartialTypedDict(want) => {
+                        let got = GotTypedDict {
+                            name: got.name().clone(),
+                            fields: self.type_order.typed_dict_fields(got),
+                            extra_items: self.type_order.typed_dict_extra_items(got),
+                        };
+                        self.is_subset_partial_typed_dict(got, want)
+                    }
+                    Type::SelfType(cls)
+                        if cls == self.type_order.stdlib().typed_dict_fallback() =>
+                    {
+                        // Allow substituting a TypedDict for Self when we call methods
+                        Ok(())
+                    }
+                    Type::ClassType(want)
+                        if !self.type_order.is_protocol(want.class_object())
+                            && !self.type_order.has_superclass(
+                                self.type_order.stdlib().mapping_object(),
+                                want.class_object(),
+                            )
+                            && !self.type_order.has_superclass(
+                                self.type_order.stdlib().dict_object(),
+                                want.class_object(),
+                            ) =>
+                    {
+                        // A declared TypedDict's nominal carrier is either Mapping or dict. Reject
+                        // classes unrelated to both before calculating its value type, which may
+                        // require solving recursive fields of the TypedDict currently being defined.
+                        Err(SubsetError::Other)
+                    }
+                    _ => {
+                        let stdlib = self.type_order.stdlib();
+                        if let Some(value_type) = self
+                            .type_order
+                            .get_typed_dict_value_type_as_builtins_dict(got)
+                        {
+                            self.is_subset_eq(
+                                &self.solver.heap.mk_class_type(stdlib.dict(
+                                    self.solver.heap.mk_class_type(stdlib.str().clone()),
+                                    value_type,
+                                )),
+                                want,
+                            )
+                        } else {
+                            self.is_subset_eq(
+                                &self.solver.heap.mk_class_type(stdlib.mapping(
+                                    self.solver.heap.mk_class_type(stdlib.str().clone()),
+                                    self.type_order.get_typed_dict_value_type(got),
+                                )),
+                                want,
+                            )
+                        }
+                    }
                 }
             }
             (Type::DataFrame(got_schema), Type::DataFrame(want_schema)) => {

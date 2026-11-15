@@ -176,6 +176,10 @@ impl<'solver, Ans: LookupAnswer> TypeOrder<'solver, Ans> {
         self.0.promote_silently(cls)
     }
 
+    pub fn is_typed_dict_class(self, cls: &Class) -> bool {
+        self.0.is_typed_dict_class(cls)
+    }
+
     pub fn typed_dict_fields(self, typed_dict: &ClassType) -> SmallMap<Name, TypedDictField> {
         self.0.typed_dict_fields(typed_dict)
     }

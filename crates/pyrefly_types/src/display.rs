@@ -992,10 +992,6 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_qname(class_type.qname())?;
                 output.write_targs(class_type.targs())
             }
-            Type::TypedDict(inner) => {
-                output.write_qname(inner.qname())?;
-                output.write_targs(inner.targs())
-            }
             Type::PartialTypedDict(inner) => {
                 output.write_qname(inner.qname())?;
                 output.write_targs(inner.targs())
@@ -1985,7 +1981,6 @@ pub mod tests {
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
     use crate::type_var::TypeVar;
-    use crate::typed_dict::TypedDictInner;
     use crate::types::BoundMethodType;
     use crate::types::Overload;
     use crate::types::OverloadType;
@@ -3121,8 +3116,10 @@ pub mod tests {
         let tparams = fake_tparams(vec![fake_tparam(3, "T", QuantifiedKind::TypeVar)]);
         let t = Type::None;
         let targs = TArgs::new(tparams.dupe(), vec![t]);
-        let td = TypedDictInner::new(cls, targs);
-        assert_eq!(Type::TypedDict(td).to_string(), "C[None]");
+        assert_eq!(
+            Type::ClassType(ClassType::new(cls, targs)).to_string(),
+            "C[None]"
+        );
     }
 
     #[test]
@@ -3573,8 +3570,7 @@ def overloaded_func[T](
     #[test]
     fn test_get_types_with_location_typed_dict() {
         let cls = fake_class("MyTypedDict", "mymodule", 25);
-        let td = TypedDictInner::new(cls, TArgs::default());
-        let t = Type::TypedDict(td);
+        let t = Type::ClassType(ClassType::new(cls, TArgs::default()));
         let parts = get_parts(&t);
 
         assert_part_has_location(&parts, "MyTypedDict", "mymodule", 25);
