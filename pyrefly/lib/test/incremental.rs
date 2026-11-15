@@ -4281,10 +4281,9 @@ fn test_fewer_classes_rebuild_reports_current_classes() {
 /// A module can see its own classes through the modules it imports. `foo` is rebuilt with fewer
 /// classes and reads `Sub` from `bar`, which is in an import cycle with `foo`. `bar` is only
 /// rebuilt after `foo`'s exports change, so `foo` first reads the MRO of `Sub` that `bar` computed
-/// against the old `foo`, which names `Foo` at its old index.
-// Bug: `foo` looks up `Foo`'s old index in its own class metadata, which has no entry for it.
+/// against the old `foo`, which names `Foo` at its old index. `foo` treats it as a class it no
+/// longer has; rebuilding `bar` then changes the MRO of `Sub`, so `foo` is rebuilt against it.
 #[test]
-#[should_panic(expected = "index out of bounds")]
 fn test_own_class_read_through_cycle_after_fewer_classes() {
     let mut i = Incremental::new();
     i.set(
@@ -4300,10 +4299,9 @@ fn test_own_class_read_through_cycle_after_fewer_classes() {
 
 /// Like `test_own_class_read_through_cycle_after_fewer_classes`, but `foo` reads its enum `E` back
 /// through `bar` and narrows by one of its members, which looks up the fields and the metadata of
-/// `E` at its old index.
-// Bug: `foo` looks up `E`'s old index in its own class metadata, which has no entry for it.
+/// `E` at its old index. `foo` leaves the value unnarrowed until it is rebuilt against the new
+/// `bar`.
 #[test]
-#[should_panic(expected = "index out of bounds")]
 fn test_own_enum_read_through_cycle_after_fewer_classes() {
     let foo = |classes: &str| {
         format!(

@@ -2359,11 +2359,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// which caches metadata per module and registers class-level dependencies
     /// for proper incremental invalidation.
     ///
-    /// Returns `None` if the `ClassDefIndex` is stale (cross-module only;
-    /// same-module indices are always valid).
+    /// Returns `None` if the `ClassDefIndex` is stale, e.g. because its module was rebuilt with
+    /// fewer classes. A class of this module can be stale too, when it comes from a mutually
+    /// recursive module whose answers predate this module's rebuild.
     pub fn get_class_fields(&self, cls: &Class) -> Option<&ClassFields> {
         if cls.module_path() == self.module().path() {
-            return Some(&self.bindings().metadata().get_class(cls.index()).fields);
+            return self.bindings().get_class_fields(cls.index());
         }
         self.answers.get_class_fields(cls)
     }

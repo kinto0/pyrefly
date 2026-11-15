@@ -58,8 +58,8 @@ impl BindingsMetadata {
         &self.classes[idx.0 as usize]
     }
 
-    /// Bounds-checked version for cross-module lookups where the
-    /// `ClassDefIndex` may be stale after an incremental rebuild.
+    /// Bounds-checked version for lookups where the `ClassDefIndex` may be
+    /// stale after an incremental rebuild.
     pub fn get_class_checked(&self, idx: ClassDefIndex) -> Option<&ClassMetadata> {
         self.classes.get(idx.0 as usize)
     }

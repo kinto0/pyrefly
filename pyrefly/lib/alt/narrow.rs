@@ -131,8 +131,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             return instance.to_type(self.heap);
         }
-        self.get_enum_from_class(instance.class)
-            .expect("enum subtraction requires an enum class");
+        // The class is an enum unless it is a stale class of a module that was rebuilt (see
+        // `get_class_fields`), which we leave unnarrowed.
+        if self.get_enum_from_class(instance.class).is_none() {
+            return instance.to_type(self.heap);
+        }
         // Enums derived from enum.Flag cannot be treated as a union of their members
         if self.has_superclass(instance.class, self.stdlib.enum_flag().class_object()) {
             return instance.to_type(self.heap);
