@@ -169,7 +169,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadTypedDictKey,
                         format!(
                             "Expected string literal key, got `{}`",
-                            self.for_display(key_type)
+                            self.display(key_type)
                         ),
                     );
                 }
@@ -537,7 +537,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // Anchored to the TypedDict class definition range with Synthetic origin.
         let identity = QuantifiedIdentity::new(
             self.module().name(),
-            AnchorIndex::first(cls.range()),
+            AnchorIndex::first(cls.range_in(self)),
             QuantifiedOrigin::synthetic(),
         );
         let q = Quantified::type_var(
@@ -1082,7 +1082,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadTypedDictKey,
                         format!(
                             "Cannot extend closed TypedDict `{}` with extra item `{}`",
-                            base.name(),
+                            base.name_in(self),
                             name
                         ),
                     );
@@ -1096,7 +1096,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors, range, ErrorKind::BadTypedDictKey,
                             format!(
                                 "`{}` is not assignable to `extra_items` type `{}` of TypedDict `{}`",
-                                self.for_display(field_ty.clone()), self.for_display(ty), base.name()));
+                                self.display(field_ty.clone()), self.for_display(ty), base.name_in(self)));
                         }
                     } else {
                         // The field needs to be non-required and its type consistent with the extra_items type.
@@ -1107,7 +1107,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                                 range,
                                 ErrorKind::BadTypedDictKey,
-                                format!("Cannot add required field `{}` to TypedDict `{}` with non-read-only `extra_items`", name, base.name()),
+                                format!("Cannot add required field `{}` to TypedDict `{}` with non-read-only `extra_items`", name, base.name_in(self)),
                             );
                         } else if !self.is_consistent(field_ty, &ty) {
                             self.error(
@@ -1116,7 +1116,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadTypedDictKey,
                                 format!(
                                     "`{}` is not consistent with `extra_items` type `{}` of TypedDict `{}`",
-                                    self.for_display(field_ty.clone()), self.for_display(ty), base.name()),
+                                    self.display(field_ty.clone()), self.for_display(ty), base.name_in(self)),
                             );
                         }
                     }

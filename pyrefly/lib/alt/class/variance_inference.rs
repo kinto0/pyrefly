@@ -840,7 +840,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if ty.is_toplevel_callable() {
                 let range = class_fields
                     .and_then(|f| f.field_decl_range(name))
-                    .unwrap_or_else(|| class.range());
+                    .unwrap_or_else(|| class.range_in(self));
                 self.check_method_shallow(ty, range, &mut violations);
             }
         }

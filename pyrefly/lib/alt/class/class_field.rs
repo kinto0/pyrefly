@@ -37,6 +37,7 @@ use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TParams;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::ResultExt;
 use pyrefly_util::visit::Visit;
@@ -2765,7 +2766,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(allowed_slots) = self.effective_slots_for_instance_write(class)
             && !allowed_slots.contains::<Name>(name)
         {
-            let class_name = class.name();
+            let class_name = class.name_in(self);
             self.error_with_context(
                 errors,
                 range,
@@ -3727,7 +3728,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "Attribute `{}` cannot depend on type variable `{}`, which is not in the scope of class `{}`",
                         name,
                         q.name(),
-                        class.name(),
+                        class.name_in(self),
                     ),
                 );
                 (qs_owner.push((*q).clone()), ts.push(q.as_gradual_type()))
@@ -3743,12 +3744,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn get_self_quantified(&self, class: &Class, instance_type: Type) -> Quantified {
         let identity = QuantifiedIdentity::new(
             self.module().name(),
-            AnchorIndex::first(class.range()),
+            AnchorIndex::first(class.range_in(self)),
             QuantifiedOrigin::Synthetic { is_self: true },
         );
         Quantified::new(
             identity,
-            Name::new(format!("Self@{}", class.name())),
+            Name::new(format!("Self@{}", class.name_in(self))),
             QuantifiedKind::TypeVar,
             None,
             Restriction::Bound(instance_type),
@@ -4280,8 +4281,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict field `{field_name}` in `{}` cannot be marked read-only; parent TypedDict `{}` defines it as mutable",
-                        child_cls.name(),
-                        parent_cls.name()
+                        child_cls.name_in(self),
+                        parent_cls.name_in(self)
                     ),
                 );
                 return false;
@@ -4293,8 +4294,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict field `{field_name}` in `{}` must remain required because parent TypedDict `{}` defines it as required",
-                        child_cls.name(),
-                        parent_cls.name()
+                        child_cls.name_in(self),
+                        parent_cls.name_in(self)
                     ),
                 );
                 return false;
@@ -4306,8 +4307,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict field `{field_name}` in `{}` cannot be made required; parent TypedDict `{}` defines it as non-required",
-                        child_cls.name(),
-                        parent_cls.name()
+                        child_cls.name_in(self),
+                        parent_cls.name_in(self)
                     ),
                 );
                 return false;
@@ -4319,8 +4320,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadTypedDictKey,
                 format!(
                     "TypedDict field `{field_name}` in `{}` cannot be made non-required; parent TypedDict `{}` defines it as required",
-                    child_cls.name(),
-                    parent_cls.name()
+                    child_cls.name_in(self),
+                    parent_cls.name_in(self)
                 ),
             );
             return false;
@@ -4457,7 +4458,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::MissingSuperCall,
                 format!(
                     "Method `{}.{}` does not call the method of the same name in a parent class",
-                    cls.name(),
+                    cls.name_in(self),
                     field_name,
                 ),
             );
@@ -4567,7 +4568,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // signature is written to be implemented rather than inherited.
             if field_name == &dunder::CALL
                 && !is_explicit_override
-                && !want_field.defining_class.is_protocol()
+                && !want_field.defining_class.is_protocol_in(self)
             {
                 continue;
             }
@@ -4586,7 +4587,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     format!(
                         "`{}` is declared as final in parent class `{}`",
                         field_name,
-                        parent.name()
+                        parent.name_in(self)
                     ),
                 );
                 continue;
@@ -4601,9 +4602,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadOverride,
                             format!(
                                 "Instance variable `{}.{}` overrides ClassVar of the same name in parent class `{}`",
-                                cls.name(),
+                                cls.name_in(self),
                                 field_name,
-                                parent.name()
+                                parent.name_in(self)
                             ),
                         );
                     continue;
@@ -4614,9 +4615,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadOverride,
                             format!(
                                 "ClassVar `{}.{}` overrides instance variable of the same name in parent class `{}`",
-                                cls.name(),
+                                cls.name_in(self),
                                 field_name,
-                                parent.name()
+                                parent.name_in(self)
                             ),
                         );
                     continue;
@@ -4655,10 +4656,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadOverride,
                     format!(
                         "Instance method `{}.{}` overrides {} method of the same name in parent class `{}`",
-                        cls.name(),
+                        cls.name_in(self),
                         field_name,
                         parent_method_kind,
-                        parent.name(),
+                        parent.name_in(self),
                     ),
                 );
                 continue;
@@ -4933,7 +4934,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         } else {
                             ErrorKind::BadOverride
                         },
-                        message: error.to_error_msg(cls.name(), parent.name(), field_name),
+                        message: error.to_error_msg(
+                            cls.name_in(self),
+                            parent.name_in(self),
+                            field_name,
+                        ),
                         diff_lines,
                     })
                 }
@@ -4951,9 +4956,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         kind,
                         format!(
                             "Class member `{}.{}` overrides parent class `{}` in an inconsistent manner",
-                            cls.name(),
+                            cls.name_in(self),
                             field_name,
-                            parent.name()
+                            parent.name_in(self)
                         ),
                     )
                     .with_detail(message);
@@ -4970,7 +4975,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadOverride,
                     format!(
                         "Class member `{}.{}` is marked as an override, but no parent class has a matching attribute",
-                        cls.name(),
+                        cls.name_in(self),
                         field_name,
                     ),
                 );
@@ -4993,7 +4998,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::MissingOverrideDecorator,
                 format!(
                     "Class member `{}.{}` overrides a member in a parent class but is missing an `@override` decorator",
-                    cls.name(),
+                    cls.name_in(self),
                     field_name,
                 ),
             );
@@ -5081,7 +5086,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if intersect.is_never() {
                     let mut builder = errors
                         .error_builder(
-                            cls.range(),
+                            cls.range_in(self),
                             ErrorKind::InconsistentInheritance,
                             format!(
                                 "Field `{field_name}` has inconsistent types inherited from multiple base classes"
@@ -5091,8 +5096,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     for info in inherited_field_infos_by_ancestor.iter() {
                         builder = builder.with_detail(format!(
                             "  `{}` from `{}`",
-                            self.for_display(info.ty.clone()),
-                            info.class.name()
+                            self.display(info.ty.clone()),
+                            info.class.name_in(self)
                         ));
                     }
                     builder.emit();
@@ -5107,13 +5112,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         {
                             self.error(
                                 errors,
-                                cls.range(),
+                                cls.range_in(self),
                                 ErrorKind::InconsistentInheritance,
                                 format!(
                                     "Field `{field_name}` is declared `{}` in ancestor `{}`, which is not assignable to the type `{}` implied by multiple inheritance",
-                                    info.ty,
-                                    info.class,
-                                    intersect,
+                                    info.ty.display_with(self),
+                                    info.class.def_in(self),
+                                    intersect.display_with(self),
                                 ),
                             );
                         }
@@ -5141,7 +5146,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 field_name,
                                 child_field.as_ref(),
                                 info.field.as_ref(),
-                                cls.range(),
+                                cls.range_in(self),
                                 errors,
                             )
                         {

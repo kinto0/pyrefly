@@ -67,7 +67,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     name.range,
                     ErrorKind::InvalidTypeVar,
-                    format!("Expected a {kind}, got `{}`", self.for_display(t.clone())),
+                    format!("Expected a {kind}, got `{}`", self.display(t.clone())),
                 );
             }
             q.and_then(|(q, _)| {

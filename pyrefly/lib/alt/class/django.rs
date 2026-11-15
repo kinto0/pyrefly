@@ -1438,7 +1438,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         source_class: &Class,
         relation_kind: DjangoRelationKind,
     ) -> Name {
-        let mut name = source_class.name().as_str().to_lowercase();
+        let mut name = source_class.name_in(self).as_str().to_lowercase();
         if matches!(
             relation_kind,
             DjangoRelationKind::ForeignKey | DjangoRelationKind::ManyToMany
@@ -1453,7 +1453,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return None;
         }
 
-        let class_name = source_class.name().as_str().to_lowercase();
+        let class_name = source_class.name_in(self).as_str().to_lowercase();
         let mut substituted = raw.replace("%(class)s", &class_name);
         if substituted.contains("%(app_label)s") {
             let module_name = source_class.module_name();

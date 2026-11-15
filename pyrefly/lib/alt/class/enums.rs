@@ -108,7 +108,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             };
             let value_ty = self.enum_literal_to_value_type((*lit_enum).clone(), is_django);
             if self.is_equivalent(got, &value_ty) {
-                let candidate = format!("{}.{}", lit_enum.class.name(), lit_enum.member);
+                let candidate = format!("{}.{}", lit_enum.class.name_in(self), lit_enum.member);
                 match &suggestion {
                     Some(existing) if existing != &candidate => return None,
                     _ => suggestion = Some(candidate),
@@ -749,7 +749,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors, range, ErrorKind::BadAssignment,
                 format!(
                     "Enum member `{member}` has type `{}`, must match the `_value_` attribute annotation of `{}`",
-                    self.for_display(value.clone()),
+                    self.display(value.clone()),
                     self.for_display(annotation.clone()),
                 ),
             );

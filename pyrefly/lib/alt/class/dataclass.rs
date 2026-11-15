@@ -10,6 +10,7 @@ use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use ruff_python_ast::Arguments;
 use ruff_python_ast::Expr::EllipsisLiteral;
@@ -252,7 +253,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::BadClassDefinition,
                     "Cannot specify both `slots=True` and `__slots__`".to_owned(),
                 );
@@ -437,7 +438,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     _ => {}
                 }
 
-                let cls = descriptor_cls.name();
+                let cls = descriptor_cls.name_in(self);
                 errors
                     .error_builder(
                         range,
@@ -491,7 +492,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if let (Some(get_ty), Some(set_ty)) = (get_return_ty, set_value_ty) {
                     // Check if the __get__ return type is assignable to the __set__ value type.
                     if !self.is_subset_eq(&get_ty, &set_ty) {
-                        let cls = descriptor_cls.name();
+                        let cls = descriptor_cls.name_in(self);
                         errors
                             .error_builder(
                                 range,
@@ -499,7 +500,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 format!("Cannot set field `{name}` to data descriptor `{cls}` with inconsistent types"),
                             )
                             .with_detail(format!(
-                                "Return type `{get_ty}` of `{cls}.__get__` is not assignable to value type `{set_ty}` of `{cls}.__set__`"
+                                "Return type `{}` of `{cls}.__get__` is not assignable to value type `{}` of `{cls}.__set__`",
+                                get_ty.display_with(self),
+                                set_ty.display_with(self),
                             ))
                             .emit();
                     }
@@ -790,7 +793,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let ctx = ClassDisplayContext::new(&[cls, base]);
                     self.error(
                         errors,
-                        cls.range(),
+                        cls.range_in(self),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Cannot inherit {} dataclass `{}` from {} dataclass `{}`",
@@ -1360,7 +1363,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if !reported_by_base {
                             self.error(
                                 errors,
-                                own_decl_range.unwrap_or_else(|| cls.range()),
+                                own_decl_range.unwrap_or_else(|| cls.range_in(self)),
                                 ErrorKind::BadClassDefinition,
                                 format!(
                                     "Dataclass field `{name}` without a default may not follow dataclass field with a default"

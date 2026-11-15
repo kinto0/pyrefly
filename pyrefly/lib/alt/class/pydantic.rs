@@ -714,7 +714,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadArgumentType,
                     format!(
                         "Pydantic `{label}` value has type `{}`, which is not assignable to field type `{}`",
-                        self.for_display(val.clone()),
+                        self.display(val.clone()),
                         self.for_display(field_ty.clone())
                     ),
                 );
@@ -786,7 +786,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadArgumentType,
                     format!(
                         "Default value `{}` violates Pydantic `{}` constraint `{}` for field `{}`",
-                        self.for_display(default_ty.clone()),
+                        self.display(default_ty.clone()),
                         label,
                         self.for_display(constraint_ty.clone()),
                         field_name
@@ -937,7 +937,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         let owner = &member.defining_class;
                         owner.module_name().first_component() != "pydantic"
                             || matches!(
-                                owner.name().as_str(),
+                                owner.name_in(self).as_str(),
                                 "BeforeValidator" | "PlainValidator" | "WrapValidator"
                             )
                     })
@@ -1287,7 +1287,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadArgumentType,
                 format!(
                     "Argument value `{}` is not valid for Pydantic field `{}` with type `{}`",
-                    self.for_display(value_ty.clone()),
+                    self.display(value_ty.clone()),
                     info.field_name,
                     self.for_display(field_ty.clone()),
                 ),
@@ -1327,7 +1327,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadArgumentType,
                     format!(
                         "Argument value `{}` violates Pydantic `{}` constraint `{}` for field `{}`",
-                        self.for_display(value_ty.clone()),
+                        self.display(value_ty.clone()),
                         label,
                         self.for_display(constraint_ty.clone()),
                         info.field_name

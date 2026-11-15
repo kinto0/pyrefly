@@ -166,7 +166,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadUnpacking,
                     format!(
                         "Expected argument after ** to have `str` keys, got: {}",
-                        self.for_display(key)
+                        self.display(key)
                     ),
                 );
             }
@@ -177,7 +177,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadUnpacking,
                 format!(
                     "Expected argument after ** to be a mapping, got: {}",
-                    self.for_display(ty)
+                    self.display(ty)
                 ),
             );
         }
@@ -243,7 +243,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 (_, BaseClassParseResult::Parsed(parsed)) if !parsed.has_dynamic_base => parsed
                     .metadata
                     .custom_metaclass()
-                    .map(|metaclass| (parsed.class_object.name(), metaclass)),
+                    .map(|metaclass| (parsed.class_object.name_in(self), metaclass)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -277,7 +277,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             self.error(
                 errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
                 "Metaclass may not be an unbound generic".to_owned(),
             );
@@ -400,14 +400,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .any(|base| matches!(base, BaseClass::NamedTuple(..)));
         if directly_defines_named_tuple
             && bases_with_metadata.len() > 1
-            && !cls.module().path().is_interface()
+            && !cls.module_path().is_interface()
         {
             // Typeshed models some stdlib namedtuple result objects, such as urllib.parse.ParseResult,
             // by mixing methods into a NamedTuple subclass inside a `.pyi`. Keep rejecting this in
             // user code, but allow it in stubs so we can type-check those result objects precisely.
             self.error(
                 errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
                 "Named tuples do not support multiple inheritance".to_owned(),
             );
@@ -419,7 +419,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             &keyword_annotations,
             &decorators,
             errors,
-            cls.range(),
+            cls.range_in(self),
         );
 
         let is_typed_dict = has_typed_dict_base_class
@@ -430,9 +430,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(bad) = bases_with_metadata.iter().find(|x| !x.1.is_typed_dict())
         {
             self.error(errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
-                format!("`{}` is not a typed dictionary. Typed dictionary definitions may only extend other typed dictionaries.", bad.0.name()),
+                format!("`{}` is not a typed dictionary. Typed dictionary definitions may only extend other typed dictionaries.", bad.0.name_in(self)),
             );
         }
         let typed_dict_metadata = self.typed_dict_metadata(
@@ -445,7 +445,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if metaclass.is_some() && is_typed_dict {
             self.error(
                 errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
                 "Typed dictionary definitions may not specify a metaclass".to_owned(),
             );
@@ -662,13 +662,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.as_call_target_or_error(
                 init_subclass,
                 CallStyle::Method(&dunder::INIT_SUBCLASS),
-                cls.range(),
+                cls.range_in(self),
                 errors,
                 None,
             ),
             &[],
             &keywords,
-            cls.range(),
+            cls.range_in(self),
             errors,
             None,
             None,
@@ -928,7 +928,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ("closed" | "extra_items", _) if extra_items.is_some() => {
                         self.error(
                             errors,
-                            cls.range(),
+                            cls.range_in(self),
                             ErrorKind::BadTypedDict,
                             "TypedDict keywords `closed` and `extra_items` cannot be used together"
                                 .to_owned(),
@@ -944,12 +944,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         extra_items = Some(ExtraItems::Default);
                     }
                     ("extra_items", value_ty) => {
-                        let ty = self.untype_opt(value_ty.clone(), cls.range(), errors).unwrap_or_else(|| {
+                        let ty = self.untype_opt(value_ty.clone(), cls.range_in(self), errors).unwrap_or_else(|| {
                             self.error(
                                 errors,
-                                cls.range(),
+                                cls.range_in(self),
                                 ErrorKind::BadTypedDict,
-                                format!("Expected `extra_items` to be a type form, got instance of `{}`", self.for_display(value_ty.clone())),
+                                format!("Expected `extra_items` to be a type form, got instance of `{}`", self.display(value_ty.clone())),
                             )
                         });
                         extra_items = Some(ExtraItems::extra(ty, &value.qualifiers));
@@ -958,19 +958,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ("total" | "closed", value_ty) => {
                         self.error(
                             errors,
-                            cls.range(),
+                            cls.range_in(self),
                             ErrorKind::BadTypedDict,
                             format!(
                                 "Expected literal True or False for keyword `{}`, got instance of `{}`",
                                 name,
-                                self.for_display(value_ty.clone())
+                                self.display(value_ty.clone())
                             ),
                         );
                     }
                     _ => {
                         self.error(
                             errors,
-                            cls.range(),
+                            cls.range_in(self),
                             ErrorKind::BadTypedDict,
                             format!(
                                 "TypedDict does not support keyword argument `{}`",
@@ -985,7 +985,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let extra_items = self.calculate_typed_dict_extra_items(
                 extra_items,
                 bases_with_metadata,
-                cls.range(),
+                cls.range_in(self),
                 errors,
             );
             Some(TypedDictMetadata {
@@ -1019,9 +1019,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match (&cur_extra_items, inherited_extra_items) {
             (ExtraItems::Default, ExtraItems::Closed | ExtraItems::Extra(_)) => {
                 let base = if *inherited_extra_items == ExtraItems::Closed {
-                    format!("closed TypedDict `{}`", base_typed_dict.name())
+                    format!("closed TypedDict `{}`", base_typed_dict.name_in(self))
                 } else {
-                    format!("TypedDict `{}` with extra items", base_typed_dict.name())
+                    format!(
+                        "TypedDict `{}` with extra items",
+                        base_typed_dict.name_in(self)
+                    )
                 };
                 self.error(
                     errors,
@@ -1040,7 +1043,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::BadTypedDict,
-                    format!("Closed TypedDict cannot inherit from TypedDict `{}` with non-read-only extra items", base_typed_dict.name()),
+                    format!("Closed TypedDict cannot inherit from TypedDict `{}` with non-read-only extra items", base_typed_dict.name_in(self)),
                 );
             }
             (
@@ -1056,7 +1059,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDict,
                     format!(
                         "Cannot change the non-read-only extra items type of TypedDict `{}`",
-                        base_typed_dict.name()
+                        base_typed_dict.name_in(self)
                     ),
                 );
             }
@@ -1089,7 +1092,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::InvalidInheritance,
                     "Enums may not be generic".to_owned(),
                 );
@@ -1527,12 +1530,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // hard-reject kinds have no useful dataclass runtime behavior to model, so abort.
         if has_dataclass_decorator
             && self.report_forbidden_dataclass_target(
-                cls.name(),
+                cls.name_in(self),
                 is_protocol,
                 is_enum,
                 is_typed_dict,
                 is_named_tuple,
-                cls.range(),
+                cls.range_in(self),
                 errors,
             )
         {
@@ -1945,7 +1948,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::InvalidInheritance,
-                            format!("Invalid base class: `{}`", self.for_display(ty)),
+                            format!("Invalid base class: `{}`", self.display(ty)),
                         );
                     }
                     None
@@ -1965,7 +1968,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::InvalidInheritance,
-                            format!("Cannot extend final class `{}`", class_object.name()),
+                            format!("Cannot extend final class `{}`", class_object.name_in(self)),
                         );
                     }
                     if is_new_type {
@@ -2045,12 +2048,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                     };
                     self.error(errors,
-                        cls.range(),
+                        cls.range_in(self),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Class `{}` has metaclass `{}`{} which is not compatible with metaclass `{}`{}",
-                            cls.name(),
-                            self.for_display(candidate_metaclass_type.clone()),
+                            cls.name_in(self),
+                            self.display(candidate_metaclass_type.clone()),
                             origin(*candidate_name),
                             self.for_display(base_metaclass_type),
                             origin(Some(base_name)),
@@ -2096,8 +2099,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Metaclass of `{}` has type `{}` which is not a subclass of `type`",
-                            cls.name(),
-                            self.for_display(self.heap.mk_class_type(meta)),
+                            cls.name_in(self),
+                            self.display(self.heap.mk_class_type(meta)),
                         ),
                     );
                     None
@@ -2108,12 +2111,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ty => {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::InvalidInheritance,
                     format!(
                         "Metaclass of `{}` has type `{}` that is not a simple class type",
-                        cls.name(),
-                        self.for_display(ty),
+                        cls.name_in(self),
+                        self.display(ty),
                     ),
                 );
                 None
@@ -2184,7 +2187,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .join(", ");
             self.error(
                 errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
                 format!(
                     "Class `{}` inherits from incompatible disjoint bases {}",
@@ -2270,7 +2273,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.get_non_synthesized_class_member_and_defining_class(cls, field_name)
             && (field.value.is_abstract() ||
                 // Uninitialized class vars in protocols are considered abstract, unless it is in a stub file
-                (!cls.module().path().is_interface() && field.value.is_uninit_class_var() &&
+                (!cls.module_path().is_interface() && field.value.is_uninit_class_var() &&
                 self.get_metadata_for_class(&field.defining_class).is_protocol()))
         {
             return false;
@@ -2348,7 +2351,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(setitem_ty) = self.type_of_magic_dunder_attr(
             &base,
             &dunder::SETITEM,
-            cls.range(),
+            cls.range_in(self),
             &swallower,
             None,
             "calculate_subscript_symmetry",
@@ -2359,7 +2362,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(getitem_ty) = self.type_of_magic_dunder_attr(
             &base,
             &dunder::GETITEM,
-            cls.range(),
+            cls.range_in(self),
             &swallower,
             None,
             "calculate_subscript_symmetry",

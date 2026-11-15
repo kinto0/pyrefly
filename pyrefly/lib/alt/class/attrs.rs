@@ -20,6 +20,7 @@ use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Arguments;
 use ruff_python_ast::Expr;
 use ruff_python_ast::name::Name;
@@ -147,7 +148,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let defining_class = self
                 .get_class_member_with_defining_class(cls, name)
                 .map_or_else(|| cls.dupe(), |member| member.defining_class);
-            let class_name = defining_class.name().as_str().trim_start_matches('_');
+            let class_name = defining_class
+                .name_in(self)
+                .as_str()
+                .trim_start_matches('_');
             (!class_name.is_empty()).then(|| format!("_{class_name}{name}"))
         } else {
             None
@@ -259,7 +263,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     range,
                     ErrorKind::BadClassDefinition,
                     format!(
-                        "Return type `{return_ty}` of the `@{name}.default` method is not assignable to field `{name}` of type `{field_ty}`"
+                        "Return type `{}` of the `@{name}.default` method is not assignable to field `{name}` of type `{}`",
+                        return_ty.display_with(self),
+                        field_ty.display_with(self),
                     ),
                 );
             }

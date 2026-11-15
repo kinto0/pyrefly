@@ -14,6 +14,7 @@ use std::fmt::Display;
 use pyrefly_python::module::TextRangeWithModule;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::display::append;
 use pyrefly_util::display::commas_iter;
@@ -32,6 +33,7 @@ use crate::callable::PrefixParam;
 use crate::callable::Required;
 use crate::class::Class;
 use crate::data_frame::SchemaCompleteness;
+use crate::env::TypeEnv;
 use crate::function::Function;
 use crate::function::FunctionKind;
 use crate::heap::TypeHeap;
@@ -1849,6 +1851,13 @@ impl<'a> TypeDisplayContext<'a> {
 impl Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         TypeDisplayContext::new(&[self]).fmt(self, f)
+    }
+}
+
+/// Render a type on its own, reading the definition data it refers to from the env.
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
     }
 }
 

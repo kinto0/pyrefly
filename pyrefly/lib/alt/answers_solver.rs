@@ -42,6 +42,7 @@ use pyrefly_types::type_alias::TypeAlias;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::display::DisplayWithCtx;
+use pyrefly_util::display::Fmt;
 use pyrefly_util::recurser::Guard;
 use pyrefly_util::uniques::UniqueFactory;
 use pyrefly_util::visit::Visit;
@@ -2691,6 +2692,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     pub fn for_display(&self, t: Type) -> Type {
         self.solver().for_display(t)
+    }
+
+    /// Render a type for an error message, after `for_display` resolves its variables and
+    /// simplifies it.
+    pub fn display(&self, t: Type) -> impl Display + '_ {
+        let t = self.for_display(t);
+        let env: &dyn TypeEnv = self;
+        Fmt(move |f| write!(f, "{}", t.display_with(env)))
     }
 
     pub fn type_order(&self) -> TypeOrder<'_, Ans> {
