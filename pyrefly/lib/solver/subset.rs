@@ -2358,7 +2358,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     fields: self.type_order.typed_dict_fields(got),
                     extra_items: self.type_order.typed_dict_extra_items(got),
                 };
-                self.is_subset_partial_typed_dict(got, want)
+                self.is_subset_partial_typed_dict(got, &TypedDictInner::from_class_type(want))
             }
             (Type::AnonymousTypedDict(got), Type::PartialTypedDict(want)) => {
                 // Every key of an anonymous TypedDict is optional and read-write, and its extra
@@ -2371,7 +2371,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         read_only: false,
                     }),
                 };
-                self.is_subset_partial_typed_dict(got, want)
+                self.is_subset_partial_typed_dict(got, &TypedDictInner::from_class_type(want))
             }
             (Type::AnonymousTypedDict(got), Type::AnonymousTypedDict(want)) => {
                 // Every key of an anonymous TypedDict is optional, and a key it does not name may

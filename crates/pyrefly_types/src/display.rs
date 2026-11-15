@@ -991,7 +991,11 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_qname(class_type.qname())?;
                 output.write_targs(class_type.targs())
             }
-            Type::TypedDict(inner) | Type::PartialTypedDict(inner) => {
+            Type::TypedDict(inner) => {
+                output.write_qname(inner.qname())?;
+                output.write_targs(inner.targs())
+            }
+            Type::PartialTypedDict(inner) => {
                 output.write_qname(inner.qname())?;
                 output.write_targs(inner.targs())
             }
@@ -3795,8 +3799,7 @@ def overloaded_func[T](
     #[test]
     fn test_get_types_with_location_partial_typed_dict() {
         let cls = fake_class("MyTypedDict", "mymodule", 90);
-        let td = TypedDictInner::new(cls, TArgs::default());
-        let t = Type::PartialTypedDict(td);
+        let t = Type::PartialTypedDict(ClassType::new(cls, TArgs::default()));
         let parts = get_parts(&t);
 
         assert_part_has_location(&parts, "MyTypedDict", "mymodule", 90);

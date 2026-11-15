@@ -207,7 +207,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // already requires none of its keys, so it is its own partial form.
                 let partial_td_ty = match typed_dict {
                     TypedDictHint::Declared(inner) => {
-                        self.heap.mk_partial_typed_dict(inner.clone())
+                        self.heap.mk_partial_typed_dict(inner.as_class_type())
                     }
                     TypedDictHint::Anonymous(inner) => {
                         self.heap.mk_anonymous_typed_dict(inner.clone())
@@ -437,8 +437,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
 
         // ---- Overload: def update(m: Partial[C], /)
-        let full_typed_dict = self.as_typed_dict_unchecked(cls);
-        let partial_typed_dict_ty = self.heap.mk_partial_typed_dict(full_typed_dict);
+        let partial_typed_dict_ty = self
+            .heap
+            .mk_partial_typed_dict(self.as_class_type_unchecked(cls));
 
         let partial_overload = OverloadType::Function(Function {
             signature: Callable::list(

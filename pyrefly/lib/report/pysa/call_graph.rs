@@ -2001,8 +2001,11 @@ impl<'a> CallGraphVisitor<'a> {
                 let str_class = self.module_answers_context.stdlib.str().class_object();
                 call_targets_from_method_name_with_class(str_class)
             }
-            Some(Type::TypedDict(typed_dict)) | Some(Type::PartialTypedDict(typed_dict)) => {
+            Some(Type::TypedDict(typed_dict)) => {
                 call_targets_from_method_name_with_class(typed_dict.class_object())
+            }
+            Some(Type::PartialTypedDict(class_type)) => {
+                call_targets_from_method_name_with_class(class_type.class_object())
             }
             Some(Type::AnonymousTypedDict(..)) => call_targets_from_method_name_with_class(
                 self.module_answers_context.stdlib.dict_object(),

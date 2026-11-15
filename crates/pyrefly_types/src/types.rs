@@ -923,8 +923,9 @@ pub enum Type {
     /// (e.g., via its `update` method).
     /// For a TypedDict type `C`, `Partial[C]` represents an object with any subset of read-write
     /// keys from `C`, where each present key has the same value type as in `C`.
-    /// Only declared TypedDicts have an `update` method, so this is never anonymous.
-    PartialTypedDict(TypedDictInner),
+    /// Only declared TypedDicts have an `update` method, so this is never anonymous, and the
+    /// class and type arguments it needs are exactly a `ClassType`.
+    PartialTypedDict(ClassType),
     /// First-class tensor shape tuple.
     IntTuple(Box<IntTuple>),
     /// Named integer values captured by the experimental shape extensions.

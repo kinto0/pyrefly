@@ -307,9 +307,12 @@ pub(super) fn type_to_indexed_shape(
         Type::AnonymousTypedDict(typed_dict) => {
             anonymous_typed_dict_to_indexed_shape(context, typed_dict, table)
         }
-        Type::PartialTypedDict(typed_dict) => {
-            typed_dict_to_indexed_shape(context, typed_dict, true, table)
-        }
+        Type::PartialTypedDict(class_type) => typed_dict_to_indexed_shape(
+            context,
+            &TypedDictInner::from_class_type(class_type),
+            true,
+            table,
+        ),
         Type::Type(inner) => {
             let inner = type_to_indexed_shape(context, inner, table);
             insert_indexed_named(table, "typing.Type", vec![inner], None, Vec::new())

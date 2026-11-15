@@ -40,6 +40,7 @@ use pyrefly_types::type_level_dsl::TypeShapeDslDomain;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Forallable;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -2263,9 +2264,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let flattened_items = Ast::flatten_dict_items(items);
         if let Some(hint) = hint {
             for hint_ty in hint.types() {
+                let owner = Owner::new();
                 let (typed_dict, is_update) = match hint_ty {
                     Type::TypedDict(td) => (TypedDictHint::Declared(td), false),
-                    Type::PartialTypedDict(td) => (TypedDictHint::Declared(td), true),
+                    // A partial TypedDict carries the class, so the declared form has to be
+                    // materialized before it can be borrowed.
+                    Type::PartialTypedDict(ct) => (
+                        TypedDictHint::Declared(owner.push(TypedDictInner::from_class_type(ct))),
+                        true,
+                    ),
                     Type::AnonymousTypedDict(inner) => (TypedDictHint::Anonymous(inner), false),
                     _ => continue,
                 };

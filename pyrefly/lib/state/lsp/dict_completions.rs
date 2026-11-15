@@ -18,6 +18,7 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::data_frame::DataFrameKind;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::known_class::KnownClass;
+use pyrefly_types::typed_dict::TypedDictInner;
 use ruff_python_ast::AnyNodeRef;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprCall;
@@ -193,19 +194,16 @@ impl<'a> Transaction<'a> {
             .into_iter()
             .filter_map(|member| {
                 let fields = match &member {
-                    Type::TypedDict(td) | Type::PartialTypedDict(td) => solver
+                    Type::TypedDict(td) => solver.type_order().typed_dict_fields(td),
+                    Type::PartialTypedDict(ct) => solver
                         .type_order()
-                        .typed_dict_fields(td)
-                        .into_iter()
-                        .map(|(name, field)| (name.to_string(), field.ty))
-                        .collect(),
-                    Type::AnonymousTypedDict(td) => td
-                        .fields
-                        .iter()
-                        .map(|(name, field)| (name.to_string(), field.ty.clone()))
-                        .collect(),
+                        .typed_dict_fields(&TypedDictInner::from_class_type(ct)),
+                    Type::AnonymousTypedDict(td) => td.fields.iter().cloned().collect(),
                     _ => return None,
-                };
+                }
+                .into_iter()
+                .map(|(name, field)| (name.to_string(), field.ty))
+                .collect();
                 Some((member, fields))
             })
             .collect()
@@ -826,7 +824,14 @@ impl<'a> Transaction<'a> {
             let mut map = BTreeMap::new();
             for member in Self::typed_dict_members(base_type) {
                 match member {
-                    Type::TypedDict(td) | Type::PartialTypedDict(td) => {
+                    Type::TypedDict(td) => {
+                        for (name, field) in solver.type_order().typed_dict_fields(&td) {
+                            map.entry(name.to_string())
+                                .or_insert_with(|| field.ty.clone());
+                        }
+                    }
+                    Type::PartialTypedDict(ct) => {
+                        let td = TypedDictInner::from_class_type(&ct);
                         for (name, field) in solver.type_order().typed_dict_fields(&td) {
                             map.entry(name.to_string())
                                 .or_insert_with(|| field.ty.clone());

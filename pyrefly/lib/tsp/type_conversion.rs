@@ -388,8 +388,21 @@ impl TypeConverter<'_> {
             }
 
             // --- TypedDicts are instances of their class ---
-            PyreflyType::TypedDict(td) | PyreflyType::PartialTypedDict(td) => {
+            PyreflyType::TypedDict(td) => {
                 let declaration = make_class_declaration(td.class_object());
+                TspType::Class(TspClassType {
+                    declaration: Declaration::Regular(declaration),
+                    flags: TypeFlags::INSTANCE,
+                    id: next_id(),
+                    kind: TypeKind::Class,
+                    literal_value: None,
+                    type_alias_info: None,
+                    type_args: None,
+                })
+            }
+
+            PyreflyType::PartialTypedDict(class_type) => {
+                let declaration = make_class_declaration(class_type.class_object());
                 TspType::Class(TspClassType {
                     declaration: Declaration::Regular(declaration),
                     flags: TypeFlags::INSTANCE,

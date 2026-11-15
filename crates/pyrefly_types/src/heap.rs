@@ -375,8 +375,8 @@ impl TypeHeap {
         Type::AnonymousTypedDict(Box::new(typed_dict))
     }
 
-    /// Create a `Type::PartialTypedDict` from a declared TypedDict.
-    pub fn mk_partial_typed_dict(&self, typed_dict: TypedDictInner) -> Type {
+    /// Create a `Type::PartialTypedDict` from a declared TypedDict's class type.
+    pub fn mk_partial_typed_dict(&self, typed_dict: ClassType) -> Type {
         Type::PartialTypedDict(typed_dict)
     }
 

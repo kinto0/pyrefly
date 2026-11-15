@@ -21,6 +21,7 @@ use pyrefly_types::simplify::simplify_tuples;
 use pyrefly_types::tuple::Tuple;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
 use pyrefly_util::display::count;
@@ -1247,8 +1248,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
                 TypeOrExpr::Type(ty, _) => match ty {
-                    Type::TypedDict(typed_dict) | Type::PartialTypedDict(typed_dict) => {
+                    Type::TypedDict(typed_dict) => {
                         for (name, field) in self.typed_dict_fields(typed_dict) {
+                            if field.required {
+                                keyword_arg_names.insert(name);
+                            }
+                        }
+                    }
+                    Type::PartialTypedDict(class_type) => {
+                        let typed_dict = TypedDictInner::from_class_type(class_type);
+                        for (name, field) in self.typed_dict_fields(&typed_dict) {
                             if field.required {
                                 keyword_arg_names.insert(name);
                             }

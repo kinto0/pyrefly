@@ -2809,7 +2809,8 @@ impl<'a> Transaction<'a> {
         let name = Name::new(key.value.to_str());
         let base_type = self.get_type_trace(handle, subscript.value.range())?;
         let typed_dict = match base_type {
-            Type::TypedDict(typed_dict) | Type::PartialTypedDict(typed_dict) => typed_dict,
+            Type::TypedDict(typed_dict) => typed_dict,
+            Type::PartialTypedDict(class_type) => TypedDictInner::from_class_type(&class_type),
             _ => return None,
         };
         Some((typed_dict, name))

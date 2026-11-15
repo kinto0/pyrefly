@@ -2647,9 +2647,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::SelfType(class_type) => acc.push(AttributeBase1::SelfType(class_type)),
             Type::Type(ty) => self.as_attribute_base1_of_type(*ty, acc),
-            Type::TypedDict(td) | Type::PartialTypedDict(td) => {
-                acc.push(AttributeBase1::TypedDict(td))
-            }
+            Type::TypedDict(td) => acc.push(AttributeBase1::TypedDict(td)),
+            Type::PartialTypedDict(ct) => acc.push(AttributeBase1::TypedDict(TypedDictInner::new(
+                ct.class_object().dupe(),
+                ct.targs().clone(),
+            ))),
             Type::AnonymousTypedDict(td) => {
                 let value_ty = td.compute_value_type(self.heap);
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.dict(
