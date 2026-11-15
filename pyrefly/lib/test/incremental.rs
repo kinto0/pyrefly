@@ -4278,6 +4278,70 @@ fn test_fewer_classes_rebuild_reports_current_classes() {
     );
 }
 
+/// A module can see its own classes through the modules it imports. `foo` is rebuilt with fewer
+/// classes and reads `Sub` from `bar`, which is in an import cycle with `foo`. `bar` is only
+/// rebuilt after `foo`'s exports change, so `foo` first reads the MRO of `Sub` that `bar` computed
+/// against the old `foo`, which names `Foo` at its old index.
+// Bug: `foo` looks up `Foo`'s old index in its own class metadata, which has no entry for it.
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn test_own_class_read_through_cycle_after_fewer_classes() {
+    let mut i = Incremental::new();
+    i.set(
+        "foo",
+        "from bar import Sub\nclass Baz: ...\nclass Foo: ...\nsub = Sub()",
+    );
+    i.set("bar", "from foo import Foo\nclass Sub(Foo): ...");
+    i.check(&["foo", "bar"], &["foo", "bar"]);
+
+    i.set("foo", "from bar import Sub\nclass Foo: ...\nsub = Sub()");
+    i.check_matches_clean(&["foo", "bar"], &["bar", "foo", "foo"]);
+}
+
+/// Like `test_own_class_read_through_cycle_after_fewer_classes`, but `foo` reads its enum `E` back
+/// through `bar` and narrows by one of its members, which looks up the fields and the metadata of
+/// `E` at its old index.
+// Bug: `foo` looks up `E`'s old index in its own class metadata, which has no entry for it.
+#[test]
+#[should_panic(expected = "index out of bounds")]
+fn test_own_enum_read_through_cycle_after_fewer_classes() {
+    let foo = |classes: &str| {
+        format!(
+            "from enum import Enum\nfrom bar import DEFAULT, get\n{classes}class E(Enum):\n    X = 1\n    Y = 2\nx = get()\nif x is not DEFAULT:\n    y = x\n"
+        )
+    };
+    let mut i = Incremental::new();
+    i.set("foo", &foo("class Baz: ...\n"));
+    i.set(
+        "bar",
+        "from typing import Final\nfrom foo import E\ndef get() -> E: ...\nDEFAULT: Final = E.X",
+    );
+    i.check(&["foo", "bar"], &["foo", "bar"]);
+
+    i.set("foo", &foo(""));
+    i.check_matches_clean(&["foo", "bar"], &["bar", "foo", "foo"]);
+}
+
+/// Like `test_own_class_read_through_cycle_after_fewer_classes`, but the old index of `B` is still
+/// in range, at the class `C` that moved into it, so `foo` first reads `x` from `C`. `y` changes
+/// again when `foo` is rebuilt against the new `bar`, so the cycle fallback rebuilds both modules
+/// once more.
+#[test]
+fn test_own_class_read_through_cycle_at_index_of_other_class() {
+    let foo = |classes: &str| {
+        format!(
+            "from bar import Sub\n{classes}class B:\n    x: int = 0\nclass C:\n    x: str = \"\"\ny = Sub().x\n"
+        )
+    };
+    let mut i = Incremental::new();
+    i.set("foo", &foo("class A: ...\n"));
+    i.set("bar", "from foo import B\nclass Sub(B): ...");
+    i.check(&["foo", "bar"], &["foo", "bar"]);
+
+    i.set("foo", &foo(""));
+    i.check_matches_clean(&["foo", "bar"], &["bar", "bar", "foo", "foo", "foo"]);
+}
+
 /// A union keeps its class members ordered by name, so renaming a class in one module can reorder
 /// a union in another, even when no export of the first module changes and the second module reads
 /// nothing else about the class. The rename changes `obj`, whose class has a new name, so `bar` is
