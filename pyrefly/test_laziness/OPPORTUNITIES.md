@@ -37,7 +37,8 @@ forced their export sets during binding.
 3. **Full function signature on import** — resolves 11 keys per imported
    function regardless of usage.
 4. **Class metadata for annotation-only usage** — resolved. A class
-   named only in an annotation costs just its `KeyExport`.
+   named only in an annotation costs just its `KeyExport`, and a generic
+   class subscripted with type arguments its `KeyExport` and `KeyTParams`.
 5. **Eagerly resolved builtins** — resolved. This used to cost ~150
    `KeyExport` + cascading demands per module; remaining builtin
    demands should come from referenced builtin names and small lookup
@@ -110,8 +111,17 @@ which resolves its base classes and can cascade up the MRO.
 `ClassType`, so promotion builds one without reading metadata, and the
 sites that need TypedDict behavior ask for the metadata themselves.
 
+Specializing a generic class (`Foo[int]`), in an annotation or as a
+value, costs only its `KeyExport` and its `KeyTParams`. The subscript
+checks that read metadata (`__class_getitem__`, the metaclass
+`__getitem__`, enum member lookup, and inheriting from `Any`) only apply
+to a class without type parameters, so they look at the type parameters
+first.
+
 **Regression signal:** A `KeyClassMetadata` demand reappearing in
-`test_import_class_as_annotation.md`.
+`test_import_class_as_annotation.md`,
+`test_import_generic_class_subscripted_in_annotation.md` or
+`test_import_generic_class_subscripted_as_value.md`.
 
 ## LookupExport during binding forces transitive exports
 

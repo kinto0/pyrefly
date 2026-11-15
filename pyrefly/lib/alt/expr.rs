@@ -3817,27 +3817,29 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                     ))
                 }
+                // An enum cannot be generic, so a class with type parameters skips the enum
+                // check and the class metadata that it reads.
                 Type::ClassDef(ref cls)
-                    if let Expr::StringLiteral(ExprStringLiteral { value: key, .. }) = slice
+                    if self.get_class_tparams(cls).is_none_or(|t| t.is_empty())
                         && self.get_enum_from_class(cls).is_some() =>
                 {
-                    if let Some(member) = self.get_enum_member(cls, &Name::new(key.to_str())) {
-                        member.to_implicit_type()
-                    } else {
-                        self.error(
-                            errors,
-                            slice.range(),
-                            ErrorKind::BadIndex,
-                            format!(
-                                "Enum `{}` does not have a member named `{}`",
-                                cls.name(),
-                                key.to_str()
-                            ),
-                        )
-                    }
-                }
-                Type::ClassDef(ref cls) if self.get_enum_from_class(cls).is_some() => {
-                    if self.is_subset_eq(
+                    if let Expr::StringLiteral(ExprStringLiteral { value: key, .. }) = slice {
+                        if let Some(member) = self.get_enum_member(cls, &Name::new(key.to_str()))
+                        {
+                            member.to_implicit_type()
+                        } else {
+                            self.error(
+                                errors,
+                                slice.range(),
+                                ErrorKind::BadIndex,
+                                format!(
+                                    "Enum `{}` does not have a member named `{}`",
+                                    cls.name(),
+                                    key.to_str()
+                                ),
+                            )
+                        }
+                    } else if self.is_subset_eq(
                         &self.expr_check(slice, None, errors),
                         &self.heap.mk_class_type(self.stdlib.str().clone()),
                     ) {
@@ -4859,14 +4861,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         type_form_context: TypeFormContext<'_>,
         errors: &ErrorCollector,
     ) -> Type {
-        let metadata = self.get_metadata_for_class(cls);
         let class_ty = Type::ClassDef(cls.dupe());
         let allow_dunder_lookup = self
             .get_class_tparams(cls)
             .as_ref()
             .is_none_or(|tparams| tparams.is_empty())
-            && !metadata.has_base_any()
-            && !metadata.is_new_type();
+            && {
+                let metadata = self.get_metadata_for_class(cls);
+                !metadata.has_base_any() && !metadata.is_new_type()
+            };
         let class_getitem_result = if allow_dunder_lookup {
             let class_ty = self.heap.mk_class_def(cls.dupe());
             // TODO(stroxler): Add a new API, similar to `type_of_attr_get` but returning a

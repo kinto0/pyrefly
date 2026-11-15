@@ -683,6 +683,9 @@ class E[T](Enum):  # E: Enums may not be generic
     X = 1
 # Even though a generic enum is an error, we still want to handle it gracefully.
 assert_type(E.X, Literal[E.X])
+# Subscripting a generic enum specializes it rather than looking up a member.
+assert_type(E[int], type[E[int]])
+E["X"]  # E: Expected a type form, got instance of `Literal['X']`
     "#,
 );
 
