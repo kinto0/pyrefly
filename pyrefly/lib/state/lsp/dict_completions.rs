@@ -164,7 +164,7 @@ impl<'a> Transaction<'a> {
 
     fn type_contains_typed_dict(ty: &Type) -> bool {
         match ty {
-            Type::TypedDict(_) | Type::PartialTypedDict(_) => true,
+            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => true,
             Type::Union(u) => u.members.iter().any(Self::type_contains_typed_dict),
             _ => false,
         }
@@ -175,7 +175,9 @@ impl<'a> Transaction<'a> {
         let mut stack = vec![base_type];
         while let Some(ty) = stack.pop() {
             match ty {
-                Type::TypedDict(_) | Type::PartialTypedDict(_) => members.push(ty),
+                Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
+                    members.push(ty)
+                }
                 Type::Union(u) => stack.extend(u.members),
                 _ => {}
             }
@@ -190,16 +192,20 @@ impl<'a> Transaction<'a> {
         members
             .into_iter()
             .filter_map(|member| {
-                let typed_dict = match &member {
-                    Type::TypedDict(td) | Type::PartialTypedDict(td) => td,
+                let fields = match &member {
+                    Type::TypedDict(td) | Type::PartialTypedDict(td) => solver
+                        .type_order()
+                        .typed_dict_fields(td)
+                        .into_iter()
+                        .map(|(name, field)| (name.to_string(), field.ty))
+                        .collect(),
+                    Type::AnonymousTypedDict(td) => td
+                        .fields
+                        .iter()
+                        .map(|(name, field)| (name.to_string(), field.ty.clone()))
+                        .collect(),
                     _ => return None,
                 };
-                let fields = solver
-                    .type_order()
-                    .typed_dict_fields(typed_dict)
-                    .into_iter()
-                    .map(|(name, field)| (name.to_string(), field.ty))
-                    .collect();
                 Some((member, fields))
             })
             .collect()
@@ -836,13 +842,20 @@ impl<'a> Transaction<'a> {
         self.ad_hoc_solve(handle, "typed_dict_keys", |solver| {
             let mut map = BTreeMap::new();
             for member in Self::typed_dict_members(base_type) {
-                let typed_dict = match member {
-                    Type::TypedDict(td) | Type::PartialTypedDict(td) => td,
-                    _ => continue,
-                };
-                for (name, field) in solver.type_order().typed_dict_fields(&typed_dict) {
-                    map.entry(name.to_string())
-                        .or_insert_with(|| field.ty.clone());
+                match member {
+                    Type::TypedDict(td) | Type::PartialTypedDict(td) => {
+                        for (name, field) in solver.type_order().typed_dict_fields(&td) {
+                            map.entry(name.to_string())
+                                .or_insert_with(|| field.ty.clone());
+                        }
+                    }
+                    Type::AnonymousTypedDict(td) => {
+                        for (name, field) in td.fields.iter() {
+                            map.entry(name.to_string())
+                                .or_insert_with(|| field.ty.clone());
+                        }
+                    }
+                    _ => {}
                 }
             }
             map

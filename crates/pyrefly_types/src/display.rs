@@ -59,7 +59,6 @@ use crate::type_output::OutputWithLocations;
 use crate::type_output::TypeOutput;
 use crate::type_var::Restriction;
 use crate::typed_dict::AnonymousTypedDictInner;
-use crate::typed_dict::TypedDict;
 use crate::types::AnyStyle;
 use crate::types::BoundMethod;
 use crate::types::BoundMethodType;
@@ -992,38 +991,20 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_qname(class_type.qname())?;
                 output.write_targs(class_type.targs())
             }
-            Type::TypedDict(typed_dict) => match typed_dict {
-                TypedDict::TypedDict(inner) => {
-                    output.write_qname(inner.qname())?;
-                    output.write_targs(inner.targs())
-                }
-                TypedDict::Anonymous(inner) => {
-                    let dict_qname = self.stdlib.map(|s| s.dict_object().qname());
-                    output.write_builtin("dict", dict_qname)?;
-                    output.write_str("[")?;
-                    let str_qname = self.stdlib.map(|s| s.str().qname());
-                    output.write_builtin("str", str_qname)?;
-                    output.write_str(", ")?;
-                    self.fmt_anonymous_typed_dict_value_type(inner, output)?;
-                    output.write_str("]")
-                }
-            },
-            Type::PartialTypedDict(typed_dict) => match typed_dict {
-                TypedDict::TypedDict(inner) => {
-                    output.write_qname(inner.qname())?;
-                    output.write_targs(inner.targs())
-                }
-                TypedDict::Anonymous(inner) => {
-                    let dict_qname = self.stdlib.map(|s| s.dict_object().qname());
-                    output.write_builtin("dict", dict_qname)?;
-                    output.write_str("[")?;
-                    let str_qname = self.stdlib.map(|s| s.str().qname());
-                    output.write_builtin("str", str_qname)?;
-                    output.write_str(", ")?;
-                    self.fmt_anonymous_typed_dict_value_type(inner, output)?;
-                    output.write_str("]")
-                }
-            },
+            Type::TypedDict(inner) | Type::PartialTypedDict(inner) => {
+                output.write_qname(inner.qname())?;
+                output.write_targs(inner.targs())
+            }
+            Type::AnonymousTypedDict(inner) => {
+                let dict_qname = self.stdlib.map(|s| s.dict_object().qname());
+                output.write_builtin("dict", dict_qname)?;
+                output.write_str("[")?;
+                let str_qname = self.stdlib.map(|s| s.str().qname());
+                output.write_builtin("str", str_qname)?;
+                output.write_str(", ")?;
+                self.fmt_anonymous_typed_dict_value_type(inner, output)?;
+                output.write_str("]")
+            }
             Type::NamedInts(named) => {
                 output.write_str("NamedInts[")?;
                 for (index, entry) in named.entries().iter().enumerate() {
@@ -1952,7 +1933,6 @@ pub mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
-    use TypedDict;
     use dupe::Dupe;
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
@@ -2000,6 +1980,7 @@ pub mod tests {
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
     use crate::type_var::TypeVar;
+    use crate::typed_dict::TypedDictInner;
     use crate::types::BoundMethodType;
     use crate::types::Overload;
     use crate::types::OverloadType;
@@ -3135,7 +3116,7 @@ pub mod tests {
         let tparams = fake_tparams(vec![fake_tparam(3, "T", QuantifiedKind::TypeVar)]);
         let t = Type::None;
         let targs = TArgs::new(tparams.dupe(), vec![t]);
-        let td = TypedDict::new(cls, targs);
+        let td = TypedDictInner::new(cls, targs);
         assert_eq!(Type::TypedDict(td).to_string(), "C[None]");
     }
 
@@ -3587,7 +3568,7 @@ def overloaded_func[T](
     #[test]
     fn test_get_types_with_location_typed_dict() {
         let cls = fake_class("MyTypedDict", "mymodule", 25);
-        let td = TypedDict::new(cls, TArgs::default());
+        let td = TypedDictInner::new(cls, TArgs::default());
         let t = Type::TypedDict(td);
         let parts = get_parts(&t);
 
@@ -3814,7 +3795,7 @@ def overloaded_func[T](
     #[test]
     fn test_get_types_with_location_partial_typed_dict() {
         let cls = fake_class("MyTypedDict", "mymodule", 90);
-        let td = TypedDict::new(cls, TArgs::default());
+        let td = TypedDictInner::new(cls, TArgs::default());
         let t = Type::PartialTypedDict(td);
         let parts = get_parts(&t);
 

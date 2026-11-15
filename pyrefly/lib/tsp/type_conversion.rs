@@ -389,22 +389,21 @@ impl TypeConverter<'_> {
 
             // --- TypedDicts are instances of their class ---
             PyreflyType::TypedDict(td) | PyreflyType::PartialTypedDict(td) => {
-                if let pyrefly_types::typed_dict::TypedDict::TypedDict(inner) = td {
-                    let cls = inner.class_object();
-                    let declaration = make_class_declaration(cls);
-                    TspType::Class(TspClassType {
-                        declaration: Declaration::Regular(declaration),
-                        flags: TypeFlags::INSTANCE,
-                        id: next_id(),
-                        kind: TypeKind::Class,
-                        literal_value: None,
-                        type_alias_info: None,
-                        type_args: None,
-                    })
-                } else {
-                    // Anonymous TypedDict — fall back to the typing.TypedDict class
-                    self.typing_class("TypedDict", TypeFlags::INSTANTIABLE)
-                }
+                let declaration = make_class_declaration(td.class_object());
+                TspType::Class(TspClassType {
+                    declaration: Declaration::Regular(declaration),
+                    flags: TypeFlags::INSTANCE,
+                    id: next_id(),
+                    kind: TypeKind::Class,
+                    literal_value: None,
+                    type_alias_info: None,
+                    type_args: None,
+                })
+            }
+
+            // An anonymous TypedDict has no class of its own, so fall back to `typing.TypedDict`.
+            PyreflyType::AnonymousTypedDict(_) => {
+                self.typing_class("TypedDict", TypeFlags::INSTANTIABLE)
             }
 
             // --- Overloaded functions ---

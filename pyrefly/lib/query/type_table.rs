@@ -21,7 +21,8 @@ use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::type_var::ShapeExtensionRestriction;
-use pyrefly_types::typed_dict::TypedDict;
+use pyrefly_types::typed_dict::AnonymousTypedDictInner;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::NeverStyle;
 use pyrefly_types::types::SuperObj;
 use pyrefly_types::types::Type;
@@ -303,6 +304,9 @@ pub(super) fn type_to_indexed_shape(
         Type::TypedDict(typed_dict) => {
             typed_dict_to_indexed_shape(context, typed_dict, false, table)
         }
+        Type::AnonymousTypedDict(typed_dict) => {
+            anonymous_typed_dict_to_indexed_shape(context, typed_dict, table)
+        }
         Type::PartialTypedDict(typed_dict) => {
             typed_dict_to_indexed_shape(context, typed_dict, true, table)
         }
@@ -499,45 +503,45 @@ pub(super) fn type_to_indexed_shape(
 
 fn typed_dict_to_indexed_shape(
     context: &TypeShapeContext,
-    typed_dict: &TypedDict,
+    typed_dict: &TypedDictInner,
     is_partial: bool,
     table: &mut TypeTableBuilder,
 ) -> usize {
-    match typed_dict {
-        TypedDict::TypedDict(inner) => {
-            let args = inner
-                .targs()
-                .as_slice()
-                .iter()
-                .map(|ty| type_to_indexed_shape(context, ty, table))
-                .collect::<Vec<_>>();
-            insert_indexed_named(
-                table,
-                qname_to_string(inner.qname()),
-                args,
-                None,
-                typed_dict_traits(is_partial),
-            )
-        }
-        // An anonymous TypedDict has no class identity; structurally it is a
-        // `dict[str, <union of field value types>]` (all keys are string
-        // literals). Emit it as that dict -- matching the display string and a
-        // real dict -- so the structured shape keeps the field value types
-        // instead of collapsing to an opaque `TypedDictionary` marker.
-        TypedDict::Anonymous(inner) => {
-            let heap = TypeHeap::new();
-            let value_type = inner.compute_value_type(&heap);
-            let str_index = indexed_named_leaf(table, "builtins.str");
-            let value_index = type_to_indexed_shape(context, &value_type, table);
-            insert_indexed_named(
-                table,
-                "builtins.dict",
-                vec![str_index, value_index],
-                None,
-                Vec::new(),
-            )
-        }
-    }
+    let args = typed_dict
+        .targs()
+        .as_slice()
+        .iter()
+        .map(|ty| type_to_indexed_shape(context, ty, table))
+        .collect::<Vec<_>>();
+    insert_indexed_named(
+        table,
+        qname_to_string(typed_dict.qname()),
+        args,
+        None,
+        typed_dict_traits(is_partial),
+    )
+}
+
+/// An anonymous TypedDict has no class identity; structurally it is a
+/// `dict[str, <union of field value types>]` (all keys are string literals). Emit it as
+/// that dict -- matching the display string and a real dict -- so the structured shape
+/// keeps the field value types instead of collapsing to an opaque `TypedDictionary` marker.
+fn anonymous_typed_dict_to_indexed_shape(
+    context: &TypeShapeContext,
+    typed_dict: &AnonymousTypedDictInner,
+    table: &mut TypeTableBuilder,
+) -> usize {
+    let heap = TypeHeap::new();
+    let value_type = typed_dict.compute_value_type(&heap);
+    let str_index = indexed_named_leaf(table, "builtins.str");
+    let value_index = type_to_indexed_shape(context, &value_type, table);
+    insert_indexed_named(
+        table,
+        "builtins.dict",
+        vec![str_index, value_index],
+        None,
+        Vec::new(),
+    )
 }
 
 fn callable_to_indexed_shape(

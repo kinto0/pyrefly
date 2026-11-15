@@ -32,8 +32,8 @@ use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItem;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::Forall;
 use pyrefly_types::types::Overload;
@@ -102,6 +102,15 @@ enum OverloadCapture {
     NotApplicable,
     NoMatch,
     Matched,
+}
+
+/// The `got` side of a `PartialTypedDict` subset check, resolved to the parts the check needs.
+/// A declared and an anonymous TypedDict resolve their fields and extra items differently, but
+/// the check itself is the same for both.
+struct GotTypedDict {
+    name: Name,
+    fields: SmallMap<Name, TypedDictField>,
+    extra_items: ExtraItems,
 }
 
 impl TypedDictFieldId {
@@ -1200,7 +1209,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         }
     }
 
-    fn get_typed_dict_fields(&self, td: &TypedDict) -> SmallMap<TypedDictFieldId, TypedDictField> {
+    fn get_typed_dict_fields(
+        &self,
+        td: &TypedDictInner,
+    ) -> SmallMap<TypedDictFieldId, TypedDictField> {
         self.type_order
             .typed_dict_fields(td)
             .into_iter()
@@ -1277,8 +1289,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
 
     fn is_subset_typed_dict(
         &mut self,
-        got: &TypedDict,
-        want: &TypedDict,
+        got: &TypedDictInner,
+        want: &TypedDictInner,
     ) -> Result<(), SubsetError> {
         let cacheable = Self::typed_dict_is_cacheable(got) && Self::typed_dict_is_cacheable(want);
         if cacheable && let Some(result) = self.solver.check_typed_dict_cache(got, want) {
@@ -1304,19 +1316,16 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         res
     }
 
-    /// Only cache non-generic class-based TypedDicts. Generic TypedDicts could
-    /// contain Vars whose meaning depends on the subset context.
-    fn typed_dict_is_cacheable(td: &TypedDict) -> bool {
-        match td {
-            TypedDict::TypedDict(inner) => inner.targs().is_empty(),
-            TypedDict::Anonymous(_) => false,
-        }
+    /// Only cache non-generic TypedDicts. Generic TypedDicts could contain Vars whose
+    /// meaning depends on the subset context.
+    fn typed_dict_is_cacheable(td: &TypedDictInner) -> bool {
+        td.targs().is_empty()
     }
 
     fn is_subset_typed_dict_inner(
         &mut self,
-        got: &TypedDict,
-        want: &TypedDict,
+        got: &TypedDictInner,
+        want: &TypedDictInner,
     ) -> Result<(), SubsetError> {
         let got_name = got.name();
         let want_name = want.name();
@@ -1395,15 +1404,19 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         }
     }
 
-    /// Check TypedDict[got] <: PartialTypedDict[want]
+    /// Check TypedDict[got] <: PartialTypedDict[want]. The `got` side is passed as its
+    /// already-resolved parts so that both declared and anonymous TypedDicts can be checked.
     fn is_subset_partial_typed_dict(
         &mut self,
-        got: &TypedDict,
-        want: &TypedDict,
+        got: GotTypedDict,
+        want: &TypedDictInner,
     ) -> Result<(), SubsetError> {
-        let got_fields = self.type_order.typed_dict_fields(got);
+        let GotTypedDict {
+            name: got_name,
+            fields: got_fields,
+            extra_items: got_extra_items,
+        } = got;
         let want_fields = self.type_order.typed_dict_fields(want);
-        let got_extra_items = self.type_order.typed_dict_extra_items(got);
         let want_extra_items = self.type_order.typed_dict_extra_items(want);
         // An `OpenTypedDict` error is returned only if every other check passes. Callers treat it
         // as a soft error, so it must not hide an incompatible field.
@@ -1422,7 +1435,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     open_error.get_or_insert_with(|| {
                         SubsetError::OpenTypedDict(Box::new(
                             OpenTypedDictSubsetError::MissingField {
-                                got: got.name().clone(),
+                                got: got_name.clone(),
                                 want: want.name().clone(),
                                 field: k.clone(),
                             },
@@ -1450,7 +1463,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             }
             (ExtraItems::Default, want_extra_items) => Err(SubsetError::OpenTypedDict(Box::new(
                 OpenTypedDictSubsetError::UnknownFields {
-                    got: got.name().clone(),
+                    got: got_name,
                     want: want.name().clone(),
                     extra_items: want_extra_items.extra_item(self.type_order.stdlib()).ty,
                 },
@@ -1467,7 +1480,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
     fn is_subset_anonymous_typed_dict(
         &mut self,
         got: &AnonymousTypedDictInner,
-        want: &TypedDict,
+        want: &TypedDictInner,
     ) -> Result<(), SubsetError> {
         let got_fields = got.fields.clone().into_iter().collect::<SmallMap<_, _>>();
         let want_fields = self.type_order.typed_dict_fields(want);
@@ -2335,40 +2348,74 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 )?;
                 self.is_subset_eq(&l_sig.ret, &u_sig.ret)
             }
-            (Type::TypedDict(TypedDict::Anonymous(got)), Type::TypedDict(want)) => {
+            (Type::AnonymousTypedDict(got), Type::TypedDict(want)) => {
                 self.is_subset_anonymous_typed_dict(got, want)
             }
             (Type::TypedDict(got), Type::TypedDict(want)) => self.is_subset_typed_dict(got, want),
             (Type::TypedDict(got), Type::PartialTypedDict(want)) => {
+                let got = GotTypedDict {
+                    name: got.name().clone(),
+                    fields: self.type_order.typed_dict_fields(got),
+                    extra_items: self.type_order.typed_dict_extra_items(got),
+                };
                 self.is_subset_partial_typed_dict(got, want)
             }
-            (Type::TypedDict(TypedDict::TypedDict(_)), Type::SelfType(cls))
+            (Type::AnonymousTypedDict(got), Type::PartialTypedDict(want)) => {
+                // Every key of an anonymous TypedDict is optional and read-write, and its extra
+                // items type is the union of its field types.
+                let got = GotTypedDict {
+                    name: ANONYMOUS_TYPED_DICT.clone(),
+                    fields: got.fields.iter().cloned().collect(),
+                    extra_items: ExtraItems::Extra(ExtraItem {
+                        ty: got.compute_value_type(&self.solver.heap),
+                        read_only: false,
+                    }),
+                };
+                self.is_subset_partial_typed_dict(got, want)
+            }
+            (Type::AnonymousTypedDict(got), Type::AnonymousTypedDict(want)) => {
+                // Every key of an anonymous TypedDict is optional, and a key it does not name may
+                // hold any of its field types. So each field of `got` has to fit the same field of
+                // `want`, or else the union of `want`'s field types.
+                let want_value_ty = want.compute_value_type(&self.solver.heap);
+                all(got.fields.iter(), |(name, got_field)| {
+                    let want_ty = want
+                        .fields
+                        .iter()
+                        .find_map(|(want_name, want_field)| {
+                            (want_name == name).then_some(&want_field.ty)
+                        })
+                        .unwrap_or(&want_value_ty);
+                    self.is_subset_eq(&got_field.ty, want_ty)
+                })
+            }
+            (Type::TypedDict(_), Type::SelfType(cls))
                 if cls == self.type_order.stdlib().typed_dict_fallback() =>
             {
                 // Allow substituting a TypedDict for Self when we call methods
                 Ok(())
             }
-            (Type::TypedDict(td @ TypedDict::Anonymous(_)), _) => {
+            (Type::AnonymousTypedDict(td), _) => {
                 let stdlib = self.type_order.stdlib();
                 self.is_subset_eq(
                     &self.solver.heap.mk_class_type(stdlib.dict(
                         self.solver.heap.mk_class_type(stdlib.str().clone()),
-                        self.type_order.get_typed_dict_value_type(td),
+                        td.compute_value_type(&self.solver.heap),
                     )),
                     want,
                 )
             }
-            (_, Type::TypedDict(td @ TypedDict::Anonymous(_))) => {
+            (_, Type::AnonymousTypedDict(td)) => {
                 let stdlib = self.type_order.stdlib();
                 self.is_subset_eq(
                     got,
                     &self.solver.heap.mk_class_type(stdlib.dict(
                         self.solver.heap.mk_class_type(stdlib.str().clone()),
-                        self.type_order.get_typed_dict_value_type(td),
+                        td.compute_value_type(&self.solver.heap),
                     )),
                 )
             }
-            (Type::TypedDict(TypedDict::TypedDict(_)), Type::ClassType(want))
+            (Type::TypedDict(_), Type::ClassType(want))
                 if !self.type_order.is_protocol(want.class_object())
                     && !self.type_order.has_superclass(
                         self.type_order.stdlib().mapping_object(),
@@ -2384,7 +2431,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // require solving recursive fields of the TypedDict currently being defined.
                 Err(SubsetError::Other)
             }
-            (Type::TypedDict(td @ TypedDict::TypedDict(_)), _) => {
+            (Type::TypedDict(td), _) => {
                 let stdlib = self.type_order.stdlib();
                 if let Some(value_type) = self
                     .type_order

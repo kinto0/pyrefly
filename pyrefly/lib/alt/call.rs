@@ -79,7 +79,6 @@ use crate::types::keywords::TypeMap;
 use crate::types::literal::Lit;
 use crate::types::module::ModuleType;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDict;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethod;
 use crate::types::types::BoundMethodType;
@@ -466,7 +465,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ConstructorKind::BareClassName,
                     None,
                 ))),
-                Type::TypedDict(TypedDict::TypedDict(typed_dict)) => {
+                Type::TypedDict(typed_dict) => {
                     CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict)))
                 }
                 _ => unreachable!(),
@@ -841,14 +840,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     None => CallTargetLookup::Error(Type::SelfType(cls), vec![]),
                 }
             }
-            Type::Type(f) if matches!(&*f, Type::TypedDict(TypedDict::TypedDict(_))) => {
-                let Type::TypedDict(TypedDict::TypedDict(typed_dict)) = *f else {
+            Type::Type(f) if matches!(&*f, Type::TypedDict(_)) => {
+                let Type::TypedDict(typed_dict) = *f else {
                     unreachable!("guarded by matches! above")
                 };
                 CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict)))
             }
-            Type::Type(ref f) if let Type::TypedDict(td @ TypedDict::Anonymous(_)) = &**f => {
-                let value_ty = self.get_typed_dict_value_type(td);
+            Type::Type(ref f) if let Type::AnonymousTypedDict(td) = &**f => {
+                let value_ty = td.compute_value_type(self.heap);
                 let cls = self
                     .stdlib
                     .dict(self.heap.mk_class_type(self.stdlib.str().clone()), value_ty);
@@ -1782,7 +1781,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .finish_quantified(vs, self.solver().config.infer_with_first_use)
             .err();
         ConstructedInstance {
-            ty: Type::TypedDict(TypedDict::TypedDict(typed_dict)),
+            ty: Type::TypedDict(typed_dict),
             matched_hint,
             arg_errors,
             return_errors,

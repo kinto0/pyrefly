@@ -16,7 +16,6 @@ use crate::quantified::Quantified;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
 use crate::type_var::Restriction;
-use crate::typed_dict::TypedDict;
 use crate::types::Type;
 
 /// Turn unions of unions into a flattened list for one union, and return the deduped list.
@@ -357,7 +356,7 @@ fn collapse_literals(
 /// Promote anonymous typed dicts to `dict[str, value_type]`
 fn promote_anonymous_typed_dicts(types: &mut [Type], stdlib: &Stdlib, heap: &TypeHeap) {
     for ty in types.iter_mut() {
-        if let Type::TypedDict(TypedDict::Anonymous(inner)) = ty {
+        if let Type::AnonymousTypedDict(inner) = ty {
             let value_type = inner.compute_value_type(heap);
             *ty = heap.mk_class_type(stdlib.dict(stdlib.str().clone().to_type(), value_type));
         }

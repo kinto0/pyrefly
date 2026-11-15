@@ -19,6 +19,7 @@ use pyrefly_types::literal::Lit;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::simplify::simplify_tuples;
 use pyrefly_types::tuple::Tuple;
+use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
@@ -1253,6 +1254,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             }
                         }
                     }
+                    Type::AnonymousTypedDict(typed_dict) => {
+                        for (name, field) in &typed_dict.fields {
+                            if field.required {
+                                keyword_arg_names.insert(name.clone());
+                            }
+                        }
+                    }
                     _ => {
                         if let Some((key_ty, _)) = self.unwrap_mapping(ty) {
                             let mut known_keys = SmallSet::new();
@@ -1809,13 +1817,27 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 None => {
                     let ty = kw.value.infer(self, arg_errors);
                     self.maybe_error_any_argument_type(&ty, kw.range, arg_errors);
-                    if let Type::TypedDict(typed_dict) = ty {
-                        let fields = self.typed_dict_fields(&typed_dict);
-                        // A non-closed TypedDict may carry arbitrary unknown keys, which can
-                        // match the callee's kwargs or any of its unmatched keyword params. An
-                        // anonymous TypedDict comes from a dict display, whose keys are all known.
-                        let extra_items = self.typed_dict_extra_items(&typed_dict);
-                        let anonymous = typed_dict.is_anonymous();
+                    // Both declared and anonymous TypedDicts splat into individual keyword
+                    // arguments, but they resolve their name, fields and extra items differently.
+                    // A non-closed declared TypedDict may carry arbitrary unknown keys, which can
+                    // match the callee's kwargs or any of its unmatched keyword params. An
+                    // anonymous TypedDict comes from a dict display, whose keys are all known.
+                    let typed_dict = match &ty {
+                        Type::TypedDict(td) => Some((
+                            td.name().clone(),
+                            self.typed_dict_fields(td),
+                            self.typed_dict_extra_items(td),
+                            false,
+                        )),
+                        Type::AnonymousTypedDict(td) => Some((
+                            ANONYMOUS_TYPED_DICT.clone(),
+                            td.fields.iter().cloned().collect(),
+                            ExtraItems::Closed,
+                            true,
+                        )),
+                        _ => None,
+                    };
+                    if let Some((td_name, fields, extra_items, anonymous)) = typed_dict {
                         if let Some(capture) = &mut named_ints_capture {
                             for (name, field) in fields.iter() {
                                 if !kwparams.contains_key(name)
@@ -1828,11 +1850,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     );
                                 }
                             }
-                            if !anonymous && !matches!(extra_items, ExtraItems::Closed) {
+                            if !matches!(extra_items, ExtraItems::Closed) {
                                 capture.mark_open();
                             }
                         }
-                        if !anonymous && !matches!(extra_items, ExtraItems::Closed) {
+                        if !matches!(extra_items, ExtraItems::Closed) {
                             let open = matches!(extra_items, ExtraItems::Default);
                             let extra_ty = extra_items.extra_item(self.stdlib).ty;
                             match &kwargs {
@@ -1847,7 +1869,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         },
                                         format!(
                                             "`{}` may contain extra items of type `{}`, which cannot be unpacked into a callable that accepts no extra keyword arguments",
-                                            typed_dict.name(),
+                                            td_name,
                                             self.for_display(extra_ty.clone()),
                                         ),
                                     );

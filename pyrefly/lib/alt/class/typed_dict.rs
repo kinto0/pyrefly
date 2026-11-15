@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 use pyrefly_python::dunder;
 use pyrefly_types::simplify::unions_with_literals;
+use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
+use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItem;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictInner;
@@ -54,7 +56,6 @@ use crate::types::quantified::QuantifiedOrigin;
 use crate::types::read_only::ReadOnlyReason;
 use crate::types::type_var::PreInferenceVariance;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDict;
 use crate::types::typed_dict::TypedDictField;
 use crate::types::types::Forall;
 use crate::types::types::Overload;
@@ -75,19 +76,46 @@ const VALUES_METHOD: Name = Name::new_static("values");
 pub(crate) const REQUIRED_KEYS: Name = Name::new_static("__required_keys__");
 pub(crate) const OPTIONAL_KEYS: Name = Name::new_static("__optional_keys__");
 
+/// The TypedDict a dict literal is being checked against. A declared TypedDict takes its
+/// fields from the class's `ClassMetadata`; an anonymous one carries them directly. This is a
+/// parameter type rather than a `Type` variant, so the two only have to be distinguished here,
+/// where a solver is already in hand.
+#[derive(Clone, Copy)]
+pub enum TypedDictHint<'a> {
+    Declared(&'a TypedDictInner),
+    Anonymous(&'a AnonymousTypedDictInner),
+}
+
 impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub fn check_dict_items_against_typed_dict(
         &self,
         dict_items: &Vec<&DictItem>,
-        typed_dict: &TypedDict,
+        typed_dict: TypedDictHint,
         // Check whether `typed_dict` can be updated with `dict_items`
         is_update: bool,
         range: TextRange,
         check_errors: &ErrorCollector,
         item_errors: &ErrorCollector,
     ) {
-        let fields = self.typed_dict_fields(typed_dict);
-        let extra_items = self.typed_dict_extra_items(typed_dict);
+        // An anonymous TypedDict has no required fields and no declared name: every key is
+        // optional, and any key it does not have is checked against the union of its field
+        // types, so the "missing required key" and "key not defined" errors below are
+        // unreachable for it.
+        let (fields, extra_items, typed_dict_name) = match typed_dict {
+            TypedDictHint::Declared(inner) => (
+                self.typed_dict_fields(inner),
+                self.typed_dict_extra_items(inner),
+                inner.name().clone(),
+            ),
+            TypedDictHint::Anonymous(inner) => (
+                inner.fields.iter().cloned().collect(),
+                ExtraItems::Extra(ExtraItem {
+                    ty: inner.compute_value_type(self.heap),
+                    read_only: false,
+                }),
+                ANONYMOUS_TYPED_DICT.clone(),
+            ),
+        };
         let mut has_unknown_expansion = false;
         let mut keys: SmallSet<Name> = SmallSet::new();
         dict_items.iter().for_each(|x| match &x.key {
@@ -145,8 +173,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadTypedDictKey,
                                 format!(
                                     "Key `{}` is not defined in TypedDict `{}`",
-                                    key_name,
-                                    typed_dict.name()
+                                    key_name, typed_dict_name
                                 ),
                             );
                             if let Some(suggestion) = best_suggestion(
@@ -176,13 +203,22 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             None => {
                 // This is an unpacked item (`**some_dict`).
-                let partial_td_ty = self.heap.mk_partial_typed_dict(typed_dict.clone());
+                // Unpacking only has to supply a subset of the keys. An anonymous TypedDict
+                // already requires none of its keys, so it is its own partial form.
+                let partial_td_ty = match typed_dict {
+                    TypedDictHint::Declared(inner) => {
+                        self.heap.mk_partial_typed_dict(inner.clone())
+                    }
+                    TypedDictHint::Anonymous(inner) => {
+                        self.heap.mk_anonymous_typed_dict(inner.clone())
+                    }
+                };
                 let item_ty = self.expr_infer_with_hint(
                     &x.value,
                     Some(HintRef::soft(&partial_td_ty)),
                     item_errors,
                 );
-                if let Type::TypedDict(unpacked @ TypedDict::TypedDict(_)) = &item_ty {
+                if let Type::TypedDict(unpacked) = &item_ty {
                     let unpacked_fields = self.typed_dict_fields(unpacked);
                     for (key, field) in &unpacked_fields {
                         if field.required {
@@ -228,8 +264,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadTypedDictKey,
                         format!(
                             "Missing required key `{}` for TypedDict `{}`",
-                            key,
-                            typed_dict.name(),
+                            key, typed_dict_name,
                         ),
                     );
                 }
@@ -257,24 +292,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         extra_items
     }
 
-    pub fn typed_dict_extra_items(&self, typed_dict: &TypedDict) -> ExtraItems {
-        match typed_dict {
-            TypedDict::TypedDict(inner) => {
-                let mut extra_items = self.typed_dict_extra_items_for_cls(inner.class_object());
-                if let ExtraItems::Extra(extra) = &mut extra_items {
-                    inner.targs().substitute_into_mut(&mut extra.ty);
-                    // If extra_items is generic, `inner` may bind it to `Never`, closing `cls`.
-                    if extra.ty.is_never() {
-                        return ExtraItems::Closed;
-                    }
-                }
-                extra_items
+    pub fn typed_dict_extra_items(&self, typed_dict: &TypedDictInner) -> ExtraItems {
+        let mut extra_items = self.typed_dict_extra_items_for_cls(typed_dict.class_object());
+        if let ExtraItems::Extra(extra) = &mut extra_items {
+            typed_dict.targs().substitute_into_mut(&mut extra.ty);
+            // If extra_items is generic, `typed_dict` may bind it to `Never`, closing the class.
+            if extra.ty.is_never() {
+                return ExtraItems::Closed;
             }
-            TypedDict::Anonymous(_) => ExtraItems::Extra(ExtraItem {
-                ty: self.get_typed_dict_value_type(typed_dict),
-                read_only: false,
-            }),
         }
+        extra_items
     }
 
     fn instantiate_typed_dict_field(
@@ -291,51 +318,37 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(typed_dict_field)
     }
 
-    pub fn typed_dict_fields(&self, typed_dict: &TypedDict) -> SmallMap<Name, TypedDictField> {
-        match typed_dict {
-            TypedDict::TypedDict(inner) => {
-                let class = inner.class_object();
-                let metadata = self.get_metadata_for_class(class);
-                match metadata.typed_dict_metadata() {
-                    None => {
-                        // This may happen during incremental update where `class` is stale/outdated
-                        SmallMap::new()
-                    }
-                    Some(typed_dict_metadata) => typed_dict_metadata
-                        .fields
-                        .iter()
-                        .filter_map(|(name, is_total)| {
-                            self.instantiate_typed_dict_field(inner, name, *is_total)
-                                .map(|field| (name.clone(), field))
-                        })
-                        .collect(),
-                }
+    pub fn typed_dict_fields(&self, typed_dict: &TypedDictInner) -> SmallMap<Name, TypedDictField> {
+        let class = typed_dict.class_object();
+        let metadata = self.get_metadata_for_class(class);
+        match metadata.typed_dict_metadata() {
+            None => {
+                // This may happen during incremental update where `class` is stale/outdated
+                SmallMap::new()
             }
-            TypedDict::Anonymous(inner) => inner.fields.iter().cloned().collect(),
+            Some(typed_dict_metadata) => typed_dict_metadata
+                .fields
+                .iter()
+                .filter_map(|(name, is_total)| {
+                    self.instantiate_typed_dict_field(typed_dict, name, *is_total)
+                        .map(|field| (name.clone(), field))
+                })
+                .collect(),
         }
     }
 
-    pub fn typed_dict_field(&self, typed_dict: &TypedDict, name: &Name) -> Option<TypedDictField> {
-        match typed_dict {
-            TypedDict::TypedDict(inner) => {
-                let class = inner.class_object();
-                let metadata = self.get_metadata_for_class(class);
-                metadata
-                    .typed_dict_metadata()
-                    .and_then(|typed_dict_metadata| {
-                        typed_dict_metadata.fields.get(name).and_then(|is_total| {
-                            self.instantiate_typed_dict_field(inner, name, *is_total)
-                        })
-                    })
-            }
-            TypedDict::Anonymous(inner) => inner.fields.iter().find_map(|field| {
-                if *field.0 == *name {
-                    Some(field.1.clone())
-                } else {
-                    None
-                }
-            }),
-        }
+    pub fn typed_dict_field(
+        &self,
+        typed_dict: &TypedDictInner,
+        name: &Name,
+    ) -> Option<TypedDictField> {
+        self.get_metadata_for_class(typed_dict.class_object())
+            .typed_dict_metadata()
+            .and_then(|typed_dict_metadata| {
+                typed_dict_metadata.fields.get(name).and_then(|is_total| {
+                    self.instantiate_typed_dict_field(typed_dict, name, *is_total)
+                })
+            })
     }
 
     fn names_to_fields<'b>(
@@ -803,26 +816,38 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         )))
     }
 
-    pub fn get_typed_dict_value_type(&self, typed_dict: &TypedDict) -> Type {
-        match typed_dict {
-            TypedDict::TypedDict(inner) => {
-                let cls = inner.class_object();
-                if let Some(metadata) = self.get_metadata_for_class(cls).typed_dict_metadata() {
-                    let value_type =
-                        self.get_typed_dict_value_type_from_fields(cls, &metadata.fields);
-                    inner.targs().substitute_into(value_type)
-                } else {
-                    self.heap.mk_class_type(self.stdlib.object().clone())
-                }
-            }
-            TypedDict::Anonymous(inner) => inner.compute_value_type(self.heap),
+    pub fn get_typed_dict_value_type(&self, typed_dict: &TypedDictInner) -> Type {
+        let cls = typed_dict.class_object();
+        if let Some(metadata) = self.get_metadata_for_class(cls).typed_dict_metadata() {
+            let value_type = self.get_typed_dict_value_type_from_fields(cls, &metadata.fields);
+            typed_dict.targs().substitute_into(value_type)
+        } else {
+            self.heap.mk_class_type(self.stdlib.object().clone())
         }
+    }
+
+    /// If an anonymous TypedDict is assignable to `dict[str, VT]`, return `VT`. This is the
+    /// anonymous counterpart of `get_typed_dict_value_type_as_builtins_dict`: every key of an
+    /// anonymous TypedDict is optional and read-write and its extra items type is the union of
+    /// its field types, so the check reduces to whether each field's type is consistent with
+    /// that union. A heterogeneous dict literal is therefore not assignable to any single
+    /// `dict[str, VT]`.
+    pub fn get_anonymous_typed_dict_value_type_as_builtins_dict(
+        &self,
+        typed_dict: &AnonymousTypedDictInner,
+    ) -> Option<Type> {
+        let value_ty = typed_dict.compute_value_type(self.heap);
+        typed_dict
+            .fields
+            .iter()
+            .all(|(_, field)| self.is_consistent(&field.ty, &value_ty))
+            .then_some(value_ty)
     }
 
     /// If the TypedDict is assignable to `dict[str, VT]`, return `VT`.
     pub fn get_typed_dict_value_type_as_builtins_dict(
         &self,
-        typed_dict: &TypedDict,
+        typed_dict: &TypedDictInner,
     ) -> Option<Type> {
         if let ExtraItems::Extra(extra) = self.typed_dict_extra_items(typed_dict)
             && !extra.read_only
@@ -990,7 +1015,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(ClassSynthesizedFields::new(fields))
     }
 
-    pub fn typed_dict_kw_param_info(&self, typed_dict: &TypedDict) -> Vec<(Name, Type, Required)> {
+    pub fn typed_dict_kw_param_info(
+        &self,
+        typed_dict: &TypedDictInner,
+    ) -> Vec<(Name, Type, Required)> {
         self.typed_dict_fields(typed_dict)
             .iter()
             .map(|(name, field)| {
@@ -1151,18 +1179,4 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
 fn name_to_literal_type(name: &Name) -> Type {
     Lit::Str(name.as_str().into()).to_implicit_type()
-}
-
-pub trait TypedDictErrorKind {
-    fn key_error_kind(&self) -> ErrorKind;
-}
-
-impl TypedDictErrorKind for pyrefly_types::typed_dict::TypedDict {
-    fn key_error_kind(&self) -> ErrorKind {
-        if self.is_anonymous() {
-            ErrorKind::BadIndex
-        } else {
-            ErrorKind::BadTypedDictKey
-        }
-    }
 }

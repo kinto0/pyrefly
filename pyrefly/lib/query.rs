@@ -38,7 +38,6 @@ use pyrefly_types::literal::Lit;
 use pyrefly_types::quantified::TypeVarLike;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::Type;
@@ -767,10 +766,8 @@ impl<'a> CalleesWithLocation<'a> {
                 Self::class_info_for_qname(c.qname(), false)
             }
             Type::ClassDef(c) => Self::class_info_for_qname(c.qname(), false),
-            Type::TypedDict(d) => match d {
-                TypedDict::TypedDict(inner) => Self::class_info_for_qname(inner.qname(), true),
-                TypedDict::Anonymous(_) => vec![],
-            },
+            Type::TypedDict(d) => Self::class_info_for_qname(d.qname(), true),
+            Type::AnonymousTypedDict(_) => vec![],
             Type::Literal(lit) if matches!(lit.value, Lit::Str(_)) => {
                 vec![(String::from("builtins.str"), false)]
             }
@@ -929,9 +926,7 @@ impl<'a> CalleesWithLocation<'a> {
                     .class_object(),
             ),
             Type::SelfType(c) | Type::ClassType(c) => self.find_init_or_new(c.class_object()),
-            Type::TypedDict(TypedDict::TypedDict(inner)) => {
-                self.find_init_or_new(inner.class_object())
-            }
+            Type::TypedDict(inner) => self.find_init_or_new(inner.class_object()),
             Type::Quantified(q) => match &q.restriction {
                 Restriction::Bound(bound) => self.init_or_new_from_type(bound, callee_range),
                 Restriction::Constraints(tys) => self.init_or_new_from_union(tys, callee_range),
@@ -1667,10 +1662,7 @@ impl Query {
         if !need_lt && (!need_gt || is_typed_dict_request) {
             let sub_ty = cached_lt.unwrap();
             if is_typed_dict_request {
-                return Ok(matches!(
-                    sub_ty,
-                    Type::TypedDict(_) | Type::PartialTypedDict(_)
-                ));
+                return Ok(sub_ty.is_typed_dict());
             } else {
                 let super_ty = cached_gt.unwrap();
                 let t = self.state.transaction();
@@ -1728,7 +1720,7 @@ impl Query {
 
         // Compute final result
         let result = if is_typed_dict_request {
-            matches!(sub_ty, Type::TypedDict(_) | Type::PartialTypedDict(_))
+            sub_ty.is_typed_dict()
         } else {
             t.ad_hoc_solve(&h, "query_is_subset_eq", |solver| {
                 solver.is_subset_eq(&sub_ty, &super_ty_opt.unwrap())

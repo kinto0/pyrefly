@@ -26,8 +26,9 @@ use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_alias::TypeAliasIndex;
 use pyrefly_types::type_alias::TypeAliasRef;
 use pyrefly_types::type_info::JoinStyle;
+use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDict;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -65,7 +66,6 @@ use crate::alt::call::CallTargetLookup;
 use crate::alt::callable::CallArg;
 use crate::alt::class::attrs::is_attrs_nothing;
 use crate::alt::class::class_field::ClassField;
-use crate::alt::class::typed_dict::TypedDictErrorKind;
 use crate::alt::class::variance_inference::VarianceMap;
 use crate::alt::expr::ExprOptions;
 use crate::alt::traits::SolveResult;
@@ -2670,7 +2670,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn check_del_typed_dict_literal_key(
         &self,
-        typed_dict: &TypedDict,
+        typed_dict: &TypedDictInner,
         field_name: &Name,
         range: TextRange,
         errors: &ErrorCollector,
@@ -2684,7 +2684,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.error(
                     errors,
                     range,
-                    typed_dict.key_error_kind(),
+                    ErrorKind::BadTypedDictKey,
                     format!("{} does not have key `{field_name}`", typed_dict.label()),
                 );
                 return;
@@ -2720,6 +2720,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .typed_dict_fields(td)
                 .values()
                 .any(|field| field.required)
+        {
+            Some(true)
+        } else if let Type::AnonymousTypedDict(td) = ty
+            && td.fields.iter().any(|(_, field)| field.required)
         {
             Some(true)
         } else if let Type::ClassType(cls) = ty {
@@ -6848,7 +6852,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn check_assign_to_typed_dict_literal_subscript(
         &self,
-        typed_dict: &TypedDict,
+        typed_dict: &TypedDictInner,
         field_name: &Name,
         value: &ExprOrBinding,
         key_range: TextRange,
@@ -6865,7 +6869,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 return self.error(
                     errors,
                     key_range,
-                    typed_dict.key_error_kind(),
+                    ErrorKind::BadTypedDictKey,
                     format!("{} does not have key `{field_name}`", typed_dict.label()),
                 );
             };
@@ -6874,7 +6878,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Some(field_name),
             &field_ty,
             read_only,
-            typed_dict.is_anonymous(),
+            false,
             value,
             key_range,
             assign_range,
@@ -6917,7 +6921,48 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             None,
                             &field_ty,
                             false,
-                            typed_dict.is_anonymous(),
+                            false,
+                            value,
+                            subscript.slice.range(),
+                            subscript.range(),
+                            errors,
+                        )
+                    }
+                    // An anonymous TypedDict has no required or read-only keys, and its extra
+                    // items type is the union of its field types, so any string key can be
+                    // assigned; only the value needs checking.
+                    (Type::AnonymousTypedDict(typed_dict), key)
+                        if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
+                    {
+                        let field_ty = typed_dict.field(&field_name).map_or_else(
+                            || typed_dict.compute_value_type(self.heap),
+                            |field| field.ty.clone(),
+                        );
+                        self.check_assign_to_typed_dict_field(
+                            &ANONYMOUS_TYPED_DICT,
+                            Some(&field_name),
+                            &field_ty,
+                            false,
+                            true,
+                            value,
+                            subscript.slice.range(),
+                            subscript.range(),
+                            errors,
+                        )
+                    }
+                    (Type::AnonymousTypedDict(typed_dict), key)
+                        if self.is_subset_eq(
+                            key,
+                            &self.heap.mk_class_type(self.stdlib.str().clone()),
+                        ) && let Some(value_ty) = self
+                            .get_anonymous_typed_dict_value_type_as_builtins_dict(typed_dict) =>
+                    {
+                        self.check_assign_to_typed_dict_field(
+                            &ANONYMOUS_TYPED_DICT,
+                            None,
+                            &value_ty,
+                            false,
+                            true,
                             value,
                             subscript.slice.range(),
                             subscript.range(),
@@ -7250,12 +7295,23 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // TODO: check against duplicate keys (optional)
                 let key_ty = self.expr_infer(mapping_key, errors);
                 let binding = self.get_idx(*binding_key);
-                if let Type::TypedDict(typed_dict) = binding.ty()
-                    && let Type::Literal(lit) = &key_ty
+                if let Type::Literal(lit) = &key_ty
                     && let Lit::Str(key) = &lit.value
-                    && let Some(field) = self.typed_dict_field(typed_dict, &Name::new(key))
                 {
-                    return field.ty;
+                    let key = Name::new(key);
+                    match binding.ty() {
+                        Type::TypedDict(typed_dict)
+                            if let Some(field) = self.typed_dict_field(typed_dict, &key) =>
+                        {
+                            return field.ty;
+                        }
+                        Type::AnonymousTypedDict(typed_dict)
+                            if let Some(field) = typed_dict.field(&key) =>
+                        {
+                            return field.ty.clone();
+                        }
+                        _ => {}
+                    }
                 }
                 let arg = CallArg::ty(&key_ty, mapping_key.range());
                 self.call_method_or_error(
@@ -8088,7 +8144,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .heap
                 .mk_class_def(self.stdlib.none_type().class_object().clone()),
             Type::Tuple(_) => self.heap.mk_class_def(self.stdlib.tuple_object().clone()),
-            Type::TypedDict(_) | Type::PartialTypedDict(_) => {
+            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
                 self.heap.mk_class_def(self.stdlib.dict_object().clone())
             }
             Type::Union(f) if !f.members.is_empty() => {
@@ -8347,6 +8403,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                             )
                         }
+                        // An anonymous TypedDict has no required or read-only keys, so deleting
+                        // any key it can be indexed by is allowed.
+                        (Type::AnonymousTypedDict(typed_dict), key)
+                            if self.literal_typed_dict_key_name(key).is_some()
+                                || (self.is_subset_eq(
+                                    key,
+                                    &self.heap.mk_class_type(self.stdlib.str().clone()),
+                                ) && self
+                                    .get_anonymous_typed_dict_value_type_as_builtins_dict(
+                                        typed_dict,
+                                    )
+                                    .is_some()) => {}
                         (_, _) => {
                             self.call_method_or_error(
                                 base,

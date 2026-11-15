@@ -23,7 +23,6 @@ use pyrefly_types::callable::Params;
 use pyrefly_types::class::Class;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::OverloadType;
@@ -1629,14 +1628,14 @@ impl<'a> CallGraphVisitor<'a> {
                     is_class_def: false,
                 }
             }
-            Type::TypedDict(TypedDict::Anonymous(_)) => ReceiverClassResult {
+            Type::AnonymousTypedDict(_) => ReceiverClassResult {
                 class: Some(ClassRef::from_class(
                     self.module_answers_context.stdlib.dict_object(),
                     self.module_context,
                 )),
                 is_class_def: false,
             },
-            Type::TypedDict(TypedDict::TypedDict(typed_dict)) => ReceiverClassResult {
+            Type::TypedDict(typed_dict) => ReceiverClassResult {
                 class: Some(ClassRef::from_class(
                     typed_dict.class_object(),
                     self.module_context,
@@ -2003,15 +2002,11 @@ impl<'a> CallGraphVisitor<'a> {
                 call_targets_from_method_name_with_class(str_class)
             }
             Some(Type::TypedDict(typed_dict)) | Some(Type::PartialTypedDict(typed_dict)) => {
-                match typed_dict {
-                    TypedDict::TypedDict(inner) => {
-                        call_targets_from_method_name_with_class(inner.class_object())
-                    }
-                    TypedDict::Anonymous(..) => call_targets_from_method_name_with_class(
-                        self.module_answers_context.stdlib.dict_object(),
-                    ),
-                }
+                call_targets_from_method_name_with_class(typed_dict.class_object())
             }
+            Some(Type::AnonymousTypedDict(..)) => call_targets_from_method_name_with_class(
+                self.module_answers_context.stdlib.dict_object(),
+            ),
             _ => MaybeResolved::Unresolved(UnresolvedReason::UnexpectedDefiningClass),
         };
         if call_targets.is_unresolved() {

@@ -77,7 +77,7 @@ use crate::types::module::ModuleType;
 use crate::types::simplify::simplify_tuples_and_distribute_unpacking;
 use crate::types::simplify::unions;
 use crate::types::simplify::unions_with_literals;
-use crate::types::typed_dict::TypedDict;
+use crate::types::typed_dict::TypedDictInner;
 use crate::types::types::Substitution;
 use crate::types::types::TParams;
 use crate::types::types::Type;
@@ -586,7 +586,7 @@ pub struct Solver {
     protocol_cache: Mutex<HashMap<(Type, Type), Result<(), SubsetError>>>,
     /// Cross-call cache for TypedDict subset results.
     /// Like protocol_cache, only caches Var-free types.
-    typed_dict_cache: Mutex<HashMap<(TypedDict, TypedDict), Result<(), SubsetError>>>,
+    typed_dict_cache: Mutex<HashMap<(TypedDictInner, TypedDictInner), Result<(), SubsetError>>>,
     pub heap: TypeHeap,
     pub config: SolverConfig,
 }
@@ -684,8 +684,8 @@ impl Solver {
 
     pub fn check_typed_dict_cache(
         &self,
-        got: &TypedDict,
-        want: &TypedDict,
+        got: &TypedDictInner,
+        want: &TypedDictInner,
     ) -> Option<Result<(), SubsetError>> {
         self.typed_dict_cache
             .lock()
@@ -695,8 +695,8 @@ impl Solver {
 
     pub fn store_typed_dict_cache<Ans: LookupAnswer>(
         &self,
-        got: &TypedDict,
-        want: &TypedDict,
+        got: &TypedDictInner,
+        want: &TypedDictInner,
         result: &Result<(), SubsetError>,
         type_order: TypeOrder<'_, Ans>,
     ) {

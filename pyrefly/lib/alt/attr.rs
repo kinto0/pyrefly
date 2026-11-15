@@ -65,7 +65,6 @@ use crate::types::quantified::QuantifiedOrigin;
 use crate::types::read_only::ReadOnlyReason;
 use crate::types::type_info::TypeInfo;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDict;
 use crate::types::types::AnyStyle;
 use crate::types::types::BoundMethodType;
 use crate::types::types::Overload;
@@ -2550,10 +2549,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             AttributeBase1::TypedDict(typed_dict) => Some(
                 self.stdlib.dict(
                     self.stdlib.str().clone().to_type(),
-                    self.get_typed_dict_value_type_as_builtins_dict(&TypedDict::TypedDict(
-                        typed_dict,
-                    ))
-                    .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
+                    self.get_typed_dict_value_type_as_builtins_dict(&typed_dict)
+                        .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
                 ),
             ),
             // Handle `type[Any]`, which happens for TypeVars w/ `bound=type`
@@ -2650,13 +2647,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::SelfType(class_type) => acc.push(AttributeBase1::SelfType(class_type)),
             Type::Type(ty) => self.as_attribute_base1_of_type(*ty, acc),
-            Type::TypedDict(TypedDict::TypedDict(td))
-            | Type::PartialTypedDict(TypedDict::TypedDict(td)) => {
-                acc.push(AttributeBase1::TypedDict(td.clone()))
+            Type::TypedDict(td) | Type::PartialTypedDict(td) => {
+                acc.push(AttributeBase1::TypedDict(td))
             }
-            Type::TypedDict(td @ TypedDict::Anonymous(_))
-            | Type::PartialTypedDict(td @ TypedDict::Anonymous(_)) => {
-                let value_ty = self.get_typed_dict_value_type(&td);
+            Type::AnonymousTypedDict(td) => {
+                let value_ty = td.compute_value_type(self.heap);
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.dict(
                     self.heap.mk_class_type(self.stdlib.str().clone()),
                     value_ty,
@@ -2934,11 +2929,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::SelfType(class_type) => {
                 acc.push(AttributeBase1::ClassObject(ClassBase::SelfType(class_type)))
             }
-            Type::TypedDict(_) | Type::PartialTypedDict(_) => {
-                acc.push(AttributeBase1::ClassObject(ClassBase::ClassDef(
+            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => acc
+                .push(AttributeBase1::ClassObject(ClassBase::ClassDef(
                     self.stdlib.typed_dict_fallback().clone(),
-                )))
-            }
+                ))),
             Type::LiteralString(_) => acc.push(AttributeBase1::ClassObject(ClassBase::ClassType(
                 self.stdlib.str().clone(),
             ))),

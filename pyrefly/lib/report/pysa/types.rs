@@ -17,7 +17,6 @@ use pyrefly_types::quantified::Quantified;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::type_var::ShapeExtensionRestriction;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::types::Type;
 use serde::Serialize;
 
@@ -327,10 +326,8 @@ fn get_classes_of_type(type_: &Type, context: &ModuleContext) -> ClassNamesFromT
         Type::Tuple(_) => {
             ClassNamesFromType::from_class(context.answers_context.stdlib.tuple_object(), context)
         }
-        Type::TypedDict(TypedDict::TypedDict(inner)) => {
-            ClassNamesFromType::from_class(inner.class_object(), context)
-        }
-        Type::TypedDict(TypedDict::Anonymous(_)) => {
+        Type::TypedDict(inner) => ClassNamesFromType::from_class(inner.class_object(), context),
+        Type::AnonymousTypedDict(_) => {
             ClassNamesFromType::from_class(context.answers_context.stdlib.dict_object(), context)
         }
         Type::Union(u) if !u.members.is_empty() => u

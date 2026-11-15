@@ -57,6 +57,10 @@ pub struct TypedDictInner {
 }
 
 impl TypedDictInner {
+    pub fn new(class: Class, args: TArgs) -> Self {
+        Self { class, args }
+    }
+
     pub fn qname(&self) -> &QName {
         self.class.qname()
     }
@@ -78,7 +82,12 @@ impl TypedDictInner {
     }
 
     pub fn to_type(self, heap: &TypeHeap) -> Type {
-        heap.mk_typed_dict(TypedDict::TypedDict(self))
+        heap.mk_typed_dict(self)
+    }
+
+    /// Display label for error messages.
+    pub fn label(&self) -> String {
+        format!("TypedDict `{}`", self.name())
     }
 }
 
@@ -97,53 +106,22 @@ impl AnonymousTypedDictInner {
         let tys: Vec<Type> = self.fields.iter().map(|(_, f)| f.ty.clone()).collect();
         simplify::unions(tys, heap)
     }
-}
 
-#[derive(
-    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, TypeEq, Visit, VisitMut
-)]
-pub enum TypedDict {
-    TypedDict(TypedDictInner),
-    Anonymous(Box<AnonymousTypedDictInner>),
-}
-
-// When we get the name of a class-based typed dict we borrow the class's name, so we need
-// a name that we can borrow for anonymous typed dicts
-// This is a lazily initialized value, Name::new normally can't be used as the RHS of a static
-pub static ANONYMOUS_TYPED_DICT: LazyLock<Name> = LazyLock::new(|| Name::new("<anonymous>"));
-
-impl TypedDict {
-    pub fn new(class: Class, args: TArgs) -> Self {
-        Self::TypedDict(TypedDictInner { class, args })
+    pub fn field(&self, name: &Name) -> Option<&TypedDictField> {
+        self.fields
+            .iter()
+            .find_map(|(n, field)| if n == name { Some(field) } else { None })
     }
 
     pub fn to_type(self, heap: &TypeHeap) -> Type {
-        heap.mk_typed_dict(self)
-    }
-
-    pub fn is_anonymous(&self) -> bool {
-        matches!(self, Self::Anonymous(_))
-    }
-
-    /// Display label for error messages: `"dict"` for anonymous TypedDicts,
-    /// `"TypedDict \`X\`"` for declared ones.
-    pub fn label(&self) -> String {
-        if self.is_anonymous() {
-            "dict".to_owned()
-        } else {
-            format!("TypedDict `{}`", self.name())
-        }
-    }
-
-    // This is just a placeholder to reduce refactoring for existing code
-    // We should consider showing the anonymous typed dicts like `{k1: v1, k2: v2}`
-    pub fn name(&self) -> &Name {
-        match self {
-            Self::TypedDict(inner) => inner.name(),
-            Self::Anonymous(_) => &ANONYMOUS_TYPED_DICT,
-        }
+        heap.mk_anonymous_typed_dict(self)
     }
 }
+
+// An anonymous typed dict has no class to borrow a name from, so we need a name that we
+// can borrow instead.
+// This is a lazily initialized value, Name::new normally can't be used as the RHS of a static
+pub static ANONYMOUS_TYPED_DICT: LazyLock<Name> = LazyLock::new(|| Name::new("<anonymous>"));
 
 /// How does the TypedDict handle extra items? See https://peps.python.org/pep-0728.
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq, Hash)]

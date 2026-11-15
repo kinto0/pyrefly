@@ -1844,10 +1844,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         expr: &Expr,
     ) -> Option<(Vec<(Name, PolarsDType)>, SchemaCompleteness)> {
         let ty = self.expr_infer(expr, &self.error_swallower());
-        let Type::TypedDict(typed_dict) = &ty else {
-            return None;
+        let fields = match &ty {
+            Type::TypedDict(typed_dict) => self.typed_dict_fields(typed_dict),
+            Type::AnonymousTypedDict(typed_dict) => typed_dict.fields.iter().cloned().collect(),
+            _ => return None,
         };
-        let fields = self.typed_dict_fields(typed_dict);
         if fields.is_empty() {
             return None;
         }

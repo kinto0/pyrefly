@@ -36,8 +36,8 @@ use crate::types::env::TypeEnv;
 use crate::types::quantified::Quantified;
 use crate::types::stdlib::Stdlib;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDict;
 use crate::types::typed_dict::TypedDictField;
+use crate::types::typed_dict::TypedDictInner;
 use crate::types::types::Forall;
 use crate::types::types::Forallable;
 use crate::types::types::TParams;
@@ -177,25 +177,28 @@ impl<'solver, Ans: LookupAnswer> TypeOrder<'solver, Ans> {
         self.0.promote_silently(cls)
     }
 
-    pub fn typed_dict_fields(self, typed_dict: &TypedDict) -> SmallMap<Name, TypedDictField> {
+    pub fn typed_dict_fields(self, typed_dict: &TypedDictInner) -> SmallMap<Name, TypedDictField> {
         self.0.typed_dict_fields(typed_dict)
     }
 
-    pub fn typed_dict_kw_param_info(self, typed_dict: &TypedDict) -> Vec<(Name, Type, Required)> {
+    pub fn typed_dict_kw_param_info(
+        self,
+        typed_dict: &TypedDictInner,
+    ) -> Vec<(Name, Type, Required)> {
         self.0.typed_dict_kw_param_info(typed_dict)
     }
 
-    pub fn typed_dict_extra_items(self, typed_dict: &TypedDict) -> ExtraItems {
+    pub fn typed_dict_extra_items(self, typed_dict: &TypedDictInner) -> ExtraItems {
         self.0.typed_dict_extra_items(typed_dict)
     }
 
-    pub fn get_typed_dict_value_type(self, typed_dict: &TypedDict) -> Type {
+    pub fn get_typed_dict_value_type(self, typed_dict: &TypedDictInner) -> Type {
         self.0.get_typed_dict_value_type(typed_dict)
     }
 
     pub fn get_typed_dict_value_type_as_builtins_dict(
         self,
-        typed_dict: &TypedDict,
+        typed_dict: &TypedDictInner,
     ) -> Option<Type> {
         self.0
             .get_typed_dict_value_type_as_builtins_dict(typed_dict)

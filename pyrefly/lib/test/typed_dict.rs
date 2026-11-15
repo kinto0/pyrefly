@@ -2384,6 +2384,25 @@ assert_type(d.setdefault("y"), str | None)
 "#,
 );
 
+// One anonymous TypedDict is assignable to another when each of its fields fits the other's
+// field of the same name, so solving `T` from both arguments keeps the first one.
+testcase!(
+    test_anonymous_typed_dict_assignable_to_anonymous_typed_dict,
+    r#"
+from typing import TypeVar, assert_type
+
+T = TypeVar("T")
+
+def first(a: T, b: T) -> T:
+    return a
+
+def f() -> None:
+    x = {"a": 1.5}
+    y = {"a": 1}
+    assert_type(first(x, y), dict[str, float])
+"#,
+);
+
 testcase!(
     test_typed_dict_empty_container_no_implicit_any,
     TestEnv::new().enable_implicit_any_error(),
@@ -3129,5 +3148,48 @@ def from_dict_literal() -> Target:
 
 def from_not_required(s: PartialSource) -> Target:
     return {**s} # E: Missing required key `x` for TypedDict `Target`
+"#,
+);
+
+// Indexing an anonymous TypedDict with a non-literal string key checks the value against the
+// dict's single value type -- but only when it has one. A heterogeneous dict literal is not
+// assignable to any `dict[str, VT]`, so it falls through to `__setitem__`/`__delitem__` and
+// reports `unsupported-operation`, exactly as a declared TypedDict whose fields disagree with
+// its extra items does. Real code suppresses that specific error kind, so routing it through
+// the TypedDict value check instead would silently break those suppressions.
+testcase!(
+    test_anonymous_typed_dict_non_literal_str_key,
+    r#"
+def heterogeneous(k: str) -> None:
+    d = {"a": 1, "b": "s"}
+    d[k] = 2
+    d[k] = object()  # E: Cannot set item in `dict[str, int | str]`
+    del d[k]
+
+def homogeneous(k: str) -> None:
+    d = {"a": 1, "b": 2}
+    d[k] = 3
+    d[k] = "s"  # E: `Literal['s']` is not assignable to dict key with type `int`
+    del d[k]
+"#,
+);
+
+// A dict literal assigned into an anonymous TypedDict is checked against it field by field,
+// whether or not the key already exists. The hint is anonymous, so it is inferred rather than
+// declared: its own check errors are not reported, but errors about the literal's values are.
+testcase!(
+    test_anonymous_typed_dict_hint_checks_dict_literal_values,
+    r#"
+def new_key() -> None:
+    d = {"a": {"x": 1}}
+    d["b"] = {"y": "s"}  # E: `Literal['s']` is not assignable to dict value type `int`
+
+def existing_key() -> None:
+    d = {"a": {"x": 1}}
+    d["a"] = {"y": "s"}  # E: `Literal['s']` is not assignable to dict value type `int`
+
+def matching_value() -> None:
+    d = {"a": {"x": 1}}
+    d["b"] = {"y": 2}
 "#,
 );

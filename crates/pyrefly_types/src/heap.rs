@@ -45,7 +45,8 @@ use crate::tuple::Tuple;
 use crate::type_alias::TypeAliasData;
 use crate::type_var::TypeVar;
 use crate::type_var_tuple::TypeVarTuple;
-use crate::typed_dict::TypedDict;
+use crate::typed_dict::AnonymousTypedDictInner;
+use crate::typed_dict::TypedDictInner;
 use crate::types::AnyStyle;
 use crate::types::BoundMethod;
 use crate::types::Forall;
@@ -364,13 +365,18 @@ impl TypeHeap {
         Type::Intersect(Box::new((members, fallback)))
     }
 
-    /// Create a `Type::TypedDict` from a TypedDict.
-    pub fn mk_typed_dict(&self, typed_dict: TypedDict) -> Type {
+    /// Create a `Type::TypedDict` from a declared TypedDict.
+    pub fn mk_typed_dict(&self, typed_dict: TypedDictInner) -> Type {
         Type::TypedDict(typed_dict)
     }
 
-    /// Create a `Type::PartialTypedDict` from a TypedDict.
-    pub fn mk_partial_typed_dict(&self, typed_dict: TypedDict) -> Type {
+    /// Create a `Type::AnonymousTypedDict` from a TypedDict inferred from a dict literal.
+    pub fn mk_anonymous_typed_dict(&self, typed_dict: AnonymousTypedDictInner) -> Type {
+        Type::AnonymousTypedDict(Box::new(typed_dict))
+    }
+
+    /// Create a `Type::PartialTypedDict` from a declared TypedDict.
+    pub fn mk_partial_typed_dict(&self, typed_dict: TypedDictInner) -> Type {
         Type::PartialTypedDict(typed_dict)
     }
 

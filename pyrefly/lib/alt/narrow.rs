@@ -493,8 +493,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return gradual;
         };
         let is_mapping_member = |ty: &Type| {
-            matches!(ty, Type::TypedDict(_) | Type::PartialTypedDict(_))
-                || matches!(ty, Type::ClassType(class) if class.class_object() == self.stdlib.dict_object() || class.class_object() == self.stdlib.mapping_object())
+            matches!(
+                ty,
+                Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_)
+            ) || matches!(ty, Type::ClassType(class) if class.class_object() == self.stdlib.dict_object() || class.class_object() == self.stdlib.mapping_object())
         };
         let is_mapping_view = |ty: &Type| match ty {
             Type::Intersect(intersection) => intersection.0.iter().all(&is_mapping_member),
@@ -522,7 +524,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         intersect(vec![left.clone(), right.clone()], right.clone(), self.heap)
                     } else if let Some(refined) = self.refine_gradual_intersection(left, right) {
                         refined
-                    } else if matches!((left, right), (Type::TypedDict(_), Type::ClassType(cls)) | (Type::ClassType(cls), Type::TypedDict(_)) if cls.class_object() == self.stdlib.dict_object() || cls.class_object() == self.stdlib.mapping_object())
+                    } else if matches!((left, right), (Type::TypedDict(_) | Type::AnonymousTypedDict(_), Type::ClassType(cls)) | (Type::ClassType(cls), Type::TypedDict(_) | Type::AnonymousTypedDict(_)) if cls.class_object() == self.stdlib.dict_object() || cls.class_object() == self.stdlib.mapping_object())
                         || ((matches!(left, Type::Intersect(_))
                             || matches!(right, Type::Intersect(_)))
                             && is_mapping_view(left)
@@ -585,7 +587,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.heap
                     .mk_class_type(self.stdlib.tuple(self.heap.mk_any_implicit())),
             ),
-            Type::TypedDict(_) | Type::PartialTypedDict(_) => Some(
+            Type::TypedDict(_) | Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => Some(
                 self.heap.mk_class_type(
                     self.stdlib
                         .dict(self.heap.mk_any_implicit(), self.heap.mk_any_implicit()),
@@ -1366,6 +1368,23 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         })
     }
 
+    /// The key names of a TypedDict, declared or anonymous. `None` for any other type.
+    fn typed_dict_key_names(&self, ty: &Type) -> Option<Vec<Name>> {
+        match ty {
+            Type::TypedDict(typed_dict) => {
+                Some(self.typed_dict_fields(typed_dict).into_keys().collect())
+            }
+            Type::AnonymousTypedDict(typed_dict) => Some(
+                typed_dict
+                    .fields
+                    .iter()
+                    .map(|(name, _)| name.clone())
+                    .collect(),
+            ),
+            _ => None,
+        }
+    }
+
     /// Keep the union members consistent with `key` being present or absent.
     fn narrow_key_membership(&self, ty: &Type, key: &Name, present: bool) -> Type {
         self.distribute_over_union(ty, |member| {
@@ -1818,14 +1837,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 {
                     return self.intersect(ty, &member_ty);
                 }
-                if let Type::TypedDict(typed_dict) = &right_ty {
-                    let fields = self.typed_dict_fields(typed_dict);
+                if let Some(fields) = self.typed_dict_key_names(&right_ty) {
                     if fields.is_empty() {
                         // Empty TypedDict - the `in` check is always false
                         return self.heap.mk_never();
                     }
                     let key_types: Vec<Type> = fields
-                        .keys()
+                        .iter()
                         .map(|name| Lit::Str(name.as_str().into()).to_implicit_type())
                         .collect();
                     return self.intersect(ty, &self.unions(key_types));
@@ -1925,14 +1943,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // Check if the right operand is a TypedDict.
                 // If so, we can narrow the left operand if it's exactly one of the TypedDict's keys.
                 let right_ty = self.expr_infer(v, errors);
-                if let Type::TypedDict(typed_dict) = &right_ty {
-                    let fields = self.typed_dict_fields(typed_dict);
+                if let Some(fields) = self.typed_dict_key_names(&right_ty) {
                     if fields.is_empty() {
                         // Empty TypedDict - the `not in` check is always true
                         return ty.clone();
                     }
                     let key_types: Vec<Type> = fields
-                        .keys()
+                        .iter()
                         .map(|name| Lit::Str(name.as_str().into()).to_implicit_type())
                         .collect();
                     return self.distribute_over_union(ty, |t| {

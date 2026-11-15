@@ -21,7 +21,6 @@ use pyrefly_types::quantified::Quantified;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::typed_dict::ExtraItem;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::types::Forallable;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
@@ -154,9 +153,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) {
         let ty = self.expr_infer(&keyword.value, errors);
-        if let Type::TypedDict(typed_dict) = ty {
-            for (name, field) in self.typed_dict_fields(&typed_dict) {
+        if let Type::TypedDict(typed_dict) = &ty {
+            for (name, field) in self.typed_dict_fields(typed_dict) {
                 keywords.push((name, Annotation::new_type(field.ty)));
+            }
+        } else if let Type::AnonymousTypedDict(typed_dict) = &ty {
+            for (name, field) in &typed_dict.fields {
+                keywords.push((name.clone(), Annotation::new_type(field.ty.clone())));
             }
         } else if let Some((key, _)) = self.unwrap_mapping(&ty) {
             if !self.is_subset_eq(&key, &self.heap.mk_class_type(self.stdlib.str().clone())) {
@@ -1703,25 +1706,20 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if is_new_type {
                     BaseClassParseResult::InvalidType(typed_dict.to_type(self.heap), range)
                 } else {
-                    match typed_dict {
-                        TypedDict::TypedDict(inner) => {
-                            let class_object = inner.class_object();
-                            let class_metadata = self.get_metadata_for_class(class_object);
-                            BaseClassParseResult::Parsed({
-                                ParsedBaseClass {
-                                    class_object: class_object.dupe(),
-                                    range,
-                                    metadata: class_metadata,
-                                    has_dynamic_base: false,
-                                }
-                            })
+                    let class_object = typed_dict.class_object();
+                    let class_metadata = self.get_metadata_for_class(class_object);
+                    BaseClassParseResult::Parsed({
+                        ParsedBaseClass {
+                            class_object: class_object.dupe(),
+                            range,
+                            metadata: class_metadata,
+                            has_dynamic_base: false,
                         }
-                        TypedDict::Anonymous(_) => {
-                            BaseClassParseResult::InvalidType(typed_dict.to_type(self.heap), range)
-                        }
-                    }
+                    })
                 }
             }
+            // An anonymous TypedDict cannot be used as a base class.
+            ty @ Type::AnonymousTypedDict(_) => BaseClassParseResult::InvalidType(ty, range),
             Type::None if is_new_type => {
                 let base_cls = self.stdlib.none_type().class_object();
                 let metadata = self.get_metadata_for_class(base_cls);

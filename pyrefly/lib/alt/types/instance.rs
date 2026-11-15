@@ -15,7 +15,6 @@ use pyrefly_types::simplify::intersect;
 use pyrefly_types::simplify::unions;
 use pyrefly_types::stdlib::Stdlib;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::Type;
@@ -109,7 +108,7 @@ impl<'a> Instance<'a> {
         match &self.kind {
             InstanceKind::ClassType(cls) => heap.mk_class_type((*cls).clone()),
             InstanceKind::TypedDict => {
-                heap.mk_typed_dict(TypedDict::new(self.class.dupe(), self.targs.clone()))
+                heap.mk_typed_dict(TypedDictInner::new(self.class.dupe(), self.targs.clone()))
             }
             InstanceKind::TypeVar(q) => {
                 let quantified_ty = q.clone().to_type(heap);

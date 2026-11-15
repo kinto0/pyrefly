@@ -41,7 +41,7 @@ use crate::types::quantified::QuantifiedOrigin;
 use crate::types::tuple::Tuple;
 use crate::types::type_var::PreInferenceVariance;
 use crate::types::type_var::Restriction;
-use crate::types::typed_dict::TypedDict;
+use crate::types::typed_dict::TypedDictInner;
 use crate::types::types::Forall;
 use crate::types::types::Forallable;
 use crate::types::types::Substitution;
@@ -376,9 +376,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     /// Gets this Class as a TypedDict with its tparams as the arguments.
-    pub fn as_typed_dict_unchecked(&self, class: &Class) -> TypedDict {
+    pub fn as_typed_dict_unchecked(&self, class: &Class) -> TypedDictInner {
         let targs = self.targs_of_tparams(class);
-        TypedDict::new(class.clone(), targs)
+        TypedDictInner::new(class.clone(), targs)
     }
 
     /// Instantiates a class or typed dictionary with fresh variables for its type parameters.
@@ -460,7 +460,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn type_of_instance(&self, cls: &Class, targs: TArgs) -> Type {
         let metadata = self.get_metadata_for_class(cls);
         if metadata.is_typed_dict() {
-            self.heap.mk_typed_dict(TypedDict::new(cls.dupe(), targs))
+            self.heap
+                .mk_typed_dict(TypedDictInner::new(cls.dupe(), targs))
         } else {
             self.heap.mk_class_type(ClassType::new(cls.dupe(), targs))
         }

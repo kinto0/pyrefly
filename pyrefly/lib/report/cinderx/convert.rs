@@ -16,7 +16,6 @@ use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::TypeVarLike;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::types::Type;
 use pyrefly_types::types::Union;
 use pyrefly_util::display::Fmt;
@@ -243,23 +242,27 @@ pub(crate) fn type_to_structured(
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
         Type::TypedDict(td) | Type::PartialTypedDict(td) => {
-            let (qname, trait_name) = match (ty, td) {
-                (Type::PartialTypedDict(_), TypedDict::TypedDict(inner)) => {
-                    (qname_to_full_string(inner.qname()), "partial_typed_dict")
-                }
-                (Type::PartialTypedDict(_), TypedDict::Anonymous(_)) => {
-                    ("<anonymous>".to_owned(), "partial_typed_dict")
-                }
-                (_, TypedDict::TypedDict(inner)) => {
-                    (qname_to_full_string(inner.qname()), "typed_dict")
-                }
-                (_, TypedDict::Anonymous(_)) => ("<anonymous>".to_owned(), "typed_dict"),
+            let trait_name = if matches!(ty, Type::PartialTypedDict(_)) {
+                "partial_typed_dict"
+            } else {
+                "typed_dict"
             };
+            let qname = qname_to_full_string(td.qname());
             let hash = hash_class(&qname, &[], &[trait_name]);
             let sty = StructuredType::Class {
                 qname,
                 args: vec![],
                 traits: vec![trait_name.to_owned()],
+            };
+            table.insert(sty, hash)
+        }
+        Type::AnonymousTypedDict(_) => {
+            let qname = "<anonymous>".to_owned();
+            let hash = hash_class(&qname, &[], &["typed_dict"]);
+            let sty = StructuredType::Class {
+                qname,
+                args: vec![],
+                traits: vec!["typed_dict".to_owned()],
             };
             table.insert(sty, hash)
         }

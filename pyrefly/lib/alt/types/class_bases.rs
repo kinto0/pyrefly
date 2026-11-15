@@ -18,7 +18,6 @@ use pyrefly_types::class::ClassType;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::type_info::TypeInfo;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_util::display::commas_iter;
 use ruff_python_ast::Expr;
 use ruff_text_size::Ranged;
@@ -334,7 +333,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let class_of = |ty: &Type| match ty {
             Type::ClassType(class) => Some(class.class_object().dupe()),
             Type::Tuple(_) => Some(self.stdlib.tuple_object().dupe()),
-            Type::TypedDict(TypedDict::TypedDict(dict)) => Some(dict.class_object().dupe()),
+            Type::TypedDict(dict) => Some(dict.class_object().dupe()),
             Type::Int(_) => Some(self.stdlib.int().class_object().dupe()),
             _ => None,
         };
@@ -562,20 +561,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             // class ancestors are represented as ClassType all over the code base, and changing this
                             // would be quite painful. So we convert TypedDict to ClassType in this one spot. Please do
                             // not do this anywhere else.
-                            match typed_dict {
-                                TypedDict::TypedDict(inner) => Some((
-                                    ClassType::new(
-                                        inner.class_object().dupe(),
-                                        inner.targs().clone(),
-                                    ),
-                                    self.get_base_types_for_class(inner.class_object()),
-                                    base_position,
-                                )),
-                                TypedDict::Anonymous(_) => {
-                                    // Anonymous TypedDict cannot be used as a base class
-                                    None
-                                }
-                            }
+                            Some((
+                                ClassType::new(
+                                    typed_dict.class_object().dupe(),
+                                    typed_dict.targs().clone(),
+                                ),
+                                self.get_base_types_for_class(typed_dict.class_object()),
+                                base_position,
+                            ))
                         }
                     }
                     (Type::Type(f), base_position) if f.is_any() => {

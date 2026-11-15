@@ -237,9 +237,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
 
         let first_targ = class.targs().as_slice().first()?;
-        let Type::TypedDict(pyrefly_types::typed_dict::TypedDict::TypedDict(typed_dict_inner)) =
-            first_targ
-        else {
+        let Type::TypedDict(typed_dict_inner) = first_targ else {
             return None;
         };
 
@@ -290,10 +288,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         // Check if the first type argument is a TypedDict
-        if let Some(Type::TypedDict(pyrefly_types::typed_dict::TypedDict::TypedDict(
-            typed_dict_inner,
-        ))) = cls.targs().as_slice().first()
-        {
+        if let Some(Type::TypedDict(typed_dict_inner)) = cls.targs().as_slice().first() {
             // Check if the slice is a string literal
             let key_ty = self.expr_infer(slice, errors);
             if let Type::Literal(f) = &key_ty

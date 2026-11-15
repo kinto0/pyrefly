@@ -573,14 +573,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // The bound arguments are re-inferred and validated below; here we only want the
                     // splat's field names, so any inference error is reported there, not here.
                     let ty = kw.value.infer(self, &self.error_collector());
-                    let Type::TypedDict(td) = ty else {
-                        return None;
-                    };
-                    names.extend(
-                        self.typed_dict_fields(&td)
-                            .into_iter()
-                            .map(|(name, _)| name),
-                    );
+                    match &ty {
+                        Type::TypedDict(td) => names
+                            .extend(self.typed_dict_fields(td).into_iter().map(|(name, _)| name)),
+                        Type::AnonymousTypedDict(td) => {
+                            names.extend(td.fields.iter().map(|(name, _)| name.clone()))
+                        }
+                        _ => return None,
+                    }
                 }
             }
         }

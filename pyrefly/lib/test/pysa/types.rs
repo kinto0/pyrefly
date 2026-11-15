@@ -22,8 +22,8 @@ use pyrefly_types::type_var::FlagMember;
 use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Type;
 use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
@@ -739,7 +739,7 @@ class MyTypedDict(TypedDict):
                 .answers_context
                 .answers
                 .heap()
-                .mk_typed_dict(TypedDict::new(
+                .mk_typed_dict(TypedDictInner::new(
                     get_class("test", "MyTypedDict", &context),
                     Default::default()
                 )),
@@ -758,7 +758,7 @@ class MyTypedDict(TypedDict):
                 .answers_context
                 .answers
                 .heap()
-                .mk_typed_dict(TypedDict::Anonymous(Box::new(AnonymousTypedDictInner {
+                .mk_anonymous_typed_dict(AnonymousTypedDictInner {
                     fields: vec![(
                         Name::new_static("x"),
                         TypedDictField {
@@ -771,7 +771,7 @@ class MyTypedDict(TypedDict):
                             read_only_reason: None,
                         },
                     )],
-                }))),
+                }),
             &context,
         ),
     );

@@ -18,7 +18,6 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Arguments;
@@ -479,9 +478,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .collect();
         Some(
             self.heap
-                .mk_typed_dict(TypedDict::Anonymous(Box::new(AnonymousTypedDictInner {
-                    fields,
-                }))),
+                .mk_anonymous_typed_dict(AnonymousTypedDictInner { fields }),
         )
     }
 

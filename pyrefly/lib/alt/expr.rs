@@ -39,7 +39,6 @@ use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_level_dsl::TypeShapeDslDomain;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Forallable;
 use pyrefly_util::owner::Owner;
@@ -88,7 +87,7 @@ use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::answers_solver::TypeCheckOptions;
 use crate::alt::call::CallStyle;
 use crate::alt::callable::CallArg;
-use crate::alt::class::typed_dict::TypedDictErrorKind;
+use crate::alt::class::typed_dict::TypedDictHint;
 use crate::alt::nn_module_specials::is_nn_module_dict;
 use crate::alt::polars_specials::is_polars_api_series;
 use crate::alt::regex::RegexValidationError;
@@ -2265,8 +2264,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Some(hint) = hint {
             for hint_ty in hint.types() {
                 let (typed_dict, is_update) = match hint_ty {
-                    Type::TypedDict(td) => (td, false),
-                    Type::PartialTypedDict(td) => (td, true),
+                    Type::TypedDict(td) => (TypedDictHint::Declared(td), false),
+                    Type::PartialTypedDict(td) => (TypedDictHint::Declared(td), true),
+                    Type::AnonymousTypedDict(inner) => (TypedDictHint::Anonymous(inner), false),
                     _ => continue,
                 };
                 let check_errors = self.error_collector();
@@ -2285,8 +2285,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // anonymous TypedDict is considered a soft hint because it is an inferred type. A named
                 // TypedDict is also used if all its check errors are soft (see `ErrorKind::is_soft`).
                 let use_hint = match typed_dict {
-                    TypedDict::Anonymous(_) => check_errors.is_empty(),
-                    TypedDict::TypedDict(_) => {
+                    TypedDictHint::Anonymous(_) => check_errors.is_empty(),
+                    TypedDictHint::Declared(_) => {
                         !check_errors.has_hard()
                             || hint.types().len() == 1 && hint.errors().is_some()
                     }
@@ -2463,8 +2463,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     // If the unpacked value is an anonymous typed dict, merge its fields.
                     // Later fields override earlier ones with the same name.
-                    if can_create_anonymous_typed_dict
-                        && let Type::TypedDict(TypedDict::Anonymous(inner)) = &ty
+                    if can_create_anonymous_typed_dict && let Type::AnonymousTypedDict(inner) = &ty
                     {
                         key_tys.push(self.stdlib.str().clone().to_type());
                         for (name, field) in inner.fields.iter() {
@@ -2528,11 +2527,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 && (!bare_partial_hint || any_field_has_open_placeholder)
             {
                 let typed_dict_fields: Vec<_> = typed_dict_fields_map.into_iter().collect();
-                return self.heap.mk_typed_dict(TypedDict::Anonymous(Box::new(
-                    AnonymousTypedDictInner {
-                        fields: typed_dict_fields,
-                    },
-                )));
+                return self.heap.mk_anonymous_typed_dict(AnonymousTypedDictInner {
+                    fields: typed_dict_fields,
+                });
             }
             if key_tys.is_empty() {
                 key_tys.push(self.heap.mk_any_error())
@@ -2716,10 +2713,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return None;
         }
         let (obj_ty, _key_expr, key) = self.dict_method_literal_key(func, args, method, errors)?;
-        let Type::TypedDict(td @ TypedDict::Anonymous(_)) = obj_ty.ty() else {
+        let Type::AnonymousTypedDict(td) = obj_ty.ty() else {
             return None;
         };
-        let field = self.typed_dict_field(td, &Name::new(key.to_str()))?;
+        let field = td.field(&Name::new(key.to_str()))?.clone();
         // A presence-narrowed key (e.g. after `if "x" in d:`) is known to be present, so the
         // value cannot be `None` and any default is unreachable.
         if obj_ty.has_value_less_presence(&FacetKind::Key(key.to_string())) {
@@ -2753,10 +2750,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return None;
         }
         let (obj_ty, _key_expr, key) = self.dict_method_literal_key(func, args, "pop", errors)?;
-        let Type::TypedDict(td @ TypedDict::Anonymous(_)) = obj_ty.ty() else {
+        let Type::AnonymousTypedDict(td) = obj_ty.ty() else {
             return None;
         };
-        let field = self.typed_dict_field(td, &Name::new(key.to_str()))?;
+        let field = td.field(&Name::new(key.to_str()))?.clone();
         // A presence-narrowed key is known to be present, so any default is unreachable.
         if obj_ty.has_value_less_presence(&FacetKind::Key(key.to_string())) {
             return Some(field.ty);
@@ -3596,7 +3593,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             if let Type::Intersect(x) = &base {
                 let (specialized, generic): (Vec<_>, Vec<_>) = x.0.iter().partition(|member| {
-                    is_builtin_sequence(member) || matches!(member, Type::TypedDict(_))
+                    is_builtin_sequence(member)
+                        || matches!(member, Type::TypedDict(_) | Type::AnonymousTypedDict(_))
                 });
                 if !specialized.is_empty() {
                     let index_ty = &*slice_ty;
@@ -4163,12 +4161,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 Type::TypedDict(typed_dict) => {
                     let key_ty = &*slice_ty;
-                    // Don't warn on anonymous typed dicts
-                    let warn_on_not_required_access = matches!(typed_dict, TypedDict::TypedDict(_));
                     self.distribute_over_union(key_ty, |ty| match self.literal_typed_dict_key_name(ty) {
                         Some(key_name) => {
                             if let Some(field) = self.typed_dict_field(&typed_dict, &key_name) {
-                                if warn_on_not_required_access && !field.required && !key_present {
+                                if !field.required && !key_present {
                                     errors
                                         .error_builder(
                                             slice.range(),
@@ -4194,7 +4190,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     _ => {
                                         let mut builder = errors.error_builder(
                                             slice.range(),
-                                            typed_dict.key_error_kind(),
+                                            ErrorKind::BadTypedDictKey,
                                             format!(
                                                 "{} does not have key `{key_name}`",
                                                 typed_dict.label()
@@ -4232,7 +4228,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 self.error(
                                     errors,
                                     slice.range(),
-                                    typed_dict.key_error_kind(),
+                                    ErrorKind::BadTypedDictKey,
                                     format!(
                                         "Invalid key for {}, got `{}`",
                                         typed_dict.label(),
@@ -4240,6 +4236,35 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ),
                                 )
                             }
+                        }
+                    })
+                }
+                Type::AnonymousTypedDict(typed_dict) => {
+                    // Every key of an anonymous TypedDict is optional and its extra items type is
+                    // the union of its field types, so an unknown key is not an error.
+                    let value_ty = typed_dict.compute_value_type(self.heap);
+                    self.distribute_over_union(&slice_ty, |ty| {
+                        match self.literal_typed_dict_key_name(ty) {
+                            Some(key_name) => typed_dict
+                                .field(&key_name)
+                                .map_or_else(|| value_ty.clone(), |field| field.ty.clone()),
+                            None
+                                if self.is_subset_eq(
+                                    ty,
+                                    &self.heap.mk_class_type(self.stdlib.str().clone()),
+                                ) =>
+                            {
+                                value_ty.clone()
+                            }
+                            None => self.error(
+                                errors,
+                                slice.range(),
+                                ErrorKind::BadIndex,
+                                format!(
+                                    "Invalid key for dict, got `{}`",
+                                    self.for_display(ty.clone())
+                                ),
+                            ),
                         }
                     })
                 }

@@ -39,7 +39,6 @@ use pyrefly_types::function::FuncMetadata;
 use pyrefly_types::function::FunctionKind;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::type_alias::TypeAliasData;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::lock::Mutex;
@@ -2810,8 +2809,7 @@ impl<'a> Transaction<'a> {
         let name = Name::new(key.value.to_str());
         let base_type = self.get_type_trace(handle, subscript.value.range())?;
         let typed_dict = match base_type {
-            Type::TypedDict(TypedDict::TypedDict(typed_dict))
-            | Type::PartialTypedDict(TypedDict::TypedDict(typed_dict)) => typed_dict,
+            Type::TypedDict(typed_dict) | Type::PartialTypedDict(typed_dict) => typed_dict,
             _ => return None,
         };
         Some((typed_dict, name))

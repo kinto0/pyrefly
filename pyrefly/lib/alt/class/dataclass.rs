@@ -8,7 +8,6 @@
 use pyrefly_python::dunder;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
-use pyrefly_types::typed_dict::TypedDict;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
@@ -678,9 +677,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         )
                     })
                     .collect();
-                return self.heap.mk_typed_dict(TypedDict::Anonymous(Box::new(
-                    AnonymousTypedDictInner { fields },
-                )));
+                return self
+                    .heap
+                    .mk_anonymous_typed_dict(AnonymousTypedDictInner { fields });
             }
         }
         self.freeform_call_infer(
