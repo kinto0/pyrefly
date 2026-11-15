@@ -1371,9 +1371,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// The key names of a TypedDict, declared or anonymous. `None` for any other type.
     fn typed_dict_key_names(&self, ty: &Type) -> Option<Vec<Name>> {
         match ty {
-            Type::TypedDict(typed_dict) => {
-                Some(self.typed_dict_fields(typed_dict).into_keys().collect())
-            }
+            Type::TypedDict(typed_dict) => Some(
+                self.typed_dict_fields(&typed_dict.as_class_type())
+                    .into_keys()
+                    .collect(),
+            ),
             Type::AnonymousTypedDict(typed_dict) => Some(
                 typed_dict
                     .fields
@@ -1392,15 +1394,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 return member.clone();
             };
             if present {
-                match self.typed_dict_field(typed_dict, key) {
+                match self.typed_dict_field(&typed_dict.as_class_type(), key) {
                     Some(_) => member.clone(),
-                    None => match self.typed_dict_extra_items(typed_dict) {
+                    None => match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
                         ExtraItems::Closed => self.heap.mk_never(),
                         ExtraItems::Default | ExtraItems::Extra(_) => member.clone(),
                     },
                 }
             } else {
-                match self.typed_dict_field(typed_dict, key) {
+                match self.typed_dict_field(&typed_dict.as_class_type(), key) {
                     Some(field) if field.required => self.heap.mk_never(),
                     Some(_) | None => member.clone(),
                 }

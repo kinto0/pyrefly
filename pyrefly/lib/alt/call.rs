@@ -1696,7 +1696,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn construct_typed_dict(
         &self,
-        typed_dict: TypedDictInner,
+        typed_dict: ClassType,
         args: &[CallArg],
         keywords: &[CallKeyword],
         arguments_range: TextRange,
@@ -1731,7 +1731,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn construct_typed_dict_inner(
         &self,
-        mut typed_dict: TypedDictInner,
+        mut typed_dict: ClassType,
         args: &[CallArg],
         keywords: &[CallKeyword],
         arguments_range: TextRange,
@@ -1742,7 +1742,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let vs = self
                 .solver()
                 .freshen_class_targs(typed_dict.targs_mut(), self.uniques);
-            let matched_hint = self.is_subset_eq(&typed_dict.clone().to_type(self.heap), hint);
+            let matched_hint = self.is_subset_eq(
+                &self
+                    .heap
+                    .mk_typed_dict(TypedDictInner::from_class_type(&typed_dict)),
+                hint,
+            );
             self.solver().generalize_class_targs_for_constructor_hint(
                 typed_dict.targs_mut(),
                 &SmallSet::new(),
@@ -1781,7 +1786,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .finish_quantified(vs, self.solver().config.infer_with_first_use)
             .err();
         ConstructedInstance {
-            ty: Type::TypedDict(typed_dict),
+            ty: Type::TypedDict(TypedDictInner::from_class_type(&typed_dict)),
             matched_hint,
             arg_errors,
             return_errors,
@@ -2047,7 +2052,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 CallOutcome::of_ty(ty)
             }
             CallTarget::TypedDict(td) => CallOutcome::of_ty(self.construct_typed_dict(
-                TypedDictInner::from_class_type(&td),
+                td,
                 args,
                 keywords,
                 arguments_range,

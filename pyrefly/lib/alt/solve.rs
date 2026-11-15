@@ -28,7 +28,6 @@ use pyrefly_types::type_alias::TypeAliasRef;
 use pyrefly_types::type_info::JoinStyle;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -2670,7 +2669,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn check_del_typed_dict_literal_key(
         &self,
-        typed_dict: &TypedDictInner,
+        typed_dict: &ClassType,
         field_name: &Name,
         range: TextRange,
         errors: &ErrorCollector,
@@ -2685,7 +2684,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::BadTypedDictKey,
-                    format!("{} does not have key `{field_name}`", typed_dict.label()),
+                    format!(
+                        "TypedDict `{}` does not have key `{field_name}`",
+                        typed_dict.name()
+                    ),
                 );
                 return;
             };
@@ -2717,7 +2719,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let contains_class_object = self.uses_class_object_attribute_lookup(ty);
         let intrinsic_value = if let Type::TypedDict(td) = ty
             && self
-                .typed_dict_fields(td)
+                .typed_dict_fields(&td.as_class_type())
                 .values()
                 .any(|field| field.required)
         {
@@ -6852,7 +6854,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn check_assign_to_typed_dict_literal_subscript(
         &self,
-        typed_dict: &TypedDictInner,
+        typed_dict: &ClassType,
         field_name: &Name,
         value: &ExprOrBinding,
         key_range: TextRange,
@@ -6870,7 +6872,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     key_range,
                     ErrorKind::BadTypedDictKey,
-                    format!("{} does not have key `{field_name}`", typed_dict.label()),
+                    format!(
+                        "TypedDict `{}` does not have key `{field_name}`",
+                        typed_dict.name()
+                    ),
                 );
             };
         self.check_assign_to_typed_dict_field(
@@ -6901,7 +6906,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
                     {
                         self.check_assign_to_typed_dict_literal_subscript(
-                            typed_dict,
+                            &typed_dict.as_class_type(),
                             &field_name,
                             value,
                             subscript.slice.range(),
@@ -6913,8 +6918,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if self.is_subset_eq(
                             key,
                             &self.heap.mk_class_type(self.stdlib.str().clone()),
-                        ) && let Some(field_ty) =
-                            self.get_typed_dict_value_type_as_builtins_dict(typed_dict) =>
+                        ) && let Some(field_ty) = self
+                            .get_typed_dict_value_type_as_builtins_dict(
+                                &typed_dict.as_class_type(),
+                            ) =>
                     {
                         self.check_assign_to_typed_dict_field(
                             typed_dict.name(),
@@ -7301,7 +7308,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let key = Name::new(key);
                     match binding.ty() {
                         Type::TypedDict(typed_dict)
-                            if let Some(field) = self.typed_dict_field(typed_dict, &key) =>
+                            if let Some(field) =
+                                self.typed_dict_field(&typed_dict.as_class_type(), &key) =>
                         {
                             return field.ty;
                         }
@@ -8380,7 +8388,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
                         {
                             self.check_del_typed_dict_literal_key(
-                                typed_dict,
+                                &typed_dict.as_class_type(),
                                 &field_name,
                                 x.slice.range(),
                                 errors,
@@ -8391,7 +8399,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 key,
                                 &self.heap.mk_class_type(self.stdlib.str().clone()),
                             ) && self
-                                .get_typed_dict_value_type_as_builtins_dict(typed_dict)
+                                .get_typed_dict_value_type_as_builtins_dict(
+                                    &typed_dict.as_class_type(),
+                                )
                                 .is_some() =>
                         {
                             self.check_del_typed_dict_field(

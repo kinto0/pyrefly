@@ -8,12 +8,12 @@
 use std::sync::Arc;
 
 use pyrefly_python::dunder;
+use pyrefly_types::class::ClassType;
 use pyrefly_types::simplify::unions_with_literals;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItem;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_util::suggest::Candidate;
 use pyrefly_util::suggest::best_suggestion;
 use ruff_python_ast::DictItem;
@@ -82,7 +82,7 @@ pub(crate) const OPTIONAL_KEYS: Name = Name::new_static("__optional_keys__");
 /// where a solver is already in hand.
 #[derive(Clone, Copy)]
 pub enum TypedDictHint<'a> {
-    Declared(&'a TypedDictInner),
+    Declared(&'a ClassType),
     Anonymous(&'a AnonymousTypedDictInner),
 }
 
@@ -207,7 +207,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // already requires none of its keys, so it is its own partial form.
                 let partial_td_ty = match typed_dict {
                     TypedDictHint::Declared(inner) => {
-                        self.heap.mk_partial_typed_dict(inner.as_class_type())
+                        self.heap.mk_partial_typed_dict(inner.clone())
                     }
                     TypedDictHint::Anonymous(inner) => {
                         self.heap.mk_anonymous_typed_dict(inner.clone())
@@ -219,7 +219,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     item_errors,
                 );
                 if let Type::TypedDict(unpacked) = &item_ty {
-                    let unpacked_fields = self.typed_dict_fields(unpacked);
+                    let unpacked_fields = self.typed_dict_fields(&unpacked.as_class_type());
                     for (key, field) in &unpacked_fields {
                         if field.required {
                             keys.insert(key.clone());
@@ -292,7 +292,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         extra_items
     }
 
-    pub fn typed_dict_extra_items(&self, typed_dict: &TypedDictInner) -> ExtraItems {
+    pub fn typed_dict_extra_items(&self, typed_dict: &ClassType) -> ExtraItems {
         let mut extra_items = self.typed_dict_extra_items_for_cls(typed_dict.class_object());
         if let ExtraItems::Extra(extra) = &mut extra_items {
             typed_dict.targs().substitute_into_mut(&mut extra.ty);
@@ -306,7 +306,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn instantiate_typed_dict_field(
         &self,
-        typed_dict: &TypedDictInner,
+        typed_dict: &ClassType,
         name: &Name,
         is_total: bool,
     ) -> Option<TypedDictField> {
@@ -318,7 +318,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(typed_dict_field)
     }
 
-    pub fn typed_dict_fields(&self, typed_dict: &TypedDictInner) -> SmallMap<Name, TypedDictField> {
+    pub fn typed_dict_fields(&self, typed_dict: &ClassType) -> SmallMap<Name, TypedDictField> {
         let class = typed_dict.class_object();
         let metadata = self.get_metadata_for_class(class);
         match metadata.typed_dict_metadata() {
@@ -337,11 +337,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    pub fn typed_dict_field(
-        &self,
-        typed_dict: &TypedDictInner,
-        name: &Name,
-    ) -> Option<TypedDictField> {
+    pub fn typed_dict_field(&self, typed_dict: &ClassType, name: &Name) -> Option<TypedDictField> {
         self.get_metadata_for_class(typed_dict.class_object())
             .typed_dict_metadata()
             .and_then(|typed_dict_metadata| {
@@ -817,7 +813,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         )))
     }
 
-    pub fn get_typed_dict_value_type(&self, typed_dict: &TypedDictInner) -> Type {
+    pub fn get_typed_dict_value_type(&self, typed_dict: &ClassType) -> Type {
         let cls = typed_dict.class_object();
         if let Some(metadata) = self.get_metadata_for_class(cls).typed_dict_metadata() {
             let value_type = self.get_typed_dict_value_type_from_fields(cls, &metadata.fields);
@@ -848,7 +844,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// If the TypedDict is assignable to `dict[str, VT]`, return `VT`.
     pub fn get_typed_dict_value_type_as_builtins_dict(
         &self,
-        typed_dict: &TypedDictInner,
+        typed_dict: &ClassType,
     ) -> Option<Type> {
         if let ExtraItems::Extra(extra) = self.typed_dict_extra_items(typed_dict)
             && !extra.read_only
@@ -1016,10 +1012,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Some(ClassSynthesizedFields::new(fields))
     }
 
-    pub fn typed_dict_kw_param_info(
-        &self,
-        typed_dict: &TypedDictInner,
-    ) -> Vec<(Name, Type, Required)> {
+    pub fn typed_dict_kw_param_info(&self, typed_dict: &ClassType) -> Vec<(Name, Type, Required)> {
         self.typed_dict_fields(typed_dict)
             .iter()
             .map(|(name, field)| {

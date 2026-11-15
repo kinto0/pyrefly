@@ -96,11 +96,6 @@ impl TypedDictInner {
     pub fn to_type(self, heap: &TypeHeap) -> Type {
         heap.mk_typed_dict(self)
     }
-
-    /// Display label for error messages.
-    pub fn label(&self) -> String {
-        format!("TypedDict `{}`", self.name())
-    }
 }
 
 #[derive(

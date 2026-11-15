@@ -33,7 +33,6 @@ use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItem;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::Forall;
 use pyrefly_types::types::Overload;
@@ -544,11 +543,15 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 let Type::TypedDict(u_typed_dict) = *u_inner else {
                     unreachable!("guarded by matches! above")
                 };
-                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&l_typed_dict)
+                for (name, ty, required) in self
+                    .type_order
+                    .typed_dict_kw_param_info(&l_typed_dict.as_class_type())
                 {
                     l_keywords.insert(name, (ty, required == Required::Required));
                 }
-                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
+                for (name, ty, required) in self
+                    .type_order
+                    .typed_dict_kw_param_info(&u_typed_dict.as_class_type())
                 {
                     u_keywords.insert(name, (ty, required == Required::Required));
                 }
@@ -558,7 +561,9 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 let Type::TypedDict(l_typed_dict) = *l_inner else {
                     unreachable!("guarded by matches! above")
                 };
-                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&l_typed_dict)
+                for (name, ty, required) in self
+                    .type_order
+                    .typed_dict_kw_param_info(&l_typed_dict.as_class_type())
                 {
                     l_keywords.insert(name, (ty, required == Required::Required));
                 }
@@ -572,7 +577,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // only when the other side also has **kwargs or the TypedDict is closed.
                 if l_kwargs.is_none()
                     && !matches!(
-                        self.type_order.typed_dict_extra_items(&u_typed_dict),
+                        self.type_order
+                            .typed_dict_extra_items(&u_typed_dict.as_class_type()),
                         ExtraItems::Closed
                     )
                 {
@@ -580,7 +586,9 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         u_typed_dict.name().clone(),
                     ));
                 }
-                for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
+                for (name, ty, required) in self
+                    .type_order
+                    .typed_dict_kw_param_info(&u_typed_dict.as_class_type())
                 {
                     u_keywords.insert(name, (ty, required == Required::Required));
                 }
@@ -1209,10 +1217,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         }
     }
 
-    fn get_typed_dict_fields(
-        &self,
-        td: &TypedDictInner,
-    ) -> SmallMap<TypedDictFieldId, TypedDictField> {
+    fn get_typed_dict_fields(&self, td: &ClassType) -> SmallMap<TypedDictFieldId, TypedDictField> {
         self.type_order
             .typed_dict_fields(td)
             .into_iter()
@@ -1289,8 +1294,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
 
     fn is_subset_typed_dict(
         &mut self,
-        got: &TypedDictInner,
-        want: &TypedDictInner,
+        got: &ClassType,
+        want: &ClassType,
     ) -> Result<(), SubsetError> {
         let cacheable = Self::typed_dict_is_cacheable(got) && Self::typed_dict_is_cacheable(want);
         if cacheable && let Some(result) = self.solver.check_typed_dict_cache(got, want) {
@@ -1318,14 +1323,14 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
 
     /// Only cache non-generic TypedDicts. Generic TypedDicts could contain Vars whose
     /// meaning depends on the subset context.
-    fn typed_dict_is_cacheable(td: &TypedDictInner) -> bool {
+    fn typed_dict_is_cacheable(td: &ClassType) -> bool {
         td.targs().is_empty()
     }
 
     fn is_subset_typed_dict_inner(
         &mut self,
-        got: &TypedDictInner,
-        want: &TypedDictInner,
+        got: &ClassType,
+        want: &ClassType,
     ) -> Result<(), SubsetError> {
         let got_name = got.name();
         let want_name = want.name();
@@ -1409,7 +1414,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
     fn is_subset_partial_typed_dict(
         &mut self,
         got: GotTypedDict,
-        want: &TypedDictInner,
+        want: &ClassType,
     ) -> Result<(), SubsetError> {
         let GotTypedDict {
             name: got_name,
@@ -1480,7 +1485,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
     fn is_subset_anonymous_typed_dict(
         &mut self,
         got: &AnonymousTypedDictInner,
-        want: &TypedDictInner,
+        want: &ClassType,
     ) -> Result<(), SubsetError> {
         let got_fields = got.fields.clone().into_iter().collect::<SmallMap<_, _>>();
         let want_fields = self.type_order.typed_dict_fields(want);
@@ -2349,16 +2354,18 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 self.is_subset_eq(&l_sig.ret, &u_sig.ret)
             }
             (Type::AnonymousTypedDict(got), Type::TypedDict(want)) => {
-                self.is_subset_anonymous_typed_dict(got, want)
+                self.is_subset_anonymous_typed_dict(got, &want.as_class_type())
             }
-            (Type::TypedDict(got), Type::TypedDict(want)) => self.is_subset_typed_dict(got, want),
+            (Type::TypedDict(got), Type::TypedDict(want)) => {
+                self.is_subset_typed_dict(&got.as_class_type(), &want.as_class_type())
+            }
             (Type::TypedDict(got), Type::PartialTypedDict(want)) => {
                 let got = GotTypedDict {
                     name: got.name().clone(),
-                    fields: self.type_order.typed_dict_fields(got),
-                    extra_items: self.type_order.typed_dict_extra_items(got),
+                    fields: self.type_order.typed_dict_fields(&got.as_class_type()),
+                    extra_items: self.type_order.typed_dict_extra_items(&got.as_class_type()),
                 };
-                self.is_subset_partial_typed_dict(got, &TypedDictInner::from_class_type(want))
+                self.is_subset_partial_typed_dict(got, want)
             }
             (Type::AnonymousTypedDict(got), Type::PartialTypedDict(want)) => {
                 // Every key of an anonymous TypedDict is optional and read-write, and its extra
@@ -2371,7 +2378,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         read_only: false,
                     }),
                 };
-                self.is_subset_partial_typed_dict(got, &TypedDictInner::from_class_type(want))
+                self.is_subset_partial_typed_dict(got, want)
             }
             (Type::AnonymousTypedDict(got), Type::AnonymousTypedDict(want)) => {
                 // Every key of an anonymous TypedDict is optional, and a key it does not name may
@@ -2435,7 +2442,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 let stdlib = self.type_order.stdlib();
                 if let Some(value_type) = self
                     .type_order
-                    .get_typed_dict_value_type_as_builtins_dict(td)
+                    .get_typed_dict_value_type_as_builtins_dict(&td.as_class_type())
                 {
                     self.is_subset_eq(
                         &self.solver.heap.mk_class_type(stdlib.dict(
@@ -2446,10 +2453,13 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     )
                 } else {
                     self.is_subset_eq(
-                        &self.solver.heap.mk_class_type(stdlib.mapping(
-                            self.solver.heap.mk_class_type(stdlib.str().clone()),
-                            self.type_order.get_typed_dict_value_type(td),
-                        )),
+                        &self.solver.heap.mk_class_type(
+                            stdlib.mapping(
+                                self.solver.heap.mk_class_type(stdlib.str().clone()),
+                                self.type_order
+                                    .get_typed_dict_value_type(&td.as_class_type()),
+                            ),
+                        ),
                         want,
                     )
                 }

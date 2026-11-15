@@ -58,7 +58,7 @@ impl<'a> Instance<'a> {
         }
     }
 
-    pub fn of_typed_dict(td: &'a TypedDictInner) -> Self {
+    pub fn of_typed_dict(td: &'a ClassType) -> Self {
         Self {
             kind: InstanceKind::TypedDict,
             class: td.class_object(),

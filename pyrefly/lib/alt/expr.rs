@@ -40,7 +40,6 @@ use pyrefly_types::type_level_dsl::TypeShapeDslDomain;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Forallable;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -2266,13 +2265,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             for hint_ty in hint.types() {
                 let owner = Owner::new();
                 let (typed_dict, is_update) = match hint_ty {
-                    Type::TypedDict(td) => (TypedDictHint::Declared(td), false),
-                    // A partial TypedDict carries the class, so the declared form has to be
-                    // materialized before it can be borrowed.
-                    Type::PartialTypedDict(ct) => (
-                        TypedDictHint::Declared(owner.push(TypedDictInner::from_class_type(ct))),
-                        true,
+                    // Both declared forms produce an owned `ClassType`, so they have to be
+                    // materialized before they can be borrowed.
+                    Type::TypedDict(td) => (
+                        TypedDictHint::Declared(owner.push(td.as_class_type())),
+                        false,
                     ),
+                    Type::PartialTypedDict(ct) => {
+                        (TypedDictHint::Declared(owner.push(ct.clone())), true)
+                    }
                     Type::AnonymousTypedDict(inner) => (TypedDictHint::Anonymous(inner), false),
                     _ => continue,
                 };
@@ -2805,7 +2806,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // If a TypedDict has ANY required keys, it can never be empty.
             // Therefore, it is always Truthy.
             if self
-                .typed_dict_fields(td)
+                .typed_dict_fields(&td.as_class_type())
                 .values()
                 .any(|field| field.required)
             {
@@ -4170,7 +4171,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let key_ty = &*slice_ty;
                     self.distribute_over_union(key_ty, |ty| match self.literal_typed_dict_key_name(ty) {
                         Some(key_name) => {
-                            if let Some(field) = self.typed_dict_field(&typed_dict, &key_name) {
+                            if let Some(field) =
+                                self.typed_dict_field(&typed_dict.as_class_type(), &key_name)
+                            {
                                 if !field.required && !key_present {
                                     errors
                                         .error_builder(
@@ -4189,7 +4192,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 }
                                 field.ty.clone()
                             } else {
-                                match self.typed_dict_extra_items(&typed_dict) {
+                                match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
                                     ExtraItems::Extra(extra) => extra.ty,
                                     extra_items if key_present => {
                                         extra_items.extra_item(self.stdlib).ty
@@ -4199,11 +4202,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                             slice.range(),
                                             ErrorKind::BadTypedDictKey,
                                             format!(
-                                                "{} does not have key `{key_name}`",
-                                                typed_dict.label()
+                                                "TypedDict `{}` does not have key `{key_name}`",
+                                                typed_dict.name()
                                             ),
                                         );
-                                        let fields = self.typed_dict_fields(&typed_dict);
+                                        let fields = self.typed_dict_fields(&typed_dict.as_class_type());
                                         if let Some(suggestion) = best_suggestion(
                                             &key_name,
                                             fields
@@ -4226,19 +4229,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 &self.heap.mk_class_type(self.stdlib.str().clone()),
                             )
                                 && !matches!(
-                                    self.typed_dict_extra_items(&typed_dict),
+                                    self.typed_dict_extra_items(&typed_dict.as_class_type()),
                                     ExtraItems::Default
                                 )
                             {
-                                self.get_typed_dict_value_type(&typed_dict)
+                                self.get_typed_dict_value_type(&typed_dict.as_class_type())
                             } else {
                                 self.error(
                                     errors,
                                     slice.range(),
                                     ErrorKind::BadTypedDictKey,
                                     format!(
-                                        "Invalid key for {}, got `{}`",
-                                        typed_dict.label(),
+                                        "Invalid key for TypedDict `{}`, got `{}`",
+                                        typed_dict.name(),
                                         self.for_display(ty.clone())
                                     ),
                                 )

@@ -35,7 +35,6 @@ use pyrefly_types::read_only::IsFinalVariableInitialized;
 use pyrefly_types::simplify::unions;
 use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TParams;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
@@ -5528,11 +5527,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Get a non-field attribute of a TypedDict instance. TypedDict fields are dict key
     /// declarations and are not accessible as attributes. However, if a field name shadows
     /// a dict method (e.g. `values`, `items`, `keys`), the method should still be accessible.
-    pub fn get_typed_dict_attribute(
-        &self,
-        td: &TypedDictInner,
-        name: &Name,
-    ) -> Option<ClassAttribute> {
+    pub fn get_typed_dict_attribute(&self, td: &ClassType, name: &Name) -> Option<ClassAttribute> {
         if let Some(meta) = self
             .get_metadata_for_class(td.class_object())
             .typed_dict_metadata()
@@ -5571,7 +5566,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// The returned type does not encode requiredness information (that is stored as qualifiers).
     pub(in crate::alt::class) fn instantiate_typed_dict_field_type(
         &self,
-        td: &TypedDictInner,
+        td: &ClassType,
         name: &Name,
         member: &ClassField,
     ) -> Option<Type> {
@@ -5798,7 +5793,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             })
     }
 
-    pub fn get_typed_dict_dunder_init(&self, td: &TypedDictInner) -> Type {
+    pub fn get_typed_dict_dunder_init(&self, td: &ClassType) -> Type {
         // We synthesize `__init__`, so the lookup will never entirely fail.
         //
         // But if the user defined an `__init__` directly on the typed dict - which is always

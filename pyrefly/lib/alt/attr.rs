@@ -16,7 +16,6 @@ use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::literal::LitEnum;
 use pyrefly_types::special_form::SpecialForm;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::Var;
@@ -2169,8 +2168,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
             }
-            AttributeBase1::TypedDict(class_type) => {
-                let typed_dict = &TypedDictInner::from_class_type(class_type);
+            AttributeBase1::TypedDict(typed_dict) => {
                 match self.get_typed_dict_attribute(typed_dict, attr_name) {
                     Some(attr) => acc.found_class_attribute(attr, base),
                     None => acc.not_found(NotFoundOn::ClassInstance(
@@ -2550,10 +2548,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             AttributeBase1::TypedDict(typed_dict) => Some(
                 self.stdlib.dict(
                     self.stdlib.str().clone().to_type(),
-                    self.get_typed_dict_value_type_as_builtins_dict(
-                        &TypedDictInner::from_class_type(&typed_dict),
-                    )
-                    .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
+                    self.get_typed_dict_value_type_as_builtins_dict(&typed_dict)
+                        .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
                 ),
             ),
             // Handle `type[Any]`, which happens for TypeVars w/ `bound=type`

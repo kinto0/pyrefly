@@ -574,8 +574,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // splat's field names, so any inference error is reported there, not here.
                     let ty = kw.value.infer(self, &self.error_collector());
                     match &ty {
-                        Type::TypedDict(td) => names
-                            .extend(self.typed_dict_fields(td).into_iter().map(|(name, _)| name)),
+                        Type::TypedDict(td) => names.extend(
+                            self.typed_dict_fields(&td.as_class_type())
+                                .into_iter()
+                                .map(|(name, _)| name),
+                        ),
                         Type::AnonymousTypedDict(td) => {
                             names.extend(td.fields.iter().map(|(name, _)| name.clone()))
                         }
@@ -597,10 +600,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         for param in params.items() {
             match param {
                 Param::Kwargs(_, ty) if let Some(td) = ty.unpacked_typed_dict() => {
-                    for (name, ty, required) in self.typed_dict_kw_param_info(td) {
+                    for (name, ty, required) in self.typed_dict_kw_param_info(&td.as_class_type()) {
                         expanded.push(Param::KwOnly(name, ty, required));
                     }
-                    if let ExtraItems::Extra(extra) = self.typed_dict_extra_items(td) {
+                    if let ExtraItems::Extra(extra) =
+                        self.typed_dict_extra_items(&td.as_class_type())
+                    {
                         expanded.push(Param::Kwargs(None, extra.ty));
                     }
                 }

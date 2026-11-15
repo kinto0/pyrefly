@@ -21,7 +21,6 @@ use pyrefly_types::simplify::simplify_tuples;
 use pyrefly_types::tuple::Tuple;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
 use pyrefly_util::display::count;
@@ -1249,15 +1248,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 TypeOrExpr::Type(ty, _) => match ty {
                     Type::TypedDict(typed_dict) => {
-                        for (name, field) in self.typed_dict_fields(typed_dict) {
+                        for (name, field) in self.typed_dict_fields(&typed_dict.as_class_type()) {
                             if field.required {
                                 keyword_arg_names.insert(name);
                             }
                         }
                     }
                     Type::PartialTypedDict(class_type) => {
-                        let typed_dict = TypedDictInner::from_class_type(class_type);
-                        for (name, field) in self.typed_dict_fields(&typed_dict) {
+                        for (name, field) in self.typed_dict_fields(class_type) {
                             if field.required {
                                 keyword_arg_names.insert(name);
                             }
@@ -1765,8 +1763,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     kwparams.insert(name, (ty, NameOrigin::Param, required));
                 }
                 Param::Kwargs(name, ty) if let Some(typed_dict) = ty.unpacked_typed_dict() => {
-                    self.typed_dict_fields(typed_dict).into_iter().for_each(
-                        |(field_name, field)| {
+                    self.typed_dict_fields(&typed_dict.as_class_type())
+                        .into_iter()
+                        .for_each(|(field_name, field)| {
                             kwparams.insert(
                                 name_owner.push(field_name),
                                 (
@@ -1779,9 +1778,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     },
                                 ),
                             );
-                        },
-                    );
-                    kwargs = match self.typed_dict_extra_items(typed_dict) {
+                        });
+                    kwargs = match self.typed_dict_extra_items(&typed_dict.as_class_type()) {
                         ExtraItems::Closed => None,
                         ExtraItems::Extra(extra) => {
                             Some((name.as_ref(), Some(type_owner.push(extra.ty))))
@@ -1834,8 +1832,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let typed_dict = match &ty {
                         Type::TypedDict(td) => Some((
                             td.name().clone(),
-                            self.typed_dict_fields(td),
-                            self.typed_dict_extra_items(td),
+                            self.typed_dict_fields(&td.as_class_type()),
+                            self.typed_dict_extra_items(&td.as_class_type()),
                             false,
                         )),
                         Type::AnonymousTypedDict(td) => Some((

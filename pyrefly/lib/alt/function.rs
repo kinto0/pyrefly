@@ -1752,7 +1752,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::Unpack(unpack) = &ty
                 && let Type::TypedDict(typed_dict) = &**unpack
             {
-                for (name, _) in self.typed_dict_fields(typed_dict) {
+                for (name, _) in self.typed_dict_fields(&typed_dict.as_class_type()) {
                     if params.iter().any(|param| {
                         matches!(
                             param,

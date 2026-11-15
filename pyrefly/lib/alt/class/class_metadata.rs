@@ -154,7 +154,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) {
         let ty = self.expr_infer(&keyword.value, errors);
         if let Type::TypedDict(typed_dict) = &ty {
-            for (name, field) in self.typed_dict_fields(typed_dict) {
+            for (name, field) in self.typed_dict_fields(&typed_dict.as_class_type()) {
                 keywords.push((name, Annotation::new_type(field.ty)));
             }
         } else if let Type::AnonymousTypedDict(typed_dict) = &ty {

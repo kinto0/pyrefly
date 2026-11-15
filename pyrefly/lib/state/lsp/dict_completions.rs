@@ -18,7 +18,6 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::data_frame::DataFrameKind;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::known_class::KnownClass;
-use pyrefly_types::typed_dict::TypedDictInner;
 use ruff_python_ast::AnyNodeRef;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprCall;
@@ -194,10 +193,10 @@ impl<'a> Transaction<'a> {
             .into_iter()
             .filter_map(|member| {
                 let fields = match &member {
-                    Type::TypedDict(td) => solver.type_order().typed_dict_fields(td),
-                    Type::PartialTypedDict(ct) => solver
-                        .type_order()
-                        .typed_dict_fields(&TypedDictInner::from_class_type(ct)),
+                    Type::TypedDict(td) => {
+                        solver.type_order().typed_dict_fields(&td.as_class_type())
+                    }
+                    Type::PartialTypedDict(ct) => solver.type_order().typed_dict_fields(ct),
                     Type::AnonymousTypedDict(td) => td.fields.iter().cloned().collect(),
                     _ => return None,
                 }
@@ -825,14 +824,15 @@ impl<'a> Transaction<'a> {
             for member in Self::typed_dict_members(base_type) {
                 match member {
                     Type::TypedDict(td) => {
-                        for (name, field) in solver.type_order().typed_dict_fields(&td) {
+                        for (name, field) in
+                            solver.type_order().typed_dict_fields(&td.as_class_type())
+                        {
                             map.entry(name.to_string())
                                 .or_insert_with(|| field.ty.clone());
                         }
                     }
                     Type::PartialTypedDict(ct) => {
-                        let td = TypedDictInner::from_class_type(&ct);
-                        for (name, field) in solver.type_order().typed_dict_fields(&td) {
+                        for (name, field) in solver.type_order().typed_dict_fields(&ct) {
                             map.entry(name.to_string())
                                 .or_insert_with(|| field.ty.clone());
                         }

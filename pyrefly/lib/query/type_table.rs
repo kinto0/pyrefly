@@ -13,6 +13,7 @@ use pyrefly_types::callable::Param;
 use pyrefly_types::callable::ParamList;
 use pyrefly_types::callable::Params;
 use pyrefly_types::callable::PrefixParam;
+use pyrefly_types::class::ClassType;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::quantified::QuantifiedKind;
@@ -22,7 +23,6 @@ use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::type_var::ShapeExtensionRestriction;
 use pyrefly_types::typed_dict::AnonymousTypedDictInner;
-use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::NeverStyle;
 use pyrefly_types::types::SuperObj;
 use pyrefly_types::types::Type;
@@ -302,17 +302,14 @@ pub(super) fn type_to_indexed_shape(
             )
         }
         Type::TypedDict(typed_dict) => {
-            typed_dict_to_indexed_shape(context, typed_dict, false, table)
+            typed_dict_to_indexed_shape(context, &typed_dict.as_class_type(), false, table)
         }
         Type::AnonymousTypedDict(typed_dict) => {
             anonymous_typed_dict_to_indexed_shape(context, typed_dict, table)
         }
-        Type::PartialTypedDict(class_type) => typed_dict_to_indexed_shape(
-            context,
-            &TypedDictInner::from_class_type(class_type),
-            true,
-            table,
-        ),
+        Type::PartialTypedDict(class_type) => {
+            typed_dict_to_indexed_shape(context, class_type, true, table)
+        }
         Type::Type(inner) => {
             let inner = type_to_indexed_shape(context, inner, table);
             insert_indexed_named(table, "typing.Type", vec![inner], None, Vec::new())
@@ -506,7 +503,7 @@ pub(super) fn type_to_indexed_shape(
 
 fn typed_dict_to_indexed_shape(
     context: &TypeShapeContext,
-    typed_dict: &TypedDictInner,
+    typed_dict: &ClassType,
     is_partial: bool,
     table: &mut TypeTableBuilder,
 ) -> usize {

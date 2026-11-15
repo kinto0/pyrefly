@@ -1845,7 +1845,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Option<(Vec<(Name, PolarsDType)>, SchemaCompleteness)> {
         let ty = self.expr_infer(expr, &self.error_swallower());
         let fields = match &ty {
-            Type::TypedDict(typed_dict) => self.typed_dict_fields(typed_dict),
+            Type::TypedDict(typed_dict) => self.typed_dict_fields(&typed_dict.as_class_type()),
             Type::AnonymousTypedDict(typed_dict) => typed_dict.fields.iter().cloned().collect(),
             _ => return None,
         };
