@@ -546,7 +546,7 @@ enum AttributeBase1 {
     /// Result of a super() call. See Type::SuperInstance for details on what these fields are.
     SuperInstance(ClassType, SuperObj),
     /// Typed dictionaries have similar properties to dict and Mapping, with some exceptions
-    TypedDict(TypedDictInner),
+    TypedDict(ClassType),
     /// Attribute lookup on a base as part of a subset check against a protocol.
     ProtocolSubset(Box<AttributeBase1>),
     /// A parameterized class object, which exposes attributes from both `GenericAlias` and its
@@ -2169,7 +2169,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
             }
-            AttributeBase1::TypedDict(typed_dict) => {
+            AttributeBase1::TypedDict(class_type) => {
+                let typed_dict = &TypedDictInner::from_class_type(class_type);
                 match self.get_typed_dict_attribute(typed_dict, attr_name) {
                     Some(attr) => acc.found_class_attribute(attr, base),
                     None => acc.not_found(NotFoundOn::ClassInstance(
@@ -2549,8 +2550,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             AttributeBase1::TypedDict(typed_dict) => Some(
                 self.stdlib.dict(
                     self.stdlib.str().clone().to_type(),
-                    self.get_typed_dict_value_type_as_builtins_dict(&typed_dict)
-                        .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
+                    self.get_typed_dict_value_type_as_builtins_dict(
+                        &TypedDictInner::from_class_type(&typed_dict),
+                    )
+                    .unwrap_or_else(|| self.stdlib.object().clone().to_type()),
                 ),
             ),
             // Handle `type[Any]`, which happens for TypeVars w/ `bound=type`
@@ -2647,11 +2650,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::SelfType(class_type) => acc.push(AttributeBase1::SelfType(class_type)),
             Type::Type(ty) => self.as_attribute_base1_of_type(*ty, acc),
-            Type::TypedDict(td) => acc.push(AttributeBase1::TypedDict(td)),
-            Type::PartialTypedDict(ct) => acc.push(AttributeBase1::TypedDict(TypedDictInner::new(
-                ct.class_object().dupe(),
-                ct.targs().clone(),
-            ))),
+            Type::TypedDict(td) => acc.push(AttributeBase1::TypedDict(td.as_class_type())),
+            Type::PartialTypedDict(ct) => acc.push(AttributeBase1::TypedDict(ct)),
             Type::AnonymousTypedDict(td) => {
                 let value_ty = td.compute_value_type(self.heap);
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.dict(
