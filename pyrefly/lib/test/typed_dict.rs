@@ -3257,3 +3257,45 @@ def f(foo: Foo | None) -> None:
         assert_type(x, int)
 "#,
 );
+
+// A TypedDict's keys are dictionary entries, not attributes, so a key named `__call__` does not
+// make its instances callable.
+testcase!(
+    test_typed_dict_call_key_is_not_callable,
+    r#"
+import functools
+from typing import Callable, TypedDict, TypeVar
+
+class TD(TypedDict):
+    __call__: Callable[[], int]
+
+T = TypeVar("T", bound=TD)
+
+def direct(d: TD) -> None:
+    d()  # E: Expected a callable, got `TD`
+
+def bounded(d: T) -> None:
+    d()  # E: Expected a callable, got `T`
+
+def partial(d: TD) -> None:
+    functools.partial(d)  # E: Argument `TD` is not assignable to parameter `func`
+"#,
+);
+
+// A key named like a descriptor method does not make a TypedDict instance a descriptor.
+testcase!(
+    test_typed_dict_descriptor_key_is_not_descriptor,
+    r#"
+from typing import Callable, TypedDict, assert_type
+
+class TD(TypedDict):
+    __get__: Callable[..., int]
+
+class A:
+    d: TD = {"__get__": lambda *args: 1}
+
+def f(a: A) -> None:
+    assert_type(a.d, TD)
+    assert_type(A.d, TD)
+"#,
+);

@@ -2406,10 +2406,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ) {
             match &ty {
                 Type::ClassType(cls) => {
-                    let cls = cls.class_object();
-                    let has_getter = self.get_class_member(cls, &dunder::GET).is_some();
-                    let has_setter = self.get_class_member(cls, &dunder::SET).is_some();
-                    let has_deleter = self.get_class_member(cls, &dunder::DELETE).is_some();
+                    let has_getter = self.has_instance_special_method(cls, &dunder::GET);
+                    let has_setter = self.has_instance_special_method(cls, &dunder::SET);
+                    let has_deleter = self.has_instance_special_method(cls, &dunder::DELETE);
                     // A getter-only annotation that is initialized on the instance does not
                     // install a descriptor on the class. Keep data-descriptor behavior,
                     // however, for metaclass-powered fields such as SQLAlchemy's `Mapped[T]`.
@@ -2417,8 +2416,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         || has_deleter
                         || has_getter && !is_annotation_initialized_in_method
                     {
-                        descriptor_info =
-                            Some(((has_getter, has_setter, has_deleter), ty.clone()));
+                        descriptor_info = Some(((has_getter, has_setter, has_deleter), ty.clone()));
                     }
                 }
                 // Only members with `__get__` participate in descriptor reads. A member with only
@@ -2428,7 +2426,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     if !is_annotation_initialized_in_method
                         && union.members.iter().any(|member| {
                             matches!(member, Type::ClassType(cls)
-                                if self.get_class_member(cls.class_object(), &dunder::GET).is_some())
+                                if self.has_instance_special_method(cls, &dunder::GET))
                         }) =>
                 {
                     descriptor_union = true;
@@ -2449,9 +2447,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ) {
             // Preserve descriptor behavior when specialization returns a descriptor instance.
             descriptor_info = if let Type::ClassType(cls) = &special_ty {
-                let getter = self.get_instance_attribute(cls, &dunder::GET).is_some();
-                let setter = self.get_instance_attribute(cls, &dunder::SET).is_some();
-                let deleter = self.get_instance_attribute(cls, &dunder::DELETE).is_some();
+                let getter = self
+                    .get_instance_special_method(cls, &dunder::GET)
+                    .is_some();
+                let setter = self
+                    .get_instance_special_method(cls, &dunder::SET)
+                    .is_some();
+                let deleter = self
+                    .get_instance_special_method(cls, &dunder::DELETE)
+                    .is_some();
                 (getter || setter || deleter)
                     .then(|| ((getter, setter, deleter), special_ty.clone()))
             } else {
@@ -3416,7 +3420,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             let field_ty = self.attribute_expr_infer(expr, None, name, &self.error_swallower());
             if matches!(&field_ty, Type::ClassType(cls)
-                if self.get_class_member(cls.class_object(), &dunder::GET).is_some())
+                if self.has_instance_special_method(cls, &dunder::GET))
             {
                 // The initializer installs a descriptor, whose instance contract is checked by the
                 // override check. The inherited value annotation cannot type its initializer.
@@ -5344,6 +5348,31 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .map(|field| self.as_instance_attribute(name, field.as_ref(), &Instance::of_class(cls)))
     }
 
+    /// Look up a special method, such as `__call__` or `__get__`, on instances of `cls`. A
+    /// TypedDict's keys are dictionary entries rather than attributes, so a key named like a
+    /// special method does not define one. The TypedDict check runs only once a member is found,
+    /// so a class without the method needs no `ClassMetadata`.
+    pub fn get_instance_special_method(
+        &self,
+        cls: &ClassType,
+        name: &Name,
+    ) -> Option<ClassAttribute> {
+        let attr = self.get_instance_attribute(cls, name)?;
+        if self.is_typed_dict_class(cls.class_object()) {
+            self.get_typed_dict_attribute(cls, name)
+        } else {
+            Some(attr)
+        }
+    }
+
+    /// Whether instances of `cls` have the special method `name`, as `get_instance_special_method`
+    /// decides it.
+    fn has_instance_special_method(&self, cls: &ClassType, name: &Name) -> bool {
+        self.get_class_member(cls.class_object(), name).is_some()
+            && (!self.is_typed_dict_class(cls.class_object())
+                || self.get_typed_dict_attribute(cls, name).is_some())
+    }
+
     pub fn get_self_attribute(&self, cls: &ClassType, name: &Name) -> Option<ClassAttribute> {
         let metadata = self.get_metadata_for_class(cls.class_object());
         self.special_case_enum_attr_lookup(cls, None, metadata, name)
@@ -6894,7 +6923,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Return `__call__` as a bound method if instances of `cls` have `__call__`.
     /// This is what the runtime automatically does when we try to call an instance.
     pub fn instance_as_dunder_call(&self, cls: &ClassType) -> Option<Type> {
-        if let Some(attr) = self.get_instance_attribute(cls, &dunder::CALL) {
+        if let Some(attr) = self.get_instance_special_method(cls, &dunder::CALL) {
             return self.resolve_dunder_call_attr(attr);
         }
         None
@@ -6916,12 +6945,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         quantified: Quantified,
         upper_bound: &ClassType,
     ) -> Option<Type> {
-        if let Some(attr) =
-            self.get_bounded_quantified_attribute(quantified.clone(), upper_bound, &dunder::CALL)
-        {
-            return self.resolve_dunder_call_attr(attr);
+        let attr =
+            self.get_bounded_quantified_attribute(quantified.clone(), upper_bound, &dunder::CALL)?;
+        if self.is_typed_dict_class(upper_bound.class_object()) {
+            // As in `get_instance_special_method`, a TypedDict key is not a special method.
+            return self
+                .get_typed_dict_attribute(upper_bound, &dunder::CALL)
+                .and_then(|attr| self.resolve_dunder_call_attr(attr));
         }
-        None
+        self.resolve_dunder_call_attr(attr)
     }
 
     fn callable_params_and_flags(ty: Type) -> Option<(ParamList, FuncFlags)> {
