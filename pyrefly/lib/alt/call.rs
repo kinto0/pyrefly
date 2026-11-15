@@ -144,7 +144,7 @@ pub enum CallTarget {
     /// the upper bound.
     Class(ClassType, ConstructorKind, Option<Quantified>),
     /// A TypedDict.
-    TypedDict(TypedDictInner),
+    TypedDict(ClassType),
     /// An overloaded function.
     FunctionOverload(Vec1<TargetWithTParams<Function>>, FuncMetadata),
     /// An overloaded method.
@@ -465,9 +465,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ConstructorKind::BareClassName,
                     None,
                 ))),
-                Type::TypedDict(typed_dict) => {
-                    CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict)))
-                }
+                Type::TypedDict(typed_dict) => CallTargetLookup::Ok(Box::new(
+                    CallTarget::TypedDict(typed_dict.as_class_type()),
+                )),
                 _ => unreachable!(),
             },
             Type::SpecializedClassDef(cls) => CallTargetLookup::Ok(Box::new(CallTarget::Class(
@@ -844,7 +844,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let Type::TypedDict(typed_dict) = *f else {
                     unreachable!("guarded by matches! above")
                 };
-                CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict)))
+                CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(typed_dict.as_class_type())))
             }
             Type::Type(ref f) if let Type::AnonymousTypedDict(td) = &**f => {
                 let value_ty = td.compute_value_type(self.heap);
@@ -2047,7 +2047,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 CallOutcome::of_ty(ty)
             }
             CallTarget::TypedDict(td) => CallOutcome::of_ty(self.construct_typed_dict(
-                td,
+                TypedDictInner::from_class_type(&td),
                 args,
                 keywords,
                 arguments_range,

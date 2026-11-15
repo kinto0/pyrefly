@@ -23,6 +23,7 @@ use pyrefly_types::callable::Params;
 use pyrefly_types::class::Class;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::type_var::Restriction;
+use pyrefly_types::typed_dict::TypedDictInner;
 use pyrefly_types::types::BoundMethod;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::OverloadType;
@@ -2297,12 +2298,13 @@ impl<'a> CallGraphVisitor<'a> {
                         exclude_object_methods,
                     )
                 }
-                CallTarget::TypedDict(typed_dict_inner) => {
+                CallTarget::TypedDict(class_type) => {
+                    let typed_dict = TypedDictInner::from_class_type(&class_type);
                     let init_method = self
                         .module_context
                         .resolver
                         .with_solver("call_graph_typed_dict_init", |solver| {
-                            solver.get_typed_dict_dunder_init(&typed_dict_inner)
+                            solver.get_typed_dict_dunder_init(&typed_dict)
                         });
                     self.resolve_constructor_callees(
                         init_method,
