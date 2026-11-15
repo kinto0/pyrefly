@@ -408,7 +408,7 @@ fn flatten_unpacked_concrete_tuples(elts: Vec<Type>) -> Vec<Type> {
     let mut result = Vec::new();
     for elt in elts {
         match elt {
-            Type::Unpack(inner) if matches!(*inner, Type::Tuple(Tuple::Concrete(_))) => {
+            Type::Unpack(inner, _) if matches!(*inner, Type::Tuple(Tuple::Concrete(_))) => {
                 // Repeated match because pattern guards cannot move out of bindings.
                 if let Type::Tuple(Tuple::Concrete(elts)) = *inner {
                     result.extend(elts);
@@ -633,7 +633,7 @@ fn collect_tuple_elements(tuple: &Tuple, heap: &TypeHeap, out: &mut Vec<Type>) {
 
 fn collect_tuple_member(ty: &Type, heap: &TypeHeap, out: &mut Vec<Type>) {
     match ty {
-        Type::Unpack(inner) => {
+        Type::Unpack(inner, _) => {
             collect_unpacked_member(inner, heap, out);
         }
         other => {
@@ -677,6 +677,7 @@ mod tests {
     use crate::type_var::Restriction;
     use crate::types::NeverStyle;
     use crate::types::Type;
+    use crate::types::UnpackKind;
 
     #[test]
     fn test_flatten_never() {
@@ -908,10 +909,13 @@ mod tests {
             // A tuple with unpacked concrete tuple: tuple[any_explicit, *tuple[any_implicit, any_error]]
             Type::concrete_tuple(vec![
                 Type::any_explicit(),
-                Type::Unpack(Box::new(Type::concrete_tuple(vec![
-                    Type::any_implicit(),
-                    Type::any_error(),
-                ]))),
+                Type::Unpack(
+                    Box::new(Type::concrete_tuple(vec![
+                        Type::any_implicit(),
+                        Type::any_error(),
+                    ])),
+                    UnpackKind::Args,
+                ),
             ]),
             // A tuple with regular nested tuple: tuple[any_explicit, tuple[any_implicit, any_error]]
             Type::concrete_tuple(vec![
@@ -921,12 +925,12 @@ mod tests {
             // A tuple with unpacked TypeVarTuple: tuple[any_explicit, *Ts]
             Type::concrete_tuple(vec![
                 Type::any_explicit(),
-                Type::Unpack(Box::new(tvt.clone())),
+                Type::Unpack(Box::new(tvt.clone()), UnpackKind::Args),
             ]),
             // A tuple with invalid unpacked type: tuple[any_explicit, *None]
             Type::concrete_tuple(vec![
                 Type::any_explicit(),
-                Type::Unpack(Box::new(Type::None)),
+                Type::Unpack(Box::new(Type::None), UnpackKind::Args),
             ]),
             Type::concrete_tuple(vec![Type::any_explicit()]),
             Type::concrete_tuple(vec![Type::any_implicit()]),

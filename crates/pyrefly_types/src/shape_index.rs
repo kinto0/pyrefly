@@ -271,7 +271,7 @@ fn lower_slice(ty: &Type) -> IndexTypeLowering {
 fn is_unresolved_tuple_middle(ty: &Type) -> bool {
     match ty {
         Type::Var(_) | Type::TypeVarTuple(_) => true,
-        Type::Unpack(inner) => is_unresolved_tuple_middle(inner),
+        Type::Unpack(inner, _) => is_unresolved_tuple_middle(inner),
         Type::Quantified(q) => q.kind() == QuantifiedKind::TypeVarTuple,
         _ => false,
     }
@@ -280,7 +280,7 @@ fn is_unresolved_tuple_middle(ty: &Type) -> bool {
 fn lower_integer_tuple(ty: &Type) -> IntegerTypeLowering {
     match ty {
         Type::Var(_) | Type::TypeVarTuple(_) => IntegerTypeLowering::Gradual,
-        Type::Unpack(inner) => lower_integer_tuple(inner),
+        Type::Unpack(inner, _) => lower_integer_tuple(inner),
         Type::Quantified(q) if q.kind() == QuantifiedKind::TypeVarTuple => {
             IntegerTypeLowering::Gradual
         }

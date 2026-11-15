@@ -69,6 +69,7 @@ use crate::types::SuperObj;
 use crate::types::TArgs;
 use crate::types::TParams;
 use crate::types::Type;
+use crate::types::UnpackKind;
 
 enum HoverParamRow {
     Marker(&'static str),
@@ -388,7 +389,7 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Tuple(Tuple::Unpacked(unpacked)) => {
                 let (prefix, middle, suffix) = unpacked.parts();
-                let unpacked_middle = Type::Unpack(Box::new(middle.clone()));
+                let unpacked_middle = Type::Unpack(Box::new(middle.clone()), UnpackKind::Args);
                 self.fmt_type_sequence(
                     prefix
                         .iter()
@@ -493,7 +494,7 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str("*tuple[int, ...]")?;
                 } else {
                     self.fmt_helper_generic(
-                        &Type::Unpack(Box::new(middle.clone())),
+                        &Type::Unpack(Box::new(middle.clone()), UnpackKind::Args),
                         false,
                         output,
                     )?;
@@ -1641,14 +1642,14 @@ impl<'a> TypeDisplayContext<'a> {
                 self.fmt_helper_generic(ty, false, output)?;
                 output.write_str("]")
             }
-            Type::Unpack(inner) if matches!(**inner, Type::TypedDict(_)) => {
+            Type::Unpack(inner, UnpackKind::Kwargs) => {
                 let qname = self.get_special_form_qname("Unpack");
                 output.write_special_form("Unpack", qname)?;
                 output.write_str("[")?;
                 self.fmt_helper_generic(inner, false, output)?;
                 output.write_str("]")
             }
-            Type::Unpack(ty) => {
+            Type::Unpack(ty, UnpackKind::Args) => {
                 output.write_str("*")?;
                 self.fmt_helper_generic(ty, false, output)
             }

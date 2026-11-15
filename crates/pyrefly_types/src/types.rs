@@ -99,6 +99,17 @@ impl Var {
     }
 }
 
+/// Which of the two uses of `Type::Unpack` this is. They are written the same way in an
+/// annotation but displayed differently, and after a TypedDict instance became an ordinary
+/// `ClassType` the inner type no longer distinguishes them.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+pub enum UnpackKind {
+    /// Unpacking a TypeVarTuple or tuple in `*args` position, displayed as `*T`.
+    Args,
+    /// Unpacking a TypedDict in `**kwargs` position, displayed as `Unpack[T]`.
+    Kwargs,
+}
+
 #[derive(PartialEq, Eq)]
 pub enum TParamsSource {
     Class,
@@ -961,7 +972,7 @@ pub enum Type {
     /// cannot be assigned to `type[T]`.
     /// The second field carries the metadata items (the `...` in `Annotated[T, ...]`).
     Annotated(Box<Type>, Box<[Type]>),
-    Unpack(Box<Type>),
+    Unpack(Box<Type>, UnpackKind),
     TypeVar(TypeVar),
     ParamSpec(ParamSpec),
     TypeVarTuple(TypeVarTuple),
@@ -1068,7 +1079,7 @@ impl Visit for Type {
             Type::TypeGuard(x) => x.visit(f),
             Type::TypeIs(x) => x.visit(f),
             Type::Annotated(x, _metadata) => x.visit(f),
-            Type::Unpack(x) => x.visit(f),
+            Type::Unpack(x, _) => x.visit(f),
             Type::TypeVar(x) => x.visit(f),
             Type::Sentinel(x) => x.visit(f),
             Type::ParamSpec(x) => x.visit(f),
@@ -1132,7 +1143,7 @@ impl VisitMut for Type {
             Type::TypeGuard(x) => x.visit_mut(f),
             Type::TypeIs(x) => x.visit_mut(f),
             Type::Annotated(x, _metadata) => x.visit_mut(f),
-            Type::Unpack(x) => x.visit_mut(f),
+            Type::Unpack(x, _) => x.visit_mut(f),
             Type::TypeVar(x) => x.visit_mut(f),
             Type::Sentinel(x) => x.visit_mut(f),
             Type::ParamSpec(x) => x.visit_mut(f),
@@ -1317,7 +1328,7 @@ impl Type {
     }
 
     pub fn is_unpack(&self) -> bool {
-        matches!(self, Type::Unpack(_))
+        matches!(self, Type::Unpack(..))
     }
 
     /// The `TypedDict` of an `Unpack[TypedDict]`, the annotation form a `**kwargs`
@@ -1325,7 +1336,9 @@ impl Type {
     /// other type, including `Unpack` of a non-`TypedDict` such as a `TypeVarTuple`.
     pub fn unpacked_typed_dict(&self) -> Option<&TypedDictInner> {
         match self {
-            Type::Unpack(inner) if let Type::TypedDict(typed_dict) = &**inner => Some(typed_dict),
+            Type::Unpack(inner, _) if let Type::TypedDict(typed_dict) = &**inner => {
+                Some(typed_dict)
+            }
             _ => None,
         }
     }
@@ -2535,7 +2548,7 @@ impl Type {
             | Type::TypeGuard(_)
             | Type::TypeIs(_)
             | Type::Annotated(_, _)
-            | Type::Unpack(_)
+            | Type::Unpack(..)
             | Type::TypeVar(_)
             | Type::ParamSpec(_)
             | Type::TypeVarTuple(_)

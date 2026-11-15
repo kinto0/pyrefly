@@ -590,14 +590,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let mut suffix = Vec::new();
         for arg in args {
             match arg {
-                Type::Unpack(inner) if let Type::Tuple(Tuple::Concrete(elts)) = &**inner => {
+                Type::Unpack(inner, ..) if let Type::Tuple(Tuple::Concrete(elts)) = &**inner => {
                     if middle.is_empty() {
                         prefix.extend_from_slice(elts);
                     } else {
                         suffix.extend_from_slice(elts);
                     }
                 }
-                Type::Unpack(t) => {
+                Type::Unpack(t, ..) => {
                     if !suffix.is_empty() {
                         middle.push(self.heap.mk_unbounded_tuple(self.unions(suffix)));
                         suffix = Vec::new();
@@ -686,7 +686,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         match arg {
-            Type::Unpack(_) => self.error(
+            Type::Unpack(..) => self.error(
                 errors,
                 range,
                 ErrorKind::BadUnpacking,
@@ -775,7 +775,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         match arg {
-            Type::Unpack(_) => {
+            Type::Unpack(..) => {
                 // Shape argument parsing normally rejects this first; keep the
                 // targ-level recovery path for callers that bypass that parser.
                 self.error(

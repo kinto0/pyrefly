@@ -191,7 +191,7 @@ pub(crate) fn direct_function_parameter_sources(
                 {
                     Some((index, name.range(), false))
                 }
-                (Some(annotation), Param::Varargs(_, Type::Unpack(inner)))
+                (Some(annotation), Param::Varargs(_, Type::Unpack(inner, _)))
                     if matches!(&**inner, Type::Quantified(q) if q.as_ref() == tparam) =>
                 {
                     Some((index, annotation.range(), true))

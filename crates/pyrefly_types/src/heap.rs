@@ -56,6 +56,7 @@ use crate::types::Overload;
 use crate::types::SuperObj;
 use crate::types::Type;
 use crate::types::Union;
+use crate::types::UnpackKind;
 use crate::types::Var;
 
 /// Global factory for producing unique heap identifiers.
@@ -206,9 +207,11 @@ impl TypeHeap {
         Type::BoundMethod(Box::new(bound_method))
     }
 
-    /// Create a `Type::Unpack` wrapping an inner type.
-    pub fn mk_unpack(&self, inner: Type) -> Type {
-        Type::Unpack(Box::new(inner))
+    /// Create a `Type::Unpack` wrapping an inner type. Callers that know they are in a
+    /// `**kwargs` annotation pass `UnpackKind::Kwargs`; `Unpack[...]` written anywhere else
+    /// unpacks positionally.
+    pub fn mk_unpack(&self, inner: Type, kind: UnpackKind) -> Type {
+        Type::Unpack(Box::new(inner), kind)
     }
 
     /// Create a `Type::TypeGuard` wrapping an inner type.

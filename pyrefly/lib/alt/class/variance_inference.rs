@@ -422,7 +422,7 @@ fn on_type(
         Type::Tuple(t) => {
             handle_tuple_type(t, path, on_edge, on_var);
         }
-        Type::Unpack(inner) => {
+        Type::Unpack(inner, _) => {
             on_type(path, inner, on_edge, on_var);
         }
         Type::Int(dim) => {
@@ -943,7 +943,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::Quantified(q) => {
                 check_typevar(q.name(), position, q.variance(), range, violations);
             }
-            Type::Unpack(inner) => {
+            Type::Unpack(inner, _) => {
                 self.check_annotation_variance(inner, position, range, violations);
             }
             Type::Tuple(Tuple::Unpacked(parts))

@@ -54,7 +54,7 @@ pub(crate) fn map_int_tuples_parameter_pattern(
     ty: &Type,
 ) -> Option<MapIntTuplesParameterPattern<'_>> {
     let ty = match ty {
-        Type::Unpack(inner) => inner.as_ref(),
+        Type::Unpack(inner, _) => inner.as_ref(),
         ty => ty,
     };
     let Type::TypeLevelDslCall(call) = ty else {
@@ -290,7 +290,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         type_form_context: TypeFormContext<'_>,
     ) -> bool {
         type_form_context == TypeFormContext::ParameterArgsAnnotation
-            && matches!(ty, Type::Unpack(inner)
+            && matches!(ty, Type::Unpack(inner, _)
                 if matches!(inner.as_ref(), Type::TypeLevelDslCall(call)
                     if call.as_map_int_tuples().is_some()))
     }
@@ -305,11 +305,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match type_form_context {
             TypeFormContext::ParameterAnnotation => self.make_map_int_tuples_parameter_pattern(ty),
             TypeFormContext::ParameterArgsAnnotation => {
-                let Type::Unpack(inner) = ty else {
+                let Type::Unpack(inner, kind) = ty else {
                     return ty;
                 };
                 self.heap
-                    .mk_unpack(self.make_map_int_tuples_parameter_pattern(*inner))
+                    .mk_unpack(self.make_map_int_tuples_parameter_pattern(*inner), kind)
             }
             _ => ty,
         }
@@ -321,7 +321,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub(crate) fn map_int_tuples_parameter_body_type(&self, ty: Type) -> Type {
         let (call, unpacked) = match &ty {
             Type::TypeLevelDslCall(call) => (call, false),
-            Type::Unpack(inner) => {
+            Type::Unpack(inner, _) => {
                 let Type::TypeLevelDslCall(call) = inner.as_ref() else {
                     return ty;
                 };

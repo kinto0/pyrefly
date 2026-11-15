@@ -28,6 +28,7 @@ use pyrefly_types::type_alias::TypeAliasRef;
 use pyrefly_types::type_info::JoinStyle;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
+use pyrefly_types::types::UnpackKind;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -1582,7 +1583,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let mut visit = |t: &mut Type| self.tvars_to_tparams_for_type_alias(t, collector);
                 tuple.recurse_mut(&mut visit);
             }
-            Type::Unpack(t) => self.tvars_to_tparams_for_type_alias(t, collector),
+            Type::Unpack(t, ..) => self.tvars_to_tparams_for_type_alias(t, collector),
             Type::Type(t) | Type::Annotated(t, _) => {
                 self.tvars_to_tparams_for_type_alias(t, collector)
             }
@@ -8033,20 +8034,20 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::TypeAlias(ta) if matches!(&*ta, TypeAliasData::Ref(_)) => {
                 Some(Type::UntypedAlias(ta))
             }
-            t @ Type::Unpack(_)
+            t @ Type::Unpack(..)
                 if matches!(
                     &t,
-                    Type::Unpack(inner) if matches!(&**inner, Type::Tuple(_) | Type::TypeVarTuple(_) | Type::Quantified(_) | Type::UntypedAlias(_))
+                    Type::Unpack(inner, ..) if matches!(&**inner, Type::Tuple(_) | Type::TypeVarTuple(_) | Type::Quantified(_) | Type::UntypedAlias(_))
                 ) =>
             {
                 Some(t)
             }
-            Type::Unpack(ref inner)
+            Type::Unpack(ref inner, kind)
                 if let Type::Var(v) = &**inner
                     && let Some(_guard) = self.recurse(*v) =>
             {
                 self.untype_opt_with_context(
-                    self.heap.mk_unpack(self.solver().force_var(*v)),
+                    self.heap.mk_unpack(self.solver().force_var(*v), kind),
                     range,
                     errors,
                     context,
@@ -8184,7 +8185,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Type {
         if type_form_context != TypeFormContext::ParameterKwargsAnnotation
-            && matches!(ty, Type::Unpack(ref inner) if matches!(&**inner, Type::TypedDict(_)))
+            && matches!(ty, Type::Unpack(ref inner, _) if matches!(&**inner, Type::TypedDict(_)))
         {
             return self.error(
                 errors,
@@ -8194,7 +8195,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
         }
         if type_form_context == TypeFormContext::ParameterKwargsAnnotation
-            && matches!(ty, Type::Unpack(ref inner) if !matches!(**inner, Type::TypedDict(_)))
+            && matches!(ty, Type::Unpack(ref inner, _) if !matches!(**inner, Type::TypedDict(_)))
         {
             return self.error(
                 errors,
@@ -8233,7 +8234,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 | TypeFormContext::TupleOrCallableParam(_)
                 | TypeFormContext::GenericBase
                 | TypeFormContext::TypeVarTupleDefault
-        ) && matches!(ty, Type::Unpack(_))
+        ) && matches!(ty, Type::Unpack(..))
         {
             return self.error(
                 errors,
@@ -8270,7 +8271,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // Determine whether we're simply missing an `Unpack[...]` or the TypeVarTuple isn't allowed at all in this context.
             let tmp_collector = self.error_collector();
             self.validate_type_form(
-                self.heap.mk_unpack(ty),
+                self.heap.mk_unpack(ty, UnpackKind::Args),
                 range,
                 type_form_context,
                 &tmp_collector,

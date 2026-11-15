@@ -8,6 +8,7 @@
 use pyrefly_types::tuple::Tuple;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Type;
+use pyrefly_types::types::UnpackKind;
 
 /// Tracks the current position in the type argument list while matching
 /// arguments to type parameters in `create_targs`.
@@ -41,7 +42,7 @@ impl TArgsCursor {
         if self.idx + 1 == stop
             && matches!(
                 &self.targs[self.idx],
-                Type::Unpack(inner) if matches!(inner.as_ref(), Type::Tuple(Tuple::Unbounded(_)))
+                Type::Unpack(inner, ..) if matches!(inner.as_ref(), Type::Tuple(Tuple::Unbounded(_)))
             )
         {
             // All we have left is an unbounded tuple that supplies 0 or more args.
@@ -56,7 +57,7 @@ impl TArgsCursor {
         if args_to_consume == 0
             && matches!(
                 &self.targs[self.idx],
-                Type::Unpack(inner) if matches!(inner.as_ref(), Type::Tuple(Tuple::Unbounded(_)))
+                Type::Unpack(inner, ..) if matches!(inner.as_ref(), Type::Tuple(Tuple::Unbounded(_)))
             )
         {
             // The current arg is an unbounded tuple that is used to fill the param but not consumed.
@@ -83,7 +84,7 @@ impl TArgsCursor {
     pub fn consume_for_typevar_arg(&mut self) -> &Type {
         let arg = &self.targs[self.idx];
         match arg {
-            Type::Unpack(inner)
+            Type::Unpack(inner, ..)
                 if self.unbounded_supply
                     && let Type::Tuple(Tuple::Unbounded(elt)) = &**inner =>
             {
@@ -101,21 +102,21 @@ impl TArgsCursor {
         let mut expanded = Vec::with_capacity(targs.len());
         for arg in targs {
             match arg {
-                Type::Unpack(inner) if matches!(&*inner, Type::Tuple(Tuple::Concrete(_))) => {
+                Type::Unpack(inner, ..) if matches!(&*inner, Type::Tuple(Tuple::Concrete(_))) => {
                     // Repeated match because pattern guards cannot move out of bindings.
                     let Type::Tuple(Tuple::Concrete(elts)) = *inner else {
                         unreachable!("guarded by matches! above")
                     };
                     expanded.extend(elts);
                 }
-                Type::Unpack(inner) if matches!(&*inner, Type::Tuple(Tuple::Unpacked(_))) => {
+                Type::Unpack(inner, ..) if matches!(&*inner, Type::Tuple(Tuple::Unpacked(_))) => {
                     // Repeated match because pattern guards cannot move out of bindings.
                     let Type::Tuple(Tuple::Unpacked(unpacked)) = *inner else {
                         unreachable!("guarded by matches! above")
                     };
                     let (prefix, middle, suffix) = unpacked.into_parts();
                     expanded.extend(prefix);
-                    expanded.push(Type::Unpack(Box::new(middle)));
+                    expanded.push(Type::Unpack(Box::new(middle), UnpackKind::Args));
                     expanded.extend(suffix);
                 }
                 arg => expanded.push(arg),

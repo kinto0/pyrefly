@@ -536,7 +536,7 @@ impl TypeConverter<'_> {
             }
 
             // --- Unpack(X) → convert inner ---
-            PyreflyType::Unpack(inner) => self.convert(inner),
+            PyreflyType::Unpack(inner, _) => self.convert(inner),
 
             // --- TypeForm(X) → convert inner ---
             PyreflyType::TypeForm(inner) => self.convert(inner),

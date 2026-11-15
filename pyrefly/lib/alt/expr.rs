@@ -41,6 +41,7 @@ use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Forallable;
+use pyrefly_types::types::UnpackKind;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -1241,7 +1242,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             let ty =
                                 vararg_hint.unwrap_or_else(|| implicit_any(&name.id, name.range()));
                             let body_ty = match &ty {
-                                Type::Unpack(inner) => (**inner).clone(),
+                                Type::Unpack(inner, ..) => (**inner).clone(),
                                 _ => self.heap.mk_unbounded_tuple(ty.clone()),
                             };
                             self.set_lambda_param_type(id, body_ty);
@@ -1251,7 +1252,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             let ty =
                                 kwarg_hint.unwrap_or_else(|| implicit_any(&name.id, name.range()));
                             let body_ty = match &ty {
-                                Type::Unpack(inner) => (**inner).clone(),
+                                Type::Unpack(inner, ..) => (**inner).clone(),
                                 _ => {
                                     let str_ty = self.heap.mk_class_type(self.stdlib.str().clone());
                                     self.heap
@@ -1544,7 +1545,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Expr::Starred(ExprStarred { value, .. }) => {
                 let ty = self.expr_untype(value, TypeFormContext::type_argument(), errors);
-                self.heap.mk_unpack(ty)
+                self.heap.mk_unpack(ty, UnpackKind::Args)
             }
             Expr::Slice(x) => {
                 let none = self.heap.mk_none();

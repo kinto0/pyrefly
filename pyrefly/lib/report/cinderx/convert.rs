@@ -448,7 +448,7 @@ pub(crate) fn type_to_structured(
         | Type::Kwargs(_)
         | Type::ArgsValue(_)
         | Type::KwargsValue(_)
-        | Type::Unpack(_)
+        | Type::Unpack(..)
         | Type::ParamSpec(_)
         | Type::TypeVarTuple(_)
         | Type::TypeForm(_)

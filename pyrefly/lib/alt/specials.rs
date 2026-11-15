@@ -9,6 +9,7 @@ use std::mem::replace;
 use std::slice;
 
 use pyrefly_types::literal::LitStyle;
+use pyrefly_types::types::UnpackKind;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use ruff_python_ast::Expr;
@@ -127,7 +128,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
             );
             match ty {
-                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Concrete(_))) => {
+                Type::Unpack(ty, ..) if matches!(&*ty, Type::Tuple(Tuple::Concrete(_))) => {
                     has_unpack = true;
                     // Repeated match because pattern guards cannot move out of bindings.
                     let Type::Tuple(Tuple::Concrete(elts)) = *ty else {
@@ -139,7 +140,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         suffix.extend(elts)
                     }
                 }
-                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Unbounded(_))) => {
+                Type::Unpack(ty, ..) if matches!(&*ty, Type::Tuple(Tuple::Unbounded(_))) => {
                     has_unpack = true;
                     if middle.is_none() {
                         middle = Some(*ty)
@@ -148,7 +149,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         return None;
                     }
                 }
-                Type::Unpack(ty) if matches!(&*ty, Type::Tuple(Tuple::Unpacked(_))) => {
+                Type::Unpack(ty, ..) if matches!(&*ty, Type::Tuple(Tuple::Unpacked(_))) => {
                     has_unpack = true;
                     // Repeated match because pattern guards cannot move out of bindings.
                     let Type::Tuple(Tuple::Unpacked(unpacked)) = *ty else {
@@ -164,7 +165,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         return None;
                     }
                 }
-                Type::Unpack(ty) if ty.is_kind_type_var_tuple() => {
+                Type::Unpack(ty, ..) if ty.is_kind_type_var_tuple() => {
                     has_unpack = true;
                     if middle.is_none() {
                         middle = Some(*ty)
@@ -176,7 +177,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // UntypedAlias (from a TypeAliasRef) is opaque at the raw layer;
                 // it will be expanded in wrap_type_alias. Treat it as a valid
                 // middle element like TypeVarTuple.
-                Type::Unpack(ty) if matches!(&*ty, Type::UntypedAlias(_)) => {
+                Type::Unpack(ty, ..) if matches!(&*ty, Type::UntypedAlias(_)) => {
                     has_unpack = true;
                     if middle.is_none() {
                         middle = Some(*ty)
@@ -185,7 +186,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         return None;
                     }
                 }
-                Type::Unpack(ty) => {
+                Type::Unpack(ty, ..) => {
                     self.error(
                         errors,
                         value.range(),
@@ -466,15 +467,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             TypeFormContext::TypeExpression,
                             errors,
                         ) {
-                            Some((tuple, true)) => {
-                                self.heap.mk_type_of(self.heap.mk_callable_from_vec(
+                            Some((tuple, true)) => self.heap.mk_type_of(
+                                self.heap.mk_callable_from_vec(
                                     vec![Param::Varargs(
                                         None,
-                                        self.heap.mk_unpack(self.heap.mk_tuple(tuple)),
+                                        self.heap
+                                            .mk_unpack(self.heap.mk_tuple(tuple), UnpackKind::Args),
                                     )],
                                     ret,
-                                ))
-                            }
+                                ),
+                            ),
                             Some((Tuple::Concrete(elts), false)) => {
                                 self.heap.mk_type_of(self.heap.mk_callable_from_vec(
                                     elts.map(|t| {
@@ -562,7 +564,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ),
             SpecialForm::Unpack if arguments.len() == 1 => {
                 let arg = self.expr_untype(&arguments[0], type_argument_context, errors);
-                if matches!(arg, Type::Unpack(_)) {
+                if matches!(arg, Type::Unpack(..)) {
                     return self.error(
                         errors,
                         arguments[0].range(),
@@ -570,7 +572,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "`Unpack` cannot be applied to an unpacked argument".to_owned(),
                     );
                 }
-                self.heap.mk_type_of(self.heap.mk_unpack(arg))
+                // The typing spec allows `Unpack[TypedDict]` only directly in a `**kwargs`
+                // annotation -- not even behind a type alias, since `Unpack` is not permitted
+                // in an alias value -- so the position this special form is evaluated in
+                // fully determines which of the two spellings this is.
+                let kind = if matches!(
+                    type_form_context,
+                    TypeFormContext::ParameterKwargsAnnotation
+                ) {
+                    UnpackKind::Kwargs
+                } else {
+                    UnpackKind::Args
+                };
+                self.heap.mk_type_of(self.heap.mk_unpack(arg, kind))
             }
             SpecialForm::Unpack => self.error(
                 errors,

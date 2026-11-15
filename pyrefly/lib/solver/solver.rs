@@ -1351,7 +1351,7 @@ impl Solver {
                 let mut new_params = Vec::new();
                 for param in mem::take(param_list).into_items() {
                     match param {
-                        Param::Varargs(_, Type::Unpack(inner))
+                        Param::Varargs(_, Type::Unpack(inner, ..))
                             if matches!(*inner, Type::Tuple(Tuple::Concrete(_))) =>
                         {
                             // Guarded by matches! above
@@ -4426,6 +4426,7 @@ mod tests {
     use pyrefly_types::types::AnyStyle;
     use pyrefly_types::types::TArgs;
     use pyrefly_types::types::Union;
+    use pyrefly_types::types::UnpackKind;
     use ruff_python_ast::Identifier;
     use ruff_text_size::TextSize;
 
@@ -4930,10 +4931,13 @@ mod tests {
 
     #[test]
     fn simplify_mut_flattens_tuple_unpack_in_standalone_int_tuple() {
-        let nested = Type::Unpack(Box::new(Type::Tuple(Tuple::Concrete(vec![
-            Type::Int(Int::Literal(2)),
-            Type::Int(Int::Literal(3)),
-        ]))));
+        let nested = Type::Unpack(
+            Box::new(Type::Tuple(Tuple::Concrete(vec![
+                Type::Int(Int::Literal(2)),
+                Type::Int(Int::Literal(3)),
+            ]))),
+            UnpackKind::Args,
+        );
         let (solver, var) = solver_with_answer(Type::Tuple(Tuple::Concrete(vec![nested])));
         let mut ty =
             IntTuple::unpacked(vec![Int::Literal(1)], Type::Var(var), vec![Int::Literal(4)])

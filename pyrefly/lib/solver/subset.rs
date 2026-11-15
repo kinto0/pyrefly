@@ -305,11 +305,11 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     l_arg = l_args.next();
                     u_arg = u_args.next();
                 }
-                (Some(Param::Varargs(_, Type::Unpack(l))), None) => {
+                (Some(Param::Varargs(_, Type::Unpack(l, ..))), None) => {
                     self.is_subset_eq(&self.solver.heap.mk_concrete_tuple(Vec::new()), l)?;
                     l_arg = l_args.next();
                 }
-                (None, Some(Param::Varargs(_, Type::Unpack(u)))) => {
+                (None, Some(Param::Varargs(_, Type::Unpack(u, ..)))) => {
                     self.is_subset_eq(&self.solver.heap.mk_concrete_tuple(Vec::new()), u)?;
                     u_arg = u_args.next();
                 }
@@ -333,7 +333,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     }
                 }
                 (
-                    Some(Param::Varargs(_, Type::Unpack(l))),
+                    Some(Param::Varargs(_, Type::Unpack(l, ..))),
                     Some(Param::PosOnly(_, _, Required::Required)),
                 ) => {
                     let mut u_types = Vec::new();
@@ -341,7 +341,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         if let Some(Param::PosOnly(_, u, Required::Required)) = u_arg {
                             u_types.push(u.clone());
                             u_arg = u_args.next();
-                        } else if let Some(Param::Varargs(_, Type::Unpack(u))) = u_arg {
+                        } else if let Some(Param::Varargs(_, Type::Unpack(u, ..))) = u_arg {
                             self.is_subset_eq(
                                 &self.solver.heap.mk_unpacked_tuple(
                                     u_types,
@@ -374,7 +374,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 }
                 (
                     Some(Param::PosOnly(_, _, _) | Param::Pos(_, _, _)),
-                    Some(Param::Varargs(_, Type::Unpack(u))),
+                    Some(Param::Varargs(_, Type::Unpack(u, ..))),
                 ) => {
                     let mut l_types = Vec::new();
                     let mut l_optional_prefixes = Vec::new();
@@ -391,7 +391,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                             }
                             l_types.push(l.clone());
                             l_arg = l_args.next();
-                        } else if let Some(Param::Varargs(_, Type::Unpack(l))) = l_arg {
+                        } else if let Some(Param::Varargs(_, Type::Unpack(l, ..))) = l_arg {
                             let full = self.solver.heap.mk_unpacked_tuple(
                                 l_types,
                                 (**l).clone(),
@@ -421,7 +421,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 }
                 (
                     Some(Param::KwOnly(..) | Param::Kwargs(..)),
-                    Some(Param::Varargs(_, Type::Unpack(u))),
+                    Some(Param::Varargs(_, Type::Unpack(u, ..))),
                 ) => {
                     // `u`'s unpacked `*args` has no positionals left to consume (l's remaining
                     // params are keyword-only / **kwargs), so the TypeVarTuple binds to the empty
@@ -441,8 +441,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     u_arg = u_args.next();
                 }
                 (
-                    Some(Param::Varargs(_, Type::Unpack(l))),
-                    Some(Param::Varargs(_, Type::Unpack(u))),
+                    Some(Param::Varargs(_, Type::Unpack(l, ..))),
+                    Some(Param::Varargs(_, Type::Unpack(u, ..))),
                 ) => {
                     self.is_subset_eq(
                         canonical_vararg_unpack_inner(u, l),
@@ -453,25 +453,25 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 }
                 (
                     Some(Param::Varargs(_, Type::Any(_))),
-                    Some(Param::Varargs(_, Type::Unpack(_))),
+                    Some(Param::Varargs(_, Type::Unpack(..))),
                 ) => {
                     l_arg = l_args.next();
                     u_arg = u_args.next();
                 }
                 (
                     Some(Param::Varargs(_, l @ Type::Var(_))),
-                    Some(Param::Varargs(_, u @ Type::Unpack(_))),
+                    Some(Param::Varargs(_, u @ Type::Unpack(..))),
                 ) => {
                     self.is_subset_eq(u, l)?;
                     l_arg = l_args.next();
                     u_arg = u_args.next();
                 }
-                (Some(Param::Varargs(_, l)), Some(Param::Varargs(_, Type::Unpack(u)))) => {
+                (Some(Param::Varargs(_, l)), Some(Param::Varargs(_, Type::Unpack(u, ..)))) => {
                     self.is_subset_eq(u, &self.solver.heap.mk_unbounded_tuple(l.clone()))?;
                     l_arg = l_args.next();
                     u_arg = u_args.next();
                 }
-                (Some(Param::Varargs(_, Type::Unpack(l))), Some(Param::Varargs(_, u))) => {
+                (Some(Param::Varargs(_, Type::Unpack(l, ..))), Some(Param::Varargs(_, u))) => {
                     self.is_subset_eq(&self.solver.heap.mk_unbounded_tuple(u.clone()), l)?;
                     l_arg = l_args.next();
                     u_arg = u_args.next();
@@ -525,13 +525,13 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             .mk_class_type(self.type_order.stdlib().object().clone());
         // Expand typed dict kwargs if necessary, check regular kwargs
         let l_kwargs = match (l_kwargs, u_kwargs) {
-            (Some(l @ Type::Var(_)), Some(ref u @ Type::Unpack(ref u_inner)))
+            (Some(l @ Type::Var(_)), Some(ref u @ Type::Unpack(ref u_inner, _)))
                 if l_keywords.is_empty() && matches!(&**u_inner, Type::TypedDict(_)) =>
             {
                 self.is_subset_eq(u, &l)?;
                 Some(object_type)
             }
-            (Some(Type::Unpack(l_inner)), Some(Type::Unpack(u_inner)))
+            (Some(Type::Unpack(l_inner, _)), Some(Type::Unpack(u_inner, _)))
                 if matches!(
                     (&*l_inner, &*u_inner),
                     (Type::TypedDict(_), Type::TypedDict(_))
@@ -557,7 +557,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 }
                 Some(object_type)
             }
-            (Some(Type::Unpack(l_inner)), _) if matches!(*l_inner, Type::TypedDict(_)) => {
+            (Some(Type::Unpack(l_inner, _)), _) if matches!(*l_inner, Type::TypedDict(_)) => {
                 let Type::TypedDict(l_typed_dict) = *l_inner else {
                     unreachable!("guarded by matches! above")
                 };
@@ -569,7 +569,9 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 }
                 Some(object_type)
             }
-            (l_kwargs, Some(Type::Unpack(u_inner))) if matches!(*u_inner, Type::TypedDict(_)) => {
+            (l_kwargs, Some(Type::Unpack(u_inner, _)))
+                if matches!(*u_inner, Type::TypedDict(_)) =>
+            {
                 let Type::TypedDict(u_typed_dict) = *u_inner else {
                     unreachable!("guarded by matches! above")
                 };
@@ -2659,7 +2661,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (Type::TypeForm(l), Type::TypeForm(u)) => self.is_subset_eq(l, u),
             // type[T] <: TypeForm[T] — class objects are valid type forms.
             // Reject types that are not valid standalone type expressions (PEP 747).
-            (Type::Type(inner), Type::TypeForm(_)) if matches!(**inner, Type::Unpack(_)) => {
+            (Type::Type(inner), Type::TypeForm(_)) if matches!(**inner, Type::Unpack(..)) => {
                 Err(SubsetError::Other)
             }
             (Type::Type(inner), Type::TypeForm(_))

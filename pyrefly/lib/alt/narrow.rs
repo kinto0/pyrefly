@@ -791,7 +791,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     Type::Tuple(tuple) => {
                         elements.push(self.tuple_membership_type(&tuple, range, errors)?)
                     }
-                    Type::TypeVarTuple(_) | Type::Quantified(_) | Type::Unpack(_) => return None,
+                    Type::TypeVarTuple(_) | Type::Quantified(_) | Type::Unpack(..) => return None,
                     _ => elements.push(middle),
                 }
                 elements.extend_from_slice(suffix);

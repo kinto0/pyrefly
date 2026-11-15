@@ -59,7 +59,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .collect::<SmallMap<_, _>>();
         let lookup_tparam = |t: &Type| {
             let (q, kind) = match t {
-                Type::Unpack(t) => (t.as_quantified(), "TypeVarTuple"),
+                Type::Unpack(t, ..) => (t.as_quantified(), "TypeVarTuple"),
                 _ => (t.as_quantified(), "type variable"),
             };
             if q.is_none() && !t.is_error() {

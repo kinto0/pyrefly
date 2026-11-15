@@ -406,7 +406,7 @@ pub(super) fn type_to_indexed_shape(
             );
             insert_indexed_named(table, "typing.Annotated", args, None, Vec::new())
         }
-        Type::Unpack(inner) => {
+        Type::Unpack(inner, _) => {
             let inner = type_to_indexed_shape(context, inner, table);
             insert_indexed_named(table, "typing.Unpack", vec![inner], None, Vec::new())
         }

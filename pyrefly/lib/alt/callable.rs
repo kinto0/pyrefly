@@ -996,7 +996,7 @@ impl<'a> PosParam<'a> {
                 name: Some(name),
                 kind: PosParamKind::Positional,
             }),
-            Param::Varargs(name, Type::Unpack(ty)) => Some(Self {
+            Param::Varargs(name, Type::Unpack(ty, ..)) => Some(Self {
                 ty: &**ty,
                 name: name.as_ref(),
                 kind: PosParamKind::Unpacked,
@@ -1710,7 +1710,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     Required::Optional(None) => {}
                 },
-                Param::Varargs(name, Type::Unpack(unpacked)) => {
+                Param::Varargs(name, Type::Unpack(unpacked, ..)) => {
                     if !has_matched_unpacked_vararg {
                         if let Some(pattern) = map_int_tuples_parameter_pattern(unpacked) {
                             self.check_map_int_tuples_parameter_pattern(

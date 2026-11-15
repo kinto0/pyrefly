@@ -2908,7 +2908,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::SpecialForm(_)
             | Type::TypeLevelDslCall(_)
             | Type::NamedInts(_)
-            | Type::Unpack(_)
+            | Type::Unpack(..)
             | Type::Concatenate(_, _)
             | Type::ParamSpecValue(_)
             | Type::Materialization

@@ -3410,7 +3410,7 @@ impl AnnotationWithTarget {
         let annotation_ty = self.annotation.ty.as_ref()?;
         match self.target {
             AnnotationTarget::ArgsParam(_) => {
-                if let Type::Unpack(unpacked) = annotation_ty {
+                if let Type::Unpack(unpacked, ..) = annotation_ty {
                     Some(Type::unpacked_tuple(
                         Vec::new(),
                         (**unpacked).clone(),
@@ -3423,9 +3423,9 @@ impl AnnotationWithTarget {
                 }
             }
             AnnotationTarget::KwargsParam(_) => {
-                if let Type::Unpack(unpacked) = annotation_ty {
+                if let Type::Unpack(unpacked, ..) = annotation_ty {
                     Some((**unpacked).clone())
-                } else if matches!(annotation_ty, Type::Kwargs(_) | Type::Unpack(_)) {
+                } else if matches!(annotation_ty, Type::Kwargs(_) | Type::Unpack(..)) {
                     Some(annotation_ty.clone())
                 } else {
                     Some(heap.mk_class_type(stdlib.dict(

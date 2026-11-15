@@ -1235,7 +1235,7 @@ a: A | dict[int, str] = {'x': int(oops)}  # E: Could not find name `oops`
 testcase!(
     test_unpack_typed_dict_kwargs_validation,
     r#"
-from typing import TypedDict, Unpack
+from typing import TypeAlias, TypedDict, Unpack
 
 class Coord(TypedDict):
     x: int
@@ -1257,6 +1257,13 @@ def invalid_return() -> Unpack[Coord]:  # E: `Unpack` with a `TypedDict` is only
     pass
 
 x: Unpack[Coord] = ...  # E: `Unpack` with a `TypedDict` is only allowed in a **kwargs annotation
+
+# Invalid: the typing spec does not allow `Unpack` in a type alias value, so a `**kwargs`
+# annotation cannot reach one indirectly. `apply_special_form` relies on this: it decides
+# `UnpackKind` from the annotation position the special form is evaluated in, which is only
+# a complete answer because the kwargs spelling cannot be written anywhere else.
+BareAlias = Unpack[Coord]  # E: `Unpack` with a `TypedDict` is only allowed in a **kwargs annotation
+ExplicitAlias: TypeAlias = Unpack[Coord]  # E: `Unpack` with a `TypedDict` is only allowed in a **kwargs annotation
 
 # Invalid: Unpack with non-TypedDict in **kwargs
 def invalid_unpack_int(**kwargs: Unpack[int]):  # E: `Unpack` in **kwargs annotation must be used only with a `TypedDict`
