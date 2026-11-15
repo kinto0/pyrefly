@@ -2934,6 +2934,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     self.stdlib.typed_dict_fallback().clone(),
                 )))
             }
+            // A declared TypedDict's keys are stored as fields of its class, but they are not
+            // attributes of the class object, so look attributes up on the fallback class instead.
+            Type::ClassType(class) if self.is_typed_dict_class(class.class_object()) => {
+                acc.push(AttributeBase1::ClassObject(ClassBase::ClassDef(
+                    self.stdlib.typed_dict_fallback().clone(),
+                )))
+            }
             Type::LiteralString(_) => acc.push(AttributeBase1::ClassObject(ClassBase::ClassType(
                 self.stdlib.str().clone(),
             ))),

@@ -3299,3 +3299,28 @@ def f(a: A) -> None:
     assert_type(A.d, TD)
 "#,
 );
+
+// A TypedDict's keys are not attributes of its class object, so attribute access on `type[TD]`
+// resolves on the TypedDict fallback class: a key is not found there, and a key with the name of
+// a dict method does not shadow the method.
+testcase!(
+    test_typed_dict_type_attribute_uses_fallback,
+    r#"
+from typing import Generic, TypedDict, TypeVar, assert_type
+
+class TD(TypedDict):
+    x: int
+    get: str
+
+V = TypeVar("V")
+
+class GTD(TypedDict, Generic[V]):
+    x: V
+
+def f(c: type[TD], g: type[GTD[int]]) -> None:
+    c.x  # E: Class `TypedDictFallback` has no class attribute `x`
+    g.x  # E: Class `TypedDictFallback` has no class attribute `x`
+    assert_type(c.get, str)  # E: , str) failed
+    assert_type(c.__required_keys__, frozenset[str])
+"#,
+);
