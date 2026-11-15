@@ -839,12 +839,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     None => CallTargetLookup::Error(Type::SelfType(cls), vec![]),
                 }
             }
-            Type::Type(ref f)
-                if let Type::ClassType(cls) = &**f
-                    && self.is_typed_dict_class(cls.class_object()) =>
-            {
-                CallTargetLookup::Ok(Box::new(CallTarget::TypedDict(cls.clone())))
-            }
             Type::Type(ref f) if let Type::AnonymousTypedDict(td) = &**f => {
                 let value_ty = td.compute_value_type(self.heap);
                 let cls = self

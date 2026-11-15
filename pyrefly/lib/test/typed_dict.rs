@@ -3324,3 +3324,28 @@ def f(c: type[TD], g: type[GTD[int]]) -> None:
     assert_type(c.__required_keys__, frozenset[str])
 "#,
 );
+
+// Calling `type[TD]` constructs the TypedDict through its synthesized `__init__`, the same way as
+// calling the class itself.
+testcase!(
+    test_typed_dict_construct_through_type,
+    r#"
+from typing import Generic, TypedDict, TypeVar, assert_type
+
+class TD(TypedDict):
+    x: int
+
+V = TypeVar("V")
+
+class GTD(TypedDict, Generic[V]):
+    x: V
+
+def f(c: type[TD], g: type[GTD[int]]) -> None:
+    assert_type(c(x=1), TD)
+    assert_type(c({"x": 1}), TD)
+    c(x="s")  # E: Argument `Literal['s']` is not assignable to parameter `x` with type `int`
+    c({"x": "s"})  # E: `Literal['s']` is not assignable to TypedDict key `x` with type `int`
+    assert_type(g(x=1), GTD[int])
+    g(x="s")  # E: Argument `Literal['s']` is not assignable to parameter `x` with type `int`
+"#,
+);
