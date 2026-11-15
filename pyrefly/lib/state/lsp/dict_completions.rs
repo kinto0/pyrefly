@@ -448,27 +448,14 @@ impl<'a> Transaction<'a> {
         }
     }
 
-    fn expr_has_typed_dict_type(&self, handle: &Handle, expr: &Expr) -> bool {
-        self.get_type_trace(handle, expr.range())
-            .map(|ty| Self::type_contains_typed_dict(&ty))
-            .unwrap_or(false)
-    }
-
     /// Extracts typed dict access from `.get()` method calls.
     /// This handles both `d.get("key")` and `d["key"]` patterns - the subscript
     /// case is handled in `dict_key_string_literal_at`.
-    fn typed_dict_get_string_literal(
-        &self,
-        handle: &Handle,
-        call: &ExprCall,
-    ) -> Option<(Expr, ExprStringLiteral)> {
+    fn typed_dict_get_string_literal(call: &ExprCall) -> Option<(Expr, ExprStringLiteral)> {
         let Expr::Attribute(attr) = call.func.as_ref() else {
             return None;
         };
         if attr.attr.id.as_str() != "get" {
-            return None;
-        }
-        if !self.expr_has_typed_dict_type(handle, attr.value.as_ref()) {
             return None;
         }
         // If there's already a string literal, we want to provide completions
@@ -491,8 +478,6 @@ impl<'a> Transaction<'a> {
     }
 
     fn dict_key_string_literal_at(
-        &self,
-        handle: &Handle,
         module: &ModModule,
         position: TextSize,
     ) -> Option<(Expr, ExprStringLiteral)> {
@@ -514,7 +499,7 @@ impl<'a> Transaction<'a> {
                     };
                     literal.map(|lit| (sub.value.as_ref().clone(), lit.clone()))
                 }
-                AnyNodeRef::ExprCall(call) => self.typed_dict_get_string_literal(handle, call),
+                AnyNodeRef::ExprCall(call) => Self::typed_dict_get_string_literal(call),
                 _ => None,
             };
             let Some((base_expr, literal)) = candidate else {
@@ -552,9 +537,7 @@ impl<'a> Transaction<'a> {
         // Prefer direct key access (`d["k"]` / `d.get("k")`) so we can reuse the base
         // expression for facet-based completions, then dict literal keys, surrounding
         // calls, and finally an empty subscript slot (`d[|]`) with no key string typed yet.
-        if let Some((base_expr, literal)) =
-            self.dict_key_string_literal_at(handle, module, position)
-        {
+        if let Some((base_expr, literal)) = Self::dict_key_string_literal_at(module, position) {
             Some(DictKeyLiteralContext::KeyAccess { base_expr, literal })
         } else if let Some(context) = self.dict_literal_string_literal_at(handle, module, position)
         {
@@ -1082,9 +1065,7 @@ impl<'a> Transaction<'a> {
                     suggestions.entry(column).or_insert(None);
                 }
             }
-            if Self::type_contains_typed_dict(&base_type)
-                && let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type)
-            {
+            if let Some(typed_keys) = self.collect_typed_dict_keys(handle, base_type) {
                 for (key, ty) in typed_keys {
                     let entry = suggestions.entry(key).or_insert(None);
                     if entry.is_none() {
