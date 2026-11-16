@@ -655,37 +655,16 @@ impl Stdlib {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use pyrefly_python::module_path::ModulePath;
-    use ruff_text_size::TextSize;
-
     use super::*;
-    use crate::class::ClassDefIndex;
-
-    fn fake_class(module_name: ModuleName, name: &Name) -> Class {
-        let module = Module::new(
-            module_name,
-            ModulePath::filesystem(PathBuf::from("stdlib.pyi")),
-            Arc::new(String::new()),
-        );
-        Class::new(
-            ClassDefIndex(0),
-            Identifier::new(name.clone(), TextRange::empty(TextSize::new(0))),
-            NestingContext::toplevel(),
-            module,
-            false,
-            false,
-            None,
-        )
-    }
+    use crate::test_type_env::TestTypeEnv;
 
     #[test]
     fn none_tparams_are_empty_for_stdlib_lookup() {
+        let env = TestTypeEnv::new();
         let stdlib = Stdlib::new_with_bootstrapping(
             true,
             PythonVersion::default(),
-            &|module, name| Some((fake_class(module, name), None)),
+            &|module, name| Some((env.class(module.as_str(), name.as_str()), None)),
             &|_, _| None,
         );
 
@@ -710,9 +689,10 @@ mod tests {
         expected = "Stdlib class `builtins.slice` is missing or does not have 3 type parameters"
     )]
     fn normal_stdlib_fails_eagerly_when_a_generic_is_invalid() {
+        let env = TestTypeEnv::new();
         Stdlib::new(
             PythonVersion::default(),
-            &|module, name| Some((fake_class(module, name), None)),
+            &|module, name| Some((env.class(module.as_str(), name.as_str()), None)),
             &|_, _| None,
         );
     }

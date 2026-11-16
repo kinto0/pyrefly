@@ -36,80 +36,53 @@ impl SeriesSchema {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
-    use pyrefly_python::module::Module;
-    use pyrefly_python::module_name::ModuleName;
-    use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
     use pyrefly_util::display::DisplayWithCtx;
-    use ruff_python_ast::Identifier;
-    use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
-    use ruff_text_size::TextSize;
 
     use super::*;
-    use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::test_type_env::TestTypeEnv;
     use crate::types::TArgs;
 
-    fn underlying_class() -> ClassType {
-        let module = Module::new(
-            ModuleName::from_str("polars"),
-            ModulePath::filesystem(PathBuf::from("polars")),
-            Arc::new("fake module contents".to_owned()),
-        );
-        ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new("Series"), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                module,
-                false,
-                false,
-                None,
-            ),
-            TArgs::default(),
-        )
+    fn underlying_class(env: &TestTypeEnv) -> ClassType {
+        ClassType::new(env.class("polars", "Series"), TArgs::default())
     }
 
-    fn series(dtype: PolarsDType) -> SeriesSchema {
+    fn series(env: &TestTypeEnv, dtype: PolarsDType) -> SeriesSchema {
         SeriesSchema {
-            underlying: underlying_class(),
+            underlying: underlying_class(env),
             dtype,
         }
     }
 
     #[test]
     fn display_shows_the_element_dtype() {
-        let s = series(PolarsDType::Int64).to_type();
-        assert_eq!(
-            s.display_with(&TestTypeEnv::new()).to_string(),
-            "Series[Int64]"
-        );
+        let env = TestTypeEnv::new();
+        let s = series(&env, PolarsDType::Int64).to_type();
+        assert_eq!(s.display_with(&env).to_string(), "Series[Int64]");
     }
 
     #[test]
     fn strip_replaces_the_schema_with_its_class() {
-        let underlying = Type::ClassType(underlying_class());
+        let env = TestTypeEnv::new();
+        let underlying = Type::ClassType(underlying_class(&env));
         assert_eq!(
-            series(PolarsDType::Int64).to_type().strip_library_schemas(),
+            series(&env, PolarsDType::Int64)
+                .to_type()
+                .strip_library_schemas(),
             underlying
         );
-        let optional = Type::optional(series(PolarsDType::String).to_type());
+        let optional = Type::optional(series(&env, PolarsDType::String).to_type());
         assert_eq!(optional.strip_library_schemas(), Type::optional(underlying));
     }
 
     #[test]
     fn traversal_preserves_underlying() {
-        let s = series(PolarsDType::Int64).to_type();
+        let env = TestTypeEnv::new();
+        let s = series(&env, PolarsDType::Int64).to_type();
         let Type::Series(schema) = s else {
             unreachable!("to_type produces the Series variant")
         };
-        assert_eq!(schema.underlying, underlying_class());
+        assert_eq!(schema.underlying, underlying_class(&env));
         assert_eq!(schema.dtype, PolarsDType::Int64);
     }
 }

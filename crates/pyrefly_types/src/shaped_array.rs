@@ -1438,7 +1438,6 @@ mod tests {
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
     use pyrefly_util::display::DisplayWithCtx;
     use pyrefly_util::visit::VisitMut;
     use ruff_python_ast::Identifier;
@@ -1447,8 +1446,6 @@ mod tests {
     use ruff_text_size::TextRange;
     use ruff_text_size::TextSize;
 
-    use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::dimension::Int;
     use crate::dimension::gradual_size;
@@ -1535,20 +1532,8 @@ mod tests {
         )
     }
 
-    fn fake_class_type(module: &str, name: &str) -> ClassType {
-        let module = fake_module(module);
-        ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                module,
-                false,
-                false,
-                None,
-            ),
-            TArgs::default(),
-        )
+    fn fake_class_type(env: &TestTypeEnv, module: &str, name: &str) -> ClassType {
+        ClassType::new(env.class(module, name), TArgs::default())
     }
 
     fn fake_type_var(name: &str, kind: QuantifiedKind) -> TypeVar {
@@ -1784,7 +1769,8 @@ mod tests {
 
     #[test]
     fn unpacked_invalid_unbounded_middle_recovers_to_gradual() {
-        let elt = Type::ClassType(fake_class_type("torch", "Materialization"));
+        let env = TestTypeEnv::new();
+        let elt = Type::ClassType(fake_class_type(&env, "torch", "Materialization"));
         let shape = IntTuple::from_tuple(Tuple::Unbounded(Box::new(elt)));
 
         assert_eq!(shape, IntTuple::shapeless());
@@ -2221,7 +2207,8 @@ mod tests {
 
     #[test]
     fn other_type_variables_do_not_project_as_dimensions() {
-        let int_class = Type::ClassType(fake_class_type("builtins", "int"));
+        let env = TestTypeEnv::new();
+        let int_class = Type::ClassType(fake_class_type(&env, "builtins", "int"));
         for restriction in [
             Restriction::Bound(int_class.clone()),
             Restriction::Bound(Type::Int(Int::Literal(5))),
@@ -2342,9 +2329,10 @@ mod tests {
 
     #[test]
     fn invalid_concrete_tuple_middle_recovers_with_gradual_dims() {
+        let env = TestTypeEnv::new();
         let middle = Type::Tuple(Tuple::Concrete(vec![
             literal(2),
-            Type::ClassType(fake_class_type("builtins", "str")),
+            Type::ClassType(fake_class_type(&env, "builtins", "str")),
             size(3),
             bool_literal(),
             Type::Quantified(Box::new(fake_tparam("T", QuantifiedKind::TypeVar))),
@@ -2372,7 +2360,8 @@ mod tests {
 
     #[test]
     fn invalid_non_tuple_middle_recovers_as_shapeless() {
-        let middle = Type::ClassType(fake_class_type("builtins", "str"));
+        let env = TestTypeEnv::new();
+        let middle = Type::ClassType(fake_class_type(&env, "builtins", "str"));
         let shape = IntTuple::unpacked(vec![dim(1)], middle, vec![dim(2)]);
 
         assert_eq!(shape, IntTuple::shapeless());
@@ -2403,8 +2392,9 @@ mod tests {
 
     #[test]
     fn invalid_unbounded_tuple_middle_element_recovers_to_gradual() {
+        let env = TestTypeEnv::new();
         let middle = Type::Tuple(Tuple::Unbounded(Box::new(Type::ClassType(
-            fake_class_type("builtins", "str"),
+            fake_class_type(&env, "builtins", "str"),
         ))));
         let shape = IntTuple::unpacked(vec![dim(1)], middle, vec![dim(2)]);
 
@@ -2445,9 +2435,10 @@ mod tests {
 
     #[test]
     fn valid_unbounded_middle_elements_are_canonicalized() {
+        let env = TestTypeEnv::new();
         let quantified = Type::Quantified(Box::new(fake_tparam("N", QuantifiedKind::IntVar)));
         let type_var = Type::TypeVar(fake_type_var("N", QuantifiedKind::IntVar));
-        let int_type = Type::ClassType(fake_class_type("builtins", "int"));
+        let int_type = Type::ClassType(fake_class_type(&env, "builtins", "int"));
         for (elt, expected) in [
             (literal(5), size(5)),
             (Type::Any(AnyStyle::Explicit), gradual_size()),
@@ -2577,10 +2568,11 @@ mod tests {
 
     #[test]
     fn invalid_unbounded_carriers_fail() {
+        let env = TestTypeEnv::new();
         // Canonicalizing to shapeless would hide the invalid element, so an
         // unbounded carrier is only a carrier when its element is a dimension.
         let direct = Type::Tuple(Tuple::Unbounded(Box::new(Type::ClassType(
-            fake_class_type("builtins", "str"),
+            fake_class_type(&env, "builtins", "str"),
         ))));
         assert_eq!(tuple_carrier_to_shape(&direct), None);
 
@@ -2602,12 +2594,13 @@ mod tests {
 
     #[test]
     fn unbounded_carriers_canonicalize_to_shapeless() {
+        let env = TestTypeEnv::new();
         // Unbounded carriers have no recoverable rank or per-dimension values,
         // whatever dimension their element is.
         let any_unbounded = Type::any_tuple();
         let internal_unbounded = Type::Tuple(Tuple::Unbounded(Box::new(size(5))));
         let int_unbounded = Type::Tuple(Tuple::Unbounded(Box::new(Type::ClassType(
-            fake_class_type("builtins", "int"),
+            fake_class_type(&env, "builtins", "int"),
         ))));
         let shapeless = IntTuple::shapeless();
         assert_eq!(
@@ -2623,6 +2616,7 @@ mod tests {
 
     #[test]
     fn unpacked_tuple_carrier_middle_is_validated_strictly() {
+        let env = TestTypeEnv::new();
         let valid = Type::Tuple(Tuple::unpacked(
             vec![literal(1)],
             Type::Tuple(Tuple::Concrete(vec![literal(3)])),
@@ -2636,7 +2630,7 @@ mod tests {
         let invalid = Type::Tuple(Tuple::unpacked(
             vec![literal(1)],
             Type::Tuple(Tuple::Concrete(vec![Type::ClassType(fake_class_type(
-                "builtins", "str",
+                &env, "builtins", "str",
             ))])),
             vec![literal(2)],
         ));
@@ -2691,6 +2685,7 @@ mod tests {
 
     #[test]
     fn unpacked_tuple_carrier_unbounded_middle_recovers_to_gradual() {
+        let env = TestTypeEnv::new();
         let carrier = Type::Tuple(Tuple::unpacked(
             vec![literal(1)],
             Type::Tuple(Tuple::Unbounded(Box::new(literal(5)))),
@@ -2707,7 +2702,7 @@ mod tests {
         );
 
         let invalid_prefix = Type::Tuple(Tuple::unpacked(
-            vec![Type::ClassType(fake_class_type("builtins", "str"))],
+            vec![Type::ClassType(fake_class_type(&env, "builtins", "str"))],
             Type::Tuple(Tuple::Unbounded(Box::new(literal(5)))),
             vec![literal(2)],
         ));

@@ -196,44 +196,16 @@ impl Display for ShapeExtensionRestriction {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
-    use pyrefly_python::module::Module;
-    use pyrefly_python::module_name::ModuleName;
-    use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
     use pyrefly_python::sys_info::PythonVersion;
-    use ruff_python_ast::Identifier;
-    use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
-    use ruff_text_size::TextSize;
 
     use super::*;
-    use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::known_class::KnownClass;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_var::FlagMember;
-
-    fn fake_class(module_name: ModuleName, name: &Name) -> Class {
-        let module = Module::new(
-            module_name,
-            ModulePath::filesystem(PathBuf::from("stdlib.pyi")),
-            Arc::new(String::new()),
-        );
-        Class::new(
-            ClassDefIndex(0),
-            Identifier::new(name.clone(), TextRange::empty(TextSize::new(0))),
-            NestingContext::toplevel(),
-            module,
-            false,
-            false,
-            None,
-        )
-    }
 
     #[test]
     fn flag_restriction_boundary() {
+        let env = TestTypeEnv::new();
         let domain = FlagDomain::of(FlagMember::Int);
         let restriction = Restriction::flag(domain);
         assert!(restriction.is_flag());
@@ -249,7 +221,7 @@ mod tests {
         let stdlib = Stdlib::new_with_bootstrapping(
             true,
             PythonVersion::default(),
-            &|module, name| Some((fake_class(module, name), None)),
+            &|module, name| Some((env.class(module.as_str(), name.as_str()), None)),
             &|_, _| None,
         );
         let members = extension.upper_bound_members(&stdlib);
@@ -259,6 +231,7 @@ mod tests {
 
     #[test]
     fn index_restriction_projects_to_object() {
+        let env = TestTypeEnv::new();
         let restriction = Restriction::index();
         assert!(restriction.is_index());
 
@@ -273,7 +246,7 @@ mod tests {
         let stdlib = Stdlib::new_with_bootstrapping(
             true,
             PythonVersion::default(),
-            &|module, name| Some((fake_class(module, name), None)),
+            &|module, name| Some((env.class(module.as_str(), name.as_str()), None)),
             &|_, _| None,
         );
         let members = extension.upper_bound_members(&stdlib);

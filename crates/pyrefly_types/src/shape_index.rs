@@ -1057,15 +1057,12 @@ mod tests {
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
     use ruff_text_size::TextSize;
 
     use super::*;
-    use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::identity::IdentityIgnored;
     use crate::lit_int::LitInt;
@@ -1074,6 +1071,7 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
     use crate::type_var::TypeVar;
@@ -1127,9 +1125,10 @@ mod tests {
 
     #[test]
     fn known_unpacked_root_members_must_be_valid_indices() {
+        let env = TestTypeEnv::new();
         let index = Type::Tuple(Tuple::unpacked(
             vec![Type::Int(Int::Int)],
-            Type::unbounded_tuple(bare_builtin("str")),
+            Type::unbounded_tuple(bare_builtin(&env, "str")),
             Vec::new(),
         ));
         assert_eq!(lower_index_type(&index), IndexTypeLowering::Invalid);
@@ -1208,25 +1207,18 @@ mod tests {
         )
     }
 
-    fn bare_builtin(name: &str) -> Type {
+    fn bare_builtin(env: &TestTypeEnv, name: &str) -> Type {
         Type::ClassType(ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                fake_module("builtins"),
-                false,
-                false,
-                None,
-            ),
+            env.class("builtins", name),
             TArgs::default(),
         ))
     }
 
     #[test]
     fn bare_slice_is_valid_but_gradual() {
+        let env = TestTypeEnv::new();
         assert_eq!(
-            lower_index_type(&bare_builtin("slice")),
+            lower_index_type(&bare_builtin(&env, "slice")),
             IndexTypeLowering::Gradual
         );
     }
@@ -1262,17 +1254,9 @@ mod tests {
         )
     }
 
-    fn generic_builtin(name: &str, argument: Type) -> Type {
+    fn generic_builtin(env: &TestTypeEnv, name: &str, argument: Type) -> Type {
         Type::ClassType(ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new(name), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                fake_module("builtins"),
-                false,
-                false,
-                None,
-            ),
+            env.class("builtins", name),
             TArgs::new(
                 Arc::new(TParams::new(vec![fake_tparam(
                     "T",
@@ -1285,9 +1269,10 @@ mod tests {
 
     #[test]
     fn nested_unbounded_integer_sequences_preserve_other_operations() {
+        let env = TestTypeEnv::new();
         for sequence in [
-            Type::unbounded_tuple(bare_builtin("int")),
-            generic_builtin("list", bare_builtin("int")),
+            Type::unbounded_tuple(bare_builtin(&env, "int")),
+            generic_builtin(&env, "list", bare_builtin(&env, "int")),
         ] {
             let index = Type::Tuple(Tuple::Concrete(vec![Type::None, sequence, size(0)]));
             assert_eq!(

@@ -115,46 +115,19 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hash;
     use std::hash::Hasher;
-    use std::path::PathBuf;
-    use std::sync::Arc;
 
-    use pyrefly_python::module::Module;
-    use pyrefly_python::module_name::ModuleName;
-    use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
     use pyrefly_util::display::DisplayWithCtx;
-    use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
-    use ruff_text_size::TextSize;
 
     use super::*;
-    use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::equality::TypeEq;
     use crate::equality::TypeEqCtx;
     use crate::test_type_env::TestTypeEnv;
     use crate::types::TArgs;
 
-    fn underlying_class() -> ClassType {
-        let module = Module::new(
-            ModuleName::from_str("polars"),
-            ModulePath::filesystem(PathBuf::from("polars")),
-            Arc::new("fake module contents".to_owned()),
-        );
-        ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new("DataFrame"), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                module,
-                false,
-                false,
-                None,
-            ),
-            TArgs::default(),
-        )
+    fn underlying_class(env: &TestTypeEnv) -> ClassType {
+        ClassType::new(env.class("polars", "DataFrame"), TArgs::default())
     }
 
     fn col(name: &str, dtype: PolarsDType) -> (Name, PolarsDType) {
@@ -162,11 +135,12 @@ mod tests {
     }
 
     fn schema(
+        env: &TestTypeEnv,
         columns: Vec<(Name, PolarsDType)>,
         completeness: SchemaCompleteness,
     ) -> DataFrameSchema {
         DataFrameSchema {
-            underlying: underlying_class(),
+            underlying: underlying_class(env),
             columns,
             completeness,
             kind: DataFrameKind::Polars,
@@ -182,13 +156,15 @@ mod tests {
 
     #[test]
     fn partial_schema_display_shows_trailing_marker() {
+        let env = TestTypeEnv::new();
         let df = schema(
+            &env,
             vec![col("a", PolarsDType::Int64)],
             SchemaCompleteness::Partial,
         )
         .to_type();
         assert_eq!(
-            df.display_with(&TestTypeEnv::new()).to_string(),
+            df.display_with(&env).to_string(),
             "DataFrame[a: Int64, ...]",
             "a Partial schema shows known columns plus a trailing marker for the unknown rest"
         );
@@ -196,11 +172,14 @@ mod tests {
 
     #[test]
     fn column_order_is_part_of_identity() {
+        let env = TestTypeEnv::new();
         let ab = schema(
+            &env,
             vec![col("a", PolarsDType::Int64), col("b", PolarsDType::String)],
             SchemaCompleteness::Complete,
         );
         let ba = schema(
+            &env,
             vec![col("b", PolarsDType::String), col("a", PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         );
@@ -211,6 +190,7 @@ mod tests {
         assert!(!ab.type_eq(&ba, &mut TypeEqCtx::default()));
 
         let ab2 = schema(
+            &env,
             vec![col("a", PolarsDType::Int64), col("b", PolarsDType::String)],
             SchemaCompleteness::Complete,
         );
@@ -222,11 +202,14 @@ mod tests {
 
     #[test]
     fn completeness_is_part_of_identity() {
+        let env = TestTypeEnv::new();
         let complete = schema(
+            &env,
             vec![col("a", PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         );
         let partial = schema(
+            &env,
             vec![col("a", PolarsDType::Int64)],
             SchemaCompleteness::Partial,
         );
@@ -236,7 +219,9 @@ mod tests {
 
     #[test]
     fn role_is_part_of_identity() {
+        let env = TestTypeEnv::new();
         let inferred = schema(
+            &env,
             vec![col("a", PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         );
@@ -270,13 +255,16 @@ mod tests {
 
     #[test]
     fn exact_schema_requires_identical_complete_columns() {
+        let env = TestTypeEnv::new();
         let target = schema(
+            &env,
             vec![col("a", PolarsDType::Int64), col("b", PolarsDType::String)],
             SchemaCompleteness::Complete,
         );
         assert!(target.satisfies(&target));
         assert!(
             !schema(
+                &env,
                 vec![col("b", PolarsDType::String), col("a", PolarsDType::Int64)],
                 SchemaCompleteness::Complete,
             )
@@ -284,6 +272,7 @@ mod tests {
         );
         assert!(
             !schema(
+                &env,
                 vec![col("a", PolarsDType::Int64), col("b", PolarsDType::String)],
                 SchemaCompleteness::Partial,
             )
@@ -291,6 +280,7 @@ mod tests {
         );
         assert!(
             !schema(
+                &env,
                 vec![
                     col("a", PolarsDType::Int64),
                     col("b", PolarsDType::String),
@@ -304,13 +294,16 @@ mod tests {
 
     #[test]
     fn open_schema_requires_known_columns_by_name_and_dtype() {
+        let env = TestTypeEnv::new();
         let target = schema(
+            &env,
             vec![col("a", PolarsDType::Int64), col("b", PolarsDType::String)],
             SchemaCompleteness::Partial,
         );
         for completeness in [SchemaCompleteness::Complete, SchemaCompleteness::Partial] {
             assert!(
                 schema(
+                    &env,
                     vec![
                         col("extra", PolarsDType::Boolean),
                         col("b", PolarsDType::String),
@@ -323,6 +316,7 @@ mod tests {
         }
         assert!(
             !schema(
+                &env,
                 vec![col("a", PolarsDType::Int64)],
                 SchemaCompleteness::Complete,
             )
@@ -330,6 +324,7 @@ mod tests {
         );
         assert!(
             !schema(
+                &env,
                 vec![col("a", PolarsDType::Int64), col("b", PolarsDType::Unknown)],
                 SchemaCompleteness::Partial,
             )
@@ -339,11 +334,12 @@ mod tests {
 
     #[test]
     fn kind_is_part_of_identity() {
+        let env = TestTypeEnv::new();
         let cols = || vec![col("a", PolarsDType::Int64)];
-        let polars = schema(cols(), SchemaCompleteness::Complete);
+        let polars = schema(&env, cols(), SchemaCompleteness::Complete);
         let pandas = DataFrameSchema {
             kind: DataFrameKind::Pandas,
-            ..schema(cols(), SchemaCompleteness::Complete)
+            ..schema(&env, cols(), SchemaCompleteness::Complete)
         };
         assert_ne!(polars, pandas);
         assert!(!polars.type_eq(&pandas, &mut TypeEqCtx::default()));
@@ -351,7 +347,8 @@ mod tests {
 
     #[test]
     fn strip_library_schemas_replaces_every_schema_with_its_class() {
-        let underlying = Type::ClassType(underlying_class());
+        let env = TestTypeEnv::new();
+        let underlying = Type::ClassType(underlying_class(&env));
 
         for (columns, completeness) in [
             (
@@ -364,7 +361,7 @@ mod tests {
                 SchemaCompleteness::Partial,
             ),
         ] {
-            let stripped = schema(columns, completeness)
+            let stripped = schema(&env, columns, completeness)
                 .to_type()
                 .strip_library_schemas();
             assert_eq!(stripped, underlying);
@@ -373,6 +370,7 @@ mod tests {
         let pandas = DataFrameSchema {
             kind: DataFrameKind::Pandas,
             ..schema(
+                &env,
                 vec![col("a", PolarsDType::Int64)],
                 SchemaCompleteness::Complete,
             )
@@ -382,6 +380,7 @@ mod tests {
 
         let optional = Type::optional(
             schema(
+                &env,
                 vec![col("a", PolarsDType::Int64)],
                 SchemaCompleteness::Complete,
             )
@@ -396,7 +395,9 @@ mod tests {
 
     #[test]
     fn traversal_preserves_underlying() {
+        let env = TestTypeEnv::new();
         let df = schema(
+            &env,
             vec![col("a", PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         )
@@ -404,7 +405,7 @@ mod tests {
         let Type::DataFrame(s) = df else {
             unreachable!("to_type produces the DataFrame variant")
         };
-        assert_eq!(s.underlying, underlying_class());
+        assert_eq!(s.underlying, underlying_class(&env));
         assert_eq!(s.columns[0].1, PolarsDType::Int64);
     }
 }
