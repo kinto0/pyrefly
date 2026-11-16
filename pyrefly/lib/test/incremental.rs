@@ -3141,6 +3141,29 @@ fn test_class_docstring_change_invalidates() {
     i.check(&["foo", "main"], &["foo"]);
 }
 
+/// Test that changing the `Doc` text of a parameter recomputes only the module that defines it.
+#[test]
+fn test_annotated_doc_change_invalidates() {
+    let mut i = Incremental::new();
+    let foo = |doc: &str| {
+        format!(
+            "from typing import Annotated\n\
+             class Doc:\n    def __init__(self, documentation: str, /) -> None: ...\n\
+             def f(x: Annotated[int, Doc(\"{doc}\")]) -> int:\n    return x\n\
+             class C:\n    def m(self, x: Annotated[int, Doc(\"{doc}\")]) -> None: ...\n"
+        )
+    };
+
+    i.set("foo", &foo("Original"));
+    i.set("main", "from foo import C, f\nx = f(1)\nC().m(1)");
+    i.check(&["foo", "main"], &["foo", "main"]);
+
+    // Change the `Doc` text, which also moves the ranges after it - foo should be recomputed
+    // (main is not recomputed since the type signatures didn't change)
+    i.set("foo", &foo("Updated with more words"));
+    i.check(&["foo", "main"], &["foo"]);
+}
+
 /// Test that when __all__ contains Module entries (like `__all__.extend(other.__all__)`),
 /// changing those entries triggers wildcard fallback and invalidates star importers.
 ///
