@@ -27,7 +27,7 @@ lock_free_hashtable = "0.1.4"
 lsp_types = { package = "gen-lsp-types", version = "0.11.0", features = ["url"] }
 memory-stats = "1.2.0"
 notify = "9.0.0-rc.6"
-parse-display = "0.8.2"
+parse-display = "0.9.1"
 path-absolutize = "4.0.1"
 pathdiff = "0.2"
 rayon = "1.11.0"
