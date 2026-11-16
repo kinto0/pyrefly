@@ -18,6 +18,8 @@ use ruff_python_ast::StmtClassDef;
 use ruff_python_ast::StmtFunctionDef;
 use ruff_text_size::TextRange;
 
+use crate::export::special::SpecialExport;
+
 pub fn function_doc_ranges(x: &StmtFunctionDef) -> DocRanges {
     doc_ranges_from_parts(Docstring::range_from_stmts(&x.body), &x.parameters)
 }
@@ -50,21 +52,14 @@ pub fn doc_ranges_from_parts(docstring: Option<TextRange>, parameters: &Paramete
 /// The range of the string literal in the `Doc("...")` metadata of an `Annotated[...]`
 /// annotation, as in `name: Annotated[str, Doc("The user's name")]`. This is the
 /// [annotated-doc](https://github.com/fastapi/annotated-doc) convention that FastAPI uses.
-/// `Doc` is matched by name, and when there is more than one, the last applies, as PEP 727
-/// specifies. An implicitly concatenated string is skipped, because it has no single literal to
-/// read back.
+/// `Annotated` and `Doc` are matched with `SpecialExport::from_syntax`, because this runs before
+/// bindings exist. When there is more than one `Doc`, the last applies, as PEP 727 specifies. An
+/// implicitly concatenated string is skipped, because it has no single literal to read back.
 fn annotated_doc(annotation: &Expr) -> Option<TextRange> {
-    fn is_named(x: &Expr, name: &str) -> bool {
-        match x {
-            Expr::Name(x) => x.id == name,
-            Expr::Attribute(x) => x.attr.id == name,
-            _ => false,
-        }
-    }
     let Expr::Subscript(annotated) = annotation else {
         return None;
     };
-    if !is_named(&annotated.value, "Annotated") {
+    if SpecialExport::from_syntax(&annotated.value) != Some(SpecialExport::Annotated) {
         return None;
     }
     Ast::unpack_slice(&annotated.slice)
@@ -73,7 +68,7 @@ fn annotated_doc(annotation: &Expr) -> Option<TextRange> {
         .rev()
         .find_map(|metadata| match metadata {
             Expr::Call(call)
-                if is_named(&call.func, "Doc")
+                if SpecialExport::from_syntax(&call.func) == Some(SpecialExport::Doc)
                     && let [Expr::StringLiteral(text)] = &*call.arguments.args =>
             {
                 (!text.value.is_implicit_concatenated()).then_some(text.range)
@@ -150,7 +145,6 @@ class C:
         );
     }
 
-    // Bug: `Annotated` and `Doc` are matched by name, so an attribute of any module matches.
     #[test]
     fn test_doc_ranges_parameters_from_other_modules() {
         let source = r#"
@@ -162,11 +156,7 @@ def f(
 "#;
         assert_eq!(
             annotated_docs(source),
-            vec![
-                ("a".to_owned(), "other Annotated".to_owned()),
-                ("b".to_owned(), "other Doc".to_owned()),
-                ("c".to_owned(), "typing_extensions".to_owned()),
-            ]
+            vec![("c".to_owned(), "typing_extensions".to_owned())]
         );
     }
 }

@@ -28,6 +28,8 @@ pub enum SpecialExport {
     ParamSpec,
     TypeVarTuple,
     Annotated,
+    /// `Doc` from annotated-doc, formerly PEP 727.
+    Doc,
     Literal,
     Enum,
     StrEnum,
@@ -119,6 +121,7 @@ impl SpecialExport {
             "ParamSpec" => Some(Self::ParamSpec),
             "TypeVarTuple" => Some(Self::TypeVarTuple),
             "Annotated" => Some(Self::Annotated),
+            "Doc" => Some(Self::Doc),
             "Shaped" => Some(Self::Shaped),
             "shape_vars" => Some(Self::ShapeVars),
             "Literal" => Some(Self::Literal),
@@ -255,6 +258,7 @@ impl SpecialExport {
             | Self::TypeForm => {
                 matches!(m.as_str(), "typing" | "typing_extensions")
             }
+            Self::Doc => matches!(m.as_str(), "typing_extensions" | "annotated_doc"),
             Self::CollectionsNamedTuple => matches!(m.as_str(), "collections"),
             Self::FunctoolsWraps | Self::FunctoolsUpdateWrapper => m == ModuleName::functools(),
             Self::Enum | Self::StrEnum | Self::IntEnum => matches!(m.as_str(), "enum"),
