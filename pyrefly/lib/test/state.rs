@@ -336,6 +336,51 @@ fn test_ad_hoc_solve_does_not_persist_diagnostics() {
     }
 }
 
+#[test]
+fn test_protocol_check_in_cycle_is_cached() {
+    let mut env = TestEnv::new();
+    env.add("main", "from foo import f\nf(1)\n");
+    env.add(
+        "foo",
+        r#"
+from typing import Protocol
+class SupportsBar(Protocol):
+    def bar(self) -> int: ...
+class A:
+    def bar(self) -> int: ...
+def takes(x: SupportsBar) -> int: ...
+def f(n: int):
+    if n:
+        return g(n)
+    return takes(A())
+def g(n: int):
+    return f(n - 1)
+"#,
+    );
+    let sys_info = env.sys_info();
+    let handle = |name: &str| {
+        Handle::new(
+            ModuleName::from_str(name),
+            ModulePath::memory(PathBuf::from(format!("{name}.py"))),
+            sys_info.dupe(),
+        )
+    };
+    let (main, foo) = (handle("main"), handle("foo"));
+    let state = State::new(env.config_finder(), TEST_THREAD_COUNT);
+    let mut transaction = state.new_committable_transaction(Require::Exports, None);
+    transaction.as_mut().set_memory(env.get_memory());
+    transaction.as_mut().run(&[main], Require::Errors, None);
+    state.commit_transaction(transaction, None);
+
+    let answers = state
+        .transaction()
+        .get_answers(&foo)
+        .expect("lazily reached module should retain answers");
+    // BUG: `A <: SupportsBar` is checked while the return types of `f` and `g` form a cycle.
+    // The check reads no provisional answer from that cycle, but its result is not cached.
+    assert_eq!(answers.solver().protocol_cache_len(), 0);
+}
+
 /// Regression for the TSP type converter's export-location resolution.
 ///
 /// `convert_type_in_transaction` resolves an exported symbol's definition by

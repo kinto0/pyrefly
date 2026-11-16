@@ -666,6 +666,11 @@ impl Solver {
             .cloned()
     }
 
+    #[cfg(test)]
+    pub fn protocol_cache_len(&self) -> usize {
+        self.protocol_cache.lock().len()
+    }
+
     /// Store a protocol conformance result.
     pub fn store_protocol_cache<Ans: LookupAnswer>(
         &self,
