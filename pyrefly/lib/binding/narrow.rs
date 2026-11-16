@@ -224,16 +224,16 @@ impl DisplayWith<ModuleInfo> for AtomicNarrowOp {
                 write!(f, "NotGetAttr({attr}, None)")
             }
             AtomicNarrowOp::TypeGuard(t, arguments) => {
-                write!(f, "TypeGuard({t}, {})", arguments.display_with(ctx))
+                write!(f, "TypeGuard({t:?}, {})", arguments.display_with(ctx))
             }
             AtomicNarrowOp::NotTypeGuard(t, arguments) => {
-                write!(f, "NotTypeGuard({t}, {})", arguments.display_with(ctx))
+                write!(f, "NotTypeGuard({t:?}, {})", arguments.display_with(ctx))
             }
             AtomicNarrowOp::TypeIs(t, arguments) => {
-                write!(f, "TypeIs({t}, {})", arguments.display_with(ctx))
+                write!(f, "TypeIs({t:?}, {})", arguments.display_with(ctx))
             }
             AtomicNarrowOp::NotTypeIs(t, arguments) => {
-                write!(f, "NotTypeIs({t}, {})", arguments.display_with(ctx))
+                write!(f, "NotTypeIs({t:?}, {})", arguments.display_with(ctx))
             }
             AtomicNarrowOp::TypeEq(expr) => write!(f, "TypeEq({})", expr.display_with(ctx)),
             AtomicNarrowOp::TypeNotEq(expr) => write!(f, "TypeNotEq({})", expr.display_with(ctx)),

@@ -7,7 +7,6 @@
 
 use std::fmt;
 use std::fmt::Debug;
-use std::fmt::Display;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -25,9 +24,12 @@ use pyrefly_types::keywords::TypeMap;
 use pyrefly_types::quantified::Quantified;
 use pyrefly_types::type_level_dsl::ParsedTypeShapeDslFunction;
 use pyrefly_types::types::TParams;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::name::Name;
 use starlark_map::small_map::SmallMap;
 
+use crate::types::env::TypeEnv;
 use crate::types::function::FuncMetadata;
 use crate::types::types::Type;
 
@@ -56,9 +58,9 @@ pub struct Decorator {
     pub deprecation: Option<Deprecation>,
 }
 
-impl Display for Decorator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Decorator[{}]", self.ty)
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Decorator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(f, "Decorator[{}]", self.ty.display_with(env))
     }
 }
 
@@ -107,8 +109,8 @@ impl UndecoratedFunction {
     }
 }
 
-impl Display for UndecoratedFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for UndecoratedFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(f, "def {}: ...", self.metadata.kind.function_name())
     }
 }

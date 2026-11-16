@@ -19,6 +19,7 @@ use pyrefly_python::dunder;
 use pyrefly_types::function::Deprecation;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::ExtraItems;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::visit::Visit as VisitTrait;
@@ -173,12 +174,12 @@ impl VisitTrait<Type> for ClassMetadata {
     }
 }
 
-impl Display for ClassMetadata {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         let metaclass = self
             .metaclass
             .as_ref()
-            .map_or("type".to_owned(), |m| format!("{m}"));
+            .map_or("type".to_owned(), |m| m.display_with(env).to_string());
         write!(f, "ClassMetadata(metaclass={metaclass})")
     }
 }
@@ -476,9 +477,9 @@ impl VisitTrait<Type> for ClassSynthesizedField {
     }
 }
 
-impl Display for ClassSynthesizedField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassSynthesizedField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(f, "{}", self.inner.display_with(env))
     }
 }
 
@@ -534,15 +535,15 @@ impl ClassSynthesizedFields {
     }
 }
 
-impl Display for ClassSynthesizedFields {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassSynthesizedFields {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(
             f,
             "ClassSynthesizedFields {{ {} }}",
             commas_iter(|| self
                 .0
                 .iter()
-                .map(|(name, field)| format!("{name} => {field}")))
+                .map(|(name, field)| format!("{name} => {}", field.display_with(env))))
         )
     }
 }
@@ -558,9 +559,9 @@ pub struct Metaclass {
     is_explicitly_abstract: bool,
 }
 
-impl Display for Metaclass {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", self.metaclass)
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Metaclass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(f, "{}", self.metaclass.display_with(env))
     }
 }
 
@@ -757,8 +758,8 @@ impl DjangoReverseRelationIndex {
     }
 }
 
-impl Display for DjangoReverseRelationIndex {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for DjangoReverseRelationIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(f, "DjangoReverseRelationIndex(len={})", self.0.len())
     }
 }
@@ -825,11 +826,15 @@ pub enum ClassMro {
 
 static RECURSIVE_CLASS_MRO: ClassMro = ClassMro::Cyclic;
 
-impl Display for ClassMro {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassMro {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
             ClassMro::Resolved { ancestors, .. } => {
-                write!(f, "[{}]", commas_iter(|| ancestors.iter()))
+                write!(
+                    f,
+                    "[{}]",
+                    commas_iter(|| ancestors.iter().map(|a| a.display_with(env)))
+                )
             }
             ClassMro::Cyclic => write!(f, "Cyclic"),
         }
@@ -923,10 +928,10 @@ static RECURSIVE_CLASS_DISJOINT_BASE: ClassDisjointBase = ClassDisjointBase {
     representative: None,
 };
 
-impl Display for ClassDisjointBase {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassDisjointBase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match &self.representative {
-            Some(cls) => write!(f, "ClassDisjointBase({})", cls.name()),
+            Some(cls) => write!(f, "ClassDisjointBase({})", cls.name_in(env)),
             None => write!(f, "ClassDisjointBase(None)"),
         }
     }

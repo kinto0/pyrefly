@@ -25,6 +25,7 @@ use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 use starlark_map::smallmap;
 
+use crate::annotation::Annotation;
 use crate::callable::Callable;
 use crate::callable::Param;
 use crate::callable::ParamOverlay;
@@ -49,9 +50,11 @@ use crate::shaped_array::IntTupleView;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
+use crate::type_alias::TypeAlias;
 use crate::type_alias::TypeAliasData;
 use crate::type_alias::TypeAliasRef;
 use crate::type_alias::TypeAliasStyle;
+use crate::type_info::TypeInfo;
 use crate::type_level_dsl::TypeLevelDslFunction;
 use crate::type_output::AnnotationOutput;
 use crate::type_output::AnnotationPart;
@@ -1839,6 +1842,43 @@ impl Display for Type {
 
 /// Render a type on its own, reading the definition data it refers to from the env.
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeAlias {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Annotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+/// A class renders as its definition.
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Class {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self.def_in(env), f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for bool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         Display::fmt(self, f)
     }

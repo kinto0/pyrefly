@@ -92,6 +92,7 @@ use crate::types::annotation::Annotation;
 use crate::types::class::AttrsFieldSpecifierKind;
 use crate::types::class::Class;
 use crate::types::class::ClassDefIndex;
+use crate::types::env::TypeEnv;
 use crate::types::equality::TypeEq;
 use crate::types::function::FuncDefIndex;
 use crate::types::globals::ImplicitGlobal;
@@ -406,7 +407,14 @@ pub enum AnyExportedKey {
 pub trait Keyed: Hash + Eq + Clone + DisplayWith<ModuleInfo> + Debug + 'static {
     const EXPORTED: bool = false;
     type Value: Debug + DisplayWith<Bindings>;
-    type Answer: Clone + Debug + Display + TypeEq + Visit<Type> + VisitMut<Type> + Send + Sync;
+    type Answer: Clone
+        + Debug
+        + for<'e> DisplayWith<dyn TypeEnv + 'e>
+        + TypeEq
+        + Visit<Type>
+        + VisitMut<Type>
+        + Send
+        + Sync;
     fn to_anyidx(idx: Idx<Self>) -> AnyIdx;
 
     /// Resolve the source range for this key, given access to the bindings.
@@ -1662,8 +1670,8 @@ impl DisplayWith<Bindings> for BindingTypeAlias {
 #[derive(Debug, Clone, TypeEq, Visit, VisitMut, PartialEq, Eq)]
 pub struct EmptyAnswer;
 
-impl Display for EmptyAnswer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for EmptyAnswer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(f, "()")
     }
 }
@@ -1671,13 +1679,13 @@ impl Display for EmptyAnswer {
 #[derive(Debug, Clone, TypeEq, Visit, VisitMut, PartialEq, Eq)]
 pub struct NoneIfRecursive<T>(pub Option<T>);
 
-impl<T> Display for NoneIfRecursive<T>
+impl<'e, T> DisplayWith<dyn TypeEnv + 'e> for NoneIfRecursive<T>
 where
-    T: Display,
+    T: DisplayWith<dyn TypeEnv + 'e>,
 {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match &self.0 {
-            Some(x) => x.fmt(f),
+            Some(x) => DisplayWith::fmt(x, f, env),
             None => write!(f, "recursive"),
         }
     }
@@ -3439,9 +3447,9 @@ impl AnnotationWithTarget {
     }
 }
 
-impl Display for AnnotationWithTarget {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.target, self.annotation)
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for AnnotationWithTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(f, "{}: {}", self.target, self.annotation.display_with(env))
     }
 }
 

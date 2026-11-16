@@ -36,6 +36,7 @@ use pyrefly_types::simplify::unions;
 use pyrefly_types::type_var::PreInferenceVariance;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::TParams;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::ResultExt;
@@ -91,6 +92,7 @@ use crate::types::class::ClassKind;
 use crate::types::class::ClassType;
 use crate::types::display::LspDisplayMode;
 use crate::types::display::TypeDisplayContext;
+use crate::types::env::TypeEnv;
 use crate::types::function::FuncMetadata;
 use crate::types::function::Function;
 use crate::types::function::PropertyMetadata;
@@ -462,19 +464,25 @@ enum IsInherited {
     Maybe,
 }
 
-impl Display for ClassField {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match &self.0 {
-            ClassFieldInner::Property { ty, .. } => write!(f, "{ty} (property)"),
-            ClassFieldInner::Descriptor { ty, .. } => write!(f, "{ty} (descriptor)"),
-            ClassFieldInner::Method { ty, .. } => write!(f, "{ty} (method)"),
+            ClassFieldInner::Property { ty, .. } => {
+                write!(f, "{} (property)", ty.display_with(env))
+            }
+            ClassFieldInner::Descriptor { ty, .. } => {
+                write!(f, "{} (descriptor)", ty.display_with(env))
+            }
+            ClassFieldInner::Method { ty, .. } => write!(f, "{} (method)", ty.display_with(env)),
             ClassFieldInner::ProxyMethod { target, .. } => write!(f, "ProxyMethod[{target}]"),
-            ClassFieldInner::NestedClass { ty, .. } => write!(f, "{ty} (nested class)"),
+            ClassFieldInner::NestedClass { ty, .. } => {
+                write!(f, "{} (nested class)", ty.display_with(env))
+            }
             ClassFieldInner::ClassAttribute {
                 ty, initialization, ..
-            } => write!(f, "{ty} ({initialization})"),
+            } => write!(f, "{} ({initialization})", ty.display_with(env)),
             ClassFieldInner::InstanceAttribute { ty, .. } => {
-                write!(f, "{ty} (instance attribute)")
+                write!(f, "{} (instance attribute)", ty.display_with(env))
             }
         }
     }

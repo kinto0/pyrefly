@@ -31,6 +31,7 @@ use crate::error::collector::CollectedErrors;
 use crate::module::module_info::ModuleInfo;
 use crate::state::state::Transaction;
 use crate::table_for_each;
+use crate::types::env::TypeEnv;
 
 pub fn debug_info(transaction: &Transaction, handles: &[Handle], is_javascript: bool) -> String {
     fn f(transaction: &Transaction, handles: &[Handle]) -> Option<Vec<Arc<Answers>>> {
@@ -39,7 +40,15 @@ pub fn debug_info(transaction: &Transaction, handles: &[Handle], is_javascript: 
 
     let owned = f(transaction, handles).expect("Everything to be computed for debug info");
     let errors = transaction.get_errors(handles).collect_errors();
-    let debug_info = DebugInfo::new(&owned.map(|x| (x.bindings().module(), &**x)), &errors);
+    let type_envs = handles.map(|handle| transaction.type_env(handle));
+    let debug_info = DebugInfo::new(
+        &owned
+            .iter()
+            .zip(&type_envs)
+            .map(|(x, env)| (x.bindings().module(), &**x, env as &dyn TypeEnv))
+            .collect::<Vec<_>>(),
+        &errors,
+    );
     let mut output = serde_json::to_string(&debug_info).unwrap();
 
     // It's super handy to be able to diff the output, which we can do most easily if each binding is on its own line.
@@ -81,11 +90,15 @@ struct Error {
 }
 
 impl DebugInfo {
-    pub fn new(modules: &[(&ModuleInfo, &Answers)], errors: &CollectedErrors) -> Self {
+    pub fn new(
+        modules: &[(&ModuleInfo, &Answers, &dyn TypeEnv)],
+        errors: &CollectedErrors,
+    ) -> Self {
         fn f<K: Keyed>(
             _t: &AnswerEntry<K>,
             module_info: &ModuleInfo,
             answers: &Answers,
+            env: &dyn TypeEnv,
             res: &mut Vec<Binding>,
         ) where
             BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
@@ -108,7 +121,7 @@ impl DebugInfo {
                             r.visit_mut(&mut |t| {
                                 answers.solver().expand_mut(t);
                             });
-                            r.to_string()
+                            r.display_with(env).to_string()
                         }
                     },
                 })
@@ -129,9 +142,15 @@ impl DebugInfo {
         Self {
             modules: modules
                 .iter()
-                .map(|(module_info, answers)| {
+                .map(|(module_info, answers, env)| {
                     let mut res = Vec::new();
-                    table_for_each!(answers.table(), |t| f(t, module_info, answers, &mut res));
+                    table_for_each!(answers.table(), |t| f(
+                        t,
+                        module_info,
+                        answers,
+                        *env,
+                        &mut res
+                    ));
                     (
                         module_info.name(),
                         Module {

@@ -5,9 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::fmt::Display;
-use std::fmt::Formatter;
-use std::fmt::Result as FmtResult;
+use std::fmt;
 
 use dupe::Dupe;
 use pyrefly_derive::TypeEq;
@@ -16,6 +14,7 @@ use pyrefly_derive::VisitMut;
 use pyrefly_python::dunder;
 use pyrefly_types::dimension::Int;
 use pyrefly_types::heap::TypeHeap;
+use pyrefly_util::display::DisplayWith;
 use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
@@ -28,6 +27,7 @@ use crate::alt::types::class_bases::ClassBases;
 use crate::types::callable::Callable;
 use crate::types::callable::Params;
 use crate::types::class::Class;
+use crate::types::env::TypeEnv;
 use crate::types::function::FuncMetadata;
 use crate::types::quantified::Quantified;
 use crate::types::tuple::Tuple;
@@ -61,8 +61,8 @@ pub struct VarianceMap(SmallMap<Name, Variance>);
 
 static EMPTY_VARIANCE_MAP: VarianceMap = VarianceMap(SmallMap::new());
 
-impl Display for VarianceMap {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for VarianceMap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(f, "{{")?;
         for (key, value) in self.0.iter() {
             write!(f, "{key}: {value}, ")?;

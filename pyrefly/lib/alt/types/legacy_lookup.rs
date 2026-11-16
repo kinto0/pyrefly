@@ -6,12 +6,14 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
 
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 
+use crate::types::env::TypeEnv;
 use crate::types::quantified::Quantified;
 use crate::types::types::Type;
 
@@ -31,11 +33,11 @@ pub enum LegacyTypeParameterLookup {
     NotParameter(Type),
 }
 
-impl Display for LegacyTypeParameterLookup {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for LegacyTypeParameterLookup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
             Self::Parameter(p) => write!(f, "{}", p.name()),
-            Self::NotParameter(ty) => write!(f, "{ty}"),
+            Self::NotParameter(ty) => write!(f, "{}", ty.display_with(env)),
         }
     }
 }

@@ -6,15 +6,15 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::name::Name;
 use starlark_map::small_set::SmallSet;
 
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq)]
@@ -34,8 +34,8 @@ impl VisitMut<Type> for AbstractClassMembers {
     }
 }
 
-impl Display for AbstractClassMembers {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for AbstractClassMembers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(
             f,
             "AbstractClassCheck({:?})",

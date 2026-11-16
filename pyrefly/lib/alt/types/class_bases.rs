@@ -18,6 +18,8 @@ use pyrefly_types::class::ClassType;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::type_info::TypeInfo;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::commas_iter;
 use ruff_python_ast::Expr;
 use ruff_text_size::Ranged;
@@ -36,6 +38,7 @@ use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::style::ErrorStyle;
 use crate::types::class::Class;
+use crate::types::env::TypeEnv;
 use crate::types::quantified::Quantified;
 use crate::types::tuple::Tuple;
 use crate::types::types::Type;
@@ -106,9 +109,13 @@ impl ClassBases {
     }
 }
 
-impl fmt::Display for ClassBases {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ClassBases({})", commas_iter(|| self.base_types.iter()))
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassBases {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(
+            f,
+            "ClassBases({})",
+            commas_iter(|| self.base_types.iter().map(|b| b.display_with(env)))
+        )
     }
 }
 

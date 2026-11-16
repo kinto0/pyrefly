@@ -6,13 +6,15 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
 
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_types::heap::TypeHeap;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 #[derive(Clone, Debug, Visit, VisitMut, TypeEq, Eq, PartialEq)]
@@ -79,18 +81,25 @@ impl YieldFromResult {
     }
 }
 
-impl Display for YieldResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "yield: {}, send: {}", self.yield_ty, self.send_ty)
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for YieldResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        write!(
+            f,
+            "yield: {}, send: {}",
+            self.yield_ty.display_with(env),
+            self.send_ty.display_with(env)
+        )
     }
 }
 
-impl Display for YieldFromResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for YieldFromResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(
             f,
             "yield: {}, send: {}, return: {}",
-            self.yield_ty, self.send_ty, self.return_ty
+            self.yield_ty.display_with(env),
+            self.send_ty.display_with(env),
+            self.return_ty.display_with(env)
         )
     }
 }

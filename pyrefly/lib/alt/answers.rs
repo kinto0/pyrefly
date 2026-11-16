@@ -84,6 +84,7 @@ use crate::types::callable::Callable;
 use crate::types::class::Class;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFields;
+use crate::types::env::TypeEnv;
 use crate::types::equality::TypeEq;
 use crate::types::equality::TypeEqCtx;
 use crate::types::heap::TypeHeap;
@@ -730,12 +731,13 @@ table!(
     pub struct AnswerTable(pub AnswerEntry)
 );
 
-impl fmt::Display for Answers {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Answers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         fn go<K: Keyed>(
             answers: &Answers,
             _entry: &AnswerEntry<K>,
             f: &mut fmt::Formatter<'_>,
+            env: &dyn TypeEnv,
         ) -> fmt::Result
         where
             AnswerTable: TableKeyed<K, Value = AnswerEntry<K>>,
@@ -752,7 +754,7 @@ impl fmt::Display for Answers {
                     bindings.module().display(key),
                     value.display_with(bindings),
                     match answers.get_idx(idx) {
-                        Some(v) => v.to_string(),
+                        Some(v) => v.display_with(env).to_string(),
                         None => "(unsolved)".to_owned(),
                     },
                 )?;
@@ -760,7 +762,7 @@ impl fmt::Display for Answers {
             Ok(())
         }
 
-        table_try_for_each!(self.table, |x| go(self, x, f));
+        table_try_for_each!(self.table, |x| go(self, x, f, env));
         Ok(())
     }
 }
@@ -861,13 +863,14 @@ pub struct Solutions {
     cinderx_solutions: Option<Arc<CinderxSolutions>>,
 }
 
-impl Display for Solutions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Solutions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         fn go<K: Keyed>(
             _entry: &SolutionsEntry<K>,
             solutions: &Solutions,
             f: &mut fmt::Formatter<'_>,
             ctx: &ModuleInfo,
+            env: &dyn TypeEnv,
         ) -> fmt::Result
         where
             BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
@@ -875,20 +878,20 @@ impl Display for Solutions {
         {
             for (key, slot) in solutions.solution_slots::<K>() {
                 let answer = slot.get();
-                writeln!(f, "{} = {}", ctx.display(key), answer)?;
+                writeln!(f, "{} = {}", ctx.display(key), answer.display_with(env))?;
             }
             Ok(())
         }
 
-        table_try_for_each!(&self.data.table, |x| go(x, self, f, &self.module_info));
+        table_try_for_each!(&self.data.table, |x| go(x, self, f, &self.module_info, env));
         Ok(())
     }
 }
 
 pub struct SolutionsDifference<'a> {
     key: (&'a dyn DisplayWith<ModuleInfo>, &'a dyn Debug),
-    lhs: Option<(&'a dyn Display, &'a dyn Debug)>,
-    rhs: Option<(&'a dyn Display, &'a dyn Debug)>,
+    lhs: Option<(&'a dyn for<'e> DisplayWith<dyn TypeEnv + 'e>, &'a dyn Debug)>,
+    rhs: Option<(&'a dyn for<'e> DisplayWith<dyn TypeEnv + 'e>, &'a dyn Debug)>,
 }
 
 impl Debug for SolutionsDifference<'_> {
@@ -901,12 +904,16 @@ impl Debug for SolutionsDifference<'_> {
     }
 }
 
-impl Display for SolutionsDifference<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let missing = |f: &mut fmt::Formatter, x: Option<(&dyn Display, &dyn Debug)>| match x {
-            None => write!(f, "missing"),
-            Some(x) => write!(f, "`{}`", x.0),
-        };
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for SolutionsDifference<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        let missing =
+            |f: &mut fmt::Formatter,
+             x: Option<(&dyn for<'x> DisplayWith<dyn TypeEnv + 'x>, &dyn Debug)>| {
+                match x {
+                    None => write!(f, "missing"),
+                    Some(x) => write!(f, "`{}`", x.0.display_with(env)),
+                }
+            };
 
         // The key has type DisplayWith<ModuleInfo>.
         // We don't know if the key originates on the LHS or RHS, so we don't know which is the appropriate ModuleInfo.

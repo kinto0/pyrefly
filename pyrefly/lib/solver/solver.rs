@@ -12,7 +12,6 @@ use std::cell::RefCell;
 use std::cell::RefMut;
 use std::collections::HashMap;
 use std::fmt;
-use std::fmt::Display;
 use std::hash::Hash;
 use std::mem;
 use std::sync::Arc;
@@ -33,6 +32,7 @@ use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::type_var::ShapeExtensionRestriction;
 use pyrefly_types::types::TArgs;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::lock::Mutex;
@@ -355,8 +355,8 @@ impl Variable {
     }
 }
 
-impl Display for Variable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
             Variable::PartialContained(_) => write!(f, "PartialContained"),
             Variable::PartialQuantified(q) | Variable::Quantified { quantified: q, .. } => {
@@ -367,14 +367,14 @@ impl Display for Variable {
                 };
                 let k = q.kind;
                 if let Some(t) = &q.default {
-                    write!(f, "{label}({k}, default={t})")
+                    write!(f, "{label}({k}, default={})", t.display_with(env))
                 } else {
                     write!(f, "{label}({k})")
                 }
             }
             Variable::Recursive => write!(f, "Recursive"),
             Variable::Unwrap(_) => write!(f, "Unwrap"),
-            Variable::Answer { ty, .. } => write!(f, "{ty}"),
+            Variable::Answer { ty, .. } => write!(f, "{}", ty.display_with(env)),
         }
     }
 }
@@ -422,11 +422,11 @@ enum VariableNode {
     Root(Box<Variable>, usize),
 }
 
-impl Display for VariableNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for VariableNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
             VariableNode::Goto(x) => write!(f, "Goto({})", x.get()),
-            VariableNode::Root(x, _) => write!(f, "{x}"),
+            VariableNode::Root(x, _) => write!(f, "{}", x.display_with(env)),
         }
     }
 }
@@ -593,10 +593,10 @@ pub struct Solver {
     pub config: SolverConfig,
 }
 
-impl Display for Solver {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Solver {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         for (x, y) in self.variables.lock().iter() {
-            writeln!(f, "{x} = {y}")?;
+            writeln!(f, "{x} = {}", y.display_with(env))?;
         }
         Ok(())
     }

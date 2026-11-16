@@ -4297,7 +4297,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             format!(
                 "Fixpoint iteration did not converge. \
                  Inferred {} `{}`. Adding annotations may help.",
-                noun, typed_answer,
+                noun,
+                typed_answer.display_with(self),
             ),
         );
         // If PYREFLY_FIXPOINT_DETAILS=1 is set, we output much more detailed information useful
