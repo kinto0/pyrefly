@@ -786,7 +786,8 @@ impl GleanState<'_> {
         let module_name = module.name();
         let file = definition_file_fact(module, self.naming.stdlib_root.as_deref());
         let emitted_name = self.naming.emitted_module_name(file.as_ref(), module_name);
-        let type_name = base_type.and_then(|ty| ty.qname());
+        let type_env = self.transaction.type_env(self.handle);
+        let type_name = base_type.and_then(|ty| ty.qname(&type_env));
         let local_name = module.code_at(def_range);
 
         if module_name == self.module.name() {

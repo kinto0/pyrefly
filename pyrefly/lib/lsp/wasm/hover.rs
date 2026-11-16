@@ -78,6 +78,7 @@ use crate::state::lsp::IdentifierWithContext;
 use crate::state::lsp::attribute_symbol_kind_from_type;
 use crate::state::state::Transaction;
 use crate::state::state::TransactionHandle;
+use crate::types::env::TypeEnv;
 
 /// Matches Sphinx cross-references like `:meth:`target``, `:class:`MyClass``, etc.
 /// The role name is captured but ignored — all roles resolve uniformly.
@@ -119,8 +120,8 @@ fn qualify_hover_names(kind: Option<SymbolKind>, type_: &Type) -> bool {
 
 impl HoverValue {
     #[cfg(not(target_arch = "wasm32"))]
-    fn format_symbol_def_locations(t: &Type) -> Option<String> {
-        let symbol_paths = collect_symbol_def_paths(t);
+    fn format_symbol_def_locations(env: &dyn TypeEnv, t: &Type) -> Option<String> {
+        let symbol_paths = collect_symbol_def_paths(env, t);
         let linked_names = symbol_paths
             .into_iter()
             .filter_map(|(qname, file_path)| {
@@ -143,7 +144,7 @@ impl HoverValue {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn format_symbol_def_locations(t: &Type) -> Option<String> {
+    fn format_symbol_def_locations(_env: &dyn TypeEnv, t: &Type) -> Option<String> {
         None
     }
 
@@ -251,6 +252,7 @@ impl HoverValue {
     }
 
     pub fn format(&self, transaction: &Transaction, handle: &Handle) -> Hover {
+        let type_env = transaction.type_env(handle);
         let docstring_formatted = match &self.docstring {
             Some(docstring) => {
                 let content = docstring.resolve();
@@ -289,7 +291,7 @@ impl HoverValue {
             .map(|s| format!("{s}: "))
             .unwrap_or_default();
         let symbol_def_formatted = if self.show_go_to_links {
-            HoverValue::format_symbol_def_locations(&self.type_).unwrap_or_default()
+            HoverValue::format_symbol_def_locations(&type_env, &self.type_).unwrap_or_default()
         } else {
             String::new()
         };
@@ -306,6 +308,7 @@ impl HoverValue {
         };
         let type_display = self.display.clone().unwrap_or_else(|| {
             self.type_.as_lsp_string_with_options(
+                &type_env,
                 self.name.as_deref(),
                 LspDisplayMode::Hover,
                 false,
@@ -1755,6 +1758,7 @@ pub fn get_hover_with_verbosity(
                     qualify_hover_names(kind, &display_type).then(|| handle.module());
                 let render = |expand| {
                     display_type.as_lsp_string_with_options(
+                        &solver,
                         name_for_display.as_deref(),
                         LspDisplayMode::Hover,
                         expand,

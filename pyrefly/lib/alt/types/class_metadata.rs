@@ -1020,7 +1020,8 @@ impl Linearization {
                             // MRO keeps, so every later one is checked against it and the
                             // recorded specialization never changes.
                             Some(prev) if !targs_consistent(prev, ctype) => {
-                                let ctx = ClassDisplayContext::new(&[cls, ctype.class_object()]);
+                                let ctx =
+                                    ClassDisplayContext::new(env, &[cls, ctype.class_object()]);
                                 // TODO: Extend this error message to say where in the class bases the mismatch comes from
                                 // we will need to wire additional information for this.
                                 errors
@@ -1062,7 +1063,7 @@ impl Linearization {
                 // depends on how exactly the recursion in resolving keys plays out.
                 ClassMro::Cyclic => {
                     let base = base.class_object();
-                    let ctx = ClassDisplayContext::new(&[cls, base]);
+                    let ctx = ClassDisplayContext::new(env, &[cls, base]);
                     errors
                         .error_builder(
                             cls.range_in(env),
@@ -1154,7 +1155,7 @@ impl Linearization {
                     .last()
                     .class_object()
                     .dupe();
-                let ctx = ClassDisplayContext::new(&[cls, first_candidate]);
+                let ctx = ClassDisplayContext::new(env, &[cls, first_candidate]);
                 errors
                     .error_builder(
                         cls.range_in(env),

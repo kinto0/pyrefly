@@ -287,16 +287,19 @@ fn bound_of_type_var_decl(ty: &Type) -> Option<(&QName, &Type)> {
     }
 }
 
-fn query_type_display_context<'a>(types: &[&'a Type]) -> TypeDisplayContext<'a> {
-    let mut ctx = TypeDisplayContext::new(types);
+fn query_type_display_context<'a>(
+    env: &'a dyn TypeEnv,
+    types: &[&'a Type],
+) -> TypeDisplayContext<'a> {
+    let mut ctx = TypeDisplayContext::new(env, types);
     ctx.always_display_module_name();
     ctx.always_display_expanded_unions();
     ctx.set_lsp_display_mode(LspDisplayMode::Query);
     ctx
 }
 
-fn type_to_string(ty: &Type) -> String {
-    let ctx = query_type_display_context(&[ty]);
+fn type_to_string(env: &dyn TypeEnv, ty: &Type) -> String {
+    let ctx = query_type_display_context(env, &[ty]);
     if is_static_method(ty) {
         format!("typing.StaticMethod[{}]", ctx.display(ty))
     } else if let Some(bound) = bound_of_type_var(ty) {
@@ -304,14 +307,14 @@ fn type_to_string(ty: &Type) -> String {
         format!(
             "Variable[{} (bound to {})]",
             ctx.display(ty),
-            type_to_string(bound)
+            type_to_string(env, bound)
         )
     } else if let Some((qname, bound)) = bound_of_type_var_decl(ty) {
         // pyre1 compatibility: return bound for type variable
         format!(
             "Variable[{} (bound to {})]",
             qname.id(),
-            type_to_string(bound)
+            type_to_string(env, bound)
         )
     } else {
         ctx.display(ty).to_string()
@@ -928,7 +931,10 @@ impl<'a> CalleesWithLocation<'a> {
         {
             // treat calls where targets are attribute access a.b and a is not a module
             // as method calls
-            Some(type_to_string(&ty))
+            Some(type_to_string(
+                &self.transaction.type_env(&self.handle),
+                &ty,
+            ))
         } else {
             None
         }
@@ -1336,7 +1342,7 @@ impl Query {
                     Some(Attribute {
                         name: n.to_string(),
                         kind,
-                        annotation: type_to_string(field_ty),
+                        annotation: type_to_string(&type_env, field_ty),
                         is_final,
                     })
                 })

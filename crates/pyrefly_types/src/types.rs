@@ -22,6 +22,7 @@ use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
 use pyrefly_util::assert_words;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::uniques::Unique;
 use pyrefly_util::uniques::UniqueFactory;
@@ -158,12 +159,12 @@ impl Visit<Type> for Arc<TParams> {
     }
 }
 
-impl Display for TParams {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(
             f,
             "[{}]",
-            commas_iter(|| self.0.iter().map(|q| q.display_with_bounds()))
+            commas_iter(|| self.0.iter().map(|q| q.display_with_bounds(env)))
         )
     }
 }
@@ -2415,17 +2416,17 @@ impl Type {
     }
 
     /// Does this type have a QName associated with it
-    pub fn qname(&self) -> Option<&QName> {
+    pub fn qname<'a>(&'a self, env: &'a dyn TypeEnv) -> Option<&'a QName> {
         match self {
-            Type::ClassDef(cls) => Some(cls.qname()),
+            Type::ClassDef(cls) => Some(cls.qname_in(env)),
             Type::SpecializedClassDef(c) => Some(c.qname()),
-            Type::ClassType(c) => Some(c.qname()),
-            Type::PartialTypedDict(c) => Some(c.qname()),
+            Type::ClassType(c) => Some(c.qname_in(env)),
+            Type::PartialTypedDict(c) => Some(c.qname_in(env)),
             Type::TypeVar(t) => Some(t.qname()),
             Type::TypeVarTuple(t) => Some(t.qname()),
             Type::ParamSpec(t) => Some(t.qname()),
-            Type::SelfType(cls) => Some(cls.qname()),
-            Type::Literal(lit) if let Lit::Enum(e) = &lit.value => Some(e.class.qname()),
+            Type::SelfType(cls) => Some(cls.qname_in(env)),
+            Type::Literal(lit) if let Lit::Enum(e) = &lit.value => Some(e.class.qname_in(env)),
             Type::Sentinel(s) => Some(s.qname()),
             _ => None,
         }

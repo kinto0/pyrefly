@@ -39,6 +39,7 @@ use crate::state::lsp::FindPreference;
 use crate::state::state::Transaction;
 use crate::types::callable::Param;
 use crate::types::callable::Params;
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 /// Information about a call site at the cursor position, returned by
@@ -426,6 +427,7 @@ impl Transaction<'_> {
     }
 
     fn create_signature_information(
+        env: &dyn TypeEnv,
         type_: Type,
         active_argument: &ActiveArgument,
         parameter_docs: Option<&HashMap<String, String>>,
@@ -441,13 +443,13 @@ impl Transaction<'_> {
             type_
         };
 
-        let label = display_type.as_lsp_string(LspDisplayMode::SignatureHelp);
+        let label = display_type.as_lsp_string(env, LspDisplayMode::SignatureHelp);
         let (parameters, active_parameter) = if let Some(params) =
             Self::normalize_singleton_function_type_into_params(display_type)
         {
             // Create a type display context for consistent parameter formatting
             let param_types: Vec<&Type> = params.iter().map(|p| p.as_type()).collect();
-            let mut type_ctx = TypeDisplayContext::new(&param_types);
+            let mut type_ctx = TypeDisplayContext::new(env, &param_types);
             type_ctx.set_lsp_display_mode(LspDisplayMode::SignatureHelp);
 
             let active_parameter =
@@ -500,6 +502,7 @@ impl Transaction<'_> {
              }| {
                 let parameter_docs = self.parameter_documentation_for_callee(handle, callee_range);
                 let function_docstring = self.function_docstring_for_callee(handle, callee_range);
+                let type_env = self.type_env(handle);
 
                 let is_constructor_call = self
                     .get_answers(handle)
@@ -510,6 +513,7 @@ impl Transaction<'_> {
                     .into_iter()
                     .map(|t| {
                         Self::create_signature_information(
+                            &type_env,
                             t,
                             &active_argument,
                             parameter_docs.as_ref(),

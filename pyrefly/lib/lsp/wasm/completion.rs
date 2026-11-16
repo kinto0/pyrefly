@@ -269,7 +269,7 @@ impl Transaction<'_> {
         match param_type {
             Type::Literal(lit) => {
                 // TODO: Pass the flag correctly for whether literal string is single quoted or double quoted
-                let label = lit.value.to_string_escaped(true);
+                let label = lit.value.to_string_escaped(true, env);
                 let insert_text = if in_string_literal {
                     if let Lit::Str(s) = &lit.value {
                         s.to_string()
@@ -1055,7 +1055,7 @@ impl Transaction<'_> {
                     let detail = attr
                         .ty
                         .clone()
-                        .map(|t| t.as_lsp_string(LspDisplayMode::Hover));
+                        .map(|t| t.as_lsp_string(&solver, LspDisplayMode::Hover));
                     let documentation = self.get_docstring_for_attribute(handle, attr);
                     let is_incompatible = self.is_incompatible_with_expected_type(
                         handle,

@@ -4899,7 +4899,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         let got_sigs = got.toplevel_callable_signatures();
                         let want_sigs = want.toplevel_callable_signatures();
                         if got_sigs.exactly_one().is_ok() && want_sigs.exactly_one().is_ok() {
-                            let mut ctx = TypeDisplayContext::new(&[got, want]);
+                            let mut ctx = TypeDisplayContext::new(self, &[got, want]);
                             ctx.set_lsp_display_mode(LspDisplayMode::SignatureHelp);
                             let got_sig = ctx.display(got).to_string();
                             let want_sig = ctx.display(want).to_string();

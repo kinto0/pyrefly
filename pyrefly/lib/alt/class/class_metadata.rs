@@ -2174,7 +2174,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
         if survivors.len() > 1 {
             let ctx_classes: Vec<&Class> = std::iter::once(cls).chain(survivors.iter()).collect();
-            let ctx = ClassDisplayContext::new(&ctx_classes);
+            let ctx = ClassDisplayContext::new(self, &ctx_classes);
             let listed = survivors
                 .iter()
                 .map(|s| format!("`{}`", ctx.display(s)))

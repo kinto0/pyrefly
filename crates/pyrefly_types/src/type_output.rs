@@ -10,8 +10,10 @@ use std::fmt;
 use pyrefly_python::module::TextRangeWithModule;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
+use pyrefly_util::display::DisplayWithCtx;
 
 use crate::display::TypeDisplayContext;
+use crate::env::TypeEnv;
 use crate::literal::Lit;
 use crate::types::TArgs;
 use crate::types::Type;
@@ -31,6 +33,8 @@ pub trait TypeOutput {
     fn write_type(&mut self, ty: &Type) -> fmt::Result;
     fn write_builtin(&mut self, name: &str, qname: Option<&QName>) -> fmt::Result;
     fn write_special_form(&mut self, name: &str, qname: Option<&QName>) -> fmt::Result;
+    /// Reads the definition data of the types being written.
+    fn env(&self) -> &dyn TypeEnv;
 }
 
 /// Implementation of `TypeOutput` that writes formatted types to plain text.
@@ -49,6 +53,10 @@ impl<'a, 'b, 'f> DisplayOutput<'a, 'b, 'f> {
 }
 
 impl<'a, 'b, 'f> TypeOutput for DisplayOutput<'a, 'b, 'f> {
+    fn env(&self) -> &dyn TypeEnv {
+        self.context.env()
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.formatter.write_str(s)
     }
@@ -125,6 +133,10 @@ impl<'a> AnnotationOutput<'a> {
 }
 
 impl TypeOutput for AnnotationOutput<'_> {
+    fn env(&self) -> &dyn TypeEnv {
+        self.context.env()
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.push_text(s);
         Ok(())
@@ -156,11 +168,12 @@ impl TypeOutput for AnnotationOutput<'_> {
     }
 
     fn write_lit(&mut self, lit: &Lit) -> fmt::Result {
+        let env = self.context.env();
         if let Lit::Enum(lit_enum) = lit {
-            self.write_qname(lit_enum.class.qname())?;
+            self.write_qname(lit_enum.class.qname_in(env))?;
             self.write_fmt(format_args!(".{}", lit_enum.member))
         } else {
-            self.write_fmt(format_args!("{lit}"))
+            self.write_fmt(format_args!("{}", lit.display_with(env)))
         }
     }
 
@@ -210,6 +223,10 @@ impl<'a> OutputWithLocations<'a> {
 }
 
 impl TypeOutput for OutputWithLocations<'_> {
+    fn env(&self) -> &dyn TypeEnv {
+        self.context.env()
+    }
+
     fn write_str(&mut self, s: &str) -> fmt::Result {
         self.parts.push((s.to_owned(), None));
         Ok(())
@@ -236,11 +253,12 @@ impl TypeOutput for OutputWithLocations<'_> {
 
     fn write_lit(&mut self, lit: &Lit) -> fmt::Result {
         // Format the literal and extract location if it's an Enum literal
-        let formatted = lit.to_string();
+        let env = self.context.env();
+        let formatted = lit.display_with(env).to_string();
         let location = match lit {
             Lit::Enum(lit_enum) => {
                 // Enum literals have a class with a qname that has location info
-                let qname = lit_enum.class.qname();
+                let qname = lit_enum.class.qname_in(env);
                 Some(TextRangeWithModule::new(
                     qname.module().clone(),
                     qname.range(),
@@ -311,6 +329,7 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::test_type_env::TestTypeEnv;
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
@@ -337,7 +356,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_str() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         assert_eq!(output.parts().len(), 0);
@@ -359,7 +379,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_qname() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         let module = Module::new(
@@ -391,7 +412,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_lit_non_enum() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         // Test with a string literal - should have no location
@@ -405,7 +427,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_lit_enum() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         // Create an Enum literal with location information
@@ -433,7 +456,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_targs_multiple() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         // Create TArgs with multiple type arguments
@@ -513,7 +537,8 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_type_simple() {
-        let context = TypeDisplayContext::default();
+        let env = TestTypeEnv::new();
+        let context = TypeDisplayContext::new(&env, &[]);
         let mut output = OutputWithLocations::new(&context);
 
         // Test simple types that don't have locations
@@ -532,6 +557,7 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_write_type_tuple() {
+        let env = TestTypeEnv::new();
         // Test tuple[int, str]
         let int_class = fake_class("int", "builtins", 30);
         let str_class = fake_class("str", "builtins", 40);
@@ -540,7 +566,7 @@ mod tests {
         let str_type = Type::ClassType(ClassType::new(str_class, TArgs::default()));
         let tuple_type = Type::Tuple(Tuple::Concrete(vec![int_type.clone(), str_type.clone()]));
 
-        let context = TypeDisplayContext::new(&[&tuple_type, &int_type, &str_type]);
+        let context = TypeDisplayContext::new(&env, &[&tuple_type, &int_type, &str_type]);
         let mut output = OutputWithLocations::new(&context);
 
         output.write_type(&tuple_type).unwrap();
@@ -558,6 +584,7 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_union_type_splits_properly() {
+        let env = TestTypeEnv::new();
         // Create int | str | None type
         let int_class = fake_class("int", "builtins", 10);
         let str_class = fake_class("str", "builtins", 20);
@@ -566,7 +593,7 @@ mod tests {
         let str_type = Type::ClassType(ClassType::new(str_class, TArgs::default()));
         let union_type = Type::union(vec![int_type, str_type, Type::None]);
 
-        let ctx = TypeDisplayContext::new(&[&union_type]);
+        let ctx = TypeDisplayContext::new(&env, &[&union_type]);
         let mut output = OutputWithLocations::new(&ctx);
 
         ctx.fmt_helper_generic(&union_type, false, &mut output)
@@ -599,6 +626,7 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_intersection_type_splits_properly() {
+        let env = TestTypeEnv::new();
         // Create int & str type (doesn't make sense semantically, but tests the formatting)
         let int_type = Type::ClassType(ClassType::new(
             fake_class("int", "builtins", 10),
@@ -611,7 +639,7 @@ mod tests {
         let intersect_type =
             Type::Intersect(Box::new((vec![int_type, str_type], Type::any_implicit())));
 
-        let ctx = TypeDisplayContext::new(&[&intersect_type]);
+        let ctx = TypeDisplayContext::new(&env, &[&intersect_type]);
         let mut output = OutputWithLocations::new(&ctx);
 
         // Format the type using fmt_helper_generic
@@ -640,6 +668,7 @@ mod tests {
 
     #[test]
     fn test_output_with_locations_tuple_base_not_clickable() {
+        let env = TestTypeEnv::new();
         // NOTE: Clickable support for the base type in generics like tuple[int] is now available
         // when Stdlib is provided via TypeDisplayContext::set_stdlib(). Without Stdlib, the tuple
         // keyword still displays without a location (not clickable), as tested here.
@@ -649,7 +678,7 @@ mod tests {
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
         let tuple_type = Type::Tuple(Tuple::Concrete(vec![int_type]));
 
-        let ctx = TypeDisplayContext::new(&[&tuple_type]);
+        let ctx = TypeDisplayContext::new(&env, &[&tuple_type]);
         let mut output = OutputWithLocations::new(&ctx);
 
         ctx.fmt_helper_generic(&tuple_type, false, &mut output)

@@ -3543,7 +3543,7 @@ impl<'a> Transaction<'a> {
             .get_answers(handle)
             .ok_or(EmptyResponseReason::AnswersNotFound)?;
         let none_type = answers.heap().mk_class_type(stdlib.none_type().clone());
-        let symbol_def_paths = collect_symbol_def_paths(&none_type);
+        let symbol_def_paths = collect_symbol_def_paths(&self.type_env(handle), &none_type);
         let defs = symbol_def_paths.map(|(qname, _)| {
             let module_info = qname.module().clone();
             FindDefinitionItemWithDocstring {
@@ -3741,7 +3741,7 @@ impl<'a> Transaction<'a> {
                 return Ok(vec![def?]);
             }
 
-            let symbol_def_paths = collect_symbol_def_paths(&t);
+            let symbol_def_paths = collect_symbol_def_paths(&self.type_env(handle), &t);
 
             if !symbol_def_paths.is_empty() {
                 return Ok(symbol_def_paths.map(|(qname, _)| {

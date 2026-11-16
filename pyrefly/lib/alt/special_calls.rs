@@ -269,7 +269,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             });
             let mut types = Vec::new();
             type_info.visit(&mut |ty| types.push(ty));
-            let mut ctx = TypeDisplayContext::new(&types);
+            let mut ctx = TypeDisplayContext::new(self, &types);
             if self.solver().config.reveal_type_qualified_names {
                 ctx.always_display_module_name_except_builtins();
             }

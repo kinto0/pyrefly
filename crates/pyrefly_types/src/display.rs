@@ -15,8 +15,8 @@ use pyrefly_python::module::TextRangeWithModule;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
 use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
-use pyrefly_util::display::append;
 use pyrefly_util::display::commas_iter;
 use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
@@ -25,7 +25,6 @@ use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 use starlark_map::smallmap;
 
-use crate::annotation::Annotation;
 use crate::callable::Callable;
 use crate::callable::Param;
 use crate::callable::ParamOverlay;
@@ -50,11 +49,9 @@ use crate::shaped_array::IntTupleView;
 use crate::shaped_array::is_tuple_carrier_shape_middle;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
-use crate::type_alias::TypeAlias;
 use crate::type_alias::TypeAliasData;
 use crate::type_alias::TypeAliasRef;
 use crate::type_alias::TypeAliasStyle;
-use crate::type_info::TypeInfo;
 use crate::type_level_dsl::TypeLevelDslFunction;
 use crate::type_output::AnnotationOutput;
 use crate::type_output::AnnotationPart;
@@ -168,8 +165,9 @@ pub enum LspDisplayMode {
     ProvideType,
 }
 
-#[derive(Debug, Default)]
 pub struct TypeDisplayContext<'a> {
+    /// Reads the definition data of the types being displayed.
+    env: &'a dyn TypeEnv,
     qnames: SmallMap<&'a Name, QNameInfo>,
     /// Display mode for formatting
     lsp_display_mode: LspDisplayMode,
@@ -192,12 +190,28 @@ pub struct TypeDisplayContext<'a> {
 }
 
 impl<'a> TypeDisplayContext<'a> {
-    pub fn new(xs: &[&'a Type]) -> Self {
-        let mut res = Self::default();
+    pub fn new(env: &'a dyn TypeEnv, xs: &[&'a Type]) -> Self {
+        let mut res = Self {
+            env,
+            qnames: SmallMap::new(),
+            lsp_display_mode: LspDisplayMode::default(),
+            always_display_module_name: false,
+            always_display_builtins_module_name: false,
+            always_display_expanded_unions: false,
+            render_self_type_as_self: false,
+            use_annotation_syntax: false,
+            render_source_annotation: false,
+            stdlib: None,
+            forall_tparam_uniques: RefCell::new(Vec::new()),
+        };
         for x in xs {
             res.add(x);
         }
         res
+    }
+
+    pub(crate) fn env(&self) -> &'a dyn TypeEnv {
+        self.env
     }
 
     fn add_qname(&mut self, qname: &'a QName) {
@@ -210,12 +224,13 @@ impl<'a> TypeDisplayContext<'a> {
     }
 
     pub fn add(&mut self, t: &'a Type) {
+        let env = self.env;
         t.universe(&mut |t| {
             if let Type::DataFrame(schema) = t {
-                self.add_qname(schema.underlying.qname());
+                self.add_qname(schema.underlying.qname_in(env));
             }
             if let Type::Series(schema) = t {
-                self.add_qname(schema.underlying.qname());
+                self.add_qname(schema.underlying.qname_in(env));
             }
             // A singledispatch dispatcher is displayed as its backing `_SingleDispatchCallable`
             // class, so that class needs a registered qname to display unqualified.
@@ -229,16 +244,16 @@ impl<'a> TypeDisplayContext<'a> {
                     )
                 )
             {
-                self.add_qname(cls.qname());
+                self.add_qname(cls.qname_in(env));
             }
-            if let Some(qname) = t.qname() {
+            if let Some(qname) = t.qname(env) {
                 self.add_qname(qname);
             }
             if let Type::SuperInstance(s) = t {
                 let (cls, obj) = &**s;
-                self.add_qname(cls.qname());
+                self.add_qname(cls.qname_in(env));
                 let obj_qname = match obj {
-                    SuperObj::Instance(obj) | SuperObj::Class(obj) => obj.qname(),
+                    SuperObj::Instance(obj) | SuperObj::Class(obj) => obj.qname_in(env),
                 };
                 self.add_qname(obj_qname);
             }
@@ -382,7 +397,7 @@ impl<'a> TypeDisplayContext<'a> {
         if param.kind() == QuantifiedKind::IntVar
             && let Type::Int(dim) = arg
         {
-            return write!(output, "{}", dim);
+            return write!(output, "{}", dim.display_with(self.env));
         }
         if !param.is_type_var_tuple() {
             return self.fmt_helper_generic(arg, false, output);
@@ -465,7 +480,11 @@ impl<'a> TypeDisplayContext<'a> {
         }
         match shape.view() {
             IntTupleView::Concrete(dims) => {
-                write!(output, "[{}]", commas_iter(|| dims.iter()))
+                write!(
+                    output,
+                    "[{}]",
+                    commas_iter(|| dims.iter().map(|d| d.display_with(self.env)))
+                )
             }
             IntTupleView::Gradual => {
                 unreachable!("shaped-array unbounded shapes must be gradual IntTuple")
@@ -485,7 +504,7 @@ impl<'a> TypeDisplayContext<'a> {
                         output.write_str(", ")?;
                     }
                     first = false;
-                    write!(output, "{}", dim)?;
+                    write!(output, "{}", dim.display_with(self.env))?;
                 }
                 if !first {
                     output.write_str(", ")?;
@@ -508,7 +527,7 @@ impl<'a> TypeDisplayContext<'a> {
                         output.write_str(", ")?;
                     }
                     first = false;
-                    write!(output, "{}", dim)?;
+                    write!(output, "{}", dim.display_with(self.env))?;
                 }
                 output.write_str("]")
             }
@@ -525,10 +544,10 @@ impl<'a> TypeDisplayContext<'a> {
     pub(crate) fn fmt_lit(&self, lit: &Lit, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match lit {
             Lit::Enum(e) => {
-                self.fmt_qname(e.class.qname(), f)?;
+                self.fmt_qname(e.class.qname_in(self.env), f)?;
                 write!(f, ".{}", e.member)
             }
-            _ => write!(f, "{lit}"),
+            _ => write!(f, "{}", lit.display_with(self.env)),
         }
     }
 
@@ -604,7 +623,10 @@ impl<'a> TypeDisplayContext<'a> {
             if let Some(cls) = kind.class() {
                 output.write_reference(
                     module,
-                    &format!("{}.{func_name}", Fmt(|f| cls.qname().fmt_name(f))),
+                    &format!(
+                        "{}.{func_name}",
+                        Fmt(|f| cls.qname_in(self.env).fmt_name(f))
+                    ),
                 )
             } else if let Some(outer) = kind.outer_funcs() {
                 output.write_reference(module, &format!("{outer}.{func_name}"))
@@ -778,7 +800,7 @@ impl<'a> TypeDisplayContext<'a> {
                 default: None,
             },
             Param::PosOnly(None, _, Required::Optional(default)) => {
-                named("_".to_owned(), Some(param.fmt_default(default)))
+                named("_".to_owned(), Some(param.fmt_default(default, self.env)))
             }
             Param::PosOnly(Some(name), _, Required::Required)
             | Param::Pos(name, _, Required::Required)
@@ -786,7 +808,7 @@ impl<'a> TypeDisplayContext<'a> {
             Param::PosOnly(Some(name), _, Required::Optional(default))
             | Param::Pos(name, _, Required::Optional(default))
             | Param::KwOnly(name, _, Required::Optional(default)) => {
-                named(name.to_string(), Some(param.fmt_default(default)))
+                named(name.to_string(), Some(param.fmt_default(default, self.env)))
             }
             Param::Varargs(Some(name), _) => named(format!("*{name}"), None),
             Param::Varargs(None, _) => HoverParamRow::Param {
@@ -839,7 +861,7 @@ impl<'a> TypeDisplayContext<'a> {
                 write!(
                     output,
                     "{}",
-                    commas_iter(|| tparams.iter().map(|q| q.display_with_bounds()))
+                    commas_iter(|| tparams.iter().map(|q| q.display_with_bounds(self.env)))
                 )?;
                 output.write_str("]")?;
                 self.fmt_callable_hover(c, output, indent)
@@ -861,7 +883,7 @@ impl<'a> TypeDisplayContext<'a> {
         if let Some(metadata) = t.toplevel_func_metadata()
             && let FunctionKind::CallbackProtocol(cls) = &metadata.kind
         {
-            output.write_qname(cls.qname())?;
+            output.write_qname(cls.qname_in(self.env))?;
             return output.write_targs(cls.targs());
         }
         self.maybe_fmt_with_module("typing", "Callable", output)?;
@@ -975,7 +997,7 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str("builtins.")?;
                 }
                 output.write_str("type[")?;
-                output.write_qname(cls.qname())?;
+                output.write_qname(cls.qname_in(self.env))?;
                 output.write_str("]")
             }
             Type::SpecializedClassDef(class_type) => {
@@ -987,24 +1009,24 @@ impl<'a> TypeDisplayContext<'a> {
             Type::ClassType(class_type)
                 if class_type.is(KnownClass::Tuple) && class_type.targs().as_slice().len() == 1 =>
             {
-                output.write_qname(class_type.qname())?;
+                output.write_qname(class_type.qname_in(self.env))?;
                 output.write_str("[")?;
                 output.write_type(&class_type.targs().as_slice()[0])?;
                 output.write_str(", ...]")
             }
             Type::ClassType(class_type) => {
-                output.write_qname(class_type.qname())?;
+                output.write_qname(class_type.qname_in(self.env))?;
                 output.write_targs(class_type.targs())
             }
             Type::PartialTypedDict(inner) => {
-                output.write_qname(inner.qname())?;
+                output.write_qname(inner.qname_in(self.env))?;
                 output.write_targs(inner.targs())
             }
             Type::AnonymousTypedDict(inner) => {
-                let dict_qname = self.stdlib.map(|s| s.dict_object().qname());
+                let dict_qname = self.stdlib.map(|s| s.dict_object().qname_in(self.env));
                 output.write_builtin("dict", dict_qname)?;
                 output.write_str("[")?;
-                let str_qname = self.stdlib.map(|s| s.str().qname());
+                let str_qname = self.stdlib.map(|s| s.str().qname_in(self.env));
                 output.write_builtin("str", str_qname)?;
                 output.write_str(", ")?;
                 self.fmt_anonymous_typed_dict_value_type(inner, output)?;
@@ -1036,7 +1058,7 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str("IntTuple")
                 } else {
                     output.write_str("IntTuple[")?;
-                    output.write_str(&int_tuple.to_string())?;
+                    output.write_str(&int_tuple.display_with(self.env).to_string())?;
                     output.write_str("]")
                 }
             }
@@ -1074,11 +1096,11 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Int(dim) => {
                 output.write_str("Int[")?;
-                output.write_fmt(format_args!("{}", dim))?;
+                output.write_fmt(format_args!("{}", dim.display_with(self.env)))?;
                 output.write_str("]")
             }
             Type::TypeVar(t) => {
-                let type_var_qname = self.stdlib.map(|s| s.type_var().qname());
+                let type_var_qname = self.stdlib.map(|s| s.type_var().qname_in(self.env));
                 output.write_builtin("TypeVar", type_var_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
@@ -1086,14 +1108,15 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Sentinel(t) => output.write_qname(t.qname()),
             Type::TypeVarTuple(t) => {
-                let type_var_tuple_qname = self.stdlib.map(|s| s.type_var_tuple().qname());
+                let type_var_tuple_qname =
+                    self.stdlib.map(|s| s.type_var_tuple().qname_in(self.env));
                 output.write_builtin("TypeVarTuple", type_var_tuple_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
                 output.write_str("]")
             }
             Type::ParamSpec(t) => {
-                let param_spec_qname = self.stdlib.map(|s| s.param_spec().qname());
+                let param_spec_qname = self.stdlib.map(|s| s.param_spec().qname_in(self.env));
                 output.write_builtin("ParamSpec", param_spec_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
@@ -1104,7 +1127,7 @@ impl<'a> TypeDisplayContext<'a> {
                     self.maybe_fmt_with_module("typing", "Self", output)
                 } else {
                     self.maybe_fmt_with_module("typing", "Self@", output)?;
-                    output.write_qname(cls.qname())
+                    output.write_qname(cls.qname_in(self.env))
                 }
             }
 
@@ -1506,7 +1529,7 @@ impl<'a> TypeDisplayContext<'a> {
                 if self.always_display_builtins_module_name {
                     output.write_str("builtins.")?;
                 }
-                let tuple_qname = self.stdlib.map(|s| s.tuple_object().qname());
+                let tuple_qname = self.stdlib.map(|s| s.tuple_object().qname_in(self.env));
                 t.fmt_with_type(output, tuple_qname, &|ty, o| {
                     self.fmt_helper_generic(ty, false, o)
                 })
@@ -1520,7 +1543,9 @@ impl<'a> TypeDisplayContext<'a> {
                             write!(
                                 output,
                                 "{}",
-                                commas_iter(|| tparams.iter().map(|q| q.display_with_bounds()))
+                                commas_iter(|| tparams
+                                    .iter()
+                                    .map(|q| q.display_with_bounds(self.env)))
                             )?;
                             output.write_str("]")?;
                             self.fmt_callable_hover(c, output, 0)
@@ -1529,7 +1554,9 @@ impl<'a> TypeDisplayContext<'a> {
                             write!(
                                 output,
                                 "{}",
-                                commas_iter(|| tparams.iter().map(|q| q.display_with_bounds()))
+                                commas_iter(|| tparams
+                                    .iter()
+                                    .map(|q| q.display_with_bounds(self.env)))
                             )?;
                             output.write_str("]")?;
                             self.fmt_helper_generic(&body.clone().as_type(), false, output)
@@ -1596,7 +1623,12 @@ impl<'a> TypeDisplayContext<'a> {
                             if self.always_display_builtins_module_name {
                                 output.write_str("builtins.")?;
                             }
-                            write!(output, "type[{}{}]", ta.name(), tparams)
+                            write!(
+                                output,
+                                "type[{}{}]",
+                                ta.name(),
+                                tparams.display_with(self.env)
+                            )
                         }
                     }
                 }
@@ -1659,7 +1691,11 @@ impl<'a> TypeDisplayContext<'a> {
                 write!(
                     output,
                     "{}",
-                    commas_iter(|| append(args.iter().map(|x| x.ty().clone()), [pspec]))
+                    commas_iter(|| args
+                        .iter()
+                        .map(|x| x.ty())
+                        .chain([&**pspec])
+                        .map(|t| t.display_with(self.env)))
                 )?;
                 output.write_str("]")
             }
@@ -1670,8 +1706,8 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Var(var) => write!(output, "{var}"),
             Type::Quantified(var) => self.fmt_quantified(var, output),
-            Type::QuantifiedValue(var) => write!(output, "{var}"),
-            Type::ElementOfTypeVarTuple(var) => write!(output, "ElementOf[{var}]"),
+            Type::QuantifiedValue(var) => write!(output, "{}", var.name()),
+            Type::ElementOfTypeVarTuple(var) => write!(output, "ElementOf[{}]", var.name()),
             Type::Args(q) if self.render_source_annotation => {
                 write!(output, "{}.args", q.name())
             }
@@ -1680,22 +1716,22 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Args(q) => {
                 output.write_str("Args[")?;
-                write!(output, "{q}")?;
+                write!(output, "{}", q.name())?;
                 output.write_str("]")
             }
             Type::Kwargs(q) => {
                 output.write_str("Kwargs[")?;
-                write!(output, "{q}")?;
+                write!(output, "{}", q.name())?;
                 output.write_str("]")
             }
             Type::ArgsValue(q) => {
                 output.write_str("ArgsValue[")?;
-                write!(output, "{q}")?;
+                write!(output, "{}", q.name())?;
                 output.write_str("]")
             }
             Type::KwargsValue(q) => {
                 output.write_str("KwargsValue[")?;
-                write!(output, "{q}")?;
+                write!(output, "{}", q.name())?;
                 output.write_str("]")
             }
             Type::SpecialForm(x) => write!(output, "{x}"),
@@ -1834,40 +1870,10 @@ impl<'a> TypeDisplayContext<'a> {
     }
 }
 
-impl Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        TypeDisplayContext::new(&[self]).fmt(self, f)
-    }
-}
-
 /// Render a type on its own, reading the definition data it refers to from the env.
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for Type {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeAlias {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for TParams {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for Annotation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        TypeDisplayContext::new(env, &[self]).fmt(self, f)
     }
 }
 
@@ -1878,25 +1884,7 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for Class {
     }
 }
 
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for IntTuple {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for Lit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for bool {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
-    }
-}
-
-impl<'e> DisplayWith<dyn TypeEnv + 'e> for Callable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         Display::fmt(self, f)
     }
@@ -1908,19 +1896,17 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassType {
     }
 }
 
-fn annotation_context<'a>(ty: &'a Type, stdlib: Option<&'a Stdlib>) -> TypeDisplayContext<'a> {
-    let mut ctx = TypeDisplayContext::new(&[ty]);
+fn annotation_context<'a>(env: &'a dyn TypeEnv, ty: &'a Type) -> TypeDisplayContext<'a> {
+    let mut ctx = TypeDisplayContext::new(env, &[ty]);
     ctx.render_self_type_as_self();
     ctx.use_annotation_syntax();
-    if let Some(stdlib) = stdlib {
-        ctx.set_stdlib(stdlib);
-    }
+    ctx.set_stdlib(env.stdlib());
     ctx
 }
 
 impl Type {
-    pub fn as_lsp_string(&self, mode: LspDisplayMode) -> String {
-        self.as_lsp_string_with_options(None, mode, false, None)
+    pub fn as_lsp_string(&self, env: &dyn TypeEnv, mode: LspDisplayMode) -> String {
+        self.as_lsp_string_with_options(env, None, mode, false, None)
     }
 
     /// Render the type for LSP display.
@@ -1932,12 +1918,13 @@ impl Type {
     /// except for builtins and for the given module.
     pub fn as_lsp_string_with_options(
         &self,
+        env: &dyn TypeEnv,
         fallback_name: Option<&str>,
         mode: LspDisplayMode,
         expand_unions: bool,
         qualify_outside: Option<ModuleName>,
     ) -> String {
-        let mut c = TypeDisplayContext::new(&[self]);
+        let mut c = TypeDisplayContext::new(env, &[self]);
         c.set_lsp_display_mode(mode);
         if let Some(current_module) = qualify_outside {
             c.always_display_external_qname_module_names(current_module);
@@ -1959,17 +1946,17 @@ impl Type {
 
     pub fn get_types_with_locations(
         &self,
-        stdlib: Option<&Stdlib>,
+        env: &dyn TypeEnv,
     ) -> Vec<(String, Option<TextRangeWithModule>)> {
-        let ctx = annotation_context(self, stdlib);
+        let ctx = annotation_context(env, self);
         let mut output = OutputWithLocations::new(&ctx);
         ctx.fmt_helper_generic(self, false, &mut output).unwrap();
         output.parts().to_vec()
     }
 
     /// Render an annotation while preserving semantic module references.
-    pub fn get_annotation_parts(&self, stdlib: Option<&Stdlib>) -> Vec<AnnotationPart> {
-        let mut ctx = annotation_context(self, stdlib);
+    pub fn get_annotation_parts(&self, env: &dyn TypeEnv) -> Vec<AnnotationPart> {
+        let mut ctx = annotation_context(env, self);
         ctx.render_source_annotation = true;
         ctx.always_display_module_name_except_builtins();
         let mut output = AnnotationOutput::new(&ctx);
@@ -1981,16 +1968,16 @@ impl Type {
 pub struct ClassDisplayContext<'a>(TypeDisplayContext<'a>);
 
 impl<'a> ClassDisplayContext<'a> {
-    pub fn new(classes: &[&'a Class]) -> Self {
-        let mut ctx = TypeDisplayContext::new(&[]);
+    pub fn new(env: &'a dyn TypeEnv, classes: &[&'a Class]) -> Self {
+        let mut ctx = TypeDisplayContext::new(env, &[]);
         for cls in classes {
-            ctx.add_qname(cls.qname());
+            ctx.add_qname(cls.qname_in(env));
         }
         Self(ctx)
     }
 
     pub fn display(&'a self, cls: &'a Class) -> impl Display + 'a {
-        Fmt(|f| self.0.fmt_qname(cls.qname(), f))
+        Fmt(|f| self.0.fmt_qname(cls.qname_in(self.0.env), f))
     }
 }
 
@@ -2004,7 +1991,6 @@ pub mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_python::nesting_context::NestingContext;
-    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use ruff_text_size::TextSize;
     use starlark_map::smallset;
@@ -2162,7 +2148,6 @@ pub mod tests {
         let n = fake_tparam(0, "N", QuantifiedKind::IntVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::IntVar).to_type(&heap);
 
-        assert_eq!(Type::Int(Int::Literal(3)).to_string(), "Int[3]");
         assert_eq!(
             Type::Int(Int::Literal(3)).display_with(&env).to_string(),
             "Int[3]"
@@ -2178,6 +2163,7 @@ pub mod tests {
                 Box::new(Int::Symbolic(Box::new(n))),
                 Box::new(Int::Symbolic(Box::new(m))),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N * M]"
         );
@@ -2189,6 +2175,7 @@ pub mod tests {
 
     #[test]
     fn test_display_symbolic_int_whiteboard_forms() {
+        let env = TestTypeEnv::new();
         let heap = TypeHeap::new();
         let n = fake_tparam(0, "N", QuantifiedKind::IntVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::IntVar).to_type(&heap);
@@ -2198,15 +2185,21 @@ pub mod tests {
 
         // Canonical sums read like whiteboard math.
         assert_eq!(
-            canonicalize(Type::Int(Int::add(n.clone(), lit(1)))).to_string(),
+            canonicalize(Type::Int(Int::add(n.clone(), lit(1))))
+                .display_with(&env)
+                .to_string(),
             "Int[N + 1]"
         );
         assert_eq!(
-            canonicalize(Type::Int(Int::sub(n.clone(), lit(1)))).to_string(),
+            canonicalize(Type::Int(Int::sub(n.clone(), lit(1))))
+                .display_with(&env)
+                .to_string(),
             "Int[N - 1]"
         );
         assert_eq!(
-            canonicalize(Type::Int(Int::sub(lit(1), n.clone()))).to_string(),
+            canonicalize(Type::Int(Int::sub(lit(1), n.clone())))
+                .display_with(&env)
+                .to_string(),
             "Int[1 - N]"
         );
         assert_eq!(
@@ -2214,6 +2207,7 @@ pub mod tests {
                 Type::Int(Int::mul(lit(-1), n.clone())),
                 lit(-8),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[-N - 8]"
         );
@@ -2226,18 +2220,23 @@ pub mod tests {
                     Type::Int(Int::mul(n.clone(), m.clone())),
                 )),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[-2 * K - 2 * N * M]"
         );
         // Negation renders bare.
         assert_eq!(
-            canonicalize(Type::Int(Int::mul(lit(-1), n.clone()))).to_string(),
+            canonicalize(Type::Int(Int::mul(lit(-1), n.clone())))
+                .display_with(&env)
+                .to_string(),
             "Int[-N]"
         );
         // i64::MIN negates safely: literals render the magnitude, while an
         // unrepresentable coefficient keeps the explicit `+` form.
         assert_eq!(
-            canonicalize(Type::Int(Int::add(n.clone(), lit(i64::MIN)))).to_string(),
+            canonicalize(Type::Int(Int::add(n.clone(), lit(i64::MIN))))
+                .display_with(&env)
+                .to_string(),
             "Int[N - 9223372036854775808]"
         );
         assert_eq!(
@@ -2245,22 +2244,29 @@ pub mod tests {
                 m.clone(),
                 Type::Int(Int::mul(lit(i64::MIN), n.clone())),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[M + -9223372036854775808 * N]"
         );
         // Bases that render with a leading minus keep their parens, so the
         // text still parses as written.
         assert_eq!(
-            Type::Int(Int::pow(Type::Int(Int::mul(lit(-1), n.clone())), lit(2),)).to_string(),
+            Type::Int(Int::pow(Type::Int(Int::mul(lit(-1), n.clone())), lit(2),))
+                .display_with(&env)
+                .to_string(),
             "Int[(-N) ** 2]"
         );
         assert_eq!(
-            Type::Int(Int::pow(lit(-2), i.clone())).to_string(),
+            Type::Int(Int::pow(lit(-2), i.clone()))
+                .display_with(&env)
+                .to_string(),
             "Int[(-2) ** I]"
         );
         // The -1 shortcut skips negative literals to avoid `--`.
         assert_eq!(
-            Type::Int(Int::mul(lit(-1), lit(-2))).to_string(),
+            Type::Int(Int::mul(lit(-1), lit(-2)))
+                .display_with(&env)
+                .to_string(),
             "Int[-1 * -2]"
         );
         // Three-tier sums (literals combine, so these are the maxima).
@@ -2269,6 +2275,7 @@ pub mod tests {
                 Type::Int(Int::add(m.clone(), lit(5))),
                 n.clone(),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[M + 5 - N]"
         );
@@ -2277,6 +2284,7 @@ pub mod tests {
                 Type::Int(Int::sub(m.clone(), n.clone())),
                 lit(8),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[M - N - 8]"
         );
@@ -2288,28 +2296,37 @@ pub mod tests {
                 )),
                 lit(8),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[-N - M - 8]"
         );
         // A trailing -1 flips in sums too.
         assert_eq!(
-            Type::Int(Int::add(m.clone(), Type::Int(Int::mul(n.clone(), lit(-1))),)).to_string(),
+            Type::Int(Int::add(m.clone(), Type::Int(Int::mul(n.clone(), lit(-1))),))
+                .display_with(&env)
+                .to_string(),
             "Int[M - N]"
         );
         // A trailing -1 takes the same shortcut, without losing `Pow` parens
         // or emitting `--`.
         assert_eq!(
-            Type::Int(Int::pow(Type::Int(Int::mul(n.clone(), lit(-1))), lit(2),)).to_string(),
+            Type::Int(Int::pow(Type::Int(Int::mul(n.clone(), lit(-1))), lit(2),))
+                .display_with(&env)
+                .to_string(),
             "Int[(-N) ** 2]"
         );
         assert_eq!(
-            Type::Int(Int::mul(lit(-1), Type::Int(Int::mul(n.clone(), lit(-1))),)).to_string(),
+            Type::Int(Int::mul(lit(-1), Type::Int(Int::mul(n.clone(), lit(-1))),))
+                .display_with(&env)
+                .to_string(),
             "Int[-1 * -N]"
         );
         // Elided `* 1` and `// 1` operands participate in the leading-minus
         // check too.
         assert_eq!(
-            Type::Int(Int::pow(Type::Int(Int::mul(lit(1), lit(-2))), i.clone(),)).to_string(),
+            Type::Int(Int::pow(Type::Int(Int::mul(lit(1), lit(-2))), i.clone(),))
+                .display_with(&env)
+                .to_string(),
             "Int[(-2) ** I]"
         );
         assert_eq!(
@@ -2320,6 +2337,7 @@ pub mod tests {
                 )),
                 lit(2),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[(-N) ** 2]"
         );
@@ -2329,6 +2347,7 @@ pub mod tests {
                 Type::Int(Int::floor_div(n.clone(), m.clone())),
                 lit(4),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[N // M - 4]"
         );
@@ -2345,6 +2364,7 @@ pub mod tests {
                 )),
                 lit(2),
             )))
+            .display_with(&env)
             .to_string(),
             "Int[N // (2 * M) - 2]"
         );
@@ -2356,6 +2376,7 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::sub(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N - (M - K)]"
         );
@@ -2364,6 +2385,7 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::add(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N + (M + K)]"
         );
@@ -2372,6 +2394,7 @@ pub mod tests {
                 Type::Int(Int::mul(lit(2), n.clone())),
                 m.clone(),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[2 * N // M]"
         );
@@ -2380,6 +2403,7 @@ pub mod tests {
                 Type::Int(Int::add(n.clone(), m.clone())),
                 k.clone(),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[(N + M) * K]"
         );
@@ -2388,6 +2412,7 @@ pub mod tests {
                 Type::Int(Int::pow(n.clone(), m.clone())),
                 k.clone(),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[(N ** M) ** K]"
         );
@@ -2396,6 +2421,7 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::pow(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N ** M ** K]"
         );
@@ -2404,19 +2430,26 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::add(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N ** (M + K)]"
         );
         assert_eq!(
-            Type::Int(Int::pow(lit(2), Type::Int(Int::mul(lit(-1), n.clone())),)).to_string(),
+            Type::Int(Int::pow(lit(2), Type::Int(Int::mul(lit(-1), n.clone())),))
+                .display_with(&env)
+                .to_string(),
             "Int[2 ** -N]"
         );
         assert_eq!(
-            Type::Int(Int::mul(lit(-1), Type::Int(Int::add(n.clone(), m.clone())),)).to_string(),
+            Type::Int(Int::mul(lit(-1), Type::Int(Int::add(n.clone(), m.clone())),))
+                .display_with(&env)
+                .to_string(),
             "Int[-(N + M)]"
         );
         assert_eq!(
-            Type::Int(Int::mul(lit(-1), Type::Int(Int::pow(n.clone(), lit(2))),)).to_string(),
+            Type::Int(Int::mul(lit(-1), Type::Int(Int::pow(n.clone(), lit(2))),))
+                .display_with(&env)
+                .to_string(),
             "Int[-N ** 2]"
         );
         assert_eq!(
@@ -2424,6 +2457,7 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::floor_div(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N // (M // K)]"
         );
@@ -2432,6 +2466,7 @@ pub mod tests {
                 n.clone(),
                 Type::Int(Int::mul(m.clone(), k.clone())),
             ))
+            .display_with(&env)
             .to_string(),
             "Int[N * (M * K)]"
         );
@@ -2491,6 +2526,7 @@ pub mod tests {
 
     #[test]
     fn test_display() {
+        let env = TestTypeEnv::new();
         let heap = TypeHeap::new();
         let foo1 = fake_class("foo", "mod.ule", 5);
         let foo2 = fake_class("foo", "mod.ule", 8);
@@ -2514,6 +2550,7 @@ pub mod tests {
                     ])]
                 )
             )
+            .display_with(&env)
             .to_string(),
             "TupleParam[foo, foo]"
         );
@@ -2525,6 +2562,7 @@ pub mod tests {
                     vec![heap.mk_concrete_tuple(Vec::new())]
                 )
             )
+            .display_with(&env)
             .to_string(),
             "TupleParam[*tuple[()]]"
         );
@@ -2536,6 +2574,7 @@ pub mod tests {
                     vec![heap.mk_unbounded_tuple(class_type(&foo1, TArgs::default()))]
                 )
             )
+            .display_with(&env)
             .to_string(),
             "TupleParam[*tuple[foo, ...]]"
         );
@@ -2551,6 +2590,7 @@ pub mod tests {
                     )]
                 )
             )
+            .display_with(&env)
             .to_string(),
             "TupleParam[foo, *tuple[foo, ...], foo]"
         );
@@ -2563,12 +2603,14 @@ pub mod tests {
                     vec![shape_param.clone().to_type(&heap)]
                 )
             )
+            .display_with(&env)
             .to_string(),
             "TupleParam[*Shape]"
         );
 
         assert_eq!(
             heap.mk_unbounded_tuple(class_type(&foo1, TArgs::default()))
+                .display_with(&env)
                 .to_string(),
             "tuple[foo, ...]"
         );
@@ -2583,6 +2625,7 @@ pub mod tests {
                     )
                 )
             ])
+            .display_with(&env)
             .to_string(),
             "tuple[foo, bar[foo]]"
         );
@@ -2597,6 +2640,7 @@ pub mod tests {
                     )
                 )
             ])
+            .display_with(&env)
             .to_string(),
             "tuple[mod.ule.foo@1:6, bar[mod.ule.foo@1:9]]"
         );
@@ -2605,14 +2649,20 @@ pub mod tests {
                 class_type(&foo1, TArgs::default()),
                 class_type(&foo3, TArgs::default())
             ])
+            .display_with(&env)
             .to_string(),
             "tuple[mod.ule.foo, ule.foo]"
         );
-        assert_eq!(heap.mk_concrete_tuple(vec![]).to_string(), "tuple[()]");
+        assert_eq!(
+            heap.mk_concrete_tuple(vec![])
+                .display_with(&env)
+                .to_string(),
+            "tuple[()]"
+        );
 
         let t1 = class_type(&foo1, TArgs::default());
         let t2 = class_type(&foo2, TArgs::default());
-        let ctx = TypeDisplayContext::new(&[&t1, &t2]);
+        let ctx = TypeDisplayContext::new(&env, &[&t1, &t2]);
         assert_eq!(
             format!("{} <: {}", ctx.display(&t1), ctx.display(&t2)),
             "mod.ule.foo@1:6 <: mod.ule.foo@1:9"
@@ -2633,7 +2683,7 @@ pub mod tests {
     }
 
     fn locations_string(t: &Type) -> String {
-        t.get_types_with_locations(None)
+        t.get_types_with_locations(&TestTypeEnv::new())
             .into_iter()
             .map(|(s, _)| s)
             .collect()
@@ -2651,7 +2701,7 @@ pub mod tests {
         // Annotation surfaces emit the plain class.
         assert_eq!(locations_string(&df), "DataFrame");
         assert_eq!(
-            df.get_annotation_parts(None),
+            df.get_annotation_parts(&env),
             vec![AnnotationPart::Reference {
                 module: ModuleName::from_str("polars.dataframe.frame"),
                 name: "DataFrame".to_owned(),
@@ -2680,9 +2730,10 @@ pub mod tests {
 
     #[test]
     fn test_display_qualified() {
+        let env = TestTypeEnv::new();
         let c = fake_class("foo", "mod.ule", 5);
         let t = Type::ClassType(ClassType::new(c, TArgs::default()));
-        let mut ctx = TypeDisplayContext::new(&[&t]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&t]);
         assert_eq!(ctx.display(&t).to_string(), "foo");
         assert_eq!(
             ctx.display(&Type::LiteralString(LitStyle::Implicit))
@@ -2705,11 +2756,12 @@ pub mod tests {
 
     #[test]
     fn test_display_qualified_except_builtins() {
+        let env = TestTypeEnv::new();
         let foo_class = fake_class("foo", "test", 5);
         let foo_type = Type::ClassType(ClassType::new(foo_class, TArgs::default()));
 
         {
-            let mut ctx = TypeDisplayContext::new(&[&foo_type]);
+            let mut ctx = TypeDisplayContext::new(&env, &[&foo_type]);
             ctx.always_display_module_name_except_builtins();
             assert_eq!(ctx.display(&foo_type).to_string(), "test.foo");
         }
@@ -2718,7 +2770,7 @@ pub mod tests {
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
 
         {
-            let mut ctx = TypeDisplayContext::new(&[&int_type]);
+            let mut ctx = TypeDisplayContext::new(&env, &[&int_type]);
             ctx.always_display_module_name_except_builtins();
             assert_eq!(ctx.display(&int_type).to_string(), "int");
         }
@@ -2726,7 +2778,7 @@ pub mod tests {
         let union_foo_int = Type::union(vec![foo_type, int_type]);
 
         {
-            let mut ctx = TypeDisplayContext::new(&[&union_foo_int]);
+            let mut ctx = TypeDisplayContext::new(&env, &[&union_foo_int]);
             ctx.always_display_module_name_except_builtins();
             assert_eq!(ctx.display(&union_foo_int).to_string(), "test.foo | int");
         }
@@ -2734,12 +2786,13 @@ pub mod tests {
 
     #[test]
     fn test_annotation_parts_preserve_references_and_unicode() {
+        let env = TestTypeEnv::new();
         let foo = Type::ClassType(ClassType::new(
             fake_class("Foo", "test_module", 5),
             TArgs::default(),
         ));
         assert_eq!(
-            foo.get_annotation_parts(None),
+            foo.get_annotation_parts(&env),
             vec![AnnotationPart::Reference {
                 module: ModuleName::from_str("test_module"),
                 name: "Foo".to_owned(),
@@ -2748,7 +2801,7 @@ pub mod tests {
 
         let literal = Lit::Str("é".into()).to_implicit_type();
         assert_eq!(
-            literal.get_annotation_parts(None),
+            literal.get_annotation_parts(&env),
             vec![
                 AnnotationPart::Reference {
                     module: ModuleName::from_str("typing"),
@@ -2769,13 +2822,13 @@ pub mod tests {
             )),
         ]));
         assert_eq!(
-            tuple.get_annotation_parts(None),
+            tuple.get_annotation_parts(&env),
             vec![AnnotationPart::Text("tuple[int, str]".to_owned())]
         );
 
         let class = Type::ClassDef(fake_class("SomeClass", "test_module", 0));
         assert_eq!(
-            class.get_annotation_parts(None),
+            class.get_annotation_parts(&env),
             vec![
                 AnnotationPart::Text("type[".to_owned()),
                 AnnotationPart::Reference {
@@ -2787,7 +2840,7 @@ pub mod tests {
         );
 
         assert_eq!(
-            Type::any_implicit().get_annotation_parts(None),
+            Type::any_implicit().get_annotation_parts(&env),
             vec![AnnotationPart::Reference {
                 module: ModuleName::from_str("typing"),
                 name: "Any".to_owned(),
@@ -2795,7 +2848,7 @@ pub mod tests {
         );
         let ty = Type::Tuple(Tuple::Concrete(vec![Type::any_implicit()]));
         assert_eq!(
-            ty.get_annotation_parts(None),
+            ty.get_annotation_parts(&env),
             vec![
                 AnnotationPart::Text("tuple[".to_owned()),
                 AnnotationPart::Reference {
@@ -2809,40 +2862,53 @@ pub mod tests {
 
     #[test]
     fn test_display_typevar() {
+        let env = TestTypeEnv::new();
         let heap = TypeHeap::new();
         let t1 = fake_tyvar("foo", "bar", 1);
         let t2 = fake_tyvar("foo", "bar", 2);
         let t3 = fake_tyvar("qux", "bar", 2);
 
         assert_eq!(
-            Type::union(vec![t1.to_type(&heap), t2.to_type(&heap)]).to_string(),
+            Type::union(vec![t1.to_type(&heap), t2.to_type(&heap)])
+                .display_with(&env)
+                .to_string(),
             "TypeVar[bar.foo@1:2] | TypeVar[bar.foo@1:3]"
         );
         assert_eq!(
-            Type::union(vec![t1.to_type(&heap), t3.to_type(&heap)]).to_string(),
+            Type::union(vec![t1.to_type(&heap), t3.to_type(&heap)])
+                .display_with(&env)
+                .to_string(),
             "TypeVar[foo] | TypeVar[qux]"
         );
 
         let ty = t1.to_type(&heap);
-        let mut ctx = TypeDisplayContext::new(&[&ty]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&ty]);
         ctx.set_lsp_display_mode(LspDisplayMode::Query);
         assert_eq!(ctx.display(&ty).to_string(), "TypeVar[bar.foo]");
     }
 
     #[test]
     fn test_display_literal() {
+        let env = TestTypeEnv::new();
         // Simple literals
         assert_eq!(
-            Lit::Bool(true).to_implicit_type().to_string(),
+            Lit::Bool(true)
+                .to_implicit_type()
+                .display_with(&env)
+                .to_string(),
             "Literal[True]"
         );
         assert_eq!(
-            Lit::Bool(false).to_implicit_type().to_string(),
+            Lit::Bool(false)
+                .to_implicit_type()
+                .display_with(&env)
+                .to_string(),
             "Literal[False]"
         );
         assert_eq!(
             Lit::Bytes(vec![b' ', b'\t', b'\n', b'\r', 0x0b, 0x0c].into_boxed_slice())
                 .to_implicit_type()
+                .display_with(&env)
                 .to_string(),
             r"Literal[b' \t\n\r\x0b\x0c']"
         );
@@ -2856,7 +2922,7 @@ pub mod tests {
         }))
         .to_implicit_type();
 
-        let mut ctx = TypeDisplayContext::new(&[&t]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&t]);
         assert_eq!(ctx.display(&t).to_string(), "Literal[MyEnum.X]");
 
         ctx.always_display_module_name();
@@ -2868,17 +2934,22 @@ pub mod tests {
 
     #[test]
     fn test_display_union() {
+        let env = TestTypeEnv::new();
         let lit1 = Lit::Bool(true).to_implicit_type();
         let lit2 = Lit::Str("test".into()).to_implicit_type();
         let nonlit1 = Type::None;
         let nonlit2 = Type::LiteralString(LitStyle::Implicit);
 
         assert_eq!(
-            Type::union(vec![nonlit1.clone(), nonlit2.clone()]).to_string(),
+            Type::union(vec![nonlit1.clone(), nonlit2.clone()])
+                .display_with(&env)
+                .to_string(),
             "None | LiteralString"
         );
         assert_eq!(
-            Type::union(vec![nonlit1.clone(), lit1, nonlit2.clone(), lit2]).to_string(),
+            Type::union(vec![nonlit1.clone(), lit1, nonlit2.clone(), lit2])
+                .display_with(&env)
+                .to_string(),
             "None | Literal[True, 'test'] | LiteralString"
         );
         assert_eq!(
@@ -2886,6 +2957,7 @@ pub mod tests {
                 members: vec![nonlit1, nonlit2],
                 display_name: IdentityIgnored(Some((ModuleName::unknown(), Name::new("MyUnion"),)))
             })))
+            .display_with(&env)
             .to_string(),
             "type[MyUnion]"
         );
@@ -2893,10 +2965,11 @@ pub mod tests {
 
     #[test]
     fn test_display_single_param_callable() {
+        let env = TestTypeEnv::new();
         let param1 = Param::Pos(Name::new_static("hello"), Type::None, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param1]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(hello: None) -> None"
@@ -2910,11 +2983,12 @@ pub mod tests {
 
     #[test]
     fn test_display_callable() {
+        let env = TestTypeEnv::new();
         let param1 = Param::Pos(Name::new_static("hello"), Type::None, Required::Required);
         let param2 = Param::KwOnly(Name::new_static("world"), Type::None, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param1, param2]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(hello: None, *, world: None) -> None"
@@ -2932,6 +3006,7 @@ pub mod tests {
 
     #[test]
     fn test_display_generic_callable() {
+        let env = TestTypeEnv::new();
         let param1 = Param::Pos(Name::new_static("hello"), Type::None, Required::Required);
         let param2 = Param::KwOnly(Name::new_static("world"), Type::None, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param1, param2]), Type::None);
@@ -2939,7 +3014,7 @@ pub mod tests {
             tparams: fake_tparams(vec![fake_tparam(1, "T", QuantifiedKind::TypeVar)]),
             body: Forallable::Callable(callable),
         }));
-        let mut ctx = TypeDisplayContext::new(&[&generic_callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&generic_callable_type]);
         assert_eq!(
             ctx.display(&generic_callable_type).to_string(),
             "[T](hello: None, *, world: None) -> None"
@@ -2957,6 +3032,7 @@ pub mod tests {
 
     #[test]
     fn test_display_nested_callable_param_spec_hover() {
+        let env = TestTypeEnv::new();
         let t = fake_tparam(0, "T", QuantifiedKind::TypeVar);
         let p = fake_tparam(1, "P", QuantifiedKind::ParamSpec);
         let r = fake_tparam(2, "R", QuantifiedKind::TypeVar);
@@ -2991,7 +3067,7 @@ pub mod tests {
                 unwrapped,
             )),
         }));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "[T, **P, R](func: (T, str, ParamSpec(P)) -> R) -> (T, ParamSpec(P)) -> R"
@@ -3012,11 +3088,12 @@ pub mod tests {
 
     #[test]
     fn test_display_args_kwargs_callable() {
+        let env = TestTypeEnv::new();
         let args = Param::Varargs(Some(Name::new_static("my_args")), Type::any_implicit());
         let kwargs = Param::Kwargs(Some(Name::new_static("my_kwargs")), Type::any_implicit());
         let callable = Callable::list(ParamList::new(vec![args, kwargs]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(*my_args: Unknown, **my_kwargs: Unknown) -> None"
@@ -3033,12 +3110,13 @@ pub mod tests {
 
     #[test]
     fn test_display_callable_in_container() {
+        let env = TestTypeEnv::new();
         let param1 = Param::Pos(Name::new_static("hello"), Type::None, Required::Required);
         let param2 = Param::KwOnly(Name::new_static("world"), Type::None, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param1, param2]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
         let tuple = Type::concrete_tuple(vec![callable_type.clone()]);
-        let mut ctx = TypeDisplayContext::new(&[&tuple]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&tuple]);
         assert_eq!(
             ctx.display(&tuple).to_string(),
             "tuple[(hello: None, *, world: None) -> None]"
@@ -3052,13 +3130,14 @@ pub mod tests {
 
     #[test]
     fn test_display_type_alias() {
+        let env = TestTypeEnv::new();
         let alias = Type::TypeAlias(Box::new(TypeAliasData::Value(TypeAlias::new(
             Name::new_static("MyAlias"),
             Type::None,
             TypeAliasStyle::LegacyImplicit,
         ))));
         let wrapped = Type::concrete_tuple(vec![alias.clone()]);
-        let mut ctx = TypeDisplayContext::new(&[]);
+        let mut ctx = TypeDisplayContext::new(&env, &[]);
         // regular display
         assert_eq!(ctx.display(&alias).to_string(), "None");
         assert_eq!(ctx.display(&wrapped).to_string(), "tuple[type[MyAlias]]");
@@ -3070,6 +3149,7 @@ pub mod tests {
 
     #[test]
     fn test_display_specialized_untyped_alias() {
+        let env = TestTypeEnv::new();
         let tparams1 = fake_tparams(vec![fake_tparam(2, "T", QuantifiedKind::TypeVar)]);
         let alias1 = Type::UntypedAlias(Box::new(TypeAliasData::Ref(TypeAliasRef {
             name: Name::new_static("X"),
@@ -3091,13 +3171,14 @@ pub mod tests {
             index: TypeAliasIndex(1),
         })));
 
-        let ctx = TypeDisplayContext::new(&[&alias1, &alias2]);
+        let ctx = TypeDisplayContext::new(&env, &[&alias1, &alias2]);
         assert_eq!(ctx.display(&alias1).to_string(), "X[Unknown]");
         assert_eq!(ctx.display(&alias2).to_string(), "Y[Unknown, None]");
     }
 
     #[test]
     fn test_display_optional_parameter() {
+        let env = TestTypeEnv::new();
         let param1 = Param::PosOnly(
             Some(Name::new_static("x")),
             Type::any_explicit(),
@@ -3115,7 +3196,7 @@ pub mod tests {
         );
         let callable = Callable::list(ParamList::new(vec![param1, param2, param3]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(x: Any = ..., /, y: Any = True, z: Any = None) -> None"
@@ -3134,6 +3215,7 @@ pub mod tests {
 
     #[test]
     fn test_posonly_parameter_only() {
+        let env = TestTypeEnv::new();
         let param = Param::PosOnly(
             Some(Name::new_static("x")),
             Type::any_explicit(),
@@ -3141,7 +3223,7 @@ pub mod tests {
         );
         let callable = Callable::list(ParamList::new(vec![param]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(x: Any, /) -> None"
@@ -3155,11 +3237,12 @@ pub mod tests {
 
     #[test]
     fn test_anon_posonly_parameters() {
+        let env = TestTypeEnv::new();
         let param1 = Param::PosOnly(None, Type::any_explicit(), Required::Required);
         let param2 = Param::PosOnly(None, Type::any_explicit(), Required::Optional(None));
         let callable = Callable::list(ParamList::new(vec![param1, param2]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let mut ctx = TypeDisplayContext::new(&[&callable_type]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(Any, _: Any = ...) -> None"
@@ -3176,6 +3259,7 @@ pub mod tests {
 
     #[test]
     fn test_optional_kwonly_parameter() {
+        let env = TestTypeEnv::new();
         let param = Param::KwOnly(
             Name::new_static("x"),
             Type::any_explicit(),
@@ -3183,7 +3267,7 @@ pub mod tests {
         );
         let callable = Callable::list(ParamList::new(vec![param]), Type::None);
         let callable_type = Type::Callable(Box::new(callable));
-        let ctx = TypeDisplayContext::new(&[&callable_type]);
+        let ctx = TypeDisplayContext::new(&env, &[&callable_type]);
         assert_eq!(
             ctx.display(&callable_type).to_string(),
             "(*, x: Any = ...) -> None"
@@ -3207,8 +3291,9 @@ pub mod tests {
 
     #[test]
     fn test_display_bound_method() {
+        let env = TestTypeEnv::new();
         let bound_method = fake_bound_method("foo", "MyClass", "my.module");
-        let mut ctx = TypeDisplayContext::new(&[&bound_method]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&bound_method]);
         assert_eq!(
             ctx.display(&bound_method).to_string(),
             "(x: Any, y: Any) -> None"
@@ -3231,9 +3316,10 @@ pub mod tests {
 
     #[test]
     fn test_display_bound_method_in_union() {
+        let env = TestTypeEnv::new();
         let bound_method = fake_bound_method("foo", "MyClass", "my.module");
         let union = Type::union(vec![bound_method, Type::None]);
-        let mut ctx = TypeDisplayContext::new(&[&union]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&union]);
         assert_eq!(
             ctx.display(&union).to_string(),
             "((x: Any, y: Any) -> None) | None"
@@ -3247,13 +3333,14 @@ pub mod tests {
 
     #[test]
     fn test_display_generic_bound_method() {
+        let env = TestTypeEnv::new();
         let bound_method = fake_generic_bound_method(
             "foo",
             "MyClass",
             "my.module",
             fake_tparams(vec![fake_tparam(4, "T", QuantifiedKind::TypeVar)]),
         );
-        let mut ctx = TypeDisplayContext::new(&[&bound_method]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&bound_method]);
         assert_eq!(
             ctx.display(&bound_method).to_string(),
             "[T](x: Any, y: Any) -> None"
@@ -3276,13 +3363,14 @@ pub mod tests {
 
     #[test]
     fn test_display_param_spec() {
+        let env = TestTypeEnv::new();
         let tparams = fake_tparams(vec![
             fake_tparam(0, "T", QuantifiedKind::TypeVar),
             fake_tparam(1, "P", QuantifiedKind::ParamSpec),
             fake_tparam(2, "R", QuantifiedKind::TypeVar),
         ]);
         let method = fake_generic_bound_method("foo", "MyClass", "my.module", tparams);
-        let mut ctx = TypeDisplayContext::new(&[&method]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&method]);
         assert_eq!(
             ctx.display(&method).to_string(),
             "[T, **P, R](x: Any, y: Any) -> None"
@@ -3300,13 +3388,14 @@ pub mod tests {
 
     #[test]
     fn test_display_type_var_tuple() {
+        let env = TestTypeEnv::new();
         let tparams = fake_tparams(vec![
             fake_tparam(0, "T", QuantifiedKind::TypeVar),
             fake_tparam(1, "Ts", QuantifiedKind::TypeVarTuple),
             fake_tparam(2, "R", QuantifiedKind::TypeVar),
         ]);
         let method = fake_generic_bound_method("foo", "MyClass", "my.module", tparams);
-        let mut ctx = TypeDisplayContext::new(&[&method]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&method]);
         assert_eq!(
             ctx.display(&method).to_string(),
             "[T, *Ts, R](x: Any, y: Any) -> None"
@@ -3324,6 +3413,7 @@ pub mod tests {
 
     #[test]
     fn test_display_overload() {
+        let env = TestTypeEnv::new();
         let class = fake_class("TestClass", "test", 0);
         let sig1 = Function {
             signature: Callable::list(
@@ -3368,7 +3458,7 @@ pub mod tests {
         });
 
         // Test compact display mode as toplevel type (non-hover)
-        let ctx = TypeDisplayContext::new(&[&overload]);
+        let ctx = TypeDisplayContext::new(&env, &[&overload]);
         assert_eq!(
             ctx.display(&overload).to_string(),
             "Overload[\n  (x: Any) -> None\n  [T](x: Any, y: Any) -> None\n]"
@@ -3376,14 +3466,14 @@ pub mod tests {
 
         // Test compact display mode as non-toplevel type (non-hover)
         let type_form_of_overload = Type::type_of(overload.clone());
-        let ctx = TypeDisplayContext::new(&[&type_form_of_overload]);
+        let ctx = TypeDisplayContext::new(&env, &[&type_form_of_overload]);
         assert_eq!(
             ctx.display(&type_form_of_overload).to_string(),
             "type[Overload[(x: Any) -> None, [T](x: Any, y: Any) -> None]]"
         );
 
         // Test hover display mode (with @overload decorators)
-        let mut hover_ctx = TypeDisplayContext::new(&[&overload]);
+        let mut hover_ctx = TypeDisplayContext::new(&env, &[&overload]);
         hover_ctx.set_lsp_display_mode(LspDisplayMode::Hover);
         assert_eq!(
             hover_ctx.display(&overload).to_string(),
@@ -3411,7 +3501,7 @@ def overloaded_func[T](
         }));
 
         // Test compact display mode as toplevel type (non-hover)
-        let ctx = TypeDisplayContext::new(&[&bound_method_overload]);
+        let ctx = TypeDisplayContext::new(&env, &[&bound_method_overload]);
         assert_eq!(
             ctx.display(&bound_method_overload).to_string(),
             "Overload[\n  () -> None\n  [T](y: Any) -> None\n]"
@@ -3419,14 +3509,14 @@ def overloaded_func[T](
 
         // Test compact display mode as non-toplevel type (non-hover)
         let type_form_of_bound_method_overload = Type::type_of(bound_method_overload.clone());
-        let ctx = TypeDisplayContext::new(&[&type_form_of_bound_method_overload]);
+        let ctx = TypeDisplayContext::new(&env, &[&type_form_of_bound_method_overload]);
         assert_eq!(
             ctx.display(&type_form_of_bound_method_overload).to_string(),
             "type[Overload[() -> None, [T](y: Any) -> None]]"
         );
 
         // Test hover display mode (with @overload decorators)
-        let mut hover_ctx = TypeDisplayContext::new(&[&bound_method_overload]);
+        let mut hover_ctx = TypeDisplayContext::new(&env, &[&bound_method_overload]);
         hover_ctx.set_lsp_display_mode(LspDisplayMode::Hover);
         assert_eq!(
             hover_ctx.display(&bound_method_overload).to_string(),
@@ -3442,11 +3532,12 @@ def overloaded_func[T](
 
     #[test]
     fn test_display_overloaded() {
+        let env = TestTypeEnv::new();
         let tuples = Type::Overloaded(Box::new(vec1![
             Type::concrete_tuple(vec![Type::None]),
             Type::concrete_tuple(Vec::new())
         ]));
-        let ctx = TypeDisplayContext::new(&[&tuples]);
+        let ctx = TypeDisplayContext::new(&env, &[&tuples]);
         assert_eq!(
             ctx.display(&tuples).to_string(),
             "Overloaded[tuple[None], tuple[()]]"
@@ -3455,16 +3546,18 @@ def overloaded_func[T](
 
     #[test]
     fn test_intersection() {
+        let env = TestTypeEnv::new();
         let x = Type::Intersect(Box::new((
             vec![Type::LiteralString(LitStyle::Implicit), Type::None],
             Type::any_implicit(),
         )));
-        let ctx = TypeDisplayContext::new(&[&x]);
+        let ctx = TypeDisplayContext::new(&env, &[&x]);
         assert_eq!(ctx.display(&x).to_string(), "LiteralString & None");
     }
 
     #[test]
     fn test_union_of_intersection() {
+        let env = TestTypeEnv::new();
         let x = Type::union(vec![
             Type::Intersect(Box::new((
                 vec![
@@ -3475,12 +3568,13 @@ def overloaded_func[T](
             ))),
             Type::None,
         ]);
-        let ctx = TypeDisplayContext::new(&[&x]);
+        let ctx = TypeDisplayContext::new(&env, &[&x]);
         assert_eq!(ctx.display(&x).to_string(), "(Any & LiteralString) | None");
     }
 
     #[test]
     fn test_intersection_annotation_syntax() {
+        let env = TestTypeEnv::new();
         let x = Type::union(vec![
             Type::Intersect(Box::new((
                 vec![Type::LiteralString(LitStyle::Implicit), Type::None],
@@ -3488,13 +3582,14 @@ def overloaded_func[T](
             ))),
             Type::None,
         ]);
-        let mut ctx = TypeDisplayContext::new(&[&x]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&x]);
         ctx.use_annotation_syntax();
         assert_eq!(ctx.display(&x).to_string(), "LiteralString | None");
     }
 
     #[test]
     fn test_callable_in_intersection() {
+        let env = TestTypeEnv::new();
         let x = Type::Intersect(Box::new((
             vec![
                 Type::Callable(Box::new(Callable {
@@ -3505,13 +3600,14 @@ def overloaded_func[T](
             ],
             Type::any_implicit(),
         )));
-        let ctx = TypeDisplayContext::new(&[&x]);
+        let ctx = TypeDisplayContext::new(&env, &[&x]);
         assert_eq!(ctx.display(&x).to_string(), "((...) -> None) & Any");
     }
 
     // Helper functions for testing get_types_with_location
     fn get_parts(t: &Type) -> Vec<(String, Option<TextRangeWithModule>)> {
-        let ctx = TypeDisplayContext::new(&[t]);
+        let env = TestTypeEnv::new();
+        let ctx = TypeDisplayContext::new(&env, &[t]);
         let output = ctx.get_types_with_location(t, false);
         output.parts().to_vec()
     }
@@ -3570,12 +3666,13 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_disambiguated() {
+        let env = TestTypeEnv::new();
         let foo1 = fake_class("Foo", "mod.ule", 5);
         let foo2 = fake_class("Foo", "mod.ule", 8);
         let t1 = Type::ClassType(ClassType::new(foo1, TArgs::default()));
         let t2 = Type::ClassType(ClassType::new(foo2, TArgs::default()));
         let union = Type::union(vec![t1.clone(), t2.clone()]);
-        let ctx = TypeDisplayContext::new(&[&union]);
+        let ctx = TypeDisplayContext::new(&env, &[&union]);
 
         let parts1 = ctx.get_types_with_location(&t1, false).parts().to_vec();
         let parts2 = ctx.get_types_with_location(&t2, false).parts().to_vec();
@@ -3679,6 +3776,7 @@ def overloaded_func[T](
 
     #[test]
     fn source_annotation_renders_nested_callables() {
+        let env = TestTypeEnv::new();
         let inner = Type::Callable(Box::new(Callable::list(
             ParamList::new(vec![Param::PosOnly(None, Type::None, Required::Required)]),
             Type::any_implicit(),
@@ -3687,9 +3785,12 @@ def overloaded_func[T](
             ParamList::new(vec![Param::PosOnly(None, inner, Required::Required)]),
             Type::None,
         )));
-        assert_eq!(ty.to_string(), "((None) -> Unknown) -> None");
         assert_eq!(
-            ty.get_annotation_parts(None),
+            ty.display_with(&env).to_string(),
+            "((None) -> Unknown) -> None"
+        );
+        assert_eq!(
+            ty.get_annotation_parts(&env),
             vec![
                 AnnotationPart::Reference {
                     module: ModuleName::from_str("typing"),
@@ -3712,8 +3813,9 @@ def overloaded_func[T](
 
     #[test]
     fn source_annotation_omits_bound_receiver() {
+        let env = TestTypeEnv::new();
         let annotation = fake_bound_method("method", "Class", "module")
-            .get_annotation_parts(None)
+            .get_annotation_parts(&env)
             .into_iter()
             .map(|part| match part {
                 AnnotationPart::Text(text) => text,
@@ -3725,15 +3827,16 @@ def overloaded_func[T](
 
     #[test]
     fn source_annotation_surfaces_render_self_as_self() {
+        let env = TestTypeEnv::new();
         let cls = fake_class("MyClass", "mymodule", 40);
         let cls_type = ClassType::new(cls, TArgs::default());
         let t = Type::SelfType(cls_type);
 
-        let parts = t.get_types_with_locations(None);
+        let parts = t.get_types_with_locations(&env);
         assert_eq!(parts_to_string(&parts), "Self");
         assert!(parts.iter().all(|(_, location)| location.is_none()));
         assert_eq!(
-            t.get_annotation_parts(None),
+            t.get_annotation_parts(&env),
             vec![AnnotationPart::Reference {
                 module: ModuleName::from_str("typing"),
                 name: "Self".to_owned(),
@@ -3792,6 +3895,7 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_type_var_tuple() {
+        let env = TestTypeEnv::new();
         let mi = Module::new(
             ModuleName::from_str("test.module"),
             ModulePath::filesystem(PathBuf::from("test.module")),
@@ -3809,7 +3913,7 @@ def overloaded_func[T](
         assert_output_contains(&parts, "TypeVarTuple");
         assert_part_has_location(&parts, "Ts", "test.module", 70);
 
-        let mut ctx = TypeDisplayContext::new(&[&t]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&t]);
         ctx.set_lsp_display_mode(LspDisplayMode::Query);
         assert_eq!(ctx.display(&t).to_string(), "TypeVarTuple[test.module.Ts]");
     }
@@ -3834,6 +3938,7 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_param_spec() {
+        let env = TestTypeEnv::new();
         let mi = Module::new(
             ModuleName::from_str("test.module"),
             ModulePath::filesystem(PathBuf::from("test.module")),
@@ -3851,7 +3956,7 @@ def overloaded_func[T](
         assert_output_contains(&parts, "ParamSpec");
         assert_part_has_location(&parts, "P", "test.module", 75);
 
-        let mut ctx = TypeDisplayContext::new(&[&t]);
+        let mut ctx = TypeDisplayContext::new(&env, &[&t]);
         ctx.set_lsp_display_mode(LspDisplayMode::Query);
         assert_eq!(ctx.display(&t).to_string(), "ParamSpec[test.module.P]");
     }
@@ -3891,7 +3996,7 @@ def overloaded_func[T](
         format!(
             "{}",
             Fmt(|f| {
-                let ctx = TypeDisplayContext::new(&[]);
+                let ctx = TypeDisplayContext::new(&env, &[]);
                 let mut output = DisplayOutput::new(&ctx, f);
                 output.write_str("(")?;
                 params.fmt_with_type(

@@ -43,7 +43,7 @@ use crate::types::TParams;
 use crate::types::Type;
 
 /// The name of a nominal type, e.g. `str`
-#[derive(Debug, Clone, Display, Dupe)]
+#[derive(Debug, Clone, Dupe)]
 pub struct Class(Arc<ClassDef>);
 
 impl Hash for Class {
@@ -644,12 +644,6 @@ impl VisitMut<Type> for Arc<DjangoClassMetadata> {
                 f(override_type);
             }
         }
-    }
-}
-
-impl Display for ClassType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", Type::ClassType(self.clone()))
     }
 }
 

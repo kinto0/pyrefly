@@ -64,14 +64,14 @@ impl ErrorContext {
     pub fn annotations(&self, env: &dyn TypeEnv) -> Vec<(TextRange, String)> {
         match self {
             Self::BinaryOp(_op, left, right, left_range, right_range) => {
-                let ctx = TypeDisplayContext::new(&[left, right]);
+                let ctx = TypeDisplayContext::new(env, &[left, right]);
                 vec![
                     (*left_range, format!("has type `{}`", ctx.display(left))),
                     (*right_range, format!("has type `{}`", ctx.display(right))),
                 ]
             }
             Self::InplaceBinaryOp(_op, left, right, left_range, right_range) => {
-                let ctx = TypeDisplayContext::new(&[left, right]);
+                let ctx = TypeDisplayContext::new(env, &[left, right]);
                 vec![
                     (*left_range, format!("has type `{}`", ctx.display(left))),
                     (*right_range, format!("has type `{}`", ctx.display(right))),

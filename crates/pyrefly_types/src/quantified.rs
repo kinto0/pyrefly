@@ -17,6 +17,7 @@ use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
@@ -278,12 +279,6 @@ pub trait TypeVarLike {
     fn variance(&self) -> PreInferenceVariance;
 }
 
-impl Display for Quantified {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)
-    }
-}
-
 impl Quantified {
     pub fn new(
         identity: QuantifiedIdentity,
@@ -381,18 +376,18 @@ impl Quantified {
 
     /// Display this type parameter with its bounds/constraints and default,
     /// in the format used for type parameter lists (e.g. `T: int = str`).
-    pub fn display_with_bounds(&self) -> impl Display + '_ {
+    pub fn display_with_bounds<'a>(&'a self, env: &'a dyn TypeEnv) -> impl Display + 'a {
         Fmt(move |f| {
             write!(f, "{}", self.display_name_with_prefix())?;
             match self.restriction() {
-                Restriction::Bound(t) => write!(f, ": {}", t)?,
+                Restriction::Bound(t) => write!(f, ": {}", t.display_with(env))?,
                 Restriction::Constraints(ts) => {
                     write!(f, ": (")?;
                     for (i, t) in ts.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
-                        write!(f, "{}", t)?;
+                        write!(f, "{}", t.display_with(env))?;
                     }
                     write!(f, ")")?;
                 }
@@ -400,7 +395,7 @@ impl Quantified {
                 Restriction::Unrestricted => {}
             }
             if let Some(default) = self.default() {
-                write!(f, " = {}", default)?;
+                write!(f, " = {}", default.display_with(env))?;
             }
             Ok(())
         })

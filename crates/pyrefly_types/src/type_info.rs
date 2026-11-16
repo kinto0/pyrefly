@@ -15,6 +15,7 @@ use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::assert_bytes;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
@@ -24,6 +25,7 @@ use starlark_map::smallmap;
 use vec1::Vec1;
 
 use crate::display::TypeDisplayContext;
+use crate::env::TypeEnv;
 use crate::facet::FacetKind;
 use crate::quantified::TypeVarLike;
 use crate::type_var::TypeVar;
@@ -397,11 +399,11 @@ impl TypeInfo {
     }
 }
 
-impl Display for TypeInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         let mut types = Vec::new();
         self.visit(&mut |ty| types.push(ty));
-        let ctx = TypeDisplayContext::new(&types);
+        let ctx = TypeDisplayContext::new(env, &types);
         self.display_with_context(&ctx).fmt(f)
     }
 }

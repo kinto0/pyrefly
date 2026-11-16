@@ -9,14 +9,16 @@
 //! See <https://typing.readthedocs.io/en/latest/spec/annotations.html#type-and-annotation-expressions>
 
 use std::fmt;
-use std::fmt::Display;
 
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::intersperse_iter;
 
+use crate::env::TypeEnv;
 use crate::types::AnyStyle;
 use crate::types::Substitution;
 use crate::types::Type;
@@ -27,17 +29,17 @@ pub struct Annotation {
     pub ty: Option<Type>,
 }
 
-impl Display for Annotation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Annotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         if self.qualifiers.is_empty() {
             match &self.ty {
-                Some(ty) => write!(f, "{ty}"),
+                Some(ty) => write!(f, "{}", ty.display_with(env)),
                 None => write!(f, "_"),
             }
         } else {
             write!(f, "{}", intersperse_iter("[", || self.qualifiers.iter()))?;
             if let Some(ty) = &self.ty {
-                write!(f, "[{ty}]")?;
+                write!(f, "[{}]", ty.display_with(env))?;
             }
             write!(f, "{}", "]".repeat(self.qualifiers.len() - 1))
         }
@@ -96,14 +98,17 @@ pub enum Qualifier {
 mod tests {
     use super::*;
     use crate::literal::LitStyle;
+    use crate::test_type_env::TestTypeEnv;
 
     #[test]
     fn test_display() {
+        let env = TestTypeEnv::new();
         assert_eq!(
             Annotation {
                 qualifiers: Vec::new(),
                 ty: Some(Type::None)
             }
+            .display_with(&env)
             .to_string(),
             "None"
         );
@@ -112,6 +117,7 @@ mod tests {
                 qualifiers: vec![Qualifier::Required, Qualifier::ReadOnly],
                 ty: None
             }
+            .display_with(&env)
             .to_string(),
             "Required[ReadOnly]"
         );
@@ -120,6 +126,7 @@ mod tests {
                 qualifiers: vec![Qualifier::Required, Qualifier::ReadOnly],
                 ty: Some(Type::LiteralString(LitStyle::Implicit)),
             }
+            .display_with(&env)
             .to_string(),
             "Required[ReadOnly[LiteralString]]"
         );

@@ -23,6 +23,7 @@ use crate::module::third_party::get_bundled_third_party;
 use crate::module::typeshed::typeshed;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::module::typeshed_third_party::typeshed_third_party;
+use crate::types::env::TypeEnv;
 
 /// Convert to a path we can show to the user. The contents may not match the disk, but it has
 /// to be basically right.
@@ -77,9 +78,9 @@ pub fn to_real_path(path: &ModulePath) -> Option<PathBuf> {
     }
 }
 
-pub fn collect_symbol_def_paths(t: &Type) -> Vec<(QName, PathBuf)> {
+pub fn collect_symbol_def_paths(env: &dyn TypeEnv, t: &Type) -> Vec<(QName, PathBuf)> {
     let mut tracked_def_locs = SmallSet::new();
-    t.universe(&mut |t| tracked_def_locs.extend(t.qname()));
+    t.universe(&mut |t| tracked_def_locs.extend(t.qname(env)));
     tracked_def_locs
         .into_iter()
         .map(|qname| {

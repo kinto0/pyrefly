@@ -46,7 +46,6 @@ use crate::types::class::Class;
 use crate::types::env::TypeEnv;
 use crate::types::heap::TypeHeap;
 use crate::types::simplify::unions_with_literals;
-use crate::types::stdlib::Stdlib;
 use crate::types::types::Type;
 
 #[deny(clippy::missing_docs_in_private_items)]
@@ -218,7 +217,7 @@ fn format_hints(
             let qname = match sub_type {
                 Type::DataFrame(schema) => Some(schema.underlying.qname_in(env)),
                 Type::Series(schema) => Some(schema.underlying.qname_in(env)),
-                _ => sub_type.qname(),
+                _ => sub_type.qname(env),
             };
             if let Some(qname) = qname {
                 let module_name = qname.module_name();
@@ -234,7 +233,7 @@ fn format_hints(
         let mut uses_incomplete = false;
         let formatted_hint = hint_to_string(
             hint,
-            env.stdlib(),
+            env,
             enum_members,
             heap,
             &mut typing_imports,
@@ -303,19 +302,19 @@ fn format_hints(
 
 fn hint_to_string(
     hint: Type,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     enum_members: &dyn Fn(&Class) -> Option<usize>,
     heap: &TypeHeap,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
 ) -> String {
-    let hint = hint.promote(stdlib);
+    let hint = hint.promote(env.stdlib());
     let hint = hint.explicit_any().clean_var();
     let hint = match hint {
-        Type::Union(u) => unions_with_literals(u.members, stdlib, enum_members, heap),
+        Type::Union(u) => unions_with_literals(u.members, env.stdlib(), enum_members, heap),
         _ => hint,
     };
-    format_annotation(&hint, typing_imports, uses_incomplete)
+    format_annotation(env, &hint, typing_imports, uses_incomplete)
 }
 
 impl InferArgs {

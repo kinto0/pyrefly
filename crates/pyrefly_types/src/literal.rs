@@ -6,13 +6,14 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
 
 use compact_str::CompactString;
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::assert_words;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::ExprBooleanLiteral;
 use ruff_python_ast::ExprBytesLiteral;
@@ -24,6 +25,7 @@ use ruff_python_ast::InterpolatedStringElement;
 use ruff_python_ast::name::Name;
 
 use crate::class::ClassType;
+use crate::env::TypeEnv;
 use crate::lit_int::LitInt;
 use crate::stdlib::Stdlib;
 use crate::types::Type;
@@ -126,10 +128,10 @@ impl VisitMut<Type> for LitEnum {
     }
 }
 
-impl Display for Lit {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Lit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
-            Lit::Str(_) => self.write_escaped(f, true),
+            Lit::Str(_) => self.write_escaped(f, true, env),
             Lit::Int(x) => write!(f, "{x}"),
             Lit::Bool(x) => {
                 let s = if *x { "True" } else { "False" };
@@ -151,7 +153,7 @@ impl Display for Lit {
                 write!(f, "'")
             }
             Lit::Enum(lit_enum) => {
-                write!(f, "{}.{}", lit_enum.class.name(), lit_enum.member)
+                write!(f, "{}.{}", lit_enum.class.name_in(env), lit_enum.member)
             }
         }
     }
@@ -282,16 +284,21 @@ impl Lit {
         &self,
         f: &mut impl fmt::Write,
         use_single_quotes_for_string: bool,
+        env: &dyn TypeEnv,
     ) -> fmt::Result {
         match self {
             Lit::Str(s) => write_escaped_string(s, f, use_single_quotes_for_string),
-            lit => write!(f, "{lit}"),
+            lit => write!(f, "{}", lit.display_with(env)),
         }
     }
 
-    pub fn to_string_escaped(&self, use_single_quotes_for_string: bool) -> String {
+    pub fn to_string_escaped(
+        &self,
+        use_single_quotes_for_string: bool,
+        env: &dyn TypeEnv,
+    ) -> String {
         let mut result = String::new();
-        self.write_escaped(&mut result, use_single_quotes_for_string)
+        self.write_escaped(&mut result, use_single_quotes_for_string, env)
             .unwrap();
         result
     }

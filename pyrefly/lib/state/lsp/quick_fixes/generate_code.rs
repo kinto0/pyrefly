@@ -23,7 +23,7 @@ use super::extract_shared::line_indent_and_start;
 use super::extract_shared::type_to_annotation;
 use super::extract_shared::unique_name;
 use crate::state::lsp::Transaction;
-use crate::types::stdlib::Stdlib;
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 const BODY_INDENT: &str = "    ";
@@ -54,7 +54,7 @@ fn infer_annotation(
 fn infer_params_from_call(
     transaction: &Transaction<'_>,
     handle: &Handle,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     ast: &ModModule,
     selection: TextRange,
     name: &str,
@@ -93,7 +93,7 @@ fn infer_params_from_call(
         let name = unique_name(&base_name, |n| used_names.contains(n));
         used_names.insert(name.clone());
         let annotation = infer_annotation(transaction, handle, expr.range())
-            .and_then(|ty| type_to_annotation(ty, stdlib));
+            .and_then(|ty| type_to_annotation(env, ty));
         params.push(InferredParam {
             prefix,
             name,
@@ -114,7 +114,7 @@ fn infer_params_from_call(
         let name = unique_name(&base_name, |n| used_names.contains(n));
         used_names.insert(name.clone());
         let annotation = infer_annotation(transaction, handle, value.range())
-            .and_then(|ty| type_to_annotation(ty, stdlib));
+            .and_then(|ty| type_to_annotation(env, ty));
         let param = InferredParam {
             prefix,
             name,
@@ -156,7 +156,7 @@ pub(crate) fn generate_code_actions(
     if name.is_empty() {
         return None;
     }
-    let stdlib = transaction.get_stdlib(handle);
+    let type_env = transaction.type_env(handle);
     let (statement_indent, insert_position) = match find_enclosing_statement_range(ast, selection)
         .and_then(|range| line_indent_and_start(module_info.contents(), range.start()))
     {
@@ -165,9 +165,9 @@ pub(crate) fn generate_code_actions(
     };
     let insert_range = TextRange::at(insert_position, TextSize::new(0));
     let inferred_params =
-        infer_params_from_call(transaction, handle, &stdlib, ast, selection, name);
+        infer_params_from_call(transaction, handle, &type_env, ast, selection, name);
     let variable_text = match infer_annotation(transaction, handle, selection)
-        .and_then(|ty| type_to_annotation(Type::optional(ty), &stdlib))
+        .and_then(|ty| type_to_annotation(&type_env, Type::optional(ty)))
     {
         Some(annotation) => format!("{statement_indent}{name}: {annotation} = None\n"),
         None => format!("{statement_indent}{name} = None\n"),

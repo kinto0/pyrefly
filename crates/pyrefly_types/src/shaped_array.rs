@@ -6,11 +6,12 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
 
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::commas_iter;
 
 use crate::dimension::Int;
@@ -20,6 +21,7 @@ use crate::dimension::canonicalize;
 use crate::dimension::gradual_size;
 use crate::dimension::is_gradual_size;
 use crate::dimension::is_gradual_size_bound_type_var;
+use crate::env::TypeEnv;
 use crate::known_class::KnownClass;
 use crate::lit_int::LitInt;
 use crate::literal::Lit;
@@ -557,14 +559,18 @@ impl IntTuple {
     }
 }
 
-impl Display for IntTuple {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for IntTuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match &self.0 {
             IntTupleRepr::Concrete(dims) => {
                 if dims.is_empty() {
                     write!(f, "()") // Scalar tensor: Tensor[()]
                 } else {
-                    write!(f, "{}", commas_iter(|| dims.iter()))
+                    write!(
+                        f,
+                        "{}",
+                        commas_iter(|| dims.iter().map(|d| d.display_with(env)))
+                    )
                 }
             }
             IntTupleRepr::Gradual => write!(f, "*IntTuple"),
@@ -574,11 +580,19 @@ impl Display for IntTuple {
                 suffix,
             } => {
                 if !prefix.is_empty() {
-                    write!(f, "{}, ", commas_iter(|| prefix.iter()))?;
+                    write!(
+                        f,
+                        "{}, ",
+                        commas_iter(|| prefix.iter().map(|d| d.display_with(env)))
+                    )?;
                 }
-                write!(f, "*{}", fmt_unpacked_middle(middle))?;
+                write!(f, "*{}", fmt_unpacked_middle(middle, env))?;
                 if !suffix.is_empty() {
-                    write!(f, ", {}", commas_iter(|| suffix.iter()))?;
+                    write!(
+                        f,
+                        ", {}",
+                        commas_iter(|| suffix.iter().map(|d| d.display_with(env)))
+                    )?;
                 }
                 Ok(())
             }
@@ -586,14 +600,14 @@ impl Display for IntTuple {
     }
 }
 
-fn fmt_unpacked_middle(middle: &Type) -> String {
+fn fmt_unpacked_middle(middle: &Type, env: &dyn TypeEnv) -> String {
     // Type-variable middles render bare, matching the compact input spelling;
     // `Elements[...]` is only needed for runtime evaluation, not for display.
     match middle {
         Type::IntTuple(shape) if shape.is_shapeless() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if elt.is_any() => "tuple[int, ...]".to_owned(),
         Type::Tuple(Tuple::Unbounded(elt)) if is_gradual_size(elt) => "tuple[int, ...]".to_owned(),
-        _ => format!("{middle}"),
+        _ => middle.display_with(env).to_string(),
     }
 }
 
@@ -2067,7 +2081,9 @@ mod tests {
         )));
 
         assert_eq!(
-            IntTuple::unpacked(vec![dim(1)], middle, vec![dim(2)]).to_string(),
+            IntTuple::unpacked(vec![dim(1)], middle, vec![dim(2)])
+                .display_with(&env)
+                .to_string(),
             "1, *S, 2"
         );
         assert_eq!(
@@ -2078,12 +2094,15 @@ mod tests {
 
     #[test]
     fn int_tuple_display_strips_top_level_parens() {
+        let env = TestTypeEnv::new();
         // Build the reprs directly: the public constructors constant-fold.
         let add = || Int::Add(Box::new(dim(2)), Box::new(dim(3)));
         let mul = || Int::Mul(Box::new(dim(2)), Box::new(dim(3)));
         let middle = || Box::new(Type::IntTuple(Box::new(IntTuple::shapeless())));
         assert_eq!(
-            IntTuple(IntTupleRepr::Concrete(vec![add(), mul()])).to_string(),
+            IntTuple(IntTupleRepr::Concrete(vec![add(), mul()]))
+                .display_with(&env)
+                .to_string(),
             "2 + 3, 2 * 3"
         );
         assert_eq!(
@@ -2092,6 +2111,7 @@ mod tests {
                 middle: middle(),
                 suffix: vec![mul()],
             })
+            .display_with(&env)
             .to_string(),
             "2 + 3, *tuple[int, ...], 2 * 3"
         );

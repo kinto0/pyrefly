@@ -2791,7 +2791,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let subject_display = self.for_display(subject_info.into_ty());
         let remaining_display = self.for_display(remaining_ty.clone());
-        let ctx = TypeDisplayContext::new(&[&subject_display, &remaining_display]);
+        let ctx = TypeDisplayContext::new(self, &[&subject_display, &remaining_display]);
         let displayed_subject = if show_subject_expr {
             self.module().code_at(*subject_range).to_owned()
         } else {

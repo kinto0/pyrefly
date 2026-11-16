@@ -49,6 +49,7 @@ use crate::export::definitions::Definitions;
 use crate::export::definitions::DunderAllEntry;
 use crate::export::definitions::DunderAllKind;
 use crate::state::state::Transaction;
+use crate::types::env::TypeEnv;
 
 /// A single module's stub content, in source order.
 pub struct ModuleStub {
@@ -133,9 +134,11 @@ pub fn extract_module_stub(
         .collect();
 
     let dunder_all = resolve_dunder_all(&ast.body, &module_info);
+    let type_env = transaction.type_env(handle);
 
     let mut ctx = ExtractionContext {
         answers: &answers,
+        type_env: &type_env,
         module_info: &module_info,
         config,
         uses_incomplete: false,
@@ -155,6 +158,7 @@ pub fn extract_module_stub(
 
 struct ExtractionContext<'a> {
     answers: &'a Answers,
+    type_env: &'a dyn TypeEnv,
     module_info: &'a Module,
     config: &'a ExtractConfig,
     uses_incomplete: bool,
@@ -456,6 +460,7 @@ fn format_param_type(param: &Param, ctx: &mut ExtractionContext) -> Option<Strin
 /// Returns `Incomplete` for Any and unresolvable types.
 fn format_type(ty: &Type, ctx: &mut ExtractionContext) -> Option<String> {
     Some(format_annotation(
+        ctx.type_env,
         ty,
         &mut ctx.typing_imports,
         &mut ctx.uses_incomplete,

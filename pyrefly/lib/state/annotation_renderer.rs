@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use dupe::Dupe;
 use pyrefly_build::handle::Handle;
-use pyrefly_types::stdlib::Stdlib;
 use pyrefly_types::type_output::AnnotationPart;
 use pyrefly_types::types::Type;
 use ruff_python_ast::ModModule;
@@ -48,7 +47,6 @@ pub(crate) struct AnnotationRenderer<'a, 'state> {
     handle: &'a Handle,
     tracker: ImportTracker,
     ast: Arc<ModModule>,
-    stdlib: &'a Stdlib,
     import_format: ImportFormat,
 }
 
@@ -57,7 +55,6 @@ impl<'a, 'state> AnnotationRenderer<'a, 'state> {
         transaction: &'a Transaction<'state>,
         handle: &'a Handle,
         ast: Arc<ModModule>,
-        stdlib: &'a Stdlib,
         import_format: ImportFormat,
     ) -> Self {
         Self {
@@ -70,13 +67,13 @@ impl<'a, 'state> AnnotationRenderer<'a, 'state> {
                 *handle.sys_info(),
             ),
             ast,
-            stdlib,
             import_format,
         }
     }
 
     pub(crate) fn render(&self, ty: &Type) -> Option<RenderedAnnotation> {
-        self.render_parts(&ty.get_annotation_parts(Some(self.stdlib)))
+        let env = self.transaction.type_env(self.handle);
+        self.render_parts(&ty.get_annotation_parts(&env))
     }
 
     /// Returns `None` when a reference cannot be rendered unambiguously.

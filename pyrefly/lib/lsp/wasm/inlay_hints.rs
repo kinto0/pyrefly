@@ -186,13 +186,12 @@ impl<'a> Transaction<'a> {
         };
         let answers = self.get_answers(handle)?;
         let bindings = answers.bindings();
-        let stdlib = self.get_stdlib(handle);
         let renderer = self
             .get_ast(handle)
-            .map(|ast| AnnotationRenderer::new(self, handle, ast, &stdlib, import_format));
+            .map(|ast| AnnotationRenderer::new(self, handle, ast, import_format));
         let make_type_hint =
             |prefix: &str, position: TextSize, ty: &Type, insertable: bool| -> InlayHintData {
-                let type_parts = ty.get_types_with_locations(Some(&stdlib));
+                let type_parts = ty.get_types_with_locations(&type_env);
                 let label_parts = once((prefix.to_owned(), None)).chain(type_parts).collect();
                 let edits = if insertable {
                     renderer.as_ref().and_then(|renderer| {

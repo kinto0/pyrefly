@@ -61,11 +61,12 @@ pub fn provide_type(
     }
     let info = transaction.get_module_info(handle)?;
     let mut contents = Vec::new();
+    let type_env = transaction.type_env(handle);
 
     for position in positions {
         let text_size = info.from_lsp_position(position, notebook_cell);
         if let Some(ty) = transaction.get_result_type_at(handle, text_size) {
-            let mut c = TypeDisplayContext::new(&[&ty]);
+            let mut c = TypeDisplayContext::new(&type_env, &[&ty]);
             c.set_lsp_display_mode(LspDisplayMode::ProvideType);
             contents.push(MarkupContent {
                 kind: MarkupKind::PlainText,

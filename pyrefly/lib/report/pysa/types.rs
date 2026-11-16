@@ -24,6 +24,7 @@ use crate::report::pysa::ModuleContext;
 use crate::report::pysa::class::ClassRef;
 use crate::report::pysa::context::ModuleAnswersContext;
 use crate::types::display::TypeDisplayContext;
+use crate::types::env::TypeEnv;
 
 /// Modifier that was stripped from a type to extract the underlying class.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -148,8 +149,8 @@ impl ClassNamesFromType {
     }
 }
 
-pub fn string_for_type(type_: &Type) -> String {
-    let mut ctx = TypeDisplayContext::new(&[type_]);
+pub fn string_for_type(env: &dyn TypeEnv, type_: &Type) -> String {
+    let mut ctx = TypeDisplayContext::new(env, &[type_]);
     ctx.always_display_module_name_except_builtins();
     ctx.display(type_).to_string()
 }
@@ -392,7 +393,7 @@ impl PysaType {
 
     pub fn from_type(type_: &Type, context: &ModuleContext) -> PysaType {
         let type_ = preprocess_type(type_, &context.answers_context);
-        let string = string_for_type(&type_);
+        let string = string_for_type(context.resolver.type_env(), &type_);
 
         PysaType {
             string,

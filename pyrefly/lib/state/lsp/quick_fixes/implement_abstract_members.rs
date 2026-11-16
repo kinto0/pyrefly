@@ -25,11 +25,11 @@ use pyrefly_types::callable::PrefixParam;
 use pyrefly_types::callable::Required;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::quantified::QuantifiedOrigin;
-use pyrefly_types::stdlib::Stdlib;
 use pyrefly_types::type_output::AnnotationPart;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Type;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Stmt;
 use ruff_python_ast::StmtClassDef;
 use ruff_python_ast::name::Name;
@@ -49,6 +49,7 @@ use crate::state::annotation_renderer::AnnotationRenderer;
 use crate::state::lsp::ImportFormat;
 use crate::state::lsp::LocalRefactorCodeAction;
 use crate::state::lsp::Transaction;
+use crate::types::env::TypeEnv;
 
 struct AbstractMemberInfo {
     name: Name,
@@ -143,9 +144,9 @@ pub(crate) fn implement_abstract_members_code_actions(
     }
 
     members.sort_by(|left, right| left.name.cmp(&right.name));
-    let stdlib = transaction.get_stdlib(handle);
+    let type_env = transaction.type_env(handle);
     let mut renderer = MemberRenderer {
-        stdlib: &stdlib,
+        env: &type_env,
         python_version: handle.sys_info().version(),
         parts: Vec::new(),
     };
@@ -160,7 +161,7 @@ pub(crate) fn implement_abstract_members_code_actions(
         renderer.member(member, &indent, indent_unit)?;
     }
     renderer.text("\n");
-    let annotations = AnnotationRenderer::new(transaction, handle, ast, &stdlib, import_format);
+    let annotations = AnnotationRenderer::new(transaction, handle, ast, import_format);
     let rendered = annotations.render_parts(&renderer.parts)?;
     let imports = annotations.import_edits(&rendered);
     let edits = once((module_info.dupe(), insert_range, rendered.text))
@@ -203,7 +204,7 @@ fn find_class_header(body: &[Stmt], position: TextSize) -> Option<&StmtClassDef>
 
 /// Builds source text while retaining the module references used by annotations.
 struct MemberRenderer<'a> {
-    stdlib: &'a Stdlib,
+    env: &'a dyn TypeEnv,
     python_version: PythonVersion,
     parts: Vec<AnnotationPart>,
 }
@@ -225,8 +226,7 @@ impl MemberRenderer<'_> {
     }
 
     fn annotation(&mut self, ty: &Type) {
-        self.parts
-            .extend(ty.get_annotation_parts(Some(self.stdlib)));
+        self.parts.extend(ty.get_annotation_parts(self.env));
     }
 
     fn member(
@@ -497,7 +497,7 @@ impl MemberRenderer<'_> {
                         ty: Type::Literal(literal),
                         ..
                     }) if !matches!(literal.value, Lit::Enum(_)) => {
-                        self.text(&literal.value.to_string());
+                        self.text(&literal.value.display_with(self.env).to_string());
                     }
                     _ => {
                         // Arbitrary default expressions can depend on names in the defining module.

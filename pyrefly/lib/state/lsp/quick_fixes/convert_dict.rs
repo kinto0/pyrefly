@@ -34,7 +34,7 @@ use super::extract_shared::unique_name;
 use super::types::LocalRefactorCodeAction;
 use crate::state::ide::prepare_import_insertion;
 use crate::state::lsp::Transaction;
-use crate::types::stdlib::Stdlib;
+use crate::types::env::TypeEnv;
 
 const BODY_INDENT: &str = "    ";
 const DEFAULT_MODEL_NAME: &str = "Model";
@@ -63,8 +63,8 @@ pub(crate) fn convert_dict_code_actions(
             None => line_indent_and_start(source, dict_range.start())?,
         };
     let insert_range = TextRange::at(insert_position, TextSize::new(0));
-    let stdlib = transaction.get_stdlib(handle);
-    let fields = collect_dict_fields(transaction, handle, &stdlib, dict_expr)?;
+    let type_env = transaction.type_env(handle);
+    let fields = collect_dict_fields(transaction, handle, &type_env, dict_expr)?;
     let requires_any = fields.iter().any(|field| field.annotation == "Any");
     let base_name = suggest_base_name(ast.as_ref(), dict_range);
     let class_name = unique_name(&to_pascal_case(&base_name), |candidate| {
@@ -135,7 +135,7 @@ fn find_dict_expression<'a>(
 fn collect_dict_fields(
     transaction: &Transaction<'_>,
     handle: &Handle,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     dict_expr: &ExprDict,
 ) -> Option<Vec<DictField>> {
     let mut fields: Vec<DictField> = Vec::new();
@@ -146,7 +146,7 @@ fn collect_dict_fields(
         if !is_valid_identifier(&key) {
             return None;
         }
-        let annotation = infer_field_annotation(transaction, handle, stdlib, item.value.range());
+        let annotation = infer_field_annotation(transaction, handle, env, item.value.range());
         if let Some(index) = field_positions.get(&key).copied() {
             fields[index].annotation = annotation;
             continue;
@@ -172,11 +172,11 @@ fn string_literal_key(expr: &Expr) -> Option<String> {
 fn infer_field_annotation(
     transaction: &Transaction<'_>,
     handle: &Handle,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     range: TextRange,
 ) -> String {
     match transaction.get_type_trace(handle, range) {
-        Some(ty) => type_to_annotation(ty, stdlib).unwrap_or_else(|| "Any".to_owned()),
+        Some(ty) => type_to_annotation(env, ty).unwrap_or_else(|| "Any".to_owned()),
         None => "Any".to_owned(),
     }
 }

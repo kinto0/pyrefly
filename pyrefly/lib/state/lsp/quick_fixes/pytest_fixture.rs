@@ -204,7 +204,8 @@ fn fixture_types_for_module(transaction: &Transaction<'_>, handle: &Handle) -> H
         let Some(ty) = fixture_return_type(transaction, handle, func) else {
             continue;
         };
-        let rendered = ty.as_lsp_string(LspDisplayMode::SignatureHelp);
+        let rendered =
+            ty.as_lsp_string(&transaction.type_env(handle), LspDisplayMode::SignatureHelp);
         if should_skip_annotation(&rendered, &ty) {
             continue;
         }
@@ -223,8 +224,9 @@ fn import_edits_for_type(
 ) -> Vec<(TextSize, String)> {
     let mut import_edits = Vec::new();
     let mut seen_imports = HashSet::new();
+    let type_env = transaction.type_env(handle);
     ty.universe(&mut |ty| {
-        let Some(qname) = ty.qname() else {
+        let Some(qname) = ty.qname(&type_env) else {
             return;
         };
         if !qname.parent().is_toplevel() {
@@ -290,7 +292,8 @@ pub(crate) fn pytest_fixture_type_annotation_code_actions(
         let Some(ty) = fixture_return_type(transaction, handle, func) else {
             continue;
         };
-        let rendered = ty.as_lsp_string(LspDisplayMode::SignatureHelp);
+        let rendered =
+            ty.as_lsp_string(&transaction.type_env(handle), LspDisplayMode::SignatureHelp);
         if should_skip_annotation(&rendered, &ty) {
             continue;
         }
@@ -400,7 +403,8 @@ pub(crate) fn pytest_fixture_type_annotation_code_actions(
             let Some(ty) = fixture_types.get(name).cloned() else {
                 continue;
             };
-            let rendered = ty.as_lsp_string(LspDisplayMode::SignatureHelp);
+            let rendered =
+                ty.as_lsp_string(&transaction.type_env(handle), LspDisplayMode::SignatureHelp);
             if should_skip_annotation(&rendered, &ty) {
                 continue;
             }
@@ -461,7 +465,8 @@ pub(crate) fn pytest_fixture_type_annotation_code_actions(
                 let Some(ty) = fixture_types.get(name).cloned() else {
                     continue;
                 };
-                let rendered = ty.as_lsp_string(LspDisplayMode::SignatureHelp);
+                let rendered =
+                    ty.as_lsp_string(&transaction.type_env(handle), LspDisplayMode::SignatureHelp);
                 if should_skip_annotation(&rendered, &ty) {
                     continue;
                 }

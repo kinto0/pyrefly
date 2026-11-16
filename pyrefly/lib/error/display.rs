@@ -28,7 +28,7 @@ impl ErrorContext {
                 )
             }
             Self::BinaryOp(op, left, right, _left_range, _right_range) => {
-                let ctx = TypeDisplayContext::new(&[left, right]);
+                let ctx = TypeDisplayContext::new(env, &[left, right]);
                 format!(
                     "`{}` is not supported between `{}` and `{}`",
                     op,
@@ -37,7 +37,7 @@ impl ErrorContext {
                 )
             }
             Self::InplaceBinaryOp(op, left, right, _left_range, _right_range) => {
-                let ctx = TypeDisplayContext::new(&[left, right]);
+                let ctx = TypeDisplayContext::new(env, &[left, right]);
                 format!(
                     "`{}=` is not supported between `{}` and `{}`",
                     op,
@@ -77,7 +77,7 @@ impl TypeCheckKind {
         want: &Type,
         current_module: ModuleName,
     ) -> String {
-        let mut ctx = TypeDisplayContext::new(&[got, want]);
+        let mut ctx = TypeDisplayContext::new(env, &[got, want]);
         match self {
             Self::MagicMethodReturn(cls, func) => {
                 ctx.add(cls);

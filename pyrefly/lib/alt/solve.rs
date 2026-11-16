@@ -3170,7 +3170,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 {
                     let t_new = self.for_display(t_new.clone());
                     let t_existing = self.for_display(t_existing.clone());
-                    let ctx = TypeDisplayContext::new(&[&t_new, &t_existing]);
+                    let ctx = TypeDisplayContext::new(self, &[&t_new, &t_existing]);
                     self.error(
                         errors,
                         self.bindings().idx_to_key(*new).range(),

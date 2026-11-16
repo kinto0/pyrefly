@@ -6,7 +6,6 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
 
 use dupe::Dupe;
 use parse_display::Display;
@@ -15,10 +14,12 @@ use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::commas_iter;
 use ruff_python_ast::name::Name;
 
 use crate::display::TypeDisplayContext;
+use crate::env::TypeEnv;
 use crate::stdlib::Stdlib;
 use crate::type_output::DisplayOutput;
 use crate::type_output::TypeOutput;
@@ -107,7 +108,10 @@ impl TypeAlias {
                 output.write_str("TypeAlias[")?;
                 output.write_str(self.name.as_str())?;
                 output.write_str("[")?;
-                output.write_str(&format!("{}", commas_iter(|| tparams.iter())))?;
+                output.write_str(&format!(
+                    "{}",
+                    commas_iter(|| tparams.iter().map(|q| q.name()))
+                ))?;
                 output.write_str("], ")?;
                 write_type(&self.ty, output)?;
                 output.write_str("]")
@@ -124,9 +128,9 @@ impl TypeAlias {
     }
 }
 
-impl Display for TypeAlias {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ctx = TypeDisplayContext::new(&[&self.ty]);
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeAlias {
+    fn fmt(&self, f: &mut fmt::Formatter, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        let ctx = TypeDisplayContext::new(env, &[&self.ty]);
         let mut output = DisplayOutput::new(&ctx, f);
         self.fmt_with_type(&mut output, &|ty, output| output.write_type(ty), None)
     }

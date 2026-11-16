@@ -8,12 +8,13 @@
 use std::borrow::Cow;
 use std::cmp::Ord;
 use std::fmt;
-use std::fmt::Display;
 use std::hash::Hash;
 
 use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
+use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::VecExt;
@@ -24,6 +25,7 @@ use ruff_python_ast::name::Name;
 use starlark_map::small_set::SmallSet;
 
 use crate::display::TypeDisplayContext;
+use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::function::UnresolvedImports;
@@ -101,10 +103,10 @@ impl Callable {
     }
 }
 
-impl Display for Callable {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Callable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         let ty = Type::Callable(Box::new(self.clone()));
-        let ctx = TypeDisplayContext::new(&[&ty]);
+        let ctx = TypeDisplayContext::new(env, &[&ty]);
         let mut output = DisplayOutput::new(&ctx, f);
         self.fmt_with_type(&mut output, &|t, o| ctx.fmt_helper_generic(t, false, o))
     }
@@ -837,7 +839,7 @@ impl Callable {
 }
 
 impl Param {
-    pub(crate) fn fmt_default(&self, default: &Option<DefaultValue>) -> String {
+    pub(crate) fn fmt_default(&self, default: &Option<DefaultValue>, env: &dyn TypeEnv) -> String {
         match default {
             Some(DefaultValue {
                 display: Some(text),
@@ -846,7 +848,7 @@ impl Param {
             Some(DefaultValue {
                 ty: Type::Literal(lit),
                 ..
-            }) => format!("{}", lit.value),
+            }) => lit.value.display_with(env).to_string(),
             Some(DefaultValue { ty: Type::None, .. }) => "None".to_owned(),
             _ => "...".to_owned(),
         }
@@ -863,7 +865,7 @@ impl Param {
                 output.write_str("_: ")?;
                 write_type(ty, output)?;
                 output.write_str(" = ")?;
-                output.write_str(&self.fmt_default(default))
+                output.write_str(&self.fmt_default(default, output.env()))
             }
             Param::PosOnly(Some(name), ty, Required::Required)
             | Param::Pos(name, ty, Required::Required)
@@ -879,7 +881,7 @@ impl Param {
                 output.write_str(": ")?;
                 write_type(ty, output)?;
                 output.write_str(" = ")?;
-                output.write_str(&self.fmt_default(default))
+                output.write_str(&self.fmt_default(default, output.env()))
             }
             Param::Varargs(Some(name), ty) => {
                 output.write_str("*")?;
@@ -960,9 +962,9 @@ impl Param {
     }
 }
 
-impl Display for Param {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ctx = TypeDisplayContext::new(&[self.as_type()]);
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Param {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        let ctx = TypeDisplayContext::new(env, &[self.as_type()]);
         let mut output = DisplayOutput::new(&ctx, f);
         self.fmt_with_type(&mut output, &|t, o| ctx.fmt_helper_generic(t, false, o))
     }

@@ -1464,7 +1464,7 @@ impl DirectCall {
                         "For callee `{}`, unknown object type in bound method `{}`",
                         callee.display_with(context),
                         callee_type
-                            .map(string_for_type)
+                            .map(|t| string_for_type(context.resolver.type_env(), t))
                             .unwrap_or("None".to_owned()),
                     );
                     // `true` would skip overrides, which may lead to false negatives. But we prefer false positives since
@@ -2010,7 +2010,7 @@ impl<'a> CallGraphVisitor<'a> {
                 "Cannot find call targets for method `{}` in class `{}`",
                 method,
                 defining_class
-                    .map(string_for_type)
+                    .map(|t| string_for_type(self.module_context.resolver.type_env(), t))
                     .unwrap_or("None".to_owned()),
             );
         }

@@ -790,7 +790,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "non-frozen"
                     };
 
-                    let ctx = ClassDisplayContext::new(&[cls, base]);
+                    let ctx = ClassDisplayContext::new(self, &[cls, base]);
                     self.error(
                         errors,
                         cls.range_in(self),

@@ -805,7 +805,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let type_for_display = self
                 .solver()
                 .for_display(self.heap.mk_callable_from(signature));
-            let display_context = TypeDisplayContext::new(&[&type_for_display]);
+            let display_context = TypeDisplayContext::new(self, &[&type_for_display]);
             let signature_for_display = match &type_for_display {
                 Type::Callable(callable) => callable,
                 _ => unreachable!("Expected a callable"),

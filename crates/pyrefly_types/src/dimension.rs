@@ -15,9 +15,9 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::fmt::Display;
 
 use pyrefly_util::display::DisplayWith;
+use pyrefly_util::display::DisplayWithCtx;
 
 use crate::env::TypeEnv;
 use crate::equality::TypeEq;
@@ -401,15 +401,9 @@ const UNARY_PREC: u8 = 3;
 const POW_PREC: u8 = 4;
 const ATOM_PREC: u8 = 5;
 
-impl Display for Int {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_prec(f, 0)
-    }
-}
-
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for Int {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self, f)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        self.fmt_prec(f, 0, env)
     }
 }
 
@@ -456,57 +450,59 @@ impl Int {
     /// Render with the minimum parentheses Python precedence requires: wrap
     /// this expression only when its level is below `min_prec`, and render
     /// each operand with the minimum its side of the operator requires.
-    fn fmt_prec(&self, f: &mut fmt::Formatter<'_>, min_prec: u8) -> fmt::Result {
-        // `Display` renders this same expression without outer parentheses.
+    fn fmt_prec(&self, f: &mut fmt::Formatter<'_>, min_prec: u8, env: &dyn TypeEnv) -> fmt::Result {
+        // Top-level rendering is this same expression without outer parentheses.
         if self.prec() < min_prec {
-            return write!(f, "({})", self);
+            return write!(f, "({})", self.display_with(env));
         }
         match self {
             Self::Literal(n) => write!(f, "{}", n),
             Self::Int => write!(f, "int"),
-            Self::Symbolic(ty) => write!(f, "{}", ty),
-            Self::Abs(value) => write!(f, "abs({})", value),
+            Self::Symbolic(ty) => write!(f, "{}", ty.display_with(env)),
+            Self::Abs(value) => write!(f, "abs({})", value.display_with(env)),
             Self::Add(left, right) => {
                 if let Int::Literal(n) = right.as_ref()
                     && *n < 0
                 {
                     // Render the magnitude directly so i64::MIN stays
                     // representable.
-                    left.fmt_prec(f, ADD_PREC)?;
+                    left.fmt_prec(f, ADD_PREC, env)?;
                     write!(f, " - {}", n.unsigned_abs())
                 } else if let Some(positive) = positive_counterpart(right)
                     && positive.prec() != UNARY_PREC
                 {
-                    left.fmt_prec(f, ADD_PREC)?;
+                    left.fmt_prec(f, ADD_PREC, env)?;
                     write!(f, " - ")?;
-                    positive.fmt_prec(f, MUL_PREC)
+                    positive.fmt_prec(f, MUL_PREC, env)
                 } else {
-                    Self::fmt_binary(f, left, "+", right, ADD_PREC, MUL_PREC)
+                    Self::fmt_binary(f, left, "+", right, ADD_PREC, MUL_PREC, env)
                 }
             }
-            Self::Sub(left, right) => Self::fmt_binary(f, left, "-", right, ADD_PREC, MUL_PREC),
+            Self::Sub(left, right) => {
+                Self::fmt_binary(f, left, "-", right, ADD_PREC, MUL_PREC, env)
+            }
             Self::Mul(left, right) => {
                 // Simplify display: (1 * x) -> x, (x * 1) -> x, (-1 * x) -> -x.
                 // Keep in sync with `prec`.
                 match (left.as_ref(), right.as_ref()) {
-                    (Int::Literal(1), _) => right.fmt_prec(f, min_prec),
-                    (_, Int::Literal(1)) => left.fmt_prec(f, min_prec),
+                    (Int::Literal(1), _) => right.fmt_prec(f, min_prec, env),
+                    (_, Int::Literal(1)) => left.fmt_prec(f, min_prec, env),
                     (Int::Literal(-1), operand) | (operand, Int::Literal(-1))
                         if operand.prec() != UNARY_PREC =>
                     {
                         write!(f, "-")?;
-                        operand.fmt_prec(f, UNARY_PREC)
+                        operand.fmt_prec(f, UNARY_PREC, env)
                     }
-                    _ => Self::fmt_binary(f, left, "*", right, MUL_PREC, UNARY_PREC),
+                    _ => Self::fmt_binary(f, left, "*", right, MUL_PREC, UNARY_PREC, env),
                 }
             }
             Self::FloorDiv(left, right) => {
                 // Simplify display: (x // 1) -> x.
                 // Keep in sync with `prec`.
                 if matches!(right.as_ref(), Int::Literal(1)) {
-                    left.fmt_prec(f, min_prec)
+                    left.fmt_prec(f, min_prec, env)
                 } else {
-                    Self::fmt_binary(f, left, "//", right, MUL_PREC, UNARY_PREC)
+                    Self::fmt_binary(f, left, "//", right, MUL_PREC, UNARY_PREC, env)
                 }
             }
             // The base requires an atom: anything lower (including another
@@ -514,7 +510,9 @@ impl Int {
             // with a leading `-`, since `-N ** 2` re-parses as `-(N ** 2)`)
             // parenthesizes. The exponent admits a unary minus, matching
             // CPython's `ast.unparse` (`2 ** -x` re-parses as `2 ** (-x)`).
-            Self::Pow(left, right) => Self::fmt_binary(f, left, "**", right, ATOM_PREC, UNARY_PREC),
+            Self::Pow(left, right) => {
+                Self::fmt_binary(f, left, "**", right, ATOM_PREC, UNARY_PREC, env)
+            }
         }
     }
 
@@ -527,10 +525,11 @@ impl Int {
         right: &Int,
         left_min: u8,
         right_min: u8,
+        env: &dyn TypeEnv,
     ) -> fmt::Result {
-        left.fmt_prec(f, left_min)?;
+        left.fmt_prec(f, left_min, env)?;
         write!(f, " {op} ")?;
-        right.fmt_prec(f, right_min)
+        right.fmt_prec(f, right_min, env)
     }
 }
 
@@ -1712,7 +1711,6 @@ mod tests {
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
-    use pyrefly_util::display::DisplayWithCtx;
     use pyrefly_util::uniques::UniqueFactory;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::Int as AstInt;

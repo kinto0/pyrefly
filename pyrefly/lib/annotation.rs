@@ -18,8 +18,11 @@ use pyrefly_types::types::Overload;
 use pyrefly_types::types::OverloadType;
 use pyrefly_types::types::Type;
 
+use crate::types::env::TypeEnv;
+
 /// Render an internal type as valid Python annotation syntax.
 pub(crate) fn format_annotation(
+    env: &dyn TypeEnv,
     ty: &Type,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
@@ -30,7 +33,7 @@ pub(crate) fn format_annotation(
     }
     // Internal function and overload displays use `(args) -> ret` / `Overload[...]`,
     // which are not valid Python annotations.
-    if let Some(annotation) = format_callable_type(ty, typing_imports, uses_incomplete) {
+    if let Some(annotation) = format_callable_type(env, ty, typing_imports, uses_incomplete) {
         return annotation;
     }
     // Nested internal callable displays would also produce invalid Python, but
@@ -46,7 +49,7 @@ pub(crate) fn format_annotation(
     if ty.any(|sub_type| matches!(sub_type, Type::Literal(_))) {
         typing_imports.insert("Literal");
     }
-    let mut display = TypeDisplayContext::new(&[ty]);
+    let mut display = TypeDisplayContext::new(env, &[ty]);
     display.render_self_type_as_self();
     display.use_annotation_syntax();
     let annotation = display.display(ty).to_string();
@@ -72,17 +75,20 @@ fn is_callable_type(ty: &Type) -> bool {
 
 /// Render a callable-typed value as `typing.Callable[...]`.
 fn format_callable_type(
+    env: &dyn TypeEnv,
     ty: &Type,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
 ) -> Option<String> {
     match ty {
         Type::Function(func) => Some(callable_from_signature(
+            env,
             &func.signature,
             typing_imports,
             uses_incomplete,
         )),
         Type::Callable(callable) => Some(callable_from_signature(
+            env,
             callable,
             typing_imports,
             uses_incomplete,
@@ -93,30 +99,40 @@ fn format_callable_type(
                     "BoundMethod::Function should always have at least a self/cls parameter",
                 );
                 Some(callable_from_signature(
+                    env,
                     &signature,
                     typing_imports,
                     uses_incomplete,
                 ))
             }
             BoundMethodType::Forall(forall) => Some(callable_ellipsis(
+                env,
                 &forall.body.signature.ret,
                 typing_imports,
                 uses_incomplete,
             )),
-            BoundMethodType::Overload(overload) => {
-                Some(format_overload(overload, typing_imports, uses_incomplete))
-            }
+            BoundMethodType::Overload(overload) => Some(format_overload(
+                env,
+                overload,
+                typing_imports,
+                uses_incomplete,
+            )),
         },
-        Type::Overload(overload) => {
-            Some(format_overload(overload, typing_imports, uses_incomplete))
-        }
+        Type::Overload(overload) => Some(format_overload(
+            env,
+            overload,
+            typing_imports,
+            uses_incomplete,
+        )),
         Type::Forall(forall) => match &forall.body {
             Forallable::Function(func) => Some(callable_ellipsis(
+                env,
                 &func.signature.ret,
                 typing_imports,
                 uses_incomplete,
             )),
             Forallable::Callable(callable) => Some(callable_ellipsis(
+                env,
                 &callable.ret,
                 typing_imports,
                 uses_incomplete,
@@ -129,12 +145,13 @@ fn format_callable_type(
 
 /// Preserve required positional parameters and elide signatures that `Callable` cannot express.
 fn callable_from_signature(
+    env: &dyn TypeEnv,
     signature: &Callable,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
 ) -> String {
     typing_imports.insert("Callable");
-    let ret = format_annotation(&signature.ret, typing_imports, uses_incomplete);
+    let ret = format_annotation(env, &signature.ret, typing_imports, uses_incomplete);
     match &signature.params {
         Params::List(params)
             if params.items().iter().all(|param| {
@@ -147,7 +164,9 @@ fn callable_from_signature(
             let rendered = params
                 .items()
                 .iter()
-                .map(|param| format_annotation(param.as_type(), typing_imports, uses_incomplete))
+                .map(|param| {
+                    format_annotation(env, param.as_type(), typing_imports, uses_incomplete)
+                })
                 .collect::<Vec<_>>();
             format!("Callable[[{}], {}]", rendered.join(", "), ret)
         }
@@ -157,17 +176,19 @@ fn callable_from_signature(
 
 /// Render a callable whose parameter list cannot be faithfully expressed.
 fn callable_ellipsis(
+    env: &dyn TypeEnv,
     ret: &Type,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
 ) -> String {
     typing_imports.insert("Callable");
-    let ret = format_annotation(ret, typing_imports, uses_incomplete);
+    let ret = format_annotation(env, ret, typing_imports, uses_incomplete);
     format!("Callable[..., {ret}]")
 }
 
 /// Render overloads with a shared return type, or an incomplete callable otherwise.
 fn format_overload(
+    env: &dyn TypeEnv,
     overload: &Overload,
     typing_imports: &mut BTreeSet<&'static str>,
     uses_incomplete: &mut bool,
@@ -184,7 +205,7 @@ fn format_overload(
         .iter()
         .all(|signature| ret(signature) == first)
     {
-        callable_ellipsis(&first, typing_imports, uses_incomplete)
+        callable_ellipsis(env, &first, typing_imports, uses_incomplete)
     } else {
         typing_imports.insert("Callable");
         *uses_incomplete = true;

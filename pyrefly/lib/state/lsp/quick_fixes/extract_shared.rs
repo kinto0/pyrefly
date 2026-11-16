@@ -31,7 +31,7 @@ use crate::state::ide::prepare_import_insertion;
 use crate::state::lsp::FindDefinitionItemWithDocstring;
 use crate::state::lsp::FindPreference;
 use crate::state::lsp::Transaction;
-use crate::types::stdlib::Stdlib;
+use crate::types::env::TypeEnv;
 use crate::types::type_output::AnnotationPart;
 use crate::types::types::Type;
 
@@ -352,13 +352,13 @@ pub(crate) fn code_at_range<'a>(source: &'a str, range: TextRange) -> Option<&'a
     }
 }
 
-pub(super) fn type_to_annotation(ty: Type, stdlib: &Stdlib) -> Option<String> {
-    let ty = ty.promote(stdlib);
+pub(super) fn type_to_annotation(env: &dyn TypeEnv, ty: Type) -> Option<String> {
+    let ty = ty.promote(env.stdlib());
     if ty.is_any() {
         return None;
     }
     Some(
-        ty.get_annotation_parts(Some(stdlib))
+        ty.get_annotation_parts(env)
             .into_iter()
             .map(|part| match part {
                 AnnotationPart::Text(text) => text,
