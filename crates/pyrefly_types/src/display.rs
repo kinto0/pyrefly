@@ -2119,7 +2119,7 @@ pub mod tests {
             obj: Type::ClassDef(class.dupe()),
             func: BoundMethodType::Function(Function {
                 signature: method,
-                metadata: FuncMetadata::method(&class, Name::new(method_name)),
+                metadata: FuncMetadata::method(&TestTypeEnv::new(), &class, Name::new(method_name)),
             }),
         }))
     }
@@ -2518,7 +2518,11 @@ pub mod tests {
                 tparams,
                 body: Function {
                     signature: method,
-                    metadata: FuncMetadata::method(&class, Name::new(method_name)),
+                    metadata: FuncMetadata::method(
+                        &TestTypeEnv::new(),
+                        &class,
+                        Name::new(method_name),
+                    ),
                 },
             }),
         }))
@@ -3424,7 +3428,11 @@ pub mod tests {
                 )]),
                 Type::None,
             ),
-            metadata: FuncMetadata::method(&class, Name::new_static("overloaded_func")),
+            metadata: FuncMetadata::method(
+                &TestTypeEnv::new(),
+                &class,
+                Name::new_static("overloaded_func"),
+            ),
         };
 
         let sig2 = Function {
@@ -3443,7 +3451,11 @@ pub mod tests {
                 ]),
                 Type::None,
             ),
-            metadata: FuncMetadata::method(&class, Name::new_static("overloaded_func")),
+            metadata: FuncMetadata::method(
+                &TestTypeEnv::new(),
+                &class,
+                Name::new_static("overloaded_func"),
+            ),
         };
 
         let overload = Type::Overload(Overload {

@@ -36,7 +36,7 @@ fn test_explicit_new_receiver_with_ellipsis_inputs() {
                 CallArg::ty(&first, range),
                 CallArg::ty(&second, range),
             ];
-            let metadata = FuncMetadata::method(&class, dunder::NEW);
+            let metadata = FuncMetadata::method(&solver, &class, dunder::NEW);
             let errors = solver.error_collector();
             let (_, specialization_errors, return_errors, argmap, _, _) = solver.callable_infer(
                 Callable {

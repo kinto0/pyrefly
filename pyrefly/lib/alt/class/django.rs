@@ -780,7 +780,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                         return Some(attr);
                     }
-                    let metadata = FuncMetadata::method(cls.class_object(), dunder::GET);
+                    let metadata = FuncMetadata::method(self, cls.class_object(), dunder::GET);
                     let signatures = vec1![
                         (self.heap.mk_none(), self.heap.mk_class_type(cls.clone())),
                         (
@@ -817,7 +817,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if name != &dunder::SET {
                     return None;
                 }
-                let mut metadata = FuncMetadata::method(cls.class_object(), dunder::SET);
+                let mut metadata = FuncMetadata::method(self, cls.class_object(), dunder::SET);
                 metadata.flags.descriptor_setter = Some(Box::new(DescriptorSetterMetadata {
                     read_type: get_type.clone(),
                     override_type: override_type.clone(),
@@ -1118,7 +1118,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn property(&self, cls: &Class, name: Name, ty: Type) -> Type {
         let signature = Callable::list(ParamList::new(vec![self.class_self_param(cls, false)]), ty);
-        let mut metadata = FuncMetadata::method(cls, name);
+        let mut metadata = FuncMetadata::method(self, cls, name);
         metadata.flags.property_metadata = Some(PropertyMetadata {
             role: PropertyRole::Getter,
             getter: self.heap.mk_any_error(),
@@ -1224,7 +1224,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let ret = self.heap.mk_class_type(self.stdlib.str().clone());
         ClassSynthesizedField::new(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret),
-            metadata: FuncMetadata::method(cls, method_name.clone()),
+            metadata: FuncMetadata::method(self, cls, method_name.clone()),
         }))
     }
 

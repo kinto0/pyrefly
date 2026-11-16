@@ -29,7 +29,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Type {
         self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret),
-            metadata: FuncMetadata::method(cls, name),
+            metadata: FuncMetadata::method(self, cls, name),
         })
     }
 }

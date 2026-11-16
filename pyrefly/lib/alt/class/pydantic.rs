@@ -227,7 +227,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if dataclass.kws.extra {
             params.push(Param::Kwargs(None, self.heap.mk_any_explicit()));
         }
-        let mut metadata = FuncMetadata::method(cls, MODEL_CONSTRUCT);
+        let mut metadata = FuncMetadata::method(self, cls, MODEL_CONSTRUCT);
         metadata.flags.is_classmethod = true;
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self_type),

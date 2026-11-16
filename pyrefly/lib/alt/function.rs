@@ -917,7 +917,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::AbstractMethodWithImplementation,
                 format!(
                     "`{}` is decorated with `@abstractmethod` but has an implementation",
-                    def.metadata.kind.format(self.module().name())
+                    def.metadata.kind.format(self, self.module().name())
                 ),
             );
         }

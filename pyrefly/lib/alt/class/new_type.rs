@@ -45,7 +45,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ];
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
-            metadata: FuncMetadata::method(cls, dunder::INIT),
+            metadata: FuncMetadata::method(self, cls, dunder::INIT),
         });
         ClassSynthesizedField::new(ty)
     }
@@ -61,7 +61,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ];
         let ty = self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), self.instantiate(cls)),
-            metadata: FuncMetadata::method(cls, dunder::NEW),
+            metadata: FuncMetadata::method(self, cls, dunder::NEW),
         });
         ClassSynthesizedField::new(ty)
     }

@@ -128,7 +128,7 @@ impl TypeCheckKind {
                     ctx.display(got),
                     param_desc,
                     ctx.display(want),
-                    function_suffix(func_id.as_ref(), current_module),
+                    function_suffix(env, func_id.as_ref(), current_module),
                 )
             }
             Self::CallVarArgs(arg_is_unpacked, param, func_id) => {
@@ -147,7 +147,7 @@ impl TypeCheckKind {
                     ctx.display(got),
                     param_desc,
                     ctx.display(want),
-                    function_suffix(func_id.as_ref(), current_module),
+                    function_suffix(env, func_id.as_ref(), current_module),
                 )
             }
             Self::CallKwArgs(arg, param, func_id) => {
@@ -165,7 +165,7 @@ impl TypeCheckKind {
                     ctx.display(got),
                     param_desc,
                     ctx.display(want),
-                    function_suffix(func_id.as_ref(), current_module),
+                    function_suffix(env, func_id.as_ref(), current_module),
                 )
             }
             Self::CallUnpackKwArg(param, func_id) => format!(
@@ -173,7 +173,7 @@ impl TypeCheckKind {
                 ctx.display(got),
                 param,
                 ctx.display(want),
-                function_suffix(func_id.as_ref(), current_module),
+                function_suffix(env, func_id.as_ref(), current_module),
             ),
             Self::CallExtraItems(_, param, func_id) => {
                 let param_desc = match param {
@@ -185,7 +185,7 @@ impl TypeCheckKind {
                     ctx.display(got),
                     param_desc,
                     ctx.display(want),
-                    function_suffix(func_id.as_ref(), current_module),
+                    function_suffix(env, func_id.as_ref(), current_module),
                 )
             }
             Self::FunctionParameterDefault(param) => format!(
@@ -317,9 +317,13 @@ impl TypeCheckKind {
     }
 }
 
-pub fn function_suffix(func_kind: Option<&FunctionKind>, current_module: ModuleName) -> String {
+pub fn function_suffix(
+    env: &dyn TypeEnv,
+    func_kind: Option<&FunctionKind>,
+    current_module: ModuleName,
+) -> String {
     match func_kind {
-        Some(func) => format!(" in function `{}`", func.format(current_module)),
+        Some(func) => format!(" in function `{}`", func.format(env, current_module)),
         None => "".to_owned(),
     }
 }

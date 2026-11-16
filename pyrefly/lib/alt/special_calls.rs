@@ -634,7 +634,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     );
                 }
                 let class_info_metadata = self.get_metadata_for_class(class_info_cls);
-                let func_display = || format!("{}()", func_kind.format(self.module().name()));
+                let func_display = || format!("{}()", func_kind.format(self, self.module().name()));
                 if class_info_metadata.is_new_type() {
                     self.error(
                         errors,

@@ -29,6 +29,7 @@ use ruff_python_ast::name::Name;
 use crate::callable::Callable;
 use crate::class::Class;
 use crate::class::ClassType;
+use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::keywords::DataclassTransformMetadata;
 use crate::type_level_dsl::ResolvedTypeShapeDslFunction;
@@ -81,8 +82,8 @@ impl FuncMetadata {
         }
     }
 
-    pub fn method(cls: &Class, name: Name) -> Self {
-        Self::synthesized(cls.module(), Some(cls), name)
+    pub fn method(env: &dyn TypeEnv, cls: &Class, name: Name) -> Self {
+        Self::synthesized(cls.module_in(env), Some(cls), name)
     }
 }
 
@@ -602,7 +603,7 @@ impl FunctionKind {
             Self::FunctoolsWraps => ModuleName::functools(),
             Self::FunctoolsUpdateWrapper => ModuleName::functools(),
             Self::RuntimeCheckable => ModuleName::typing(),
-            Self::CallbackProtocol(cls) => cls.qname().module_name(),
+            Self::CallbackProtocol(cls) => cls.class_object().module_name(),
             Self::SingleDispatchRegister(_) => ModuleName::functools(),
             Self::AbstractMethod => ModuleName::abc(),
             Self::NoTypeCheck => ModuleName::typing(),
@@ -711,7 +712,7 @@ impl FunctionKind {
         id.qname.parent().ancestor_function_path(id.qname.module())
     }
 
-    pub fn format(&self, current_module: ModuleName) -> String {
+    pub fn format(&self, env: &dyn TypeEnv, current_module: ModuleName) -> String {
         let func_module = self.module_name();
         let module_prefix = if func_module.as_str().is_empty()
             || func_module == current_module
@@ -723,7 +724,7 @@ impl FunctionKind {
         };
         let class_prefix = match &self.class() {
             Some(cls) => {
-                format!("{}.", cls.name())
+                format!("{}.", cls.name_in(env))
             }
             None => "".to_owned(),
         };
@@ -762,6 +763,7 @@ mod tests {
     use super::FuncDefId;
     use super::FuncDefIndex;
     use super::FunctionKind;
+    use crate::test_type_env::TestTypeEnv;
 
     fn identifier(source: &str, name: &str) -> Identifier {
         let start = source
@@ -805,7 +807,7 @@ mod tests {
             "Outer.factory.Inner.target"
         );
         assert_eq!(
-            FunctionKind::Def(Arc::new(id)).format(module.name()),
+            FunctionKind::Def(Arc::new(id)).format(&TestTypeEnv::new(), module.name()),
             "target"
         );
     }

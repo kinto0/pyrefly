@@ -9,7 +9,6 @@ use std::cell::Cell;
 use std::cell::LazyCell;
 use std::cell::RefCell;
 use std::fmt;
-use std::fmt::Display;
 use std::iter::once;
 use std::slice;
 
@@ -42,6 +41,7 @@ use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::UnpackKind;
+use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
@@ -122,6 +122,7 @@ use crate::types::callable::Params;
 use crate::types::callable::Required;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
+use crate::types::env::TypeEnv;
 use crate::types::facet::FacetKind;
 use crate::types::literal::Lit;
 use crate::types::quantified::Quantified;
@@ -399,7 +400,7 @@ impl ConditionRedundantReason {
         }
     }
 
-    fn description(&self) -> String {
+    fn description(&self, env: &dyn TypeEnv) -> String {
         match self {
             ConditionRedundantReason::IntLiteral(..) => {
                 "Integer literal used as condition".to_owned()
@@ -417,7 +418,7 @@ impl ConditionRedundantReason {
             ConditionRedundantReason::Function(module_name, func_id) => {
                 format!(
                     "Function object `{}` used as condition",
-                    func_id.format(module_name.dupe())
+                    func_id.format(env, module_name.dupe())
                 )
             }
             ConditionRedundantReason::Class(name) => {
@@ -430,12 +431,12 @@ impl ConditionRedundantReason {
     }
 }
 
-impl Display for ConditionRedundantReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ConditionRedundantReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         write!(
             f,
             "{}. It's equivalent to {}",
-            self.description(),
+            self.description(env),
             match self.equivalent_boolean() {
                 Some(true) => "`True`",
                 Some(false) => "`False`",
@@ -1845,7 +1846,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }),
             _ => ty
                 .to_func_kind()
-                .map(|func_kind| func_kind.format(self.module().name())),
+                .map(|func_kind| func_kind.format(self, self.module().name())),
         };
         if let Some(deprecated_name) = deprecated_name {
             let header = format!("`{deprecated_name}` is deprecated");
@@ -5399,7 +5400,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::RedundantCondition,
-                format!("{reason}"),
+                reason.display_with(self).to_string(),
             );
         }
     }

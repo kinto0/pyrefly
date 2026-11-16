@@ -1198,7 +1198,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "{}{}",
                     msg,
-                    function_suffix(callable_name, self.module().name())
+                    function_suffix(self, callable_name, self.module().name())
                 ),
                 context,
             )

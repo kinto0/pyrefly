@@ -1512,7 +1512,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         } else {
                             callable.clone()
                         },
-                        metadata: FuncMetadata::method(cls, name.clone()),
+                        metadata: FuncMetadata::method(self, cls, name.clone()),
                     })),
                 )
             })

@@ -951,7 +951,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             let header = format!(
                 "`{}` is deprecated",
-                metadata.kind.format(self.module().name())
+                metadata.kind.format(self, self.module().name())
             );
             let mut builder = if let Some(ctx) = context {
                 errors
@@ -1930,7 +1930,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && meta.flags.module_style == ModuleStyle::Executable
             && self.should_error_for_abstract_call(&call_target)
         {
-            let method_name = meta.kind.format(self.module().name());
+            let method_name = meta.kind.format(self, self.module().name());
             self.error_with_context(
                 errors,
                 arguments_range,

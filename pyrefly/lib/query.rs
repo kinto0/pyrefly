@@ -662,7 +662,7 @@ impl<'a> CalleesWithLocation<'a> {
                 FunctionKind::CallbackProtocol(cls) => {
                     format!("{}.__call__", Self::qname_to_string(cls.qname_in(env)))
                 }
-                x => x.format(ModuleName::builtins()),
+                x => x.format(env, ModuleName::builtins()),
             }
         }
     }

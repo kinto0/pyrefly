@@ -120,7 +120,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         params.push(Param::Kwargs(None, self.heap.mk_any_implicit()));
         ClassSynthesizedField::new_classvar(self.heap.mk_function(Function {
             signature: Callable::list(ParamList::new(params), ret_type),
-            metadata: FuncMetadata::method(cls, name.clone()),
+            metadata: FuncMetadata::method(self, cls, name.clone()),
         }))
     }
 }

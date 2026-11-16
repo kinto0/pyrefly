@@ -541,7 +541,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         .1
                         .metadata
                         .kind
-                        .format(self.module().name())
+                        .format(self, self.module().name())
                 );
                 let detail = deprecation.as_error_detail();
                 let mut error_builder =
@@ -753,7 +753,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
         let header = format!(
             "No matching overload found for function `{}` called with arguments: {}",
-            metadata.kind.format(self.module().name()),
+            metadata.kind.format(self, self.module().name()),
             args_display
         );
         let mut details = vec!["Possible overloads:".to_owned()];
