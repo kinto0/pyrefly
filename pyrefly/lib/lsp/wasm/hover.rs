@@ -8,7 +8,6 @@
 // @lint-ignore-every SPELL
 
 use std::cell::LazyCell;
-use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use dupe::Dupe;
@@ -728,45 +727,6 @@ fn class_display_type(solver: &AnswersSolver<TransactionHandle<'_>>, type_: &Typ
     Some(solver.for_display(constructor))
 }
 
-fn parameter_documentation_for_callee(
-    transaction: &Transaction<'_>,
-    handle: &Handle,
-    callee_range: TextRange,
-) -> Option<HashMap<String, String>> {
-    let position = callee_range.start();
-    let docstring = transaction
-        .find_definition(
-            handle,
-            position,
-            FindPreference {
-                prefer_pyi: false,
-                include_interpreter_stdlib: true,
-                ..Default::default()
-            },
-        )
-        .map(Vec1::into_vec)
-        .unwrap_or_default()
-        .into_iter()
-        .find_map(|item| {
-            item.docstring_range
-                .map(|range| (range, item.module.clone()))
-        })
-        .or_else(|| {
-            transaction
-                .find_definition(handle, position, FindPreference::default())
-                .map(Vec1::into_vec)
-                .unwrap_or_default()
-                .into_iter()
-                .find_map(|item| {
-                    item.docstring_range
-                        .map(|range| (range, item.module.clone()))
-                })
-        })?;
-    let (range, module) = docstring;
-    let docs = parse_parameter_documentation(module.code_at(range));
-    if docs.is_empty() { None } else { Some(docs) }
-}
-
 fn keyword_argument_documentation(
     transaction: &Transaction<'_>,
     handle: &Handle,
@@ -777,7 +737,7 @@ fn keyword_argument_documentation(
         return None;
     }
     let CallInfo { callee_range, .. } = transaction.get_callables_from_call(handle, position)?;
-    let docs = parameter_documentation_for_callee(transaction, handle, callee_range)?;
+    let docs = transaction.parameter_documentation_for_callee(handle, callee_range)?;
     let name = identifier.identifier.id.to_string();
     docs.get(name.as_str()).cloned().map(|doc| (name, doc))
 }

@@ -348,7 +348,8 @@ impl Transaction<'_> {
             })
     }
 
-    fn parameter_documentation_for_callee(
+    /// Parameter documentation for the callee at `callee_range`, read from its docstring.
+    pub(crate) fn parameter_documentation_for_callee(
         &self,
         handle: &Handle,
         callee_range: TextRange,
