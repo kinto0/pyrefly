@@ -967,7 +967,8 @@ impl ClassField {
         }
     }
 
-    pub fn as_typed_dict_field_info(&self, required_by_default: bool) -> Option<TypedDictField> {
+    /// The declared type and qualifiers of this field, if it is annotated like a TypedDict field.
+    fn typed_dict_annotation(&self) -> Option<(&Type, &[Qualifier])> {
         match &self.0 {
             ClassFieldInner::ClassAttribute {
                 annotation:
@@ -976,46 +977,41 @@ impl ClassField {
                         qualifiers,
                     }),
                 ..
-            } => Some(TypedDictField {
-                ty: ty.clone(),
-                read_only_reason: if qualifiers.contains(&Qualifier::ReadOnly) {
-                    Some(ReadOnlyReason::ReadOnlyQualifier)
-                } else {
-                    None
-                },
-                required: if qualifiers.contains(&Qualifier::Required) {
-                    true
-                } else if qualifiers.contains(&Qualifier::NotRequired) {
-                    false
-                } else {
-                    required_by_default
-                },
-            }),
-            ClassFieldInner::InstanceAttribute {
+            }
+            | ClassFieldInner::InstanceAttribute {
                 annotation:
                     Some(Annotation {
                         ty: Some(ty),
                         qualifiers,
                     }),
                 ..
-            } => Some(TypedDictField {
-                ty: ty.clone(),
-                read_only_reason: if qualifiers.contains(&Qualifier::ReadOnly) {
-                    Some(ReadOnlyReason::ReadOnlyQualifier)
-                } else {
-                    None
-                },
-                required: if qualifiers.contains(&Qualifier::Required) {
-                    true
-                } else if qualifiers.contains(&Qualifier::NotRequired) {
-                    false
-                } else {
-                    required_by_default
-                },
-            }),
-            ClassFieldInner::Property { .. } => None,
+            } => Some((ty, qualifiers.as_slice())),
             _ => None,
         }
+    }
+
+    /// Whether this TypedDict field is required, or `None` if this is not a TypedDict field.
+    /// Unlike `as_typed_dict_field_info`, this does not clone the field's type, which can be large.
+    pub fn is_required_typed_dict_field(&self, required_by_default: bool) -> Option<bool> {
+        let (_, qualifiers) = self.typed_dict_annotation()?;
+        Some(if qualifiers.contains(&Qualifier::Required) {
+            true
+        } else if qualifiers.contains(&Qualifier::NotRequired) {
+            false
+        } else {
+            required_by_default
+        })
+    }
+
+    pub fn as_typed_dict_field_info(&self, required_by_default: bool) -> Option<TypedDictField> {
+        let (ty, qualifiers) = self.typed_dict_annotation()?;
+        Some(TypedDictField {
+            ty: ty.clone(),
+            read_only_reason: qualifiers
+                .contains(&Qualifier::ReadOnly)
+                .then_some(ReadOnlyReason::ReadOnlyQualifier),
+            required: self.is_required_typed_dict_field(required_by_default)?,
+        })
     }
 
     fn is_dataclass_kwonly_marker(&self) -> bool {

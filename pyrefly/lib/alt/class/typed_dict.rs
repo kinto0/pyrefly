@@ -101,20 +101,35 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // optional, and any key it does not have is checked against the union of its field
         // types, so the "missing required key" and "key not defined" errors below are
         // unreachable for it.
-        let (fields, extra_items, typed_dict_name) = match typed_dict {
+        //
+        // Only the keys present in the literal need instantiated field types. Instantiating every
+        // field would be costly when checking against each member of a union of large TypedDicts.
+        let (requiredness, extra_items, typed_dict_name) = match typed_dict {
             TypedDictHint::Declared(inner) => (
-                self.typed_dict_fields(inner),
+                self.typed_dict_field_requiredness(inner),
                 self.typed_dict_extra_items(inner),
                 inner.name(self).clone(),
             ),
             TypedDictHint::Anonymous(inner) => (
-                inner.fields.iter().cloned().collect(),
+                inner
+                    .fields
+                    .iter()
+                    .map(|(name, field)| (name.clone(), field.required))
+                    .collect(),
                 ExtraItems::Extra(ExtraItem {
                     ty: inner.compute_value_type(self.heap),
                     read_only: false,
                 }),
                 ANONYMOUS_TYPED_DICT.clone(),
             ),
+        };
+        let field = |name: &Name| match typed_dict {
+            TypedDictHint::Declared(inner) => self.typed_dict_field(inner, name),
+            TypedDictHint::Anonymous(inner) => inner
+                .fields
+                .iter()
+                .find(|(field_name, _)| field_name == name)
+                .map(|(_, field)| field.clone()),
         };
         let mut has_unknown_expansion = false;
         let mut keys: SmallSet<Name> = SmallSet::new();
@@ -125,7 +140,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     && let Lit::Str(name) = &lit.value
                 {
                     let key_name = Name::new(name);
-                    match fields.get(&key_name) {
+                    match field(&key_name) {
                         Some(field) if is_update && field.is_read_only() => {
                             self.error(
                                 check_errors,
@@ -178,7 +193,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             );
                             if let Some(suggestion) = best_suggestion(
                                 &key_name,
-                                fields
+                                requiredness
                                     .keys()
                                     .map(|candidate| Candidate::measured(candidate, 0)),
                             ) {
@@ -259,8 +274,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         });
         // You can update a TypedDict with a subset of its items. Otherwise, all required fields must be present.
         if !has_unknown_expansion && !is_update {
-            for (key, field) in &fields {
-                if field.required && !keys.contains(key) {
+            for (key, required) in &requiredness {
+                if *required && !keys.contains(key) {
                     self.error(
                         check_errors,
                         range,
@@ -353,6 +368,25 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .filter_map(|(name, is_total)| {
                     self.instantiate_typed_dict_field(typed_dict, name, *is_total)
                         .map(|field| (name.clone(), field))
+                })
+                .collect(),
+        }
+    }
+
+    /// Whether each field of `typed_dict` is required, keyed by field name. Unlike
+    /// `typed_dict_fields`, this does not instantiate any field types.
+    fn typed_dict_field_requiredness(&self, typed_dict: &ClassType) -> SmallMap<Name, bool> {
+        let class = typed_dict.class_object();
+        match self.get_metadata_for_class(class).typed_dict_metadata() {
+            None => SmallMap::new(),
+            Some(typed_dict_metadata) => typed_dict_metadata
+                .fields
+                .iter()
+                .filter_map(|(name, is_total)| {
+                    let required = self
+                        .get_non_synthesized_class_member(class, name)?
+                        .is_required_typed_dict_field(*is_total)?;
+                    Some((name.clone(), required))
                 })
                 .collect(),
         }
