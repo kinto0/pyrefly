@@ -350,7 +350,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 range,
                 format!(
                     "`__new__` on `{}` resolves back to the same class, creating infinite recursion at runtime",
-                    cls.name_in(self)
+                    cls.name(self)
                 ),
                 ErrorKind::NotCallable,
                 context,
@@ -1856,7 +1856,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::UnnecessaryTypeConversion,
                     format!(
                         "Unnecessary `{}()` call; argument is already of type `{}`",
-                        cls.name_in(self),
+                        cls.name(self),
                         arg_ty.deterministic_printing().display_with(self),
                     ),
                 );
@@ -1961,7 +1961,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         call_errors,
                         arguments_range,
                         ErrorKind::BadInstantiation,
-                        format!("`{}` cannot be instantiated", cls.name_in(self)),
+                        format!("`{}` cannot be instantiated", cls.name(self)),
                         context,
                     ));
                 }
@@ -1977,7 +1977,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadInstantiation,
                         format!(
                             "Cannot instantiate `{}` because it is a protocol",
-                            cls.name_in(self)
+                            cls.name(self)
                         ),
                         context,
                     );
@@ -1992,7 +1992,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because the following members are abstract: {}",
-                                cls.name_in(self),
+                                cls.name(self),
                                 unimplemented_abstract_methods
                                     .iter()
                                     .map(|x| format!("`{x}`"))
@@ -2008,7 +2008,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::DirectAbstractBaseInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because it directly extends `ABC` or uses `ABCMeta`",
-                                cls.name_in(self)
+                                cls.name(self)
                             ),
                             context,
                         );
@@ -2255,7 +2255,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if let Some(cls) = transformed {
                     let metadata = self.get_metadata_for_class(cls);
                     self.report_forbidden_dataclass_target(
-                        cls.name_in(self),
+                        cls.name(self),
                         metadata.is_protocol(),
                         metadata.is_enum(),
                         metadata.is_typed_dict(),

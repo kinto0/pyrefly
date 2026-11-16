@@ -55,7 +55,7 @@ fn find_overridden_base_method(
     let class_id = ClassId::from_class(&defining_class);
     context
         .resolver
-        .resolve_pysa_solutions(defining_class.module_in(context.resolver.type_env()))
+        .resolve_pysa_solutions(defining_class.module(context.resolver.type_env()))
         .module_index
         .get_function_ref_for_class_field(class_id, field_name)
 }

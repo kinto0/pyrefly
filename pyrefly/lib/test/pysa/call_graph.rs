@@ -111,7 +111,7 @@ impl FunctionRefForTest {
         };
         let defining_class = function_definition
             .and_then(|d| d.defining_class.as_ref())
-            .map(|class| class.class.name().to_string());
+            .map(|class| class.class.name(resolver.type_env()).to_string());
         let is_property_setter = function_definition.is_some_and(|d| d.is_property_setter);
         let is_class_toplevel = match function_id {
             FunctionId::ClassTopLevel { class_id } => Some(class_id),

@@ -3693,7 +3693,7 @@ impl<'a> Transaction<'a> {
             // class is what defines it.
             FunctionKind::CallbackProtocol(cls) => {
                 let env = self.type_env(handle);
-                let qname = cls.qname_in(&env);
+                let qname = cls.qname(&env);
                 Some(Ok(TextRangeWithModule::new(
                     qname.module().clone(),
                     qname.range(),

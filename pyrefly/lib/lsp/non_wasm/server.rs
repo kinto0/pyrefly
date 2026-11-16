@@ -7332,14 +7332,14 @@ impl Server {
         let type_hierarchy_item_from_class_type =
             move |env: &dyn TypeEnv, class_type: &ClassType| -> Option<TypeHierarchyItem> {
                 let class = class_type.class_object();
-                let module = class.module_in(env);
+                let module = class.module(env);
                 let uri = module_info_to_uri(module, path_remapper.as_ref())?;
-                let range = module.to_lsp_range(class.range_in(env));
+                let range = module.to_lsp_range(class.range(env));
                 Some(TypeHierarchyItem {
-                    name: class.name_in(env).to_string(),
+                    name: class.name(env).to_string(),
                     kind: SymbolKind::Class,
                     tags: None,
-                    detail: Some(format!("{}.{}", module.name(), class.name_in(env))),
+                    detail: Some(format!("{}.{}", module.name(), class.name(env))),
                     uri,
                     range,
                     selection_range: range,

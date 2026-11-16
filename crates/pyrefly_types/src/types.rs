@@ -1766,8 +1766,8 @@ impl Type {
         match self {
             Type::Callable(_) => Some(CalleeKind::Callable),
             Type::Function(func) => Some(CalleeKind::Function(func.metadata.kind.clone())),
-            Type::ClassDef(c) => Some(CalleeKind::Class(c.kind_in(env))),
-            Type::SpecializedClassDef(c) => Some(CalleeKind::Class(c.class_object().kind())),
+            Type::ClassDef(c) => Some(CalleeKind::Class(c.kind(env))),
+            Type::SpecializedClassDef(c) => Some(CalleeKind::Class(c.kind(env))),
             Type::Forall(forall) => forall.body.clone().as_type().callee_kind(env),
             Type::Overload(overload) => Some(CalleeKind::Function(overload.metadata.kind.clone())),
             Type::KwCall(call) => call.return_ty.callee_kind(env),
@@ -2418,15 +2418,15 @@ impl Type {
     /// Does this type have a QName associated with it
     pub fn qname<'a>(&'a self, env: &'a dyn TypeEnv) -> Option<&'a QName> {
         match self {
-            Type::ClassDef(cls) => Some(cls.qname_in(env)),
-            Type::SpecializedClassDef(c) => Some(c.qname()),
-            Type::ClassType(c) => Some(c.qname_in(env)),
-            Type::PartialTypedDict(c) => Some(c.qname_in(env)),
+            Type::ClassDef(cls) => Some(cls.qname(env)),
+            Type::SpecializedClassDef(c) => Some(c.qname(env)),
+            Type::ClassType(c) => Some(c.qname(env)),
+            Type::PartialTypedDict(c) => Some(c.qname(env)),
             Type::TypeVar(t) => Some(t.qname()),
             Type::TypeVarTuple(t) => Some(t.qname()),
             Type::ParamSpec(t) => Some(t.qname()),
-            Type::SelfType(cls) => Some(cls.qname_in(env)),
-            Type::Literal(lit) if let Lit::Enum(e) = &lit.value => Some(e.class.qname_in(env)),
+            Type::SelfType(cls) => Some(cls.qname(env)),
+            Type::Literal(lit) if let Lit::Enum(e) = &lit.value => Some(e.class.qname(env)),
             Type::Sentinel(s) => Some(s.qname()),
             _ => None,
         }

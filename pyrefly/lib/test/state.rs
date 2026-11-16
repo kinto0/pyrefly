@@ -543,7 +543,7 @@ class Plain: ...
     };
     let type_env = transaction.type_env(&main);
     let tparam_names = |cls: &Class| {
-        cls.tparams_in(&type_env)
+        cls.tparams(&type_env)
             .iter()
             .map(|q| q.name().to_string())
             .collect::<Vec<_>>()
@@ -567,7 +567,7 @@ class Plain: ...
     }
     assert_eq!(tparam_names(&legacy_box), ["T"]);
     assert_eq!(tparam_names(&class("Box")), ["S"]);
-    assert!(class("Plain").tparams_in(&type_env).is_empty());
+    assert!(class("Plain").tparams(&type_env).is_empty());
 }
 
 #[test]

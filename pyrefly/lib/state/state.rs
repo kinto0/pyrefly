@@ -3792,7 +3792,7 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
         // both module resolution and dep tracking through deferred_deps.
         let module_data = self
             .get_module(
-                LookupModule::Exact(cls.module().key()),
+                LookupModule::Exact(cls.module_key()),
                 ModuleDep::Class(cls.index()),
             )
             .finding()

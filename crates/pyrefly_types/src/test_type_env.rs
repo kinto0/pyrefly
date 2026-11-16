@@ -340,15 +340,15 @@ mod tests {
         let cls = env.class("foo", "Bar");
         // Read through a trait object to check that `TypeEnv` is object safe.
         let env: &dyn TypeEnv = &env;
-        assert!(std::ptr::eq(cls.def_in(env), cls.inline_def()));
-        assert_eq!(cls.name_in(env).as_str(), "Bar");
-        assert_eq!(cls.qname_in(env).id().as_str(), "Bar");
-        assert_eq!(cls.module_in(env).name(), ModuleName::from_str("foo"));
-        assert_eq!(cls.range_in(env), TextRange::default());
-        assert!(!cls.is_protocol_in(env));
-        assert!(cls.deprecation_in(env).is_none());
-        assert_eq!(cls.kind_in(env), ClassKind::Class);
-        assert!(cls.tparams_in(env).is_empty());
+        assert!(std::ptr::eq(cls.def(env), cls.inline_def()));
+        assert_eq!(cls.name(env).as_str(), "Bar");
+        assert_eq!(cls.qname(env).id().as_str(), "Bar");
+        assert_eq!(cls.module(env).name(), ModuleName::from_str("foo"));
+        assert_eq!(cls.range(env), TextRange::default());
+        assert!(!cls.is_protocol(env));
+        assert!(cls.deprecation(env).is_none());
+        assert_eq!(cls.kind(env), ClassKind::Class);
+        assert!(cls.tparams(env).is_empty());
         assert_eq!(cls.known(), None, "`foo.Bar` is not a known class");
     }
 
@@ -358,23 +358,23 @@ mod tests {
         let t = type_var("T", Restriction::Unrestricted, None);
         let tparams = TParams::new(vec![t]);
         let cls = env.generic_class("foo", "Box", tparams.clone());
-        assert_eq!(cls.tparams_in(&env), &tparams);
+        assert_eq!(cls.tparams(&env), &tparams);
 
         let class_type = ClassType::new(
             cls,
             TArgs::new(Arc::new(tparams.clone()), vec![Type::any_implicit()]),
         );
-        assert_eq!(class_type.tparams_in(&env), &tparams);
-        assert_eq!(class_type.name_in(&env).as_str(), "Box");
+        assert_eq!(class_type.class_object().tparams(&env), &tparams);
+        assert_eq!(class_type.name(&env).as_str(), "Box");
     }
 
     #[test]
     fn test_stdlib_classes() {
         let env = TestTypeEnv::new();
         let int = env.stdlib().int();
-        assert_eq!(int.name_in(&env).as_str(), "int");
+        assert_eq!(int.name(&env).as_str(), "int");
         assert!(int.is(KnownClass::Int));
-        assert!(int.tparams_in(&env).is_empty());
+        assert!(int.class_object().tparams(&env).is_empty());
         assert_ne!(
             env.stdlib().int().class_object(),
             env.stdlib().str().class_object(),

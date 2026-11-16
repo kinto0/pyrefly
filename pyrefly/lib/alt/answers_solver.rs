@@ -2366,7 +2366,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// fewer classes. A class of this module can be stale too, when it comes from a mutually
     /// recursive module whose answers predate this module's rebuild.
     pub fn get_class_fields(&self, cls: &Class) -> Option<&ClassFields> {
-        if cls.module().key().exact() == self.module().key().exact() {
+        if cls.module_key().exact() == self.module().key().exact() {
             return self.bindings().get_class_fields(cls.index());
         }
         self.answers.get_class_fields(cls)
@@ -3712,7 +3712,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
         SolutionsTable: TableKeyed<K, Value = SolutionsEntry<K>>,
     {
-        self.get_from_module(LookupModule::Exact(cls.module().key()), k)
+        self.get_from_module(LookupModule::Exact(cls.module_key()), k)
     }
 
     /// Resolve a type alias, borrowing it when no substitution is needed.

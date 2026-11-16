@@ -83,7 +83,7 @@ impl FuncMetadata {
     }
 
     pub fn method(env: &dyn TypeEnv, cls: &Class, name: Name) -> Self {
-        Self::synthesized(cls.module_in(env), Some(cls), name)
+        Self::synthesized(cls.module(env), Some(cls), name)
     }
 }
 
@@ -724,7 +724,7 @@ impl FunctionKind {
         };
         let class_prefix = match &self.class() {
             Some(cls) => {
-                format!("{}.", cls.name_in(env))
+                format!("{}.", cls.name(env))
             }
             None => "".to_owned(),
         };

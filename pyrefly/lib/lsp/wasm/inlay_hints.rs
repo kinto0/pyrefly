@@ -171,11 +171,11 @@ impl<'a> Transaction<'a> {
                         // Exclude enum literals
                         match &**value {
                             Expr::Name(object) => {
-                                *object.id() != *lit_enum.class.name_in(&type_env)
+                                *object.id() != *lit_enum.class.name(&type_env)
                                     || *attr.id() != *lit_enum.member
                             }
                             Expr::Attribute(ExprAttribute { attr: object, .. }) => {
-                                *object.id() != *lit_enum.class.name_in(&type_env)
+                                *object.id() != *lit_enum.class.name(&type_env)
                                     || *attr.id() != *lit_enum.member
                             }
                             _ => true,
@@ -311,7 +311,7 @@ impl<'a> Transaction<'a> {
                     let class_name = if let Type::ClassType(cls) = &ty
                         && cls.targs().is_empty()
                     {
-                        Some(cls.name_in(&type_env))
+                        Some(cls.name(&type_env))
                     } else {
                         None
                     };
@@ -377,7 +377,7 @@ impl<'a> Transaction<'a> {
                     let class_name = if let Type::ClassType(cls) = &ty
                         && cls.targs().is_empty()
                     {
-                        Some(cls.name_in(&type_env))
+                        Some(cls.name(&type_env))
                     } else {
                         None
                     };

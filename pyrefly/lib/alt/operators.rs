@@ -1386,7 +1386,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 emit_instance_is_class_warning(
                     &ctype.display_with(self).to_string(),
-                    cdef_inner.name_in(self).as_str(),
+                    cdef_inner.name(self).as_str(),
                     is_op,
                 );
             }

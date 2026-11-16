@@ -133,7 +133,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Type::Var(v) = base {
             base = self.solver().force_var(v);
         }
-        if matches!(&base, Type::ClassDef(t) if t.name_in(self) == "tuple") {
+        if matches!(&base, Type::ClassDef(t) if t.name(self) == "tuple") {
             base = self
                 .heap
                 .mk_type_of(self.heap.mk_special_form(SpecialForm::Tuple));
@@ -631,11 +631,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             self.error(
                 errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
                 format!(
                     "Class `{}` has a nonlinearizable inheritance chain detected at `object`",
-                    cls.name_in(self)
+                    cls.name(self)
                 ),
             );
         }

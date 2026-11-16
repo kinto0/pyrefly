@@ -153,7 +153,7 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for Lit {
                 write!(f, "'")
             }
             Lit::Enum(lit_enum) => {
-                write!(f, "{}.{}", lit_enum.class.name_in(env), lit_enum.member)
+                write!(f, "{}.{}", lit_enum.class.name(env), lit_enum.member)
             }
         }
     }

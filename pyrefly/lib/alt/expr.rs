@@ -1820,7 +1820,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             _ => None,
         };
         let deprecation = cls
-            .and_then(|cls| cls.deprecation_in(self))
+            .and_then(|cls| cls.deprecation(self))
             .or_else(|| ty.function_deprecation());
         let Some(deprecation) = deprecation else {
             return;
@@ -1840,9 +1840,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let deprecated_name = match cls {
             Some(cls) => Some(if cls.module_name() == self.module().name() {
-                cls.qname_in(self).name_relative_to_module()
+                cls.qname(self).name_relative_to_module()
             } else {
-                cls.qname_in(self).module_qualified_name()
+                cls.qname(self).module_qualified_name()
             }),
             _ => ty
                 .to_func_kind()
@@ -2577,7 +2577,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 return None;
             }
             let class = metadata.kind.class();
-            let class = class.as_ref().map(|class| class.name_in(self).as_str());
+            let class = class.as_ref().map(|class| class.name(self).as_str());
             let function = metadata.kind.function_name();
             match (class, function.as_ref().as_str()) {
                 (None, "compile" | "template") => Some(1),
@@ -3591,7 +3591,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::Var(v) = base {
                 base = self.solver().force_var(v);
             }
-            if matches!(&base, Type::ClassDef(t) if t.name_in(self) == "tuple") {
+            if matches!(&base, Type::ClassDef(t) if t.name(self) == "tuple") {
                 base = self.heap.mk_type_of(self.heap.mk_special_form(SpecialForm::Tuple));
             }
             if let Type::Intersect(x) = &base {
@@ -3836,7 +3836,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadIndex,
                                 format!(
                                     "Enum `{}` does not have a member named `{}`",
-                                    cls.name_in(self),
+                                    cls.name(self),
                                     key.to_str()
                                 ),
                             )
@@ -3851,7 +3851,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             slice.range(),
                             ErrorKind::BadIndex,
-                            format!("Enum `{}` can only be indexed by strings", cls.name_in(self)),
+                            format!("Enum `{}` can only be indexed by strings", cls.name(self)),
                         )
                     }
                 }
@@ -4074,7 +4074,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                             ErrorKind::BadTypedDictKey,
                                             format!(
                                                 "TypedDict `{}` does not have key `{key_name}`",
-                                                typed_dict.name_in(self)
+                                                typed_dict.name(self)
                                             ),
                                         );
                                         let fields = self.typed_dict_fields(typed_dict);
@@ -4112,7 +4112,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::BadTypedDictKey,
                                     format!(
                                         "Invalid key for TypedDict `{}`, got `{}`",
-                                        typed_dict.name_in(self),
+                                        typed_dict.name(self),
                                         self.display(ty.clone())
                                     ),
                                 )
@@ -5335,7 +5335,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::Literal(lit) if let Lit::Enum(e) = &lit.value => {
                 Some(ConditionRedundantReason::EnumLiteral(
-                    e.class.class_object().name_in(self).clone(),
+                    e.class.class_object().name(self).clone(),
                     e.member.clone(),
                 ))
             }
@@ -5351,7 +5351,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.module().name(),
                 kind.clone(),
             )),
-            Type::ClassDef(cls) => Some(ConditionRedundantReason::Class(cls.name_in(self).clone())),
+            Type::ClassDef(cls) => Some(ConditionRedundantReason::Class(cls.name(self).clone())),
             Type::ClassType(ct) => {
                 let cls = ct.class_object();
                 // Skip warning for `object` itself and for abstract/protocol types:
@@ -5378,7 +5378,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     && self.class_instances_always_truthy(cls)
                 {
                     Some(ConditionRedundantReason::InstanceAlwaysTruthy(
-                        cls.name_in(self).clone(),
+                        cls.name(self).clone(),
                     ))
                 } else {
                     None

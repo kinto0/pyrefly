@@ -227,7 +227,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                     if sources.len() != 1 {
                         self.error(
                             errors,
-                            cls.range_in(self),
+                            cls.range(self),
                             ErrorKind::InvalidTypeVar,
                             format!(
                                 "`Flag` type parameter `{}` must directly annotate exactly one constructor parameter, found {}",
@@ -242,7 +242,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                         {
                             self.error(
                                 errors,
-                                cls.range_in(self),
+                                cls.range(self),
                                 ErrorKind::InvalidTypeVar,
                                 format!(
                                     "Default for parameter binding `Flag[{domain}]` type parameter `{}` must be a `{domain}` literal, got `{}`",
@@ -255,7 +255,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                             if source.kind != expected.kind {
                                 self.error(
                                     errors,
-                                    cls.range_in(self),
+                                    cls.range(self),
                                     ErrorKind::InvalidTypeVar,
                                     format!(
                                         "`Flag` type parameter `{}` must bind from the same constructor argument in every signature",
@@ -265,7 +265,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                             } else if source.required != expected.required {
                                 self.error(
                                     errors,
-                                    cls.range_in(self),
+                                    cls.range(self),
                                     ErrorKind::InvalidTypeVar,
                                     format!(
                                         "Parameter binding `Flag` type parameter `{}` must have the same default in every constructor signature",
@@ -282,7 +282,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
             if !mentioned {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::InvalidTypeVar,
                     format!(
                         "`Flag` type parameter `{}` must directly annotate exactly one constructor parameter, found 0",

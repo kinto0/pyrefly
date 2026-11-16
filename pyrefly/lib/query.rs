@@ -365,7 +365,7 @@ pub(crate) fn literal_value_shape_name(env: &dyn TypeEnv, value: &Lit) -> String
         Lit::Enum(lit_enum) => {
             format!(
                 "{}.{}",
-                qname_to_string(lit_enum.class.qname_in(env)),
+                qname_to_string(lit_enum.class.qname(env)),
                 lit_enum.member
             )
         }
@@ -442,7 +442,7 @@ impl<'a> CalleesWithLocation<'a> {
         func_ty: &Type,
     ) -> Option<Vec<Callee>> {
         if let Type::ClassType(class) = &func_ty
-            && class.name_in(&self.transaction.type_env(&self.handle)) == "_lru_cache_wrapper"
+            && class.name(&self.transaction.type_env(&self.handle)) == "_lru_cache_wrapper"
             && let [def] = self
                 .transaction
                 .find_definition(
@@ -632,9 +632,9 @@ impl<'a> CalleesWithLocation<'a> {
         if let Some(f) = kind.to_func_symbol()
             && let Some(cls) = f.cls.as_ref()
         {
-            format!("{}.{}", f.module.name(), cls.name_in(env))
+            format!("{}.{}", f.module.name(), cls.name(env))
         } else if let FunctionKind::CallbackProtocol(c) = kind {
-            Self::qname_to_string(c.qname_in(env))
+            Self::qname_to_string(c.qname(env))
         } else {
             panic!("class_name_from_def_kind - unsupported function kind: {kind:?}");
         }
@@ -650,7 +650,7 @@ impl<'a> CalleesWithLocation<'a> {
             } else {
                 match f.cls.as_ref() {
                     Some(cls) => {
-                        format!("{}.{}.{}", f.module.name(), cls.name_in(env), f.name)
+                        format!("{}.{}.{}", f.module.name(), cls.name(env), f.name)
                     }
                     None => {
                         format!("{}.{}", f.module.name(), f.name)
@@ -660,7 +660,7 @@ impl<'a> CalleesWithLocation<'a> {
         } else {
             match kind {
                 FunctionKind::CallbackProtocol(cls) => {
-                    format!("{}.__call__", Self::qname_to_string(cls.qname_in(env)))
+                    format!("{}.__call__", Self::qname_to_string(cls.qname(env)))
                 }
                 x => x.format(env, ModuleName::builtins()),
             }
@@ -677,11 +677,7 @@ impl<'a> CalleesWithLocation<'a> {
                         .get_class_fields(c)
                         .is_some_and(|f| f.contains(&REPR))
                     {
-                        Some(format!(
-                            "{}.{}.__repr__",
-                            c.module_name(),
-                            c.name_in(solver)
-                        ))
+                        Some(format!("{}.{}.__repr__", c.module_name(), c.name(solver)))
                     } else {
                         None
                     }
@@ -797,7 +793,7 @@ impl<'a> CalleesWithLocation<'a> {
     /// and `ClassDef` never name one, because a TypedDict has no methods of its own.
     fn class_info_from_bound_obj(&self, env: &dyn TypeEnv, ty: &Type) -> Vec<(String, bool)> {
         match ty {
-            Type::SelfType(c) => Self::class_info_for_qname(c.qname_in(env), false),
+            Type::SelfType(c) => Self::class_info_for_qname(c.qname(env), false),
             // TODO: wrap in 'type'
             Type::Type(t) => self.class_info_from_bound_obj(env, t),
             Type::ClassType(c) => {
@@ -807,10 +803,10 @@ impl<'a> CalleesWithLocation<'a> {
                         solver.is_typed_dict_class(c.class_object())
                     })
                     .expect("the queried handle is solved before callees are gathered");
-                Self::class_info_for_qname(c.qname_in(env), is_typed_dict)
+                Self::class_info_for_qname(c.qname(env), is_typed_dict)
             }
-            Type::SpecializedClassDef(c) => Self::class_info_for_qname(c.qname_in(env), false),
-            Type::ClassDef(c) => Self::class_info_for_qname(c.qname_in(env), false),
+            Type::SpecializedClassDef(c) => Self::class_info_for_qname(c.qname(env), false),
+            Type::ClassDef(c) => Self::class_info_for_qname(c.qname(env), false),
             Type::AnonymousTypedDict(_) => vec![],
             Type::Literal(lit) if matches!(lit.value, Lit::Str(_)) => {
                 vec![(String::from("builtins.str"), false)]
@@ -865,8 +861,7 @@ impl<'a> CalleesWithLocation<'a> {
                     .chain(mro.ancestors(solver.stdlib).map(|x| x.class_object()))
                     .find_map(|c| callee_from_ancestor(&solver, c))
             });
-        let class_name =
-            Self::qname_to_string(c.qname_in(&self.transaction.type_env(&self.handle)));
+        let class_name = Self::qname_to_string(c.qname(&self.transaction.type_env(&self.handle)));
         let target = if let Some(Some(t)) = call_target {
             t
         } else {
@@ -949,13 +944,9 @@ impl<'a> CalleesWithLocation<'a> {
                     .get_from_class(c, &KeyClassSynthesizedFields(c.index()))
                     .is_some_and(|f| f.get(&dunder::INIT).is_some());
             if has_init {
-                Some(format!(
-                    "{}.{}.__init__",
-                    c.module_name(),
-                    c.name_in(solver)
-                ))
+                Some(format!("{}.{}.__init__", c.module_name(), c.name(solver)))
             } else if class_fields.is_some_and(|f| f.contains(&dunder::NEW)) {
-                Some(format!("{}.{}.__new__", c.module_name(), c.name_in(solver)))
+                Some(format!("{}.{}.__new__", c.module_name(), c.name(solver)))
             } else {
                 None
             }
@@ -1105,11 +1096,7 @@ impl<'a> CalleesWithLocation<'a> {
                         .get_class_fields(c)
                         .is_some_and(|f| f.contains(&dunder::CALL))
                     {
-                        Some(format!(
-                            "{}.{}.__call__",
-                            c.module_name(),
-                            c.name_in(solver)
-                        ))
+                        Some(format!("{}.{}.__call__", c.module_name(), c.name(solver)))
                     } else {
                         None
                     }
@@ -1256,8 +1243,8 @@ impl Query {
                     (Some(String::from("property")), ty)
                 }
                 Type::ClassType(c)
-                    if (c.name_in(env) == "classproperty"
-                        || c.name_in(env) == "cached_classproperty")
+                    if (c.name(env) == "classproperty"
+                        || c.name(env) == "cached_classproperty")
                         && let Some(result_ty) = c.targs().as_slice().first() =>
                 {
                     (Some(String::from("property")), result_ty)

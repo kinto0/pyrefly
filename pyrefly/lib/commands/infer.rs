@@ -154,7 +154,7 @@ impl ParameterAnnotation {
 
 fn is_container(env: &dyn TypeEnv, hint: &Type) -> bool {
     match hint {
-        Type::ClassType(c) => c.name_in(env).eq("list") || c.name_in(env).eq("dict"),
+        Type::ClassType(c) => c.name(env).eq("list") || c.name(env).eq("dict"),
         _ => false,
     }
 }
@@ -215,8 +215,8 @@ fn format_hints(
             }
             // A DataFrame/Series renders as its underlying class, which `universe` does not visit.
             let qname = match sub_type {
-                Type::DataFrame(schema) => Some(schema.underlying.qname_in(env)),
-                Type::Series(schema) => Some(schema.underlying.qname_in(env)),
+                Type::DataFrame(schema) => Some(schema.underlying.qname(env)),
+                Type::Series(schema) => Some(schema.underlying.qname(env)),
                 _ => sub_type.qname(env),
             };
             if let Some(qname) = qname {

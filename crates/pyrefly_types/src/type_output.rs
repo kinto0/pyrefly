@@ -170,7 +170,7 @@ impl TypeOutput for AnnotationOutput<'_> {
     fn write_lit(&mut self, lit: &Lit) -> fmt::Result {
         let env = self.context.env();
         if let Lit::Enum(lit_enum) = lit {
-            self.write_qname(lit_enum.class.qname_in(env))?;
+            self.write_qname(lit_enum.class.qname(env))?;
             self.write_fmt(format_args!(".{}", lit_enum.member))
         } else {
             self.write_fmt(format_args!("{}", lit.display_with(env)))
@@ -258,7 +258,7 @@ impl TypeOutput for OutputWithLocations<'_> {
         let location = match lit {
             Lit::Enum(lit_enum) => {
                 // Enum literals have a class with a qname that has location info
-                let qname = lit_enum.class.qname_in(env);
+                let qname = lit_enum.class.qname(env);
                 Some(TextRangeWithModule::new(
                     qname.module().clone(),
                     qname.range(),

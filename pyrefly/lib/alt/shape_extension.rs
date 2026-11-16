@@ -252,7 +252,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                 for count in counts.into_iter().filter(|count| *count != 1) {
                     self.error(
                         errors,
-                        cls.range_in(self),
+                        cls.range(self),
                         ErrorKind::InvalidTypeVar,
                         format!(
                             "`NamedInts` type parameter `{}` must source exactly one constructor `CaptureNamedInts` parameter, found {count}",
@@ -264,7 +264,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
             if !mentioned {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::InvalidTypeVar,
                     format!(
                         "`NamedInts` type parameter `{}` must source exactly one constructor `CaptureNamedInts` parameter, found 0",

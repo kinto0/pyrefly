@@ -72,7 +72,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::MissingAttribute,
                 format!(
                     "Class `{}` must define at least one of the rich comparison methods.",
-                    cls.name_in(self)
+                    cls.name(self)
                 ),
             );
             return None;

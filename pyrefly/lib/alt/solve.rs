@@ -569,11 +569,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if !metadata.is_protocol() && metadata.is_final() {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::BadClassDefinition,
                     format!(
                         "Final class `{}` cannot have unimplemented abstract members: {}",
-                        cls.name_in(self),
+                        cls.name(self),
                         members
                     ),
                 );
@@ -583,11 +583,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::ImplicitAbstractClass,
                     format!(
                         "Class `{}` has unimplemented abstract members: {}",
-                        cls.name_in(self),
+                        cls.name(self),
                         members
                     ),
                 );
@@ -902,7 +902,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     Type::None => Some("`None`".to_owned()),
                     Type::Module(_) => Some("`types.ModuleType`".to_owned()),
-                    Type::ClassDef(cls) => Some(format!("`type[{}]`", cls.name_in(self))),
+                    Type::ClassDef(cls) => Some(format!("`type[{}]`", cls.name(self))),
                     _ => None,
                 }
             } else {
@@ -2706,13 +2706,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict `{}` does not have key `{field_name}`",
-                        typed_dict.name_in(self)
+                        typed_dict.name(self)
                     ),
                 );
                 return;
             };
         self.check_del_typed_dict_field(
-            typed_dict.name_in(self),
+            typed_dict.name(self),
             Some(field_name),
             read_only,
             required,
@@ -3852,14 +3852,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::OrderedDataclassInheritance,
                     format!(
                         "Cannot safely extend dataclass `{}` with `order=True`",
-                        generator.name_in(self)
+                        generator.name(self)
                     ),
                 )
                 .with_detail(format!(
                     "Comparisons between instances of `{}` and its subclasses raise `TypeError`. \
                      Define `__lt__`, `__le__`, `__gt__`, and `__ge__` on the subclass to allow \
                      them.",
-                    generator.name_in(self)
+                    generator.name(self)
                 ))
                 .emit();
         }
@@ -3924,9 +3924,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAbstractMethod,
                     format!(
                         "`{}.{}` is decorated with `@abstractmethod` but `{}` is not an abstract class",
-                        cls.name_in(self),
+                        cls.name(self),
                         name,
-                        cls.name_in(self)
+                        cls.name(self)
                     ),
                 );
             }
@@ -4146,12 +4146,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         // TODO: ideally this would point to where the TypeVar
                         // is bound in the class header rather than the class name.
-                        class.range_in(self),
+                        class.range(self),
                         ErrorKind::VarianceMismatch,
                         format!(
                             "Type variable `{}` in class `{}` is declared as invariant, but could be {} based on its usage",
                             tparam.name(),
-                            class.name_in(self),
+                            class.name(self),
                             effective_v,
                         ),
                     );
@@ -6902,12 +6902,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict `{}` does not have key `{field_name}`",
-                        typed_dict.name_in(self)
+                        typed_dict.name(self)
                     ),
                 );
             };
         self.check_assign_to_typed_dict_field(
-            typed_dict.name_in(self),
+            typed_dict.name(self),
             Some(field_name),
             &field_ty,
             read_only,
@@ -6953,7 +6953,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 self.get_typed_dict_value_type_as_builtins_dict(typed_dict) =>
                     {
                         self.check_assign_to_typed_dict_field(
-                            typed_dict.name_in(self),
+                            typed_dict.name(self),
                             None,
                             &field_ty,
                             false,
@@ -7520,7 +7520,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::UntypedClassDecorator,
                                 format!(
                                     "Untyped class decorator may modify `{}` in unexpected ways",
-                                    cls.name_in(self)
+                                    cls.name(self)
                                 ),
                             );
                         }
@@ -8380,7 +8380,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::InvalidAnnotation,
                 format!(
                     "NewType `{}` is not a class and cannot be used with `type` or `Type`",
-                    cls.name_in(self)
+                    cls.name(self)
                 ),
             );
         }
@@ -8438,7 +8438,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     .is_some() =>
                         {
                             self.check_del_typed_dict_field(
-                                typed_dict.name_in(self),
+                                typed_dict.name(self),
                                 None,
                                 false,
                                 false,

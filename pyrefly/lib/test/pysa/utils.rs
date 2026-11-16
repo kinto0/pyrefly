@@ -53,11 +53,12 @@ pub fn get_class(module_name: &str, class_name: &str, context: &ModuleContext) -
 
     // This is slow, but we don't care in tests.
     let answers = transaction.get_answers(&handle).unwrap();
+    let type_env = transaction.type_env(&handle);
     answers
         .bindings()
         .keys::<KeyClass>()
         .map(|idx| answers.get_idx(idx).unwrap().0.clone().unwrap())
-        .find(|class| class.name() == class_name)
+        .find(|class| class.name(&type_env) == class_name)
         .unwrap_or_else(|| panic!("expected valid class name, got `{module_name}.{class_name}`"))
 }
 
@@ -95,6 +96,7 @@ fn get_method_ref_with_predicate(
 ) -> FunctionRef {
     let transaction = context.resolver.transaction_for_tests();
     let handle = get_handle_for_module_name(module_name, transaction);
+    let type_env = transaction.type_env(&handle);
     let module_context =
         ModuleAnswersContext::create(handle.dupe(), transaction, context.module_ids());
 
@@ -109,10 +111,10 @@ fn get_method_ref_with_predicate(
                         .undecorated
                         .defining_cls
                         .as_ref()
-                        .is_some_and(|class| class.name().as_str() == class_name)
+                        .is_some_and(|class| class.name(&type_env).as_str() == class_name)
             }
             FunctionNode::ClassField { class, name, .. } => {
-                class.name().as_str() == class_name && name.as_str() == function_name
+                class.name(&type_env).as_str() == class_name && name.as_str() == function_name
             }
         })
         .unwrap_or_else(|| {

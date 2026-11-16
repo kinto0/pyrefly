@@ -272,7 +272,7 @@ pub(super) fn type_to_indexed_shape(
 ) -> usize {
     match ty {
         Type::ClassDef(cls) => {
-            let name = qname_to_string(cls.qname_in(&context.type_env));
+            let name = qname_to_string(cls.qname(&context.type_env));
             let class_index = insert_indexed_named(
                 table,
                 name,
@@ -298,7 +298,7 @@ pub(super) fn type_to_indexed_shape(
                 .collect::<Vec<_>>();
             insert_indexed_named(
                 table,
-                qname_to_string(class_type.qname_in(&context.type_env)),
+                qname_to_string(class_type.qname(&context.type_env)),
                 args,
                 None,
                 Vec::new(),
@@ -462,7 +462,7 @@ pub(super) fn type_to_indexed_shape(
                 .collect::<Vec<_>>();
             insert_indexed_named(
                 table,
-                qname_to_string(class_type.qname_in(&context.type_env)),
+                qname_to_string(class_type.qname(&context.type_env)),
                 args,
                 None,
                 Vec::new(),
@@ -518,7 +518,7 @@ fn typed_dict_to_indexed_shape(
         .collect::<Vec<_>>();
     insert_indexed_named(
         table,
-        qname_to_string(typed_dict.qname_in(&context.type_env)),
+        qname_to_string(typed_dict.qname(&context.type_env)),
         args,
         None,
         typed_dict_traits(is_partial),

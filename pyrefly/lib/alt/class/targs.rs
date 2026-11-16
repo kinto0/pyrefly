@@ -87,15 +87,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> ClassType {
         let targs = match self.get_class_tparams(cls) {
-            Some(tparams) => self.create_targs(
-                cls.name_in(self),
-                tparams.dupe(),
-                targs,
-                range,
-                true,
-                errors,
-            ),
-            None => self.reject_targs_without_tparams(cls.name_in(self), &targs, range, errors),
+            Some(tparams) => {
+                self.create_targs(cls.name(self), tparams.dupe(), targs, range, true, errors)
+            }
+            None => self.reject_targs_without_tparams(cls.name(self), &targs, range, errors),
         };
         ClassType::new(cls.dupe(), targs)
     }
@@ -125,14 +120,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else {
             match tparams {
                 Some(tparams) => self.create_targs(
-                    cls.name_in(self),
+                    cls.name(self),
                     tparams.dupe(),
                     targs,
                     range,
                     validate_restriction,
                     errors,
                 ),
-                None => self.reject_targs_without_tparams(cls.name_in(self), &targs, range, errors),
+                None => self.reject_targs_without_tparams(cls.name(self), &targs, range, errors),
             }
         };
         self.type_of_instance(cls, targs)
@@ -250,7 +245,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     Self::add_implicit_any_error(
                         errors,
                         range,
-                        format_generic_entity("class", cls.name_in(self), &tparams_for_error),
+                        format_generic_entity("class", cls.name(self), &tparams_for_error),
                         Some(tparam.name().as_str()),
                     );
                 }

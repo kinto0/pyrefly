@@ -248,7 +248,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 (_, BaseClassParseResult::Parsed(parsed)) if !parsed.has_dynamic_base => parsed
                     .metadata
                     .custom_metaclass()
-                    .map(|metaclass| (parsed.class_object.name_in(self), metaclass)),
+                    .map(|metaclass| (parsed.class_object.name(self), metaclass)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -282,7 +282,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             self.error(
                 errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
                 "Metaclass may not be an unbound generic".to_owned(),
             );
@@ -412,7 +412,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // user code, but allow it in stubs so we can type-check those result objects precisely.
             self.error(
                 errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
                 "Named tuples do not support multiple inheritance".to_owned(),
             );
@@ -424,7 +424,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             &keyword_annotations,
             &decorators,
             errors,
-            cls.range_in(self),
+            cls.range(self),
         );
 
         let is_typed_dict = has_typed_dict_base_class
@@ -435,9 +435,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(bad) = bases_with_metadata.iter().find(|x| !x.1.is_typed_dict())
         {
             self.error(errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
-                format!("`{}` is not a typed dictionary. Typed dictionary definitions may only extend other typed dictionaries.", bad.0.name_in(self)),
+                format!("`{}` is not a typed dictionary. Typed dictionary definitions may only extend other typed dictionaries.", bad.0.name(self)),
             );
         }
         let typed_dict_metadata = self.typed_dict_metadata(
@@ -450,7 +450,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if metaclass.is_some() && is_typed_dict {
             self.error(
                 errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
                 "Typed dictionary definitions may not specify a metaclass".to_owned(),
             );
@@ -668,13 +668,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.as_call_target_or_error(
                 init_subclass,
                 CallStyle::Method(&dunder::INIT_SUBCLASS),
-                cls.range_in(self),
+                cls.range(self),
                 errors,
                 None,
             ),
             &[],
             &keywords,
-            cls.range_in(self),
+            cls.range(self),
             errors,
             None,
             None,
@@ -934,7 +934,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ("closed" | "extra_items", _) if extra_items.is_some() => {
                         self.error(
                             errors,
-                            cls.range_in(self),
+                            cls.range(self),
                             ErrorKind::BadTypedDict,
                             "TypedDict keywords `closed` and `extra_items` cannot be used together"
                                 .to_owned(),
@@ -950,10 +950,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         extra_items = Some(ExtraItems::Default);
                     }
                     ("extra_items", value_ty) => {
-                        let ty = self.untype_opt(value_ty.clone(), cls.range_in(self), errors).unwrap_or_else(|| {
+                        let ty = self.untype_opt(value_ty.clone(), cls.range(self), errors).unwrap_or_else(|| {
                             self.error(
                                 errors,
-                                cls.range_in(self),
+                                cls.range(self),
                                 ErrorKind::BadTypedDict,
                                 format!("Expected `extra_items` to be a type form, got instance of `{}`", self.display(value_ty.clone())),
                             )
@@ -964,7 +964,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ("total" | "closed", value_ty) => {
                         self.error(
                             errors,
-                            cls.range_in(self),
+                            cls.range(self),
                             ErrorKind::BadTypedDict,
                             format!(
                                 "Expected literal True or False for keyword `{}`, got instance of `{}`",
@@ -976,7 +976,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     _ => {
                         self.error(
                             errors,
-                            cls.range_in(self),
+                            cls.range(self),
                             ErrorKind::BadTypedDict,
                             format!(
                                 "TypedDict does not support keyword argument `{}`",
@@ -991,7 +991,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let extra_items = self.calculate_typed_dict_extra_items(
                 extra_items,
                 bases_with_metadata,
-                cls.range_in(self),
+                cls.range(self),
                 errors,
             );
             Some(TypedDictMetadata {
@@ -1025,11 +1025,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match (&cur_extra_items, inherited_extra_items) {
             (ExtraItems::Default, ExtraItems::Closed | ExtraItems::Extra(_)) => {
                 let base = if *inherited_extra_items == ExtraItems::Closed {
-                    format!("closed TypedDict `{}`", base_typed_dict.name_in(self))
+                    format!("closed TypedDict `{}`", base_typed_dict.name(self))
                 } else {
                     format!(
                         "TypedDict `{}` with extra items",
-                        base_typed_dict.name_in(self)
+                        base_typed_dict.name(self)
                     )
                 };
                 self.error(
@@ -1049,7 +1049,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::BadTypedDict,
-                    format!("Closed TypedDict cannot inherit from TypedDict `{}` with non-read-only extra items", base_typed_dict.name_in(self)),
+                    format!("Closed TypedDict cannot inherit from TypedDict `{}` with non-read-only extra items", base_typed_dict.name(self)),
                 );
             }
             (
@@ -1065,7 +1065,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDict,
                     format!(
                         "Cannot change the non-read-only extra items type of TypedDict `{}`",
-                        base_typed_dict.name_in(self)
+                        base_typed_dict.name(self)
                     ),
                 );
             }
@@ -1098,7 +1098,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::InvalidInheritance,
                     "Enums may not be generic".to_owned(),
                 );
@@ -1538,12 +1538,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // hard-reject kinds have no useful dataclass runtime behavior to model, so abort.
         if has_dataclass_decorator
             && self.report_forbidden_dataclass_target(
-                cls.name_in(self),
+                cls.name(self),
                 is_protocol,
                 is_enum,
                 is_typed_dict,
                 is_named_tuple,
-                cls.range_in(self),
+                cls.range(self),
                 errors,
             )
         {
@@ -1962,7 +1962,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::InvalidInheritance,
-                            format!("Cannot extend final class `{}`", class_object.name_in(self)),
+                            format!("Cannot extend final class `{}`", class_object.name(self)),
                         );
                     }
                     if is_new_type {
@@ -2042,11 +2042,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                     };
                     self.error(errors,
-                        cls.range_in(self),
+                        cls.range(self),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Class `{}` has metaclass `{}`{} which is not compatible with metaclass `{}`{}",
-                            cls.name_in(self),
+                            cls.name(self),
                             self.display(candidate_metaclass_type.clone()),
                             origin(*candidate_name),
                             self.display(base_metaclass_type),
@@ -2093,7 +2093,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Metaclass of `{}` has type `{}` which is not a subclass of `type`",
-                            cls.name_in(self),
+                            cls.name(self),
                             self.display(self.heap.mk_class_type(meta)),
                         ),
                     );
@@ -2105,11 +2105,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ty => {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::InvalidInheritance,
                     format!(
                         "Metaclass of `{}` has type `{}` that is not a simple class type",
-                        cls.name_in(self),
+                        cls.name(self),
                         self.display(ty),
                     ),
                 );
@@ -2181,7 +2181,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .join(", ");
             self.error(
                 errors,
-                cls.range_in(self),
+                cls.range(self),
                 ErrorKind::InvalidInheritance,
                 format!(
                     "Class `{}` inherits from incompatible disjoint bases {}",
@@ -2345,7 +2345,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(setitem_ty) = self.type_of_magic_dunder_attr(
             &base,
             &dunder::SETITEM,
-            cls.range_in(self),
+            cls.range(self),
             &swallower,
             None,
             "calculate_subscript_symmetry",
@@ -2356,7 +2356,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(getitem_ty) = self.type_of_magic_dunder_attr(
             &base,
             &dunder::GETITEM,
-            cls.range_in(self),
+            cls.range(self),
             &swallower,
             None,
             "calculate_subscript_symmetry",

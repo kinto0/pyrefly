@@ -1687,7 +1687,7 @@ impl<'a> CallGraphVisitor<'a> {
         if let Some(function_ref) = self
             .module_context
             .resolver
-            .resolve_pysa_solutions(class.module_in(self.module_context.resolver.type_env()))
+            .resolve_pysa_solutions(class.module(self.module_context.resolver.type_env()))
             .module_index
             .get_function_ref_for_class_field(class_id, field_name)
         {
@@ -1710,7 +1710,7 @@ impl<'a> CallGraphVisitor<'a> {
                 .module_context
                 .resolver
                 .resolve_pysa_solutions(
-                    parent_class.module_in(self.module_context.resolver.type_env()),
+                    parent_class.module(self.module_context.resolver.type_env()),
                 )
                 .module_index
                 .get_function_ref_for_class_field(parent_class_id, field_name)
@@ -3818,14 +3818,14 @@ impl<'a> CallGraphVisitor<'a> {
                 self.debug,
                 "Found function with graphql decorator `{:#?}` and a return expression with (inner) class `{}`",
                 graphql_decorator,
-                return_inner_class.def_in(self.module_context.resolver.type_env())
+                return_inner_class.def(self.module_context.resolver.type_env())
             );
             let return_class_id = ClassId::from_class(&return_inner_class);
             let callees: Vec<PysaCallTarget<FunctionRef>> = self
                 .module_context
                 .resolver
                 .resolve_pysa_solutions(
-                    return_inner_class.module_in(self.module_context.resolver.type_env()),
+                    return_inner_class.module(self.module_context.resolver.type_env()),
                 )
                 .module_index
                 .get_graphql_decorated_class_fields(return_class_id, |decorator| {
@@ -4312,7 +4312,7 @@ impl<'a> CallGraphVisitor<'a> {
                 "{}.{}",
                 class_ref
                     .class
-                    .qname_in(self.module_context.resolver.type_env())
+                    .qname(self.module_context.resolver.type_env())
                     .module_qualified_name(),
                 current_function.function_name
             ),

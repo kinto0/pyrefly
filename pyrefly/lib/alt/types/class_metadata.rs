@@ -919,7 +919,7 @@ static RECURSIVE_CLASS_DISJOINT_BASE: ClassDisjointBase = ClassDisjointBase {
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassDisjointBase {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match &self.representative {
-            Some(cls) => write!(f, "ClassDisjointBase({})", cls.name_in(env)),
+            Some(cls) => write!(f, "ClassDisjointBase({})", cls.name(env)),
             None => write!(f, "ClassDisjointBase(None)"),
         }
     }
@@ -1026,7 +1026,7 @@ impl Linearization {
                                 // we will need to wire additional information for this.
                                 errors
                                     .error_builder(
-                                        cls.range_in(env),
+                                        cls.range(env),
                                         ErrorKind::InvalidInheritance,
                                         format!(
                                             "Class `{}` has inconsistent type arguments for base class `{}`: `{}` and `{}`",
@@ -1066,7 +1066,7 @@ impl Linearization {
                     let ctx = ClassDisplayContext::new(env, &[cls, base]);
                     errors
                         .error_builder(
-                            cls.range_in(env),
+                            cls.range(env),
                             ErrorKind::InvalidInheritance,
                             format!(
                                 "Class `{}` inheriting from `{}` creates a cycle",
@@ -1115,7 +1115,7 @@ impl Linearization {
                         .iter()
                         .rev()
                         .skip(1)
-                        .any(|class| class.qname_in(env) == candidate.qname_in(env))
+                        .any(|class| class.qname(env) == candidate.qname(env))
                     {
                         rejected = true;
                         break;
@@ -1130,8 +1130,8 @@ impl Linearization {
                 // Strip the selected class from all chains. Any empty chain is removed.
                 let mut chains_to_remove = Vec::new();
                 for (idx, ancestors) in ancestor_chains.iter_mut().enumerate() {
-                    if ancestors.0.last().class_object().qname_in(env)
-                        == selected.class_object().qname_in(env)
+                    if ancestors.0.last().class_object().qname(env)
+                        == selected.class_object().qname(env)
                     {
                         match ancestors.0.pop() {
                             Ok(_) => {}
@@ -1158,7 +1158,7 @@ impl Linearization {
                 let ctx = ClassDisplayContext::new(env, &[cls, first_candidate]);
                 errors
                     .error_builder(
-                        cls.range_in(env),
+                        cls.range(env),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Class `{}` has a nonlinearizable inheritance chain detected at `{}`",

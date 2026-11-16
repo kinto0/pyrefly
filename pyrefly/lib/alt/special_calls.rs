@@ -642,7 +642,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         error_kind,
                         format!(
                             "NewType `{}` not allowed in {}",
-                            class_info_cls.name_in(self),
+                            class_info_cls.name(self),
                             func_display(),
                         ),
                     );
@@ -655,7 +655,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         error_kind,
                         format!(
                             "TypedDict `{}` not allowed as second argument to {}",
-                            class_info_cls.name_in(self),
+                            class_info_cls.name(self),
                             func_display()
                         ),
                     );
@@ -667,7 +667,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             error_kind,
-                            format!("Protocol `{}` is not decorated with @runtime_checkable and cannot be used with {}", class_info_cls.name_in(self), func_display()),
+                            format!("Protocol `{}` is not decorated with @runtime_checkable and cannot be used with {}", class_info_cls.name(self), func_display()),
                         );
                     } else {
                         // Additional validation for runtime checkable protocols:
@@ -679,7 +679,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                                 range,
                                 error_kind,
-                                format!("Protocol `{}` has non-method members and cannot be used with issubclass()", class_info_cls.name_in(self)),
+                                format!("Protocol `{}` has non-method members and cannot be used with issubclass()", class_info_cls.name(self)),
                             );
                         }
                         // Check for unsafe overlap:
@@ -729,7 +729,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::UnsafeOverlap,
                                     format!(
                                         "Runtime checkable protocol `{}` has an unsafe overlap with type `{}`",
-                                        class_info_cls.name_in(self),
+                                        class_info_cls.name(self),
                                         self.display(object_type.clone())
                                     ),
                                 ).with_details(unsafe_overlap_errors).emit();

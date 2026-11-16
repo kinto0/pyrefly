@@ -346,43 +346,43 @@ impl NoAccessReason {
     pub fn to_error_msg<E: TypeEnv + ?Sized>(&self, env: &E, attr_name: &Name) -> String {
         match self {
             NoAccessReason::ClassUseOfInstanceAttribute(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Instance-only attribute `{attr_name}` of class `{class_name}` is not visible on the class"
                 )
             }
             NoAccessReason::ClassAttributeIsGeneric(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Generic attribute `{attr_name}` of class `{class_name}` is not visible on the class"
                 )
             }
             NoAccessReason::SettingReadOnlyProperty(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Attribute `{attr_name}` of class `{class_name}` is a read-only property and cannot be set"
                 )
             }
             NoAccessReason::SettingReadOnlyDescriptor(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Attribute `{attr_name}` of class `{class_name}` is a read-only descriptor with no `__set__` and cannot be set"
                 )
             }
             NoAccessReason::SuperMethodNeedsImplementation(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Method `{attr_name}` inherited from class `{class_name}` has no implementation and cannot be accessed via `super()`"
                 )
             }
             NoAccessReason::ProxyMethodClassAccess(class) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Proxy method `{attr_name}` of class `{class_name}` can only be accessed on instances"
                 )
             }
             NoAccessReason::ProxyMethodTargetInvalid { class, target } => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!(
                     "Proxy method `{attr_name}` of class `{class_name}` cannot resolve target method `{target}`"
                 )
@@ -458,11 +458,11 @@ impl NotFoundOn {
     pub fn to_error_msg<E: TypeEnv + ?Sized>(self, env: &E, attr_name: &Name) -> String {
         match self {
             NotFoundOn::ClassInstance(class, _) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!("Object of class `{class_name}` has no attribute `{attr_name}`")
             }
             NotFoundOn::ClassObject(class, _) => {
-                let class_name = class.name_in(env);
+                let class_name = class.name(env);
                 format!("Class `{class_name}` has no class attribute `{attr_name}`")
             }
             NotFoundOn::Module(module) => {
@@ -1356,7 +1356,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Some(allowed_slots) = self.effective_slots_for_instance_write(cls)
             && !allowed_slots.contains(attr_name)
         {
-            let class_name = cls.name_in(self);
+            let class_name = cls.name(self);
             self.error_with_context(
                 errors,
                 range,
@@ -1583,7 +1583,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         && matches!(got_attr, Attribute::GetAttr(..))
                     {
                         return Err(SubsetError::MissingAttribute(
-                            protocol.name_in(self).clone(),
+                            protocol.name(self).clone(),
                             attr_name.clone(),
                         ));
                     }
@@ -1605,7 +1605,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     .map_err(|err| {
                         SubsetError::IncompatibleAttribute(Box::new((
-                            protocol.name_in(self).clone(),
+                            protocol.name(self).clone(),
                             self.for_display(got.clone()),
                             attr_name.clone(),
                             *err,
@@ -1615,13 +1615,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 Ok(())
             } else {
                 Err(SubsetError::MissingAttribute(
-                    protocol.name_in(self).clone(),
+                    protocol.name(self).clone(),
                     attr_name.clone(),
                 ))
             }
         } else {
             Err(SubsetError::MissingAttribute(
-                protocol.name_in(self).clone(),
+                protocol.name(self).clone(),
                 attr_name.clone(),
             ))
         }

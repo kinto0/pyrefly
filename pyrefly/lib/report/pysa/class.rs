@@ -124,14 +124,14 @@ impl ClassRef {
             module_id,
             class_id: ClassId::from_class(class),
             class: class.clone(),
-            class_name: class.name_in(env).clone(),
+            class_name: class.name(env).clone(),
         }
     }
 
     pub fn from_class(class: &Class, context: &ModuleContext) -> ClassRef {
         let env = context.resolver.type_env();
         let module_id = context.module_ids().get_from_module(
-            class.module_in(env),
+            class.module(env),
             context.answers_context.handle.sys_info().dupe(),
         );
         ClassRef::new(module_id, class, env)
@@ -549,7 +549,7 @@ fn find_definition_ast<'a>(
         class.module_path(),
         context.answers_context.module_info.path()
     );
-    let range = class.range_in(context.resolver.type_env());
+    let range = class.range(context.resolver.type_env());
     Ast::locate_node(&context.answers_context.ast, range.start())
         .iter()
         .find_map(|node| match node {
@@ -592,7 +592,7 @@ pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefi
             .dupe()
             .unwrap();
         let class_index = class.index();
-        let parent = get_scope_parent(&context.answers_context, class.range_in(env));
+        let parent = get_scope_parent(&context.answers_context, class.range(env));
         let metadata = context
             .answers_context
             .answers
@@ -631,9 +631,9 @@ pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefi
 
         let class_definition = ClassDefinition {
             class_id: ClassId::from_class(&class),
-            name: class.name_in(env).to_string(),
+            name: class.name(env).to_string(),
             name_location: PysaLocation::from_text_range(
-                class.range_in(env),
+                class.range(env),
                 &context.answers_context.module_info,
             ),
             parent,

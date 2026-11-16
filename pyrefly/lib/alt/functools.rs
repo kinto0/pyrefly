@@ -139,7 +139,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadInstantiation,
                         format!(
                             "Cannot instantiate `{}` because it is a protocol",
-                            cls.name_in(self)
+                            cls.name(self)
                         ),
                     );
                 } else if !metadata.is_new_type() {
@@ -152,7 +152,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because the following members are abstract: {}",
-                                cls.name_in(self),
+                                cls.name(self),
                                 unimplemented
                                     .iter()
                                     .map(|x| format!("`{x}`"))
@@ -167,7 +167,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::DirectAbstractBaseInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because it directly extends `ABC` or uses `ABCMeta`",
-                                cls.name_in(self)
+                                cls.name(self)
                             ),
                         );
                     }
@@ -773,7 +773,7 @@ fn is_placeholder_arg<Ans: LookupAnswer>(solver: &AnswersSolver<Ans>, x: &CallVa
         ty,
         Type::ClassType(cls)
             if {
-                let qname = cls.qname_in(solver);
+                let qname = cls.qname(solver);
                 qname.module_name().as_str() == "functools"
                     && qname.id().as_str() == "_PlaceholderType"
             }

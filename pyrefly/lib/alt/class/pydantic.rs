@@ -937,7 +937,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         let owner = &member.defining_class;
                         owner.module_name().first_component() != "pydantic"
                             || matches!(
-                                owner.name_in(self).as_str(),
+                                owner.name(self).as_str(),
                                 "BeforeValidator" | "PlainValidator" | "WrapValidator"
                             )
                     })

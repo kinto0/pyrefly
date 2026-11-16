@@ -586,7 +586,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     )
                 {
                     return Err(SubsetError::OpenTypedDictKwargs(
-                        u_typed_dict.name_in(&self.type_order).clone(),
+                        u_typed_dict.name(&self.type_order).clone(),
                     ));
                 }
                 for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
@@ -1334,8 +1334,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         want: &ClassType,
     ) -> Result<(), SubsetError> {
         let type_order = self.type_order;
-        let got_name = got.name_in(&type_order);
-        let want_name = want.name_in(&type_order);
+        let got_name = got.name(&type_order);
+        let want_name = want.name(&type_order);
         let (got_fields, want_fields) = {
             let mut got_fields = self.get_typed_dict_fields(got);
             let mut want_fields = self.get_typed_dict_fields(want);
@@ -1443,7 +1443,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         SubsetError::OpenTypedDict(Box::new(
                             OpenTypedDictSubsetError::MissingField {
                                 got: got_name.clone(),
-                                want: want.name_in(&self.type_order).clone(),
+                                want: want.name(&self.type_order).clone(),
                                 field: k.clone(),
                             },
                         ))
@@ -1471,7 +1471,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (ExtraItems::Default, want_extra_items) => Err(SubsetError::OpenTypedDict(Box::new(
                 OpenTypedDictSubsetError::UnknownFields {
                     got: got_name,
-                    want: want.name_in(&self.type_order).clone(),
+                    want: want.name(&self.type_order).clone(),
                     extra_items: want_extra_items.extra_item(self.type_order.stdlib()).ty,
                 },
             ))),
@@ -1506,7 +1506,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // `want` that is missing the field.
                 Err(SubsetError::TypedDict(Box::new(
                     TypedDictSubsetError::MissingField {
-                        got: want.name_in(&self.type_order).clone(),
+                        got: want.name(&self.type_order).clone(),
                         want: ANONYMOUS_TYPED_DICT.clone(),
                         field: k.clone(),
                     },
@@ -1519,7 +1519,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 Err(SubsetError::TypedDict(Box::new(
                     TypedDictSubsetError::MissingField {
                         got: ANONYMOUS_TYPED_DICT.clone(),
-                        want: want.name_in(&self.type_order).clone(),
+                        want: want.name(&self.type_order).clone(),
                         field: k.clone(),
                     },
                 )))
@@ -2430,7 +2430,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     }
                     Type::PartialTypedDict(want) => {
                         let got = GotTypedDict {
-                            name: got.name_in(&self.type_order).clone(),
+                            name: got.name(&self.type_order).clone(),
                             fields: self.type_order.typed_dict_fields(got),
                             extra_items: self.type_order.typed_dict_extra_items(got),
                         };
@@ -2723,15 +2723,15 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (Type::ClassDef(got), Type::Type(want)) => {
                 let res = self.is_subset_eq(&self.type_order.promote_silently(got), want);
                 if res.is_ok()
-                    && got.is_protocol_in(&self.type_order)
+                    && got.is_protocol(&self.type_order)
                     && let Type::ClassType(want_cls) = &**want
-                    && want_cls.class_object().is_protocol_in(&self.type_order)
+                    && want_cls.class_object().is_protocol(&self.type_order)
                 {
                     // We only allow concrete class names to be assigned to `type[T]` if `T` is a protocol.
                     // We do this check after all other checks on these types so that callers in contexts
                     // in which this error isn't applicable can drop it without losing other errors.
                     return Err(SubsetError::TypeOfProtocolNeedsConcreteClass(
-                        want_cls.name_in(&self.type_order).clone(),
+                        want_cls.name(&self.type_order).clone(),
                     ));
                 }
                 res

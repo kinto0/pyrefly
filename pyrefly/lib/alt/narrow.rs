@@ -567,7 +567,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         .dict(self.heap.mk_any_implicit(), self.heap.mk_any_implicit()),
                 ),
             ),
-            Type::ClassType(cls) if !cls.class_object().is_protocol_in(self) => {
+            Type::ClassType(cls) if !cls.class_object().is_protocol(self) => {
                 let mut cls = cls.clone();
                 for arg in cls.targs_mut().as_mut() {
                     *arg = self.heap.mk_any_implicit();
@@ -1103,7 +1103,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return narrowed;
         };
         // Protocols are structural, so a nominal subclass check says nothing about runtime classes.
-        if cls.is_protocol_in(self) {
+        if cls.is_protocol(self) {
             return narrowed;
         }
         self.distribute_over_union(&narrowed, |t| {
@@ -1119,7 +1119,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // rule it out by its declared subclass relationship.
                 Some(member)
                     if member != cls
-                        && !member.is_protocol_in(self)
+                        && !member.is_protocol(self)
                         && !self.get_metadata_for_class(member).is_new_type()
                         && self.has_superclass(member, cls) =>
                 {

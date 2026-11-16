@@ -509,7 +509,7 @@ fn parse_variables(
             // doesn't match. Nested modules like `a.b.Spam()` are left out too.
             Expr::Attribute(attr) => {
                 cls.targs().is_empty()
-                    && *cls.name_in(env) == attr.attr.id
+                    && *cls.name(env) == attr.attr.id
                     && attr
                         .value
                         .as_name_expr()
@@ -517,8 +517,8 @@ fn parse_variables(
                         .is_some_and(|t| matches!(t.ty(), Type::Module(_)))
             }
             Expr::Subscript(sub) => match sub.value.as_ref() {
-                Expr::Name(n) => *cls.name_in(env) == n.id,
-                Expr::Attribute(attr) => *cls.name_in(env) == attr.attr.id,
+                Expr::Name(n) => *cls.name(env) == n.id,
+                Expr::Attribute(attr) => *cls.name(env) == attr.attr.id,
                 _ => false,
             },
             _ => false,

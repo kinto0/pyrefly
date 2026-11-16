@@ -326,7 +326,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         format!(
                             "ModuleDict key `{}` not found in TypedDict `{}`",
                             field_name,
-                            typed_dict_inner.name_in(self)
+                            typed_dict_inner.name(self)
                         ),
                     );
                 }

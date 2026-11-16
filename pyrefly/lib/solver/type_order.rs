@@ -113,7 +113,7 @@ impl<'solver, Ans: LookupAnswer> TypeOrder<'solver, Ans> {
     }
 
     pub fn is_protocol(self, cls: &Class) -> bool {
-        cls.is_protocol_in(&self)
+        cls.is_protocol(&self)
     }
 
     pub fn is_subclassable(self, cls: &Class) -> bool {

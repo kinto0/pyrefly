@@ -439,7 +439,7 @@ fn position_is_in_docstring(ast: Option<&ModModule>, position: TextSize) -> bool
 /// If we can't determine a symbol name via go-to-definition, fall back to what the
 /// type metadata knows about the callable. This primarily handles third-party stubs
 /// where we only have typeshed information.
-fn fallback_hover_name_from_type(type_: &Type) -> Option<String> {
+fn fallback_hover_name_from_type(type_: &Type, env: &dyn TypeEnv) -> Option<String> {
     let name = type_
         .toplevel_func_metadata()
         .map(|meta| meta.kind.function_name());
@@ -449,13 +449,13 @@ fn fallback_hover_name_from_type(type_: &Type) -> Option<String> {
     // Recurse through Type wrapper
     if let Type::Type(inner) = type_ {
         return match inner.as_ref() {
-            Type::ClassType(cls) => Some(cls.name().to_string()),
-            _ => fallback_hover_name_from_type(inner),
+            Type::ClassType(cls) => Some(cls.name(env).to_string()),
+            _ => fallback_hover_name_from_type(inner, env),
         };
     }
     match type_ {
-        Type::ClassDef(cls) => Some(cls.name().to_string()),
-        Type::SpecializedClassDef(cls) => Some(cls.name().to_string()),
+        Type::ClassDef(cls) => Some(cls.name(env).to_string()),
+        Type::SpecializedClassDef(cls) => Some(cls.name(env).to_string()),
         _ => None,
     }
 }
@@ -535,10 +535,10 @@ fn docstring_for_class_object_type(
 ) -> Option<Docstring> {
     let env = transaction.type_env(handle);
     let qname = match type_ {
-        Type::ClassDef(cls) => cls.qname_in(&env),
-        Type::SpecializedClassDef(cls) => cls.qname(),
+        Type::ClassDef(cls) => cls.qname(&env),
+        Type::SpecializedClassDef(cls) => cls.qname(&env),
         Type::Type(inner) => match inner.as_ref() {
-            Type::ClassType(cls) => cls.qname_in(&env),
+            Type::ClassType(cls) => cls.qname(&env),
             _ => return None,
         },
         _ => return None,
@@ -683,7 +683,7 @@ fn type_parameter_hover_display(
     Some(format!(
         "{}@{} ({})",
         quantified.name(),
-        owner.name_in(solver),
+        owner.name(solver),
         display_variance_for_hover(variance.get(quantified.name()))
     ))
 }
@@ -1634,7 +1634,8 @@ pub fn get_hover_with_verbosity(
                 })
         });
 
-    let fallback_name_from_type = fallback_hover_name_from_type(&type_);
+    let fallback_name_from_type =
+        fallback_hover_name_from_type(&type_, &transaction.type_env(handle));
     let keyword_argument_identifier = keyword_argument_identifier(transaction, handle, position);
     let definition = transaction
         .find_definition(
@@ -1821,6 +1822,7 @@ mod tests {
     use pyrefly_types::function::FuncMetadata;
     use pyrefly_types::function::Function;
     use pyrefly_types::heap::TypeHeap;
+    use pyrefly_types::test_type_env::TestTypeEnv;
     use ruff_python_ast::name::Name;
 
     use super::*;
@@ -1843,7 +1845,7 @@ mod tests {
     fn fallback_uses_function_metadata() {
         let heap = TypeHeap::new();
         let ty = make_function_type(&heap, "numpy", "arange");
-        let fallback = fallback_hover_name_from_type(&ty);
+        let fallback = fallback_hover_name_from_type(&ty, &TestTypeEnv::new());
         assert_eq!(fallback.as_deref(), Some("arange"));
     }
 
@@ -1853,7 +1855,8 @@ mod tests {
         let report =
             get_batched_lsp_operations_report(&[("main", code)], |state, handle, position| {
                 let ty = state.transaction().get_type_at(handle, position).unwrap();
-                let name = fallback_hover_name_from_type(&ty);
+                let name =
+                    fallback_hover_name_from_type(&ty, &state.transaction().type_env(handle));
                 assert_eq!(name.as_deref(), Some("Box"));
                 name.unwrap()
             });
@@ -1864,7 +1867,7 @@ mod tests {
     fn fallback_recurses_through_type_wrapper() {
         let heap = TypeHeap::new();
         let ty = heap.mk_type_of(make_function_type(&heap, "pkg.subpkg", "run"));
-        let fallback = fallback_hover_name_from_type(&ty);
+        let fallback = fallback_hover_name_from_type(&ty, &TestTypeEnv::new());
         assert_eq!(fallback.as_deref(), Some("run"));
     }
 

@@ -79,7 +79,12 @@ class B(metaclass=M0): pass
 class C(B, metaclass=M1): pass
 "#,
     );
-    assert_eq!(get_metaclass("C", &handle, &state).unwrap().name(), "M1");
+    assert_eq!(
+        get_metaclass("C", &handle, &state)
+            .unwrap()
+            .name(&state.transaction().type_env(&handle)),
+        "M1"
+    );
 }
 
 #[test]
@@ -93,7 +98,12 @@ class B1(metaclass=M1): pass
 class C(B0, B1): pass
 "#,
     );
-    assert_eq!(get_metaclass("C", &handle, &state).unwrap().name(), "M1");
+    assert_eq!(
+        get_metaclass("C", &handle, &state)
+            .unwrap()
+            .name(&state.transaction().type_env(&handle)),
+        "M1"
+    );
 }
 
 testcase!(

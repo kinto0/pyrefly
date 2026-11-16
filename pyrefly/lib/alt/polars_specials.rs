@@ -301,7 +301,7 @@ fn polars_dtype_from_type<E: TypeEnv + ?Sized>(env: &E, ty: &Type) -> Option<Pol
     {
         return None;
     }
-    PolarsDType::from_polars_name(cls.name_in(env).as_str())
+    PolarsDType::from_polars_name(cls.name(env).as_str())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1302,7 +1302,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if module.as_str() != POLARS_MODULE && !module.as_str().starts_with(POLARS_MODULE_PREFIX) {
             return None;
         }
-        match cls.name_in(self).as_str() {
+        match cls.name(self).as_str() {
             "Array" => {
                 if !arguments_are_valid(&call.arguments, 2, Some(&["inner", "shape"])) {
                     return None;

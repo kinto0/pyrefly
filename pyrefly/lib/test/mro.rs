@@ -25,10 +25,12 @@ pub fn get_class_mro<'a>(name: &str, handle: &Handle, reader: &'a StateReader<'_
 
 fn get_mro_names(name: &str, handle: &Handle, state: &State) -> Vec<String> {
     let reader = state.reader();
+    let transaction = state.transaction();
+    let type_env = transaction.type_env(handle);
     get_class_mro(name, handle, &reader)
         .ancestors_no_object()
         .iter()
-        .map(|cls| cls.name().as_str().to_owned())
+        .map(|cls| cls.name(&type_env).as_str().to_owned())
         .collect()
 }
 

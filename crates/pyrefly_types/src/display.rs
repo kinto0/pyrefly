@@ -227,10 +227,10 @@ impl<'a> TypeDisplayContext<'a> {
         let env = self.env;
         t.universe(&mut |t| {
             if let Type::DataFrame(schema) = t {
-                self.add_qname(schema.underlying.qname_in(env));
+                self.add_qname(schema.underlying.qname(env));
             }
             if let Type::Series(schema) = t {
-                self.add_qname(schema.underlying.qname_in(env));
+                self.add_qname(schema.underlying.qname(env));
             }
             // A singledispatch dispatcher is displayed as its backing `_SingleDispatchCallable`
             // class, so that class needs a registered qname to display unqualified.
@@ -244,16 +244,16 @@ impl<'a> TypeDisplayContext<'a> {
                     )
                 )
             {
-                self.add_qname(cls.qname_in(env));
+                self.add_qname(cls.qname(env));
             }
             if let Some(qname) = t.qname(env) {
                 self.add_qname(qname);
             }
             if let Type::SuperInstance(s) = t {
                 let (cls, obj) = &**s;
-                self.add_qname(cls.qname_in(env));
+                self.add_qname(cls.qname(env));
                 let obj_qname = match obj {
-                    SuperObj::Instance(obj) | SuperObj::Class(obj) => obj.qname_in(env),
+                    SuperObj::Instance(obj) | SuperObj::Class(obj) => obj.qname(env),
                 };
                 self.add_qname(obj_qname);
             }
@@ -544,7 +544,7 @@ impl<'a> TypeDisplayContext<'a> {
     pub(crate) fn fmt_lit(&self, lit: &Lit, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match lit {
             Lit::Enum(e) => {
-                self.fmt_qname(e.class.qname_in(self.env), f)?;
+                self.fmt_qname(e.class.qname(self.env), f)?;
                 write!(f, ".{}", e.member)
             }
             _ => write!(f, "{}", lit.display_with(self.env)),
@@ -623,10 +623,7 @@ impl<'a> TypeDisplayContext<'a> {
             if let Some(cls) = kind.class() {
                 output.write_reference(
                     module,
-                    &format!(
-                        "{}.{func_name}",
-                        Fmt(|f| cls.qname_in(self.env).fmt_name(f))
-                    ),
+                    &format!("{}.{func_name}", Fmt(|f| cls.qname(self.env).fmt_name(f))),
                 )
             } else if let Some(outer) = kind.outer_funcs() {
                 output.write_reference(module, &format!("{outer}.{func_name}"))
@@ -883,7 +880,7 @@ impl<'a> TypeDisplayContext<'a> {
         if let Some(metadata) = t.toplevel_func_metadata()
             && let FunctionKind::CallbackProtocol(cls) = &metadata.kind
         {
-            output.write_qname(cls.qname_in(self.env))?;
+            output.write_qname(cls.qname(self.env))?;
             return output.write_targs(cls.targs());
         }
         self.maybe_fmt_with_module("typing", "Callable", output)?;
@@ -997,36 +994,36 @@ impl<'a> TypeDisplayContext<'a> {
                     output.write_str("builtins.")?;
                 }
                 output.write_str("type[")?;
-                output.write_qname(cls.qname_in(self.env))?;
+                output.write_qname(cls.qname(self.env))?;
                 output.write_str("]")
             }
             Type::SpecializedClassDef(class_type) => {
                 output.write_str("type[")?;
-                output.write_qname(class_type.qname())?;
+                output.write_qname(class_type.qname(self.env))?;
                 output.write_targs(class_type.targs())?;
                 output.write_str("]")
             }
             Type::ClassType(class_type)
                 if class_type.is(KnownClass::Tuple) && class_type.targs().as_slice().len() == 1 =>
             {
-                output.write_qname(class_type.qname_in(self.env))?;
+                output.write_qname(class_type.qname(self.env))?;
                 output.write_str("[")?;
                 output.write_type(&class_type.targs().as_slice()[0])?;
                 output.write_str(", ...]")
             }
             Type::ClassType(class_type) => {
-                output.write_qname(class_type.qname_in(self.env))?;
+                output.write_qname(class_type.qname(self.env))?;
                 output.write_targs(class_type.targs())
             }
             Type::PartialTypedDict(inner) => {
-                output.write_qname(inner.qname_in(self.env))?;
+                output.write_qname(inner.qname(self.env))?;
                 output.write_targs(inner.targs())
             }
             Type::AnonymousTypedDict(inner) => {
-                let dict_qname = self.stdlib.map(|s| s.dict_object().qname_in(self.env));
+                let dict_qname = self.stdlib.map(|s| s.dict_object().qname(self.env));
                 output.write_builtin("dict", dict_qname)?;
                 output.write_str("[")?;
-                let str_qname = self.stdlib.map(|s| s.str().qname_in(self.env));
+                let str_qname = self.stdlib.map(|s| s.str().qname(self.env));
                 output.write_builtin("str", str_qname)?;
                 output.write_str(", ")?;
                 self.fmt_anonymous_typed_dict_value_type(inner, output)?;
@@ -1100,7 +1097,7 @@ impl<'a> TypeDisplayContext<'a> {
                 output.write_str("]")
             }
             Type::TypeVar(t) => {
-                let type_var_qname = self.stdlib.map(|s| s.type_var().qname_in(self.env));
+                let type_var_qname = self.stdlib.map(|s| s.type_var().qname(self.env));
                 output.write_builtin("TypeVar", type_var_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
@@ -1108,15 +1105,14 @@ impl<'a> TypeDisplayContext<'a> {
             }
             Type::Sentinel(t) => output.write_qname(t.qname()),
             Type::TypeVarTuple(t) => {
-                let type_var_tuple_qname =
-                    self.stdlib.map(|s| s.type_var_tuple().qname_in(self.env));
+                let type_var_tuple_qname = self.stdlib.map(|s| s.type_var_tuple().qname(self.env));
                 output.write_builtin("TypeVarTuple", type_var_tuple_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
                 output.write_str("]")
             }
             Type::ParamSpec(t) => {
-                let param_spec_qname = self.stdlib.map(|s| s.param_spec().qname_in(self.env));
+                let param_spec_qname = self.stdlib.map(|s| s.param_spec().qname(self.env));
                 output.write_builtin("ParamSpec", param_spec_qname)?;
                 output.write_str("[")?;
                 output.write_qname(t.qname())?;
@@ -1127,7 +1123,7 @@ impl<'a> TypeDisplayContext<'a> {
                     self.maybe_fmt_with_module("typing", "Self", output)
                 } else {
                     self.maybe_fmt_with_module("typing", "Self@", output)?;
-                    output.write_qname(cls.qname_in(self.env))
+                    output.write_qname(cls.qname(self.env))
                 }
             }
 
@@ -1529,7 +1525,7 @@ impl<'a> TypeDisplayContext<'a> {
                 if self.always_display_builtins_module_name {
                     output.write_str("builtins.")?;
                 }
-                let tuple_qname = self.stdlib.map(|s| s.tuple_object().qname_in(self.env));
+                let tuple_qname = self.stdlib.map(|s| s.tuple_object().qname(self.env));
                 t.fmt_with_type(output, tuple_qname, &|ty, o| {
                     self.fmt_helper_generic(ty, false, o)
                 })
@@ -1880,7 +1876,7 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for Type {
 /// A class renders as its definition.
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for Class {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
-        Display::fmt(self.def_in(env), f)
+        Display::fmt(self.def(env), f)
     }
 }
 
@@ -1971,13 +1967,13 @@ impl<'a> ClassDisplayContext<'a> {
     pub fn new(env: &'a dyn TypeEnv, classes: &[&'a Class]) -> Self {
         let mut ctx = TypeDisplayContext::new(env, &[]);
         for cls in classes {
-            ctx.add_qname(cls.qname_in(env));
+            ctx.add_qname(cls.qname(env));
         }
         Self(ctx)
     }
 
     pub fn display(&'a self, cls: &'a Class) -> impl Display + 'a {
-        Fmt(|f| self.0.fmt_qname(cls.qname_in(self.0.env), f))
+        Fmt(|f| self.0.fmt_qname(cls.qname(self.0.env), f))
     }
 }
 

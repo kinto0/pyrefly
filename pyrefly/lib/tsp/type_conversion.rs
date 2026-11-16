@@ -1117,7 +1117,7 @@ fn make_typevar_declared(qname: &pyrefly_python::qname::QName) -> DeclaredType {
 
 /// Build a `RegularDeclaration` from a pyrefly `Class`.
 fn make_class_declaration(env: &dyn TypeEnv, cls: &Class) -> RegularDeclaration {
-    let qname = cls.qname_in(env);
+    let qname = cls.qname(env);
     let module = qname.module();
     let module_path = qname.module_path();
     let range = qname.range();
@@ -1128,7 +1128,7 @@ fn make_class_declaration(env: &dyn TypeEnv, cls: &Class) -> RegularDeclaration 
     RegularDeclaration {
         category: DeclarationCategory::Class,
         kind: DeclarationKind::Regular,
-        name: Some(cls.name_in(env).to_string()),
+        name: Some(cls.name(env).to_string()),
         node: Node {
             range: lsp_range_to_tsp(lsp_range),
             uri,

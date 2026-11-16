@@ -147,10 +147,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let defining_class = self
                 .get_class_member_with_defining_class(cls, name)
                 .map_or_else(|| cls.dupe(), |member| member.defining_class);
-            let class_name = defining_class
-                .name_in(self)
-                .as_str()
-                .trim_start_matches('_');
+            let class_name = defining_class.name(self).as_str().trim_start_matches('_');
             (!class_name.is_empty()).then(|| format!("_{class_name}{name}"))
         } else {
             None

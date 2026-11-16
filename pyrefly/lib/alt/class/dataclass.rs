@@ -252,7 +252,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range_in(self),
+                    cls.range(self),
                     ErrorKind::BadClassDefinition,
                     "Cannot specify both `slots=True` and `__slots__`".to_owned(),
                 );
@@ -437,7 +437,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     _ => {}
                 }
 
-                let cls = descriptor_cls.name_in(self);
+                let cls = descriptor_cls.name(self);
                 errors
                     .error_builder(
                         range,
@@ -491,7 +491,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if let (Some(get_ty), Some(set_ty)) = (get_return_ty, set_value_ty) {
                     // Check if the __get__ return type is assignable to the __set__ value type.
                     if !self.is_subset_eq(&get_ty, &set_ty) {
-                        let cls = descriptor_cls.name_in(self);
+                        let cls = descriptor_cls.name(self);
                         errors
                             .error_builder(
                                 range,
@@ -793,7 +793,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let ctx = ClassDisplayContext::new(self, &[cls, base]);
                     self.error(
                         errors,
-                        cls.range_in(self),
+                        cls.range(self),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Cannot inherit {} dataclass `{}` from {} dataclass `{}`",
@@ -1363,7 +1363,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if !reported_by_base {
                             self.error(
                                 errors,
-                                own_decl_range.unwrap_or_else(|| cls.range_in(self)),
+                                own_decl_range.unwrap_or_else(|| cls.range(self)),
                                 ErrorKind::BadClassDefinition,
                                 format!(
                                     "Dataclass field `{name}` without a default may not follow dataclass field with a default"

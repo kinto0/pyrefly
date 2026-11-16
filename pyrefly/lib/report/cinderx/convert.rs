@@ -192,7 +192,7 @@ pub(crate) fn type_to_structured(
                 .iter()
                 .map(|arg| type_to_structured(env, arg, table, pending_class_traits))
                 .collect();
-            let raw_qname = qname_to_full_string(ct.qname_in(env));
+            let raw_qname = qname_to_full_string(ct.qname(env));
             let qname = canonicalize_class_qname(&raw_qname);
             let idx = insert_class_with_args(&qname, arg_indices, table);
             pending_class_traits.push((idx, ct.class_object().clone()));
@@ -248,7 +248,7 @@ pub(crate) fn type_to_structured(
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
         Type::PartialTypedDict(ct) => {
-            let qname = qname_to_full_string(ct.qname_in(env));
+            let qname = qname_to_full_string(ct.qname(env));
             let hash = hash_class(&qname, &[], &["partial_typed_dict"]);
             let sty = StructuredType::Class {
                 qname,
@@ -272,7 +272,7 @@ pub(crate) fn type_to_structured(
             let func_type = bm.func.clone().as_type();
             let func_idx = type_to_structured(env, &func_type, table, pending_class_traits);
             let defining_class = bm.func.metadata().kind.class().map(|cls| {
-                let raw = qname_to_full_string(cls.qname_in(env));
+                let raw = qname_to_full_string(cls.qname(env));
                 canonicalize_class_qname(&raw)
             });
             let hash = hash_bound_method(
@@ -301,7 +301,7 @@ pub(crate) fn type_to_structured(
         }
         Type::ClassDef(class) => {
             // ClassDef has type `Type[class]`, so emit as typing.Type wrapping the class
-            let raw_qname = qname_to_full_string(class.qname_in(env));
+            let raw_qname = qname_to_full_string(class.qname(env));
             let qname = canonicalize_class_qname(&raw_qname);
             let inner_idx = insert_simple_class(&qname, table);
             insert_wrapper_other_form("typing.Type", inner_idx, table)
@@ -386,7 +386,7 @@ pub(crate) fn type_to_structured(
                 let kind = &f.metadata.kind;
                 let module = kind.module_name();
                 let class_prefix = match kind.class() {
-                    Some(cls) => format!("{}.", cls.name_in(env)),
+                    Some(cls) => format!("{}.", cls.name(env)),
                     None => String::new(),
                 };
                 Some(format!("{module}.{class_prefix}{}", kind.function_name()))

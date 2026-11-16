@@ -1835,7 +1835,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let typed_dict = match &ty {
                         Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
                             Some((
-                                ct.name_in(self).clone(),
+                                ct.name(self).clone(),
                                 self.typed_dict_fields(ct),
                                 self.typed_dict_extra_items(ct),
                                 false,

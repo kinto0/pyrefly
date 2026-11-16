@@ -39,7 +39,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         Name::new(format!(
             "{}{}",
             LAX_PREFIX,
-            capitalize_first(cls.name_in(self).as_str())
+            capitalize_first(cls.name(self).as_str())
         ))
     }
 

@@ -116,7 +116,7 @@ fn default_display_for_expr(expr: &Expr, source: &str) -> Option<String> {
 }
 
 fn is_class_property_decorator_class_object<E: TypeEnv + ?Sized>(env: &E, cls: &Class) -> bool {
-    let cls_name = cls.name_in(env);
+    let cls_name = cls.name(env);
     // Obviously this is just a very naive heuristic. But it's not a crazy convention
     // either and we have important customers that badly wants support of class properties.
     cls_name == "classproperty" || cls_name == "lazy_classproperty"
@@ -3076,7 +3076,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(Param::PosOnly(_, self_ty, _) | Param::Pos(_, self_ty, _)) =
                 param_list.items().first()
         {
-            let cls_name = cls.name_in(self);
+            let cls_name = cls.name(self);
             match self_ty {
                 Type::ClassType(cls_ty) => {
                     // The self type must be the defining class itself or a superclass of it.
@@ -3173,12 +3173,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(Param::PosOnly(_, cls_ty, _) | Param::Pos(_, cls_ty, _)) =
                 param_list.items().first()
         {
-            let cls_name = cls.name_in(self);
+            let cls_name = cls.name(self);
             match cls_ty {
                 Type::Type(f) if let Type::ClassType(inner_cls) = &**f => {
                     // Skipping validation for protocols is on par with Pyright's behavior.
                     // TODO: we could consider checking structural subtyping here.
-                    if inner_cls.name_in(self) != cls_name
+                    if inner_cls.name(self) != cls_name
                         && !self
                             .type_order()
                             .has_superclass(cls, inner_cls.class_object())

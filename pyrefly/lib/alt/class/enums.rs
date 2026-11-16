@@ -108,7 +108,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             };
             let value_ty = self.enum_literal_to_value_type((*lit_enum).clone(), is_django);
             if self.is_equivalent(got, &value_ty) {
-                let candidate = format!("{}.{}", lit_enum.class.name_in(self), lit_enum.member);
+                let candidate = format!("{}.{}", lit_enum.class.name(self), lit_enum.member);
                 match &suggestion {
                     Some(existing) if existing != &candidate => return None,
                     _ => suggestion = Some(candidate),

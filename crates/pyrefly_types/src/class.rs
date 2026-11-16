@@ -464,30 +464,6 @@ impl Class {
         }))
     }
 
-    pub fn range(&self) -> TextRange {
-        self.0.qname.range()
-    }
-
-    pub fn name(&self) -> &Name {
-        self.0.qname.id()
-    }
-
-    pub fn qname(&self) -> &QName {
-        &self.0.qname
-    }
-
-    pub fn kind(&self) -> ClassKind {
-        ClassKind::new(self.known(), self.name())
-    }
-
-    pub fn is_protocol(&self) -> bool {
-        self.0.is_protocol
-    }
-
-    pub fn deprecation(&self) -> Option<&Deprecation> {
-        self.0.deprecation.as_ref()
-    }
-
     pub fn has_tparams(&self) -> bool {
         self.0.has_tparams
     }
@@ -504,8 +480,8 @@ impl Class {
         self.0.qname.module_path()
     }
 
-    pub fn module(&self) -> &Module {
-        self.0.qname.module()
+    pub fn module_key(&self) -> ModuleKey {
+        self.0.qname.module().key()
     }
 
     /// The known class this is, if it is one. Only top-level classes can be known classes.
@@ -522,44 +498,41 @@ impl Class {
         &self.0
     }
 
-    pub fn def_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
+    pub fn def<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
         env.class_def(self)
     }
 
-    pub fn name_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Name {
-        self.def_in(env).qname.id()
+    pub fn name<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Name {
+        self.def(env).qname.id()
     }
 
-    pub fn qname_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a QName {
-        &self.def_in(env).qname
+    pub fn qname<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a QName {
+        &self.def(env).qname
     }
 
-    pub fn range_in<E: TypeEnv + ?Sized>(&self, env: &E) -> TextRange {
-        self.def_in(env).qname.range()
+    pub fn range<E: TypeEnv + ?Sized>(&self, env: &E) -> TextRange {
+        self.def(env).qname.range()
     }
 
     /// The module that defines this class.
-    pub fn module_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Module {
-        self.def_in(env).qname.module()
+    pub fn module<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Module {
+        self.def(env).qname.module()
     }
 
-    pub fn is_protocol_in<E: TypeEnv + ?Sized>(&self, env: &E) -> bool {
-        self.def_in(env).is_protocol
+    pub fn is_protocol<E: TypeEnv + ?Sized>(&self, env: &E) -> bool {
+        self.def(env).is_protocol
     }
 
-    pub fn deprecation_in<'a, E: TypeEnv + ?Sized>(
-        &'a self,
-        env: &'a E,
-    ) -> Option<&'a Deprecation> {
-        self.def_in(env).deprecation.as_ref()
+    pub fn deprecation<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> Option<&'a Deprecation> {
+        self.def(env).deprecation.as_ref()
     }
 
-    pub fn kind_in<E: TypeEnv + ?Sized>(&self, env: &E) -> ClassKind {
-        ClassKind::new(self.known(), self.name_in(env))
+    pub fn kind<E: TypeEnv + ?Sized>(&self, env: &E) -> ClassKind {
+        ClassKind::new(self.known(), self.name(env))
     }
 
     /// The type parameters of this class, which are empty if it is not generic.
-    pub fn tparams_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a TParams {
+    pub fn tparams<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a TParams {
         env.class_tparams(self)
     }
 
@@ -567,7 +540,7 @@ impl Class {
     /// we must point at the same class underneath. `ModuleKey` equality treats a
     /// file open in memory and the same file on disk as one module.
     fn key_eq(&self) -> (ClassDefIndex, ModuleKey) {
-        (self.0.def_index, self.0.qname.module().key())
+        (self.0.def_index, self.module_key())
     }
 
     /// Key to use for comparison purposes. Main used to sort identifiers in union,
@@ -662,6 +635,9 @@ impl ClassType {
         self.0
     }
 
+    /// The type parameters that the type arguments were created for. Code that pairs the type
+    /// arguments with parameters uses these, so that the two always match. The class's current
+    /// type parameters are `class_object().tparams(env)`.
     pub fn tparams(&self) -> &TParams {
         self.1.tparams()
     }
@@ -702,14 +678,6 @@ impl ClassType {
         self.targs().substitution()
     }
 
-    pub fn name(&self) -> &Name {
-        self.0.name()
-    }
-
-    pub fn qname(&self) -> &QName {
-        self.0.qname()
-    }
-
     pub fn to_type(self) -> Type {
         Type::ClassType(self)
     }
@@ -722,43 +690,35 @@ impl ClassType {
         self.0.is(known)
     }
 
-    pub fn def_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
-        self.0.def_in(env)
+    pub fn def<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
+        self.0.def(env)
     }
 
-    pub fn name_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Name {
-        self.0.name_in(env)
+    pub fn name<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Name {
+        self.0.name(env)
     }
 
-    pub fn qname_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a QName {
-        self.0.qname_in(env)
+    pub fn qname<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a QName {
+        self.0.qname(env)
     }
 
-    pub fn range_in<E: TypeEnv + ?Sized>(&self, env: &E) -> TextRange {
-        self.0.range_in(env)
+    pub fn range<E: TypeEnv + ?Sized>(&self, env: &E) -> TextRange {
+        self.0.range(env)
     }
 
-    pub fn module_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Module {
-        self.0.module_in(env)
+    pub fn module<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a Module {
+        self.0.module(env)
     }
 
-    pub fn is_protocol_in<E: TypeEnv + ?Sized>(&self, env: &E) -> bool {
-        self.0.is_protocol_in(env)
+    pub fn is_protocol<E: TypeEnv + ?Sized>(&self, env: &E) -> bool {
+        self.0.is_protocol(env)
     }
 
-    pub fn deprecation_in<'a, E: TypeEnv + ?Sized>(
-        &'a self,
-        env: &'a E,
-    ) -> Option<&'a Deprecation> {
-        self.0.deprecation_in(env)
+    pub fn deprecation<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> Option<&'a Deprecation> {
+        self.0.deprecation(env)
     }
 
-    pub fn kind_in<E: TypeEnv + ?Sized>(&self, env: &E) -> ClassKind {
-        self.0.kind_in(env)
-    }
-
-    /// The type parameters of the class, which are empty if it is not generic.
-    pub fn tparams_in<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a TParams {
-        self.0.tparams_in(env)
+    pub fn kind<E: TypeEnv + ?Sized>(&self, env: &E) -> ClassKind {
+        self.0.kind(env)
     }
 }

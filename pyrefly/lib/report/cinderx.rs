@@ -144,7 +144,7 @@ impl CinderxSolutions {
         ancestor_classes: &[Class],
     ) -> CinderxClassInfo {
         CinderxClassInfo {
-            qname: canonicalize_class_qname(&qname_to_full_string(class.qname_in(env))),
+            qname: canonicalize_class_qname(&qname_to_full_string(class.qname(env))),
             ancestors: ancestor_classes
                 .iter()
                 .map(CinderxClassRef::from_class)

@@ -132,23 +132,23 @@ fn describe(
     };
     match ty {
         Type::ClassType(ct) => TypeFact::Instance {
-            qname: qname(ct.class_object().qname_in(env)),
+            qname: qname(ct.class_object().qname(env)),
             mro: mro(transaction, handle, ct.class_object()),
             type_args: nested(ct.targs().as_slice()),
         },
         Type::ClassDef(cls) => TypeFact::Class {
-            qname: qname(cls.qname_in(env)),
+            qname: qname(cls.qname(env)),
             mro: mro(transaction, handle, cls),
             type_args: Vec::new(),
         },
         Type::SpecializedClassDef(ct) => TypeFact::Class {
-            qname: qname(ct.class_object().qname()),
+            qname: qname(ct.qname(env)),
             mro: mro(transaction, handle, ct.class_object()),
             type_args: nested(ct.targs().as_slice()),
         },
         Type::Type(inner) => match inner.as_ref() {
             Type::ClassType(ct) => TypeFact::Class {
-                qname: qname(ct.class_object().qname_in(env)),
+                qname: qname(ct.class_object().qname(env)),
                 mro: mro(transaction, handle, ct.class_object()),
                 type_args: nested(ct.targs().as_slice()),
             },
@@ -219,12 +219,7 @@ fn qname(name: &QName) -> String {
 fn function_qname(env: &dyn TypeEnv, metadata: &FuncMetadata) -> Option<String> {
     let symbol = metadata.kind.to_func_symbol()?;
     Some(match &symbol.cls {
-        Some(cls) => format!(
-            "{}.{}.{}",
-            symbol.module.name(),
-            cls.name_in(env),
-            symbol.name
-        ),
+        Some(cls) => format!("{}.{}.{}", symbol.module.name(), cls.name(env), symbol.name),
         None => format!("{}.{}", symbol.module.name(), symbol.name),
     })
 }
@@ -238,7 +233,7 @@ fn mro(transaction: &Transaction, handle: &Handle, cls: &Class) -> Vec<String> {
                 .get_mro_for_class(cls)
                 .ancestors_no_object()
                 .iter()
-                .map(|ancestor| qname(ancestor.class_object().qname_in(&solver)))
+                .map(|ancestor| qname(ancestor.class_object().qname(&solver)))
                 .collect()
         })
         .unwrap_or_default()
