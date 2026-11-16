@@ -11,6 +11,7 @@ use pretty_assertions::assert_eq;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_types::literal::Lit;
+use pyrefly_types::test_type_env::TestTypeEnv;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::fs_anyhow;
 use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
@@ -145,7 +146,8 @@ def check() -> None:
         .unwrap()
         .0;
     let table = indexed_shape_values(&response.type_table);
-    let metadata_name = crate::query::literal_value_shape_name(&Lit::Str("3".into()));
+    let metadata_name =
+        crate::query::literal_value_shape_name(&TestTypeEnv::new(), &Lit::Str("3".into()));
     let metadata = table
         .iter()
         .position(|shape| is_named_shape(shape, &metadata_name))
