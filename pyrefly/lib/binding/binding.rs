@@ -2156,6 +2156,8 @@ impl ClassDefData {
 pub struct BindingDecoratedFunction {
     pub undecorated_idx: Idx<KeyUndecoratedFunction>,
     pub successor: Option<Idx<KeyDecoratedFunction>>,
+    /// Only the docstring: the `Doc` ranges of the parameters are read from the undecorated
+    /// function's parameters when needed, which keeps this binding small.
     pub docstring_range: Option<TextRange>,
     /// Whether this function definition is contiguous with its predecessor.
     /// Used to enforce that `@overload` signatures are immediately followed by

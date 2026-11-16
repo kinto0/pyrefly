@@ -201,7 +201,7 @@ fn create_intermediate_definition_from(
                 return Some(IntermediateDefinition::Local(Export {
                     location: undecorated.def.name.range,
                     symbol_kind: Some(symbol_kind),
-                    doc_ranges: DocRanges::of_docstring(func.docstring_range),
+                    doc_ranges: DocRanges::new(func.docstring_range, &undecorated.def.parameters),
                     deprecation: None,
                     is_final: false,
                     special_export: None,
