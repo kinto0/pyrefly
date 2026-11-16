@@ -2362,7 +2362,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadFunctionDefinition,
                 format!(
                     "Return type `{}` must be assignable to the first argument type `{}`",
-                    self.for_display(ty_narrow.clone()),
+                    self.display(ty_narrow.clone()),
                     self.for_display(ty_arg.as_type().clone())
                 ),
             );
@@ -2449,7 +2449,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     format!(
                         "`{}` has type `{}` after decorator application, which is not callable",
                         func,
-                        self.for_display(t)
+                        self.display(t)
                     ),
                 );
                         OverloadType::Function(Function {
@@ -2626,7 +2626,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InconsistentOverload,
                     format!(
                         "Overload signature `{}` is not consistent with implementation signature `{}`",
-                        self.for_display(
+                        self.display(
                             self.heap
                                 .mk_callable_from(original_overload_func.signature.clone())
                         ),
@@ -3075,7 +3075,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(Param::PosOnly(_, self_ty, _) | Param::Pos(_, self_ty, _)) =
                 param_list.items().first()
         {
-            let cls_name = cls.name();
+            let cls_name = cls.name_in(self);
             match self_ty {
                 Type::ClassType(cls_ty) => {
                     // The self type must be the defining class itself or a superclass of it.
@@ -3092,7 +3092,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::InvalidAnnotation,
                                 format!(
                                     "`{method_name}` method self type `{}` is not a superclass of class `{cls_name}`",
-                                    self.for_display(self_ty.clone()),
+                                    self.display(self_ty.clone()),
                                 ),
                             )
                             .emit();
@@ -3144,7 +3144,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::InvalidAnnotation,
                                 format!(
                                     "`{method_name}` method self type `{}` refers to class `{}`, which is not a superclass of class `{cls_name}`",
-                                    self.for_display(self_ty.clone()),
+                                    self.display(self_ty.clone()),
                                     self.for_display((**inner).clone()),
                                 ),
                             )
@@ -3172,12 +3172,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(Param::PosOnly(_, cls_ty, _) | Param::Pos(_, cls_ty, _)) =
                 param_list.items().first()
         {
-            let cls_name = cls.name();
+            let cls_name = cls.name_in(self);
             match cls_ty {
                 Type::Type(f) if let Type::ClassType(inner_cls) = &**f => {
                     // Skipping validation for protocols is on par with Pyright's behavior.
                     // TODO: we could consider checking structural subtyping here.
-                    if inner_cls.name() != cls_name
+                    if inner_cls.name_in(self) != cls_name
                         && !self
                             .type_order()
                             .has_superclass(cls, inner_cls.class_object())
@@ -3193,7 +3193,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::InvalidAnnotation,
                                 format!(
                                     "`{method_name}` method cls type `{}` refers to class `{}`, which is not a superclass of class `{cls_name}`",
-                                    self.for_display(cls_ty.clone()),
+                                    self.display(cls_ty.clone()),
                                     self.for_display((**f).clone()),
                                 ),
                             )
@@ -3213,7 +3213,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::InvalidAnnotation,
                             format!(
                                 "`{method_name}` method cls type `{}` is not a valid `type[...]` annotation",
-                                self.for_display(cls_ty.clone()),
+                                self.display(cls_ty.clone()),
                             ),
                         )
                         .emit();

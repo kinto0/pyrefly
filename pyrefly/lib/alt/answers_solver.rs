@@ -2975,9 +2975,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         .to_owned(),
                 )
                 .emit(),
-            PinError::UnfinishedQuantified(q) => {
-                errors.internal_error(range, format!("Unfinished Variable::Quantified: {q}"))
-            }
+            PinError::UnfinishedQuantified(q) => errors.internal_error(
+                range,
+                format!("Unfinished Variable::Quantified: {}", q.name()),
+            ),
         }
     }
 
@@ -3932,7 +3933,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::StringAsIterable,
                 format!(
                     "Passing `{}` to `{}` treats the string as an iterable of characters",
-                    got_display, want_display
+                    got_display.display_with(self),
+                    want_display.display_with(self)
                 ),
             )
             .with_detail("Did you mean to pass an iterable of strings?".to_owned())
@@ -3966,7 +3968,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     (
                         Some(format!(
                             "Consider narrowing the value with an `is not None` check or changing the declared type to `{} | None`",
-                            self.for_display(want.clone()),
+                            self.display(want.clone()),
                         )),
                         true,
                     )
@@ -4004,7 +4006,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 _ => (
                     Some(format!(
                         "Consider changing the declared type to `{} | None`",
-                        self.for_display(want.clone())
+                        self.display(want.clone())
                     )),
                     false,
                 ),

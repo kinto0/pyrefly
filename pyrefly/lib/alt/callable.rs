@@ -1322,7 +1322,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         call_errors,
                         arguments_range,
                         ErrorKind::BadArgumentType,
-                        format!("Expected `{}` to be a ParamSpec value", self.for_display(t)),
+                        format!("Expected `{}` to be a ParamSpec value", self.display(t)),
                     );
                     ParamList::everything()
                 }
@@ -1834,7 +1834,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let typed_dict = match &ty {
                         Type::ClassType(ct) if self.is_typed_dict_class(ct.class_object()) => {
                             Some((
-                                ct.name().clone(),
+                                ct.name_in(self).clone(),
                                 self.typed_dict_fields(ct),
                                 self.typed_dict_extra_items(ct),
                                 false,
@@ -1881,7 +1881,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         format!(
                                             "`{}` may contain extra items of type `{}`, which cannot be unpacked into a callable that accepts no extra keyword arguments",
                                             td_name,
-                                            self.for_display(extra_ty.clone()),
+                                            self.display(extra_ty.clone()),
                                         ),
                                     );
                                 }
@@ -2000,7 +2000,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         ErrorKind::BadUnpacking,
                                         format!(
                                             "Expected argument after ** to have `str` keys, got: {}",
-                                            self.for_display(key)
+                                            self.display(key)
                                         ),
                                     );
                                 }
@@ -2012,7 +2012,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::BadUnpacking,
                                     format!(
                                         "Expected argument after ** to be a mapping, got: {}",
-                                        self.for_display(ty)
+                                        self.display(ty)
                                     ),
                                 );
                             }
@@ -2848,7 +2848,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             call_errors,
                             arguments_range,
                             ErrorKind::InvalidParamSpec,
-                            format!("Unexpected ParamSpec type: `{}`", self.for_display(p)),
+                            format!("Unexpected ParamSpec type: `{}`", self.display(p)),
                             context,
                         );
                         ArgMap::new()

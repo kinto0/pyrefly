@@ -1298,7 +1298,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if module.as_str() != POLARS_MODULE && !module.as_str().starts_with(POLARS_MODULE_PREFIX) {
             return None;
         }
-        match cls.name().as_str() {
+        match cls.name_in(self).as_str() {
             "Array" => {
                 if !arguments_are_valid(&call.arguments, 2, Some(&["inner", "shape"])) {
                     return None;

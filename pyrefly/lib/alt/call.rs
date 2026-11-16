@@ -21,6 +21,7 @@ use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::types::CalleeKind;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
 use pyrefly_util::visit::Visit;
@@ -349,7 +350,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 range,
                 format!(
                     "`__new__` on `{}` resolves back to the same class, creating infinite recursion at runtime",
-                    cls.name()
+                    cls.name_in(self)
                 ),
                 ErrorKind::NotCallable,
                 context,
@@ -577,7 +578,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     Type::ClassType(cls) => cls,
                                     Type::Tuple(tuple) => self.erase_tuple_type(tuple),
                                     ty => unreachable!(
-                                        "shape-extension upper-bound members materialize to builtin types, got `{ty}`"
+                                        "shape-extension upper-bound members materialize to builtin types, got `{}`",
+                                        ty.display_with(self)
                                     ),
                                 };
                                 CallTarget::Class(
@@ -1010,7 +1012,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.error_call_target(
                     errors,
                     range,
-                    format!("{}, got `{}`", expect_message, self.for_display(ty)),
+                    format!("{}, got `{}`", expect_message, self.display(ty)),
                     ErrorKind::NotCallable,
                     context,
                 )
@@ -1020,7 +1022,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 range,
                 format!(
                     "`__call__` on `{}` resolves back to the same type, creating infinite recursion at runtime",
-                    self.for_display(ty),
+                    self.display(ty),
                 ),
                 ErrorKind::NotCallable,
                 context,
@@ -1846,8 +1848,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::UnnecessaryTypeConversion,
                     format!(
                         "Unnecessary `{}()` call; argument is already of type `{}`",
-                        cls.name(),
-                        arg_ty.deterministic_printing(),
+                        cls.name_in(self),
+                        arg_ty.deterministic_printing().display_with(self),
                     ),
                 );
             }
@@ -1890,7 +1892,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::UnsupportedDynamicBase,
                 format!(
                     "Base class `{}` in `type()` call is not a statically known class",
-                    self.for_display(base_ty)
+                    self.display(base_ty)
                 ),
             );
         }
@@ -1951,7 +1953,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         call_errors,
                         arguments_range,
                         ErrorKind::BadInstantiation,
-                        format!("`{}` cannot be instantiated", cls.name()),
+                        format!("`{}` cannot be instantiated", cls.name_in(self)),
                         context,
                     ));
                 }
@@ -1967,7 +1969,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadInstantiation,
                         format!(
                             "Cannot instantiate `{}` because it is a protocol",
-                            cls.name()
+                            cls.name_in(self)
                         ),
                         context,
                     );
@@ -1982,7 +1984,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because the following members are abstract: {}",
-                                cls.name(),
+                                cls.name_in(self),
                                 unimplemented_abstract_methods
                                     .iter()
                                     .map(|x| format!("`{x}`"))
@@ -1998,7 +2000,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::DirectAbstractBaseInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because it directly extends `ABC` or uses `ABCMeta`",
-                                cls.name()
+                                cls.name_in(self)
                             ),
                             context,
                         );
@@ -2245,7 +2247,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if let Some(cls) = transformed {
                     let metadata = self.get_metadata_for_class(cls);
                     self.report_forbidden_dataclass_target(
-                        cls.name(),
+                        cls.name_in(self),
                         metadata.is_protocol(),
                         metadata.is_enum(),
                         metadata.is_typed_dict(),
@@ -2444,7 +2446,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .with_context(context);
             for (index, arg_errors, attempt_errors, attempt_return_errors) in failures {
                 builder = builder
-                    .with_detail(format!("  {}", self.for_display(targets[index].ty.clone())))
+                    .with_detail(format!("  {}", self.display(targets[index].ty.clone())))
                     .with_errors_as_details(attempt_errors);
                 errors.extend(arg_errors);
                 return_errors.extend(attempt_return_errors);

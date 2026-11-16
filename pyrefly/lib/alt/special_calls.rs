@@ -17,6 +17,7 @@ use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::shaped_array::IntTuple;
 use pyrefly_types::shaped_array::IntTupleView;
 use pyrefly_types::shaped_array::is_tuple_carrier_shape_middle;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::Expr;
@@ -97,8 +98,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 } else {
                     ErrorKind::AssertType
                 };
-                let a_display = self.for_display(a.clone());
-                let b_display = self.for_display(b);
+                let a_display = self.display(a.clone());
+                let b_display = self.display(b);
                 errors
                     .error_builder(
                         range,
@@ -395,7 +396,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadArgumentType,
                     format!(
                         "First argument to `assert_shape` must be an `IntTuple`, got `{}`",
-                        self.for_display(actual.clone())
+                        self.display(actual.clone())
                     ),
                 );
                 self.heap.mk_any_error()
@@ -566,8 +567,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::RedundantCast,
                     format!(
                         "Redundant cast: `{}` is the same type as `{}`",
-                        val_type.deterministic_printing(),
-                        ret.clone().deterministic_printing()
+                        val_type.deterministic_printing().display_with(self),
+                        ret.clone().deterministic_printing().display_with(self)
                     ),
                 );
             // A `...` in a `.pyi` file is an omitted value rather than a literal `...`
@@ -580,8 +581,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidCast,
                     format!(
                         "Cast from `{}` to `{}` is invalid because the types are disjoint",
-                        val_type.deterministic_printing(),
-                        ret.clone().deterministic_printing()
+                        val_type.deterministic_printing().display_with(self),
+                        ret.clone().deterministic_printing().display_with(self)
                     ),
                 );
             }
@@ -640,7 +641,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         error_kind,
                         format!(
                             "NewType `{}` not allowed in {}",
-                            class_info_cls.name(),
+                            class_info_cls.name_in(self),
                             func_display(),
                         ),
                     );
@@ -653,7 +654,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         error_kind,
                         format!(
                             "TypedDict `{}` not allowed as second argument to {}",
-                            class_info_cls.name(),
+                            class_info_cls.name_in(self),
                             func_display()
                         ),
                     );
@@ -665,7 +666,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             error_kind,
-                            format!("Protocol `{}` is not decorated with @runtime_checkable and cannot be used with {}", class_info_cls.name(), func_display()),
+                            format!("Protocol `{}` is not decorated with @runtime_checkable and cannot be used with {}", class_info_cls.name_in(self), func_display()),
                         );
                     } else {
                         // Additional validation for runtime checkable protocols:
@@ -677,7 +678,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                                 range,
                                 error_kind,
-                                format!("Protocol `{}` has non-method members and cannot be used with issubclass()", class_info_cls.name()),
+                                format!("Protocol `{}` has non-method members and cannot be used with issubclass()", class_info_cls.name_in(self)),
                             );
                         }
                         // Check for unsafe overlap:
@@ -727,8 +728,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::UnsafeOverlap,
                                     format!(
                                         "Runtime checkable protocol `{}` has an unsafe overlap with type `{}`",
-                                        class_info_cls.name(),
-                                        self.for_display(object_type.clone())
+                                        class_info_cls.name_in(self),
+                                        self.display(object_type.clone())
                                     ),
                                 ).with_details(unsafe_overlap_errors).emit();
                             }
@@ -748,7 +749,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     error_kind,
                     format!(
                         "Expected class object, got parameterized generic type: `{}`",
-                        self.for_display(class_info_ty)
+                        self.display(class_info_ty)
                     ),
                 );
             } else if let Type::Type(f) = &class_info_ty
@@ -769,7 +770,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     error_kind,
                     format!(
                         "Expected class object, got `{}`",
-                        self.for_display(class_info_ty)
+                        self.display(class_info_ty)
                     ),
                 );
             } else {

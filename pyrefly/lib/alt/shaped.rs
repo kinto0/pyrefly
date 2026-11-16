@@ -291,7 +291,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::InvalidAnnotation,
                 format!(
                     "`Shaped` needs a class, an integer tuple, or `Any`, got `{}`",
-                    self.for_display(base.clone())
+                    self.display(base.clone())
                 ),
             );
             return base;
@@ -321,7 +321,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         format!(
                             "A `Shaped` shape must be a list of dimensions, a variadic \
                              shape, or a shape function call, got `{}`",
-                            self.for_display(shape)
+                            self.display(shape)
                         ),
                     );
                     return base;
@@ -341,7 +341,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else {
             format!(
                 "`Shaped` tuple `{}` does not agree with its shape `{}`",
-                self.for_display(base.clone()),
+                self.display(base.clone()),
                 self.for_display(shape)
             )
         };

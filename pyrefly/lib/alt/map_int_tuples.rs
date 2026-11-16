@@ -229,7 +229,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAnnotation,
                     format!(
                         "Source argument to `MapIntTuples` must be an `IntTuples` value, got `{}`",
-                        self.for_display(source_type)
+                        self.display(source_type)
                     ),
                 );
                 return fallback();
@@ -737,7 +737,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadArgumentType,
                 format!(
                     "Shapes `{}` recovered from this argument are not assignable to the `MapIntTuples` source `{}`",
-                    self.for_display(source),
+                    self.display(source),
                     self.for_display(map_source.clone()),
                 ),
                 context,

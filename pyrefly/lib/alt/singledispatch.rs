@@ -240,7 +240,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::BadSingledispatchRegister,
                 format!(
                     "Dispatch type `{}` is not a subtype of fallback first argument type `{}`",
-                    self.for_display(dispatch_ty.clone()),
+                    self.display(dispatch_ty.clone()),
                     self.for_display(fallback_first.clone()),
                 ),
             );

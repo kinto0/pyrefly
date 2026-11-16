@@ -29,6 +29,7 @@ use pyrefly_types::type_info::JoinStyle;
 use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::types::UnpackKind;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -568,11 +569,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if !metadata.is_protocol() && metadata.is_final() {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::BadClassDefinition,
                     format!(
                         "Final class `{}` cannot have unimplemented abstract members: {}",
-                        cls.name(),
+                        cls.name_in(self),
                         members
                     ),
                 );
@@ -582,11 +583,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::ImplicitAbstractClass,
                     format!(
                         "Class `{}` has unimplemented abstract members: {}",
-                        cls.name(),
+                        cls.name_in(self),
                         members
                     ),
                 );
@@ -901,7 +902,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     Type::None => Some("`None`".to_owned()),
                     Type::Module(_) => Some("`types.ModuleType`".to_owned()),
-                    Type::ClassDef(cls) => Some(format!("`type[{}]`", cls.name())),
+                    Type::ClassDef(cls) => Some(format!("`type[{}]`", cls.name_in(self))),
                     _ => None,
                 }
             } else {
@@ -1455,7 +1456,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Expression `{}` has type `{}`, expected {}",
                     self.module().display(x),
-                    self.for_display(actual_type),
+                    self.display(actual_type),
                     expected,
                 ),
             );
@@ -1486,7 +1487,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::NotAType,
                         format!(
                             "Expected a type form, got instance of `{}`",
-                            self.for_display(inferred_ty),
+                            self.display(inferred_ty),
                         ),
                     )
                 });
@@ -1509,7 +1510,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         expr.range(),
                         ErrorKind::InvalidTypeAlias,
-                        format!("Expected a type variable, got `{}`", self.for_display(ty)),
+                        format!("Expected a type variable, got `{}`", self.display(ty)),
                     );
                 }
             }
@@ -1634,7 +1635,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::InvalidTypeAlias,
-                format!("Expected `{name}` to be a type alias, got `{ty}`"),
+                format!(
+                    "Expected `{name}` to be a type alias, got `{}`",
+                    ty.display_with(self)
+                ),
             );
             return TypeAlias::error(name.clone(), style);
         };
@@ -2687,13 +2691,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict `{}` does not have key `{field_name}`",
-                        typed_dict.name()
+                        typed_dict.name_in(self)
                     ),
                 );
                 return;
             };
         self.check_del_typed_dict_field(
-            typed_dict.name(),
+            typed_dict.name_in(self),
             Some(field_name),
             read_only,
             required,
@@ -3196,7 +3200,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::UnexpectedNever,
                         format!(
                             "Function declared to return `{}` but can never return",
-                            self.for_display(annotation.clone())
+                            self.display(annotation.clone())
                         ),
                     );
                 }
@@ -3684,7 +3688,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         cls: &Class,
         class_field_map: &SmallMap<Name, &ClassField>,
     ) {
-        if !cls.module().path().is_first_party_for_indexing() {
+        if !cls.module_path().is_first_party_for_indexing() {
             return;
         }
 
@@ -3833,14 +3837,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::OrderedDataclassInheritance,
                     format!(
                         "Cannot safely extend dataclass `{}` with `order=True`",
-                        generator.name()
+                        generator.name_in(self)
                     ),
                 )
                 .with_detail(format!(
                     "Comparisons between instances of `{}` and its subclasses raise `TypeError`. \
                      Define `__lt__`, `__le__`, `__gt__`, and `__ge__` on the subclass to allow \
                      them.",
-                    generator.name()
+                    generator.name_in(self)
                 ))
                 .emit();
         }
@@ -3905,9 +3909,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAbstractMethod,
                     format!(
                         "`{}.{}` is decorated with `@abstractmethod` but `{}` is not an abstract class",
-                        cls.name(),
+                        cls.name_in(self),
                         name,
-                        cls.name()
+                        cls.name_in(self)
                     ),
                 );
             }
@@ -4127,12 +4131,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         // TODO: ideally this would point to where the TypeVar
                         // is bound in the class header rather than the class name.
-                        class.range(),
+                        class.range_in(self),
                         ErrorKind::VarianceMismatch,
                         format!(
                             "Type variable `{}` in class `{}` is declared as invariant, but could be {} based on its usage",
                             tparam.name(),
-                            class.name(),
+                            class.name_in(self),
                             effective_v,
                         ),
                     );
@@ -4184,7 +4188,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::InvalidArgument,
                             format!(
                                 "Expected first argument to `super` to be a class object, got `{}`",
-                                self.for_display(t.clone())
+                                self.display(t.clone())
                             ),
                         );
                     }
@@ -4194,7 +4198,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let lookup_cls = self.get_super_lookup_class(cls, obj_cls);
                     lookup_cls.map_or_else (
                                 || {
-                                    let cls_type = self.for_display(cls_type.clone());
+                                    let cls_type = self.display(cls_type.clone());
+                                    let obj_cls = obj_cls.display_with(self);
                                     self.error(
                                         errors,
                                         range,
@@ -4233,7 +4238,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     errors,
                                     range,
                                     ErrorKind::InvalidArgument,
-                                    format!("Expected second argument to `super` to be a class object or instance, got `{}`", self.for_display(t.clone())),
+                                    format!("Expected second argument to `super` to be a class object or instance, got `{}`", self.display(t.clone())),
                                 )
                             }
                 }
@@ -4398,7 +4403,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadMatch,
                             format!(
                                 "Expected literal string in `__match_args__`, got `{}`",
-                                ts[idx]
+                                ts[idx].display_with(self)
                             ),
                             Some(&context),
                         )
@@ -4418,7 +4423,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::BadMatch,
-                format!("Expected concrete tuple for `__match_args__`, got `{match_args}`",),
+                format!(
+                    "Expected concrete tuple for `__match_args__`, got `{}`",
+                    match_args.display_with(self)
+                ),
                 Some(&context),
             ),
         }
@@ -4695,7 +4703,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::InvalidTypeCheckingConstant,
                 format!(
                     "`{name}` must have type `bool` (e.g. `{name} = False`), got `{}`",
-                    self.for_display(ty.clone())
+                    self.display(ty.clone())
                 ),
             );
         }
@@ -5019,7 +5027,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::NoAnyReturnExplicit,
                     format!(
                         "Returning Any from function declared to return \"{}\"",
-                        self.for_display(declared_ty.clone())
+                        self.display(declared_ty.clone())
                     ),
                 );
             }
@@ -5030,7 +5038,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::NoAnyReturnImplicit,
                     format!(
                         "Returning implicit Any from function declared to return \"{}\"",
-                        self.for_display(declared_ty.clone())
+                        self.display(declared_ty.clone())
                     ),
                 );
             }
@@ -5379,7 +5387,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::UnreachableExceptClause,
                     format!(
                         "`{}` is already caught earlier in this `try` statement, so it never matches here",
-                        self.for_display(ty)
+                        self.display(ty)
                     ),
                 );
             }
@@ -5396,7 +5404,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let message = match culprit {
             Some(ty) => format!(
                 "This `{keyword}` clause is unreachable, because an earlier clause already catches `{}`",
-                self.for_display(ty)
+                self.display(ty)
             ),
             None => format!(
                 "This `{keyword}` clause is unreachable, because earlier clauses already catch every exception it matches"
@@ -6124,7 +6132,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Result of call expression is of type `{}` and is not used; \
                      assign to `_` if this is intentional",
-                    self.for_display(result.clone())
+                    self.display(result.clone())
                 ),
             );
         }
@@ -6879,12 +6887,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::BadTypedDictKey,
                     format!(
                         "TypedDict `{}` does not have key `{field_name}`",
-                        typed_dict.name()
+                        typed_dict.name_in(self)
                     ),
                 );
             };
         self.check_assign_to_typed_dict_field(
-            typed_dict.name(),
+            typed_dict.name_in(self),
             Some(field_name),
             &field_ty,
             read_only,
@@ -6930,7 +6938,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 self.get_typed_dict_value_type_as_builtins_dict(typed_dict) =>
                     {
                         self.check_assign_to_typed_dict_field(
-                            typed_dict.name(),
+                            typed_dict.name_in(self),
                             None,
                             &field_ty,
                             false,
@@ -7497,7 +7505,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::UntypedClassDecorator,
                                 format!(
                                     "Untyped class decorator may modify `{}` in unexpected ways",
-                                    cls.name()
+                                    cls.name_in(self)
                                 ),
                             );
                         }
@@ -7805,7 +7813,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::InvalidYield,
                             format!(
                                 "yield from value must be iterable, got `{}`",
-                                self.for_display(ty)
+                                self.display(ty)
                             ),
                         )
                     };
@@ -7874,7 +7882,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::NotAType,
                 format!(
                     "Expected a type form, got instance of `{}`",
-                    self.for_display(ty),
+                    self.display(ty),
                 ),
             )
         }
@@ -8263,7 +8271,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::InvalidAnnotation,
-                format!("`{ty}` is not allowed in this context"),
+                format!("`{}` is not allowed in this context", ty.display_with(self)),
             );
         }
         // We check tuple/callable/generic type arguments separately, so exclude those
@@ -8357,7 +8365,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::InvalidAnnotation,
                 format!(
                     "NewType `{}` is not a class and cannot be used with `type` or `Type`",
-                    cls.name()
+                    cls.name_in(self)
                 ),
             );
         }
@@ -8415,7 +8423,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     .is_some() =>
                         {
                             self.check_del_typed_dict_field(
-                                typed_dict.name(),
+                                typed_dict.name_in(self),
                                 None,
                                 false,
                                 false,
@@ -8544,7 +8552,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     "Cannot use scoped type alias `{}` as a base class. Use a legacy type alias instead: `{}: TypeAlias = {}`",
                     ta.name,
                     ta.name,
-                    self.for_display(ta.as_type())
+                    self.display(ta.as_type())
                 ),
             );
         }
@@ -8561,7 +8569,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::NotAType,
                 format!(
                     "Expected a type form, got instance of `{}`",
-                    self.for_display(inferred_ty),
+                    self.display(inferred_ty),
                 ),
             )
         })

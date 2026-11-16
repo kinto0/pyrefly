@@ -42,6 +42,7 @@ use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::UnpackKind;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::prelude::VecExt;
@@ -581,7 +582,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::InvalidFormatSpec,
                         format!(
                             "Incompatible types in string interpolation (expression has type `{}`, placeholder has type `{}`)",
-                            self.for_display(actual.clone()),
+                            self.display(actual.clone()),
                             self.for_display(expected),
                         ),
                     )
@@ -645,7 +646,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::InvalidFormatSpec,
                         format!(
                             "Invalid format specification `{spec}` for type `{}`: {reason}",
-                            self.for_display(actual.clone()),
+                            self.display(actual.clone()),
                         ),
                     )
                     .emit();
@@ -658,7 +659,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::InvalidFormatSpec,
                 format!(
                     "The type `{}` doesn't support format specifiers",
-                    self.for_display(actual.clone()),
+                    self.display(actual.clone()),
                 ),
             )
             .with_detail("Maybe you want to add `!s` to the conversion".to_owned())
@@ -1818,7 +1819,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             _ => None,
         };
         let deprecation = cls
-            .and_then(|cls| cls.deprecation())
+            .and_then(|cls| cls.deprecation_in(self))
             .or_else(|| ty.function_deprecation());
         let Some(deprecation) = deprecation else {
             return;
@@ -1838,9 +1839,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let deprecated_name = match cls {
             Some(cls) => Some(if cls.module_name() == self.module().name() {
-                cls.qname().name_relative_to_module()
+                cls.qname_in(self).name_relative_to_module()
             } else {
-                cls.qname().module_qualified_name()
+                cls.qname_in(self).module_qualified_name()
             }),
             _ => ty
                 .to_func_kind()
@@ -2158,7 +2159,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     errors,
                                     x.range(),
                                     ErrorKind::NotIterable,
-                                    format!("Expected an iterable, got `{}`", self.for_display(ty)),
+                                    format!("Expected an iterable, got `{}`", self.display(ty)),
                                 );
                                 encountered_invalid_star = true;
                                 hint_ts_iter.nth(usize::MAX);
@@ -2504,7 +2505,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             x.value.range(),
                             ErrorKind::InvalidArgument,
-                            format!("Expected a mapping, got {}", self.for_display(ty)),
+                            format!("Expected a mapping, got {}", self.display(ty)),
                         );
                         if let Some(keys) = &mut iteration_keys {
                             keys.push(ty);
@@ -2575,7 +2576,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 return None;
             }
             let class = metadata.kind.class();
-            let class = class.as_ref().map(|class| class.name().as_str());
+            let class = class.as_ref().map(|class| class.name_in(self).as_str());
             let function = metadata.kind.function_name();
             match (class, function.as_ref().as_str()) {
                 (None, "compile" | "template") => Some(1),
@@ -3299,7 +3300,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                                 kw.range,
                                 ErrorKind::InvalidSentinel,
-                                format!("Invalid type for sentinel `repr` {got}"),
+                                format!(
+                                    "Invalid type for sentinel `repr` {}",
+                                    got.display_with(self)
+                                ),
                             );
                         }
                     }
@@ -3397,10 +3401,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         x.range(),
                         ErrorKind::NotIterable,
-                        format!(
-                            "Expected an iterable, got `{}`",
-                            self.for_display(unpacked_ty)
-                        ),
+                        format!("Expected an iterable, got `{}`", self.display(unpacked_ty)),
                     );
                     self.observe_iteration_element(&ty, iteration_types.as_mut());
                     ty
@@ -3589,7 +3590,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::Var(v) = base {
                 base = self.solver().force_var(v);
             }
-            if matches!(&base, Type::ClassDef(t) if t.name() == "tuple") {
+            if matches!(&base, Type::ClassDef(t) if t.name_in(self) == "tuple") {
                 base = self.heap.mk_type_of(self.heap.mk_special_form(SpecialForm::Tuple));
             }
             if let Type::Intersect(x) = &base {
@@ -3834,7 +3835,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadIndex,
                                 format!(
                                     "Enum `{}` does not have a member named `{}`",
-                                    cls.name(),
+                                    cls.name_in(self),
                                     key.to_str()
                                 ),
                             )
@@ -3849,7 +3850,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             slice.range(),
                             ErrorKind::BadIndex,
-                            format!("Enum `{}` can only be indexed by strings", cls.name()),
+                            format!("Enum `{}` can only be indexed by strings", cls.name_in(self)),
                         )
                     }
                 }
@@ -3882,7 +3883,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadIndex,
                                 format!(
                                     "Enum type `{}` can only be indexed by strings",
-                                    self.for_display(base_display_ty)
+                                    self.display(base_display_ty)
                                 ),
                             )
                         }
@@ -3893,7 +3894,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::UnsupportedOperation,
                             format!(
                                 "`{}` is not subscriptable",
-                                self.for_display(base_display_ty)
+                                self.display(base_display_ty)
                             ),
                         )
                     }
@@ -3913,7 +3914,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadIndex,
                             format!(
                                 "Enum type `{}` can only be indexed by strings",
-                                self.for_display(base_display_ty)
+                                self.display(base_display_ty)
                             ),
                         )
                     }
@@ -4072,7 +4073,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                             ErrorKind::BadTypedDictKey,
                                             format!(
                                                 "TypedDict `{}` does not have key `{key_name}`",
-                                                typed_dict.name()
+                                                typed_dict.name_in(self)
                                             ),
                                         );
                                         let fields = self.typed_dict_fields(typed_dict);
@@ -4110,8 +4111,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::BadTypedDictKey,
                                     format!(
                                         "Invalid key for TypedDict `{}`, got `{}`",
-                                        typed_dict.name(),
-                                        self.for_display(ty.clone())
+                                        typed_dict.name_in(self),
+                                        self.display(ty.clone())
                                     ),
                                 )
                             }
@@ -4270,7 +4271,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadIndex,
                                 format!(
                                     "Invalid key for dict, got `{}`",
-                                    self.for_display(ty.clone())
+                                    self.display(ty.clone())
                                 ),
                             ),
                         }
@@ -4300,7 +4301,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::UnsupportedOperation,
-                    format!("`{}` is not subscriptable", self.for_display(t)),
+                    format!("`{}` is not subscriptable", self.display(t)),
                 ),
             }
         })
@@ -4526,7 +4527,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::InvalidAnnotation,
                                     format!(
                                         "Tensor shape dimensions must be integer literals or type variables, got `{}`",
-                                        self.for_display(expr_type)
+                                        self.display(expr_type)
                                     ),
                                 );
                                 Err(DimensionExprError::Invalid)
@@ -4631,7 +4632,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAnnotation,
                     format!(
                         "Tensor shape dimensions must be integer literals, string literals, type variables, or expressions, got `{}`",
-                        self.for_display(expr_type)
+                        self.display(expr_type)
                     ),
                 );
                 Err(DimensionExprError::Invalid)
@@ -5121,7 +5122,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAnnotation,
                     format!(
                         "`Elements[...]` requires an `IntTuple` or integer tuple, got `{}`",
-                        self.for_display(argument)
+                        self.display(argument)
                     ),
                 );
                 Err(())
@@ -5190,7 +5191,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::InvalidAnnotation,
                             format!(
                                 "Unpacked type in `IntTuple` must be an `IntTuple` or integer tuple, or a type variable bounded by one, got `{}`",
-                                self.for_display(got)
+                                self.display(got)
                             ),
                         );
                         return None;
@@ -5333,7 +5334,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Type::Literal(lit) if let Lit::Enum(e) = &lit.value => {
                 Some(ConditionRedundantReason::EnumLiteral(
-                    e.class.class_object().name().clone(),
+                    e.class.class_object().name_in(self).clone(),
                     e.member.clone(),
                 ))
             }
@@ -5349,7 +5350,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 self.module().name(),
                 kind.clone(),
             )),
-            Type::ClassDef(cls) => Some(ConditionRedundantReason::Class(cls.name().clone())),
+            Type::ClassDef(cls) => Some(ConditionRedundantReason::Class(cls.name_in(self).clone())),
             Type::ClassType(ct) => {
                 let cls = ct.class_object();
                 // Skip warning for `object` itself and for abstract/protocol types:
@@ -5376,7 +5377,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     && self.class_instances_always_truthy(cls)
                 {
                     Some(ConditionRedundantReason::InstanceAlwaysTruthy(
-                        cls.name().clone(),
+                        cls.name_in(self).clone(),
                     ))
                 } else {
                     None
@@ -5433,7 +5434,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::ImplicitBool,
                 format!(
                     "Implicit conversion of `{}` to `bool` is not allowed",
-                    self.for_display(condition_type.clone())
+                    self.display(condition_type.clone())
                 ),
             );
         }

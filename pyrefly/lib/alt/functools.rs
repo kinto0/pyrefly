@@ -139,7 +139,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadInstantiation,
                         format!(
                             "Cannot instantiate `{}` because it is a protocol",
-                            cls.name()
+                            cls.name_in(self)
                         ),
                     );
                 } else if !metadata.is_new_type() {
@@ -152,7 +152,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because the following members are abstract: {}",
-                                cls.name(),
+                                cls.name_in(self),
                                 unimplemented
                                     .iter()
                                     .map(|x| format!("`{x}`"))
@@ -167,7 +167,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::DirectAbstractBaseInstantiation,
                             format!(
                                 "Cannot instantiate `{}` because it directly extends `ABC` or uses `ABCMeta`",
-                                cls.name()
+                                cls.name_in(self)
                             ),
                         );
                     }
@@ -215,7 +215,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::NotCallable,
                         format!(
                             "Expected a callable, got `{}`",
-                            self.for_display(member.clone())
+                            self.display(member.clone())
                         ),
                     );
                 }

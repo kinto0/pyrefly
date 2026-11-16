@@ -20,6 +20,7 @@ use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_output::DisplayOutput;
 use pyrefly_types::type_output::TypeOutput;
 use pyrefly_types::types::TArgs;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::display::count;
 use pyrefly_util::gas::Gas;
@@ -736,12 +737,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ),
                 CallArg::Star(value, _) => (value.infer(self, errors), "*"),
             };
-            let ty_display = self.for_display(ty);
+            let ty_display = self.display(ty);
             arg_type_strs.push(format!("{}{}", prefix, ty_display));
         }
         for (i, kw) in keywords.iter().enumerate() {
             let ty = arg_type(&kw.value, ArgumentKey::Keyword(i));
-            let ty_display = self.for_display(ty);
+            let ty_display = self.display(ty);
             if let Some(arg_name) = kw.arg {
                 arg_type_strs.push(format!("{}={}", arg_name.as_str(), ty_display));
             } else {
@@ -821,7 +822,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     {
                         // If any of the parameters we want to show don't exist in the current
                         // signature, be conservative and show everything.
-                        format!("{type_for_display}")
+                        type_for_display.display_with(self).to_string()
                     } else {
                         format!(
                             "{}",
@@ -842,7 +843,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         )
                     }
                 }
-                _ => format!("{type_for_display}"),
+                _ => type_for_display.display_with(self).to_string(),
             };
             details.push(format!("  {signature_for_display}{suffix}"));
         }

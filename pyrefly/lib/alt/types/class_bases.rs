@@ -126,7 +126,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Type::Var(v) = base {
             base = self.solver().force_var(v);
         }
-        if matches!(&base, Type::ClassDef(t) if t.name() == "tuple") {
+        if matches!(&base, Type::ClassDef(t) if t.name_in(self) == "tuple") {
             base = self
                 .heap
                 .mk_type_of(self.heap.mk_special_form(SpecialForm::Tuple));
@@ -205,7 +205,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ErrorKind::UnsupportedOperation,
                 format!(
                     "`{}` is not a subscriptable type on base class list",
-                    self.for_display(t)
+                    self.display(t)
                 ),
             ),
         };
@@ -624,11 +624,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             self.error(
                 errors,
-                cls.range(),
+                cls.range_in(self),
                 ErrorKind::InvalidInheritance,
                 format!(
                     "Class `{}` has a nonlinearizable inheritance chain detected at `object`",
-                    cls.name()
+                    cls.name_in(self)
                 ),
             );
         }

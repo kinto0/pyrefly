@@ -699,7 +699,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     error_kind,
                     format!(
                         "Object of type `{}` has no attribute `{attr_name}`",
-                        self.for_display(base.clone())
+                        self.display(base.clone())
                     ),
                     access_errors.into_iter().map(|(_, msg)| msg).collect(),
                 )
@@ -1349,7 +1349,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Some(allowed_slots) = self.effective_slots_for_instance_write(cls)
             && !allowed_slots.contains(attr_name)
         {
-            let class_name = cls.name();
+            let class_name = cls.name_in(self);
             self.error_with_context(
                 errors,
                 range,
@@ -1576,7 +1576,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         && matches!(got_attr, Attribute::GetAttr(..))
                     {
                         return Err(SubsetError::MissingAttribute(
-                            protocol.name().clone(),
+                            protocol.name_in(self).clone(),
                             attr_name.clone(),
                         ));
                     }
@@ -1598,7 +1598,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                     .map_err(|err| {
                         SubsetError::IncompatibleAttribute(Box::new((
-                            protocol.name().clone(),
+                            protocol.name_in(self).clone(),
                             self.for_display(got.clone()),
                             attr_name.clone(),
                             *err,
@@ -1608,13 +1608,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 Ok(())
             } else {
                 Err(SubsetError::MissingAttribute(
-                    protocol.name().clone(),
+                    protocol.name_in(self).clone(),
                     attr_name.clone(),
                 ))
             }
         } else {
             Err(SubsetError::MissingAttribute(
-                protocol.name().clone(),
+                protocol.name_in(self).clone(),
                 attr_name.clone(),
             ))
         }
@@ -3233,7 +3233,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::InvalidArgument,
                         format!(
                             "The `__bool__` attribute of `{}` has type `{}`, which is not callable",
-                            self.for_display(union_member_ty.clone()),
+                            self.display(union_member_ty.clone()),
                             self.for_display(ty),
                         ),
                     );
@@ -3258,7 +3258,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidArgument,
                     format!(
                         "The `__bool__` method of `{}` returns `Never`, so it cannot be used as a boolean",
-                        self.for_display(union_member_ty.clone()),
+                        self.display(union_member_ty.clone()),
                     ),
                 );
             }
@@ -3363,7 +3363,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     range,
                     format!(
                         "callable_has_explicit_return_annotation does not support type `{}`",
-                        self.for_display(ty.clone()),
+                        self.display(ty.clone()),
                     ),
                 );
                 false

@@ -105,7 +105,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             TypedDictHint::Declared(inner) => (
                 self.typed_dict_fields(inner),
                 self.typed_dict_extra_items(inner),
-                inner.name().clone(),
+                inner.name_in(self).clone(),
             ),
             TypedDictHint::Anonymous(inner) => (
                 inner.fields.iter().cloned().collect(),

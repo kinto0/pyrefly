@@ -20,6 +20,7 @@ use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::quantified::TypeVarLike;
 use pyrefly_types::simplify::intersect;
 use pyrefly_types::type_var::Restriction;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::VecExt;
 use ruff_python_ast::CmpOp;
 use ruff_python_ast::ExprBinOp;
@@ -1384,8 +1385,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if !self.is_subset_eq(cdef, ctype) =>
             {
                 emit_instance_is_class_warning(
-                    &ctype.to_string(),
-                    cdef_inner.name().as_str(),
+                    &ctype.display_with(self).to_string(),
+                    cdef_inner.name_in(self).as_str(),
                     is_op,
                 );
             }
@@ -1419,8 +1420,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if left_group == right_group {
             return;
         }
-        let left_display = self.for_display(left.clone());
-        let right_display = self.for_display(right.clone());
+        let left_display = self.display(left.clone());
+        let right_display = self.display(right.clone());
         self.error(
             errors,
             range,

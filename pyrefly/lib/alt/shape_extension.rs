@@ -29,6 +29,7 @@ use pyrefly_types::types::TParams;
 use pyrefly_types::types::TParamsSource;
 use pyrefly_types::types::Type;
 use pyrefly_types::types::Var;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Expr;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
@@ -251,7 +252,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                 for count in counts.into_iter().filter(|count| *count != 1) {
                     self.error(
                         errors,
-                        cls.range(),
+                        cls.range_in(self),
                         ErrorKind::InvalidTypeVar,
                         format!(
                             "`NamedInts` type parameter `{}` must source exactly one constructor `CaptureNamedInts` parameter, found {count}",
@@ -263,7 +264,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
             if !mentioned {
                 self.error(
                     errors,
-                    cls.range(),
+                    cls.range_in(self),
                     ErrorKind::InvalidTypeVar,
                     format!(
                         "`NamedInts` type parameter `{}` must source exactly one constructor `CaptureNamedInts` parameter, found 0",
@@ -432,7 +433,8 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                             domain.range(),
                             ErrorKind::InvalidTypeVar,
                             format!(
-                                "`Flag` domain must resolve to a nonempty union of `int`, `bool`, `str`, `None`, and integer tuples of one fixed arity or `tuple[int, ...]`, got `{domain_ty}`"
+                                "`Flag` domain must resolve to a nonempty union of `int`, `bool`, `str`, `None`, and integer tuples of one fixed arity or `tuple[int, ...]`, got `{}`",
+                                domain_ty.display_with(self)
                             ),
                         );
                         Restriction::Unrestricted

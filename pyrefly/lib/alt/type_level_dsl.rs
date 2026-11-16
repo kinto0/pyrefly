@@ -1086,7 +1086,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::InvalidAnnotation,
                     format!(
                         "Expected a type-level DSL function, got `{}`",
-                        self.for_display(callee.clone())
+                        self.display(callee.clone())
                     ),
                 )
             }
@@ -1186,7 +1186,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "an"
                     }
                 };
-                let displayed = self.for_display(arg.clone());
+                let displayed = self.display(arg.clone());
                 return self.error(
                     errors,
                     arg_expr.range(),
@@ -1238,7 +1238,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             TypeShapeDslInputDomain::Value(TypeShapeDslDomain::Int)
             | TypeShapeDslInputDomain::OptionalInt => {
                 let raw_int_var_error = |range, ty| {
-                    let displayed = self.for_display(ty);
+                    let displayed = self.display(ty);
                     let TypeShapeDslArgumentContext {
                         function_name,
                         parameter_name,

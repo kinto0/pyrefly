@@ -191,7 +191,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         value.range(),
                         ErrorKind::BadUnpacking,
-                        format!("Expected a tuple or `TypeVarTuple`, got `{ty}`"),
+                        format!(
+                            "Expected a tuple or `TypeVarTuple`, got `{}`",
+                            ty.display_with(self)
+                        ),
                     );
                     return None;
                 }
@@ -308,7 +311,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 if result.is_err() {
                     return invalid(match x {
-                        Expr::Name(_) => format!("Invalid type inside literal, `{ty}`"),
+                        Expr::Name(_) => {
+                            format!("Invalid type inside literal, `{}`", ty.display_with(self))
+                        }
                         _ => "Invalid literal expression".to_owned(),
                     });
                 }
@@ -432,7 +437,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             range,
                             ErrorKind::BadSpecialization,
                             format!(
-                                "Expected a `ParamSpec` for the second argument of `Concatenate`, got {pspec}",
+                                "Expected a `ParamSpec` for the second argument of `Concatenate`, got {}",
+                                pspec.display_with(self),
                             ),
                         );
                     }
@@ -506,7 +512,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             self.heap
                                 .mk_type_of(self.heap.mk_callable_param_spec(ty, ret))
                         } else {
-                            self.error(errors, name.range(),ErrorKind::BadSpecialization, format!("Callable types can only have `ParamSpec` in this position, got `{}`", self.for_display(ty)));
+                            self.error(errors, name.range(),ErrorKind::BadSpecialization, format!("Callable types can only have `ParamSpec` in this position, got `{}`", self.display(ty)));
                             callable_error()
                         }
                     }
@@ -517,7 +523,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 .heap
                                 .mk_type_of(self.heap.mk_callable_concatenate(args, *pspec, ret)),
                             _ => {
-                                self.error(errors, x.range(),ErrorKind::BadSpecialization, format!("Callable types can only have `Concatenate` in this position, got `{}`", self.for_display(ty)));
+                                self.error(errors, x.range(),ErrorKind::BadSpecialization, format!("Callable types can only have `Concatenate` in this position, got `{}`", self.display(ty)));
                                 callable_error()
                             }
                         }

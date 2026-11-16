@@ -18,6 +18,7 @@ use pyrefly_types::type_level_dsl::TypeLevelDslCall;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Type;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprCall;
 use ruff_python_ast::UnaryOp;
@@ -134,7 +135,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                 ErrorKind::InvalidAnnotation,
                 format!(
                     "Expected an `IntTuple` first argument to `index_shape`, got `{}`",
-                    self.for_display(shape.clone())
+                    self.display(shape.clone())
                 ),
             );
             invalid = true;
@@ -146,7 +147,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                 ErrorKind::InvalidAnnotation,
                 format!(
                     "Expected an `Index` second argument to `index_shape`, got `{}`",
-                    self.for_display(index.clone())
+                    self.display(index.clone())
                 ),
             );
             invalid = true;
@@ -182,7 +183,8 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                 range,
                 ErrorKind::InvalidTypeVar,
                 format!(
-                    "Default for `Index` type parameter `{name}` is not a valid index value: `{default}`"
+                    "Default for `Index` type parameter `{name}` is not a valid index value: `{}`",
+                    default.display_with(self)
                 ),
             );
             Some(self.heap.mk_any_error())
@@ -243,7 +245,7 @@ impl<Ans: LookupAnswer> AnswersSolver<'_, '_, Ans> {
                     format!(
                         "Default for parameter binding `Index` type parameter `{}` is not a valid index value: `{}`",
                         tparam.name(),
-                        default.ty,
+                        default.ty.display_with(self),
                     ),
                 );
             }

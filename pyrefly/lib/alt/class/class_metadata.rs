@@ -744,7 +744,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
         // A metaclass other than `type` or `ABCMeta` may remove names from the namespace before it
         // creates the class.
-        if cls.module().path().is_interface()
+        if cls.module_path().is_interface()
             || metaclass.is_some_and(|m| !m.class_object().is(KnownClass::AbcMeta))
         {
             return ExplicitSlots::Known(SlotsInfo { names });

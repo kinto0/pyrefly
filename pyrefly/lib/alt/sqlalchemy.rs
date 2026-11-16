@@ -253,7 +253,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ErrorKind::BadArgumentType,
                         format!(
                             "`{}` is not assignable to field `{field_name}` with type `{}`",
-                            self.for_display(got_ty),
+                            self.display(got_ty),
                             self.for_display(expected_ty)
                         ),
                     );
@@ -329,7 +329,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// a value the library itself produced is not checked against the mapped type.
     fn is_sqlalchemy_owned_type(ty: &Type) -> bool {
         match ty {
-            Type::ClassType(cls) => Self::is_sqlalchemy_module(cls.qname().module_name()),
+            Type::ClassType(cls) => Self::is_sqlalchemy_module(cls.class_object().module_name()),
             Type::Annotated(inner, _) => Self::is_sqlalchemy_owned_type(inner),
             Type::Union(union) => union.members.iter().any(Self::is_sqlalchemy_owned_type),
             _ => false,

@@ -32,6 +32,7 @@ use crate::callable::Params;
 use crate::callable::PrefixParam;
 use crate::callable::Required;
 use crate::class::Class;
+use crate::class::ClassType;
 use crate::data_frame::SchemaCompleteness;
 use crate::env::TypeEnv;
 use crate::function::Function;
@@ -1840,6 +1841,12 @@ impl Display for Type {
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ClassType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        DisplayWith::fmt(&Type::ClassType(self.clone()), f, env)
     }
 }
 
