@@ -5,9 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::cmp::Ordering;
-use std::hash::Hash;
-use std::hash::Hasher;
 use std::path::PathBuf;
 
 use dupe::Dupe;
@@ -42,7 +39,7 @@ impl SitePackagePath {
 }
 
 /// A handle to a Python module, containing its name, path, and system information.
-#[derive(Debug, Clone, Dupe)]
+#[derive(Debug, Clone, Dupe, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Handle {
     module: ModuleNameWithKind,
     path: ModulePath,
@@ -119,51 +116,5 @@ impl Handle {
     /// When true, the module name is not reliable for determining project structure.
     pub fn is_fallback(&self) -> bool {
         self.module.is_fallback()
-    }
-
-    /// The fields that equality and ordering compare.
-    fn key(
-        &self,
-    ) -> (
-        &ModuleNameWithKind,
-        &ModulePath,
-        &SysInfo,
-        Option<SitePackagePath>,
-    ) {
-        (
-            &self.module,
-            &self.path,
-            &self.sys_info,
-            self.importer_site_package_path,
-        )
-    }
-}
-
-impl PartialEq for Handle {
-    fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
-    }
-}
-
-impl Eq for Handle {}
-
-impl Hash for Handle {
-    /// Leaves out the importer's site-package path, which equality compares. Handles that differ
-    /// only there are copies of one module in other Python environments, which are rare, and
-    /// hashing one fewer field keeps the maps keyed by `Handle` as fast as before.
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        (&self.module, &self.path, &self.sys_info).hash(state);
-    }
-}
-
-impl PartialOrd for Handle {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Handle {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.key().cmp(&other.key())
     }
 }
