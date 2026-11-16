@@ -1732,6 +1732,26 @@ fn test_deep_scc_chain_stabilizes_after_epoch_cap() {
     assert!(errors[0].contains("not assignable to `int`"), "{errors:?}");
 }
 
+/// Editing `z` changes `foo.x` twice, once directly and once through `bar.y`, which cycle detection
+/// reports as a cycle. The recheck that follows recomputes `foo`, `bar` and `main` together, and
+/// `bar.w` and `main.v` change in it.
+// Bug: nothing consumes the export changes of that last recheck, so the commit panics.
+#[test]
+#[should_panic(expected = "Transaction has uncommitted changes")]
+fn test_changes_after_cycle_detection_are_committed() {
+    let mut i = Incremental::new();
+    i.set("foo", "import bar\nz = 1\nx = (bar.y, z)");
+    i.set("bar", "import foo\ny = foo.z\nw = foo.x");
+    i.set("main", "import bar\nv = bar.w");
+    i.check(&["foo", "bar", "main"], &["bar", "foo", "main"]);
+
+    i.set("foo", "import bar\nz = ''\nx = (bar.y, z)");
+    i.check_matches_clean(
+        &["foo", "bar", "main"],
+        &["bar", "bar", "foo", "foo", "foo", "main", "main"],
+    );
+}
+
 /// Test a more complex non-overlapping case with a chain of re-exports.
 ///
 /// This models a longer dependency chain where multiple intermediate modules
