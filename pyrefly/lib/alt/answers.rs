@@ -1547,7 +1547,7 @@ impl Answers {
         if let Some(trace_store) = &self.trace {
             trace_store
                 .lock()
-                .visit_mut(&mut |ty| self.solver.force_mut(ty));
+                .visit_mut(&mut |ty| self.solver.force_mut(ty, &answers_solver));
         }
         // `pre_solve` has published every exported slot. From this point on,
         // the preallocated solutions table represents a complete result set.

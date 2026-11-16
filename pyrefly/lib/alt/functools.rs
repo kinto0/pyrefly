@@ -320,7 +320,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 let branch_sig = if generic {
                     let mut ty = self.heap.mk_callable_from(branch_sig);
-                    self.solver().expand_mut(&mut ty);
+                    self.solver().expand_mut(&mut ty, self);
                     let Type::Callable(callable) = ty else {
                         unreachable!("built by mk_callable_from");
                     };
@@ -546,7 +546,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 *t = self.heap.mk_quantified(q.clone().with_needs_finalization());
             }
         });
-        self.solver().expand_with_bounds(&mut solved);
+        self.solver().expand_with_bounds(&mut solved, self);
         let solved = solved.transform(&mut |t: &mut Type| {
             if let Type::Var(v) = t
                 && let Some(q) = var_to_q.get(v)
@@ -768,7 +768,7 @@ fn is_placeholder_arg<Ans: LookupAnswer>(solver: &AnswersSolver<Ans>, x: &CallVa
     let TypeOrExpr::Type(ty, _) = x.as_type_or_expr() else {
         return false;
     };
-    let ty = solver.solver().expand(ty.clone());
+    let ty = solver.solver().expand(ty.clone(), solver);
     matches!(
         ty,
         Type::ClassType(cls)

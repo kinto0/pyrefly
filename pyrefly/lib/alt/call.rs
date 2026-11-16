@@ -639,7 +639,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
             Type::Var(v) if let Some(_guard) = self.recurse(v) => self
-                .as_call_target_impl(self.solver().force_var(v), quantified)
+                .as_call_target_impl(self.solver().force_var(v, self), quantified)
                 .with_error_type(|_| Type::Var(v)),
             Type::Union(f) => {
                 let original = Type::Union(f.clone());
@@ -715,7 +715,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     };
                     callables.push(callable);
                 }
-                let combined = Type::combine_overload_results(callables, self.heap)
+                let combined = Type::combine_overload_results(callables, self.heap, self)
                     .expect("an overloaded type is never empty");
                 self.as_call_target_impl(combined, None)
                     .with_error_type(|_| original)
@@ -842,7 +842,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
             }
             Type::Type(ref f) if let Type::AnonymousTypedDict(td) = &**f => {
-                let value_ty = td.compute_value_type(self.heap);
+                let value_ty = td.compute_value_type(self.heap, self);
                 let cls = self
                     .stdlib
                     .dict(self.heap.mk_class_type(self.stdlib.str().clone()), value_ty);
@@ -889,10 +889,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     CallTargetLookup::Ok(Box::new(CallTarget::Union(targets)))
                 }
                 Restriction::ShapeExtension(extension) => self
-                    .as_call_target_impl(
-                        extension.upper_bound(self.stdlib, self.heap),
-                        Some((*q).clone()),
-                    )
+                    .as_call_target_impl(extension.upper_bound(self, self.heap), Some((*q).clone()))
                     .with_error_type(|_| Type::Quantified(q)),
             },
             Type::KwCall(call) => {
@@ -1397,8 +1394,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .collect::<Vec<_>>();
             let snapshot = self.solver().snapshot_exact_vars(&call_vars);
             let matched_hint = self.is_subset_eq(&self.heap.mk_class_type(cls.clone()), hint);
-            self.solver()
-                .generalize_class_targs_for_constructor_hint(cls.targs_mut(), &SmallSet::new());
+            self.solver().generalize_class_targs_for_constructor_hint(
+                cls.targs_mut(),
+                &SmallSet::new(),
+                self,
+            );
             self.solver().restore_vars(snapshot);
             (vs, matched_hint)
         } else {
@@ -1665,7 +1665,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let result = if let Some(ctor_table) = ctor_table {
             self.finish_return(&ctor_table, result).0
         } else {
-            self.solver().expand(result)
+            self.solver().expand(result, self)
         };
         // Normalize builtins.tuple instances to structural Type::Tuple so downstream
         // match arms (concat, unpacking, except, etc.) handle them directly.
@@ -1750,6 +1750,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.solver().generalize_class_targs_for_constructor_hint(
                 typed_dict.targs_mut(),
                 &SmallSet::new(),
+                self,
             );
             (vs, matched_hint)
         } else {
@@ -2419,14 +2420,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             } else {
                 // Materialize each correlated world before its variable state is rolled back.
                 let results = self.solver().per_row(&outcome.overload_table, || {
-                    add_constructor_witnesses(self.solver().expand(outcome.ty.clone()), index)
+                    add_constructor_witnesses(self.solver().expand(outcome.ty.clone(), self), index)
                 });
-                let ty = Type::combine_overload_results(results.into_vec(), self.heap)
+                let ty = Type::combine_overload_results(results.into_vec(), self.heap, self)
                     .expect("an applicable call has at least one result");
                 let lambda_types = self
                     .snapshot_lambda_param_types()
                     .into_iter()
-                    .map(|(id, ty)| (id, ty.map(|ty| self.solver().expand(ty))))
+                    .map(|(id, ty)| (id, ty.map(|ty| self.solver().expand(ty, self))))
                     .collect::<Vec<_>>();
                 accepted.push(AcceptedIntersectionCall {
                     index,
@@ -2486,9 +2487,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
             if !targets[first_index].constructor_witnesses.is_empty() {
                 let results = self.solver().per_row(&outcome.overload_table, || {
-                    add_constructor_witnesses(self.solver().expand(outcome.ty.clone()), first_index)
+                    add_constructor_witnesses(
+                        self.solver().expand(outcome.ty.clone(), self),
+                        first_index,
+                    )
                 });
-                outcome.ty = Type::combine_overload_results(results.into_vec(), self.heap)
+                outcome.ty = Type::combine_overload_results(results.into_vec(), self.heap, self)
                     .expect("an applicable constructor has at least one result");
             }
             return outcome;
@@ -2509,10 +2513,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ctor_targs,
         );
         let first_results = self.solver().per_row(&first.overload_table, || {
-            add_constructor_witnesses(self.solver().expand(first.ty.clone()), first_index)
+            add_constructor_witnesses(self.solver().expand(first.ty.clone(), self), first_index)
         });
         accepted[representative].ty =
-            Type::combine_overload_results(first_results.into_vec(), self.heap)
+            Type::combine_overload_results(first_results.into_vec(), self.heap, self)
                 .expect("an applicable call has at least one result");
         let mut results = Vec::new();
         let mut lambda_types = SmallMap::new();
@@ -2932,7 +2936,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // 1. Its return type is not a subclass of the current class, or
             // 2. The class is an enum (enum construction is handled by EnumMeta.__call__).
             if metaclass_call_attr_ty
-                .callable_return_type(self.heap)
+                .callable_return_type(self.heap, self)
                 .is_some_and(|ret| !self.is_compatible_constructor_return(&ret, cls.class_object()))
             {
                 return metaclass_call_attr_ty;
@@ -2954,7 +2958,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .get_dunder_new(cls, false)
             .and_then(|t| self.bind_dunder_new(&t, cls.clone()));
         let (new_attr_ty, overrides_new) = if let Some(t) = bound_new {
-            if t.callable_return_type(self.heap)
+            if t.callable_return_type(self.heap, self)
                 .is_some_and(|ret| !self.is_compatible_constructor_return(&ret, cls.class_object()))
             {
                 // If the return type of __new__ is not a subclass of the current class, use that and ignore __init__

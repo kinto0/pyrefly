@@ -535,7 +535,7 @@ fn anonymous_typed_dict_to_indexed_shape(
     table: &mut TypeTableBuilder,
 ) -> usize {
     let heap = TypeHeap::new();
-    let value_type = typed_dict.compute_value_type(&heap);
+    let value_type = typed_dict.compute_value_type(&heap, &context.type_env);
     let str_index = indexed_named_leaf(table, "builtins.str");
     let value_index = type_to_indexed_shape(context, &value_type, table);
     insert_indexed_named(

@@ -390,7 +390,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .is_subset_eq(actual, &target, self.type_order(), None)
             .is_ok();
         let finished = self.finish_quantified(handle, false).is_ok();
-        let candidate = self.solver().expand(Type::Var(var));
+        let candidate = self.solver().expand(Type::Var(var), self);
         self.solver().restore_vars(snapshot);
         debug_assert!(
             !self.solver().var_is_quantified(var),

@@ -10,6 +10,7 @@ use starlark_map::small_set::SmallSet;
 
 use crate::class::Class;
 use crate::class::ClassType;
+use crate::env::TypeEnv;
 use crate::heap::TypeHeap;
 use crate::literal::Lit;
 use crate::quantified::Quantified;
@@ -106,6 +107,7 @@ static MAX_UNION_MEMBERS: usize = 4096;
 
 fn unions_internal(
     xs: Vec<Type>,
+    env: &dyn TypeEnv,
     stdlib: Option<&Stdlib>,
     enum_members: Option<&dyn Fn(&Class) -> Option<usize>>,
     heap: &TypeHeap,
@@ -114,11 +116,11 @@ fn unions_internal(
         let mut res = flatten_and_dedup(xs, heap);
         if let Some(stdlib) = stdlib {
             collapse_literals(&mut res, stdlib, enum_members.unwrap_or(&|_| None), heap);
-            promote_anonymous_typed_dicts(&mut res, stdlib, heap);
+            promote_anonymous_typed_dicts(&mut res, stdlib, heap, env);
         }
         collapse_tuple_unions_with_empty(&mut res, heap);
         collapse_builtins_type(&mut res, heap);
-        collapse_wide_tuple_unions(&mut res, heap);
+        collapse_wide_tuple_unions(&mut res, heap, env);
         collapse_quantifieds(&mut res, stdlib, heap);
         // Second pass: squashing can still leave a pathologically large union (e.g. thousands
         // of distinct class types). Widen anything still over the cap to `Any`.
@@ -131,22 +133,22 @@ fn unions_internal(
 }
 
 /// Union a set of types together, simplifying as much as you can.
-pub fn unions(xs: Vec<Type>, heap: &TypeHeap) -> Type {
-    unions_internal(xs, None, None, heap)
+pub fn unions(xs: Vec<Type>, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
+    unions_internal(xs, env, None, None, heap)
 }
 
 /// Like `unions`, but also simplify away things regarding literals if you can,
 /// e.g. `Literal[True, False] ==> bool`.
 pub fn unions_with_literals(
     xs: Vec<Type>,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     enum_members: &dyn Fn(&Class) -> Option<usize>,
     heap: &TypeHeap,
 ) -> Type {
-    unions_internal(xs, Some(stdlib), Some(enum_members), heap)
+    unions_internal(xs, env, Some(env.stdlib()), Some(enum_members), heap)
 }
 
-pub fn intersect(ts: Vec<Type>, fallback: Type, heap: &TypeHeap) -> Type {
+pub fn intersect(ts: Vec<Type>, fallback: Type, _env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
     // A truthiness marker appears only as a member of an intersection, so `object & Falsy` must keep
     // `object`.
     let has_non_object = ts
@@ -354,10 +356,15 @@ fn collapse_literals(
 }
 
 /// Promote anonymous typed dicts to `dict[str, value_type]`
-fn promote_anonymous_typed_dicts(types: &mut [Type], stdlib: &Stdlib, heap: &TypeHeap) {
+fn promote_anonymous_typed_dicts(
+    types: &mut [Type],
+    stdlib: &Stdlib,
+    heap: &TypeHeap,
+    env: &dyn TypeEnv,
+) {
     for ty in types.iter_mut() {
         if let Type::AnonymousTypedDict(inner) = ty {
-            let value_type = inner.compute_value_type(heap);
+            let value_type = inner.compute_value_type(heap, env);
             *ty = heap.mk_class_type(stdlib.dict(stdlib.str().clone().to_type(), value_type));
         }
     }
@@ -557,7 +564,11 @@ pub fn simplify_tuples(tuple: Tuple, _heap: &TypeHeap) -> Tuple {
 }
 
 /// Simplify a tuple, distributing an unpacked union into a union of tuple types.
-pub fn simplify_tuples_and_distribute_unpacking(tuple: Tuple, heap: &TypeHeap) -> Type {
+pub fn simplify_tuples_and_distribute_unpacking(
+    tuple: Tuple,
+    heap: &TypeHeap,
+    env: &dyn TypeEnv,
+) -> Type {
     let tuple = simplify_tuples(tuple, heap);
     let Tuple::Unpacked(unpacked) = tuple else {
         return heap.mk_tuple(tuple);
@@ -574,9 +585,11 @@ pub fn simplify_tuples_and_distribute_unpacking(tuple: Tuple, heap: &TypeHeap) -
                 simplify_tuples_and_distribute_unpacking(
                     Tuple::unpacked(prefix.clone(), middle, suffix.clone()),
                     heap,
+                    env,
                 )
             })
             .collect(),
+        env,
         heap,
     )
 }
@@ -586,7 +599,7 @@ const TUPLE_UNION_WIDENING_THRESHOLD: usize = 256;
 /// Collapses unions containing more than `TUPLE_UNION_WIDENING_THRESHOLD` tuple variants
 /// into a single tuple type, preventing combinatorial explosion of concrete tuple types at
 /// control-flow joins (keeping type complexity linear O(N) rather than exponential O(2^N)).
-fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap) {
+fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap, env: &dyn TypeEnv) {
     let tuples: Vec<&Tuple> = res
         .iter()
         .filter_map(|t| match t {
@@ -601,7 +614,7 @@ fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap) {
     for tuple in &tuples {
         collect_tuple_elements(tuple, heap, &mut element_types);
     }
-    let merged = heap.mk_unbounded_tuple(unions(element_types, heap));
+    let merged = heap.mk_unbounded_tuple(unions(element_types, env, heap));
     res.retain(|t| !matches!(t, Type::Tuple(_)));
     res.push(merged);
     res.sort();
@@ -672,6 +685,7 @@ mod tests {
     use crate::simplify::intersect;
     use crate::simplify::simplify_tuples_and_distribute_unpacking;
     use crate::simplify::unions;
+    use crate::test_type_env::TestTypeEnv;
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
@@ -681,17 +695,19 @@ mod tests {
 
     #[test]
     fn test_flatten_never() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![
             Type::Never(NeverStyle::Never),
             Type::Never(NeverStyle::NoReturn),
         ];
-        let res = unions(xs, &heap);
+        let res = unions(xs, env, &heap);
         assert_eq!(res, Type::never());
     }
 
     #[test]
     fn test_union_alias_nested_tuple_growth_is_linear() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         for named in [false, true] {
             let members = (0..3).map(|i| LitInt::new(i).to_implicit_type()).collect();
@@ -702,7 +718,11 @@ mod tests {
             };
             let mut value = Type::None;
             for depth in 1..=20 {
-                value = unions(vec![alias.clone(), Type::unbounded_tuple(value)], &heap);
+                value = unions(
+                    vec![alias.clone(), Type::unbounded_tuple(value)],
+                    env,
+                    &heap,
+                );
                 let mut visits = 0;
                 value.universe(&mut |_| visits += 1);
                 assert_eq!(visits, 5 * depth + 1, "named={named}, depth={depth}");
@@ -712,52 +732,64 @@ mod tests {
 
     #[test]
     fn test_oversized_union_widens_to_any() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         // More than `MAX_UNION_MEMBERS` distinct members survive squashing, so the union is
         // widened to `Any`.
         let xs: Vec<Type> = (0..=(super::MAX_UNION_MEMBERS as i64))
             .map(|i| LitInt::new(i).to_implicit_type())
             .collect();
-        assert!(matches!(unions(xs, &heap), Type::Any(_)));
+        assert!(matches!(unions(xs, env, &heap), Type::Any(_)));
 
         // A union under the cap is left untouched.
         let xs: Vec<Type> = (0..8).map(|i| LitInt::new(i).to_implicit_type()).collect();
-        assert!(matches!(unions(xs, &heap), Type::Union(_)));
+        assert!(matches!(unions(xs, env, &heap), Type::Union(_)));
     }
 
     #[test]
     fn test_intersect_simple() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![Type::any_tuple(), Type::any_implicit()];
         assert_eq!(
-            intersect(xs.clone(), Type::never(), &heap),
+            intersect(xs.clone(), Type::never(), env, &heap),
             Type::Intersect(Box::new((xs, Type::never())))
         );
     }
 
     #[test]
     fn test_intersect_empty() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = Vec::new();
-        assert_eq!(intersect(xs, Type::any_implicit(), &heap), Type::never())
+        assert_eq!(
+            intersect(xs, Type::any_implicit(), env, &heap),
+            Type::never()
+        )
     }
 
     #[test]
     fn test_intersect_never() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![Type::any_implicit(), Type::never()];
-        assert_eq!(intersect(xs, Type::any_implicit(), &heap), Type::never());
+        assert_eq!(
+            intersect(xs, Type::any_implicit(), env, &heap),
+            Type::never()
+        );
     }
 
     #[test]
     fn test_intersect_one() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![Type::None];
-        assert_eq!(intersect(xs, Type::never(), &heap), Type::None);
+        assert_eq!(intersect(xs, Type::never(), env, &heap), Type::None);
     }
 
     #[test]
     fn test_simplify_tuple_type_distributes_unpacked_union() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let middle = Type::union(vec![
             Type::concrete_tuple(Vec::new()),
@@ -766,12 +798,14 @@ mod tests {
         let actual = simplify_tuples_and_distribute_unpacking(
             Tuple::unpacked(vec![Type::None], middle, Vec::new()),
             &heap,
+            env,
         );
         let expected = unions(
             vec![
                 Type::concrete_tuple(vec![Type::None]),
                 Type::concrete_tuple(vec![Type::None, Type::any_explicit()]),
             ],
+            env,
             &heap,
         );
         assert_eq!(actual, expected);
@@ -779,20 +813,23 @@ mod tests {
 
     #[test]
     fn test_simplify_union_with_intersect() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![
             Type::any_implicit(),
             intersect(
                 vec![Type::any_implicit(), Type::any_tuple()],
                 Type::never(),
+                env,
                 &heap,
             ),
         ];
-        assert_eq!(unions(xs, &heap), Type::any_implicit());
+        assert_eq!(unions(xs, env, &heap), Type::any_implicit());
     }
 
     #[test]
     fn test_union_empty_with_prefix_variadic_tuple() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![
             Type::concrete_tuple(vec![]),
@@ -802,7 +839,7 @@ mod tests {
                 Vec::new(),
             )),
         ];
-        assert_eq!(unions(xs, &heap), Type::unbounded_tuple(Type::None));
+        assert_eq!(unions(xs, env, &heap), Type::unbounded_tuple(Type::None));
     }
 
     fn mk_quantified(restriction: Restriction) -> Quantified {
@@ -822,33 +859,56 @@ mod tests {
 
     #[test]
     fn test_collapse_quantified_constraints() {
+        let env = &TestTypeEnv::new();
         // For `T: (None, tuple)`, `(T & None) | (T & tuple)` collapses to `T`.
         let heap = TypeHeap::new();
         let (c1, c2) = (Type::None, Type::any_tuple());
         let q = mk_quantified(Restriction::Constraints(vec![c1.clone(), c2.clone()]));
         let xs = vec![
-            intersect(vec![q.clone().to_type(&heap), c1], Type::never(), &heap),
-            intersect(vec![q.clone().to_type(&heap), c2], Type::never(), &heap),
+            intersect(
+                vec![q.clone().to_type(&heap), c1],
+                Type::never(),
+                env,
+                &heap,
+            ),
+            intersect(
+                vec![q.clone().to_type(&heap), c2],
+                Type::never(),
+                env,
+                &heap,
+            ),
         ];
-        assert_eq!(unions(xs, &heap), q.to_type(&heap));
+        assert_eq!(unions(xs, env, &heap), q.to_type(&heap));
     }
 
     #[test]
     fn test_collapse_quantified_bound() {
+        let env = &TestTypeEnv::new();
         // For `T: None | tuple`, `(T & None) | (T & tuple)` collapses to `T`.
         let heap = TypeHeap::new();
         let (b1, b2) = (Type::None, Type::any_tuple());
-        let bound = unions(vec![b1.clone(), b2.clone()], &heap);
+        let bound = unions(vec![b1.clone(), b2.clone()], env, &heap);
         let q = mk_quantified(Restriction::Bound(bound));
         let xs = vec![
-            intersect(vec![q.clone().to_type(&heap), b1], Type::never(), &heap),
-            intersect(vec![q.clone().to_type(&heap), b2], Type::never(), &heap),
+            intersect(
+                vec![q.clone().to_type(&heap), b1],
+                Type::never(),
+                env,
+                &heap,
+            ),
+            intersect(
+                vec![q.clone().to_type(&heap), b2],
+                Type::never(),
+                env,
+                &heap,
+            ),
         ];
-        assert_eq!(unions(xs, &heap), q.to_type(&heap));
+        assert_eq!(unions(xs, env, &heap), q.to_type(&heap));
     }
 
     #[test]
     fn test_union_empty_with_suffix_variadic_tuple() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         let xs = vec![
             Type::concrete_tuple(vec![]),
@@ -858,23 +918,25 @@ mod tests {
                 vec![Type::None],
             )),
         ];
-        assert_eq!(unions(xs, &heap), Type::unbounded_tuple(Type::None));
+        assert_eq!(unions(xs, env, &heap), Type::unbounded_tuple(Type::None));
     }
 
     #[test]
     fn test_collapse_wide_tuple_unions() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
         // Build more than the threshold of distinct-length tuples so the widening fires. Mixed
         // arities can't merge per-position, so they collapse to an unbounded `tuple[None, ...]`.
         let xs = (1..=(super::TUPLE_UNION_WIDENING_THRESHOLD + 1))
             .map(|i| Type::concrete_tuple(vec![Type::None; i]))
             .collect();
-        let res = unions(xs, &heap);
+        let res = unions(xs, env, &heap);
         assert_eq!(res, Type::unbounded_tuple(Type::None));
     }
 
     #[test]
     fn test_collapse_wide_tuple_unions_corner_cases() {
+        let env = &TestTypeEnv::new();
         let heap = TypeHeap::new();
 
         use pyrefly_python::module_name::ModuleName;
@@ -947,7 +1009,7 @@ mod tests {
                 .map(|i| Type::concrete_tuple(vec![Type::None; i])),
         );
 
-        let res = unions(xs, &heap);
+        let res = unions(xs, env, &heap);
         let expected_element_type = unions(
             vec![
                 Type::any_explicit(),
@@ -958,6 +1020,7 @@ mod tests {
                 Type::None,
                 Type::any_tuple(),
             ],
+            env,
             &heap,
         );
 

@@ -20,6 +20,7 @@ use pyrefly_derive::VisitMut;
 
 use super::FlagDomain;
 use super::Restriction;
+use crate::env::TypeEnv;
 use crate::heap::TypeHeap;
 use crate::shape_index::lower_index_type;
 use crate::stdlib::Stdlib;
@@ -67,11 +68,11 @@ impl ShapeExtensionRestriction {
     }
 
     /// Project this restriction to its ordinary type-system upper bound.
-    pub fn upper_bound(&self, stdlib: &Stdlib, heap: &TypeHeap) -> Type {
+    pub fn upper_bound(&self, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
         match self.0 {
-            ShapeExtensionRestrictionKind::Flag(domain) => domain.as_type(stdlib, heap),
-            ShapeExtensionRestrictionKind::Index => stdlib.object().clone().to_type(),
-            ShapeExtensionRestrictionKind::NamedInts => stdlib.object().clone().to_type(),
+            ShapeExtensionRestrictionKind::Flag(domain) => domain.as_type(env, heap),
+            ShapeExtensionRestrictionKind::Index => env.stdlib().object().clone().to_type(),
+            ShapeExtensionRestrictionKind::NamedInts => env.stdlib().object().clone().to_type(),
         }
     }
 

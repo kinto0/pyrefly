@@ -774,9 +774,9 @@ impl ClassField {
         }
     }
 
-    fn instantiate_for(&self, heap: &TypeHeap, instance: &Instance) -> Self {
+    fn instantiate_for(&self, heap: &TypeHeap, instance: &Instance, env: &dyn TypeEnv) -> Self {
         self.instantiate_helper(&mut |ty| {
-            ty.subst_self_type_mut(&instance.to_type(heap));
+            ty.subst_self_type_mut(&instance.to_type(heap, env));
             instance.instantiate_member(ty)
         })
     }
@@ -838,8 +838,13 @@ impl ClassField {
         })
     }
 
-    fn as_raw_special_method_type(&self, heap: &TypeHeap, instance: &Instance) -> Option<Type> {
-        match self.instantiate_for(heap, instance).0 {
+    fn as_raw_special_method_type(
+        &self,
+        heap: &TypeHeap,
+        instance: &Instance,
+        env: &dyn TypeEnv,
+    ) -> Option<Type> {
+        match self.instantiate_for(heap, instance, env).0 {
             ClassFieldInner::Descriptor { ty, .. } => Some(ty),
             ClassFieldInner::Method { ty, .. } => Some(ty),
             // `ProxyMethod` is currently only used by ordinary attribute lookup and `__call__`
@@ -863,7 +868,7 @@ impl ClassField {
         solver: &AnswersSolver<Ans>,
         instance: &Instance,
     ) -> Option<Type> {
-        self.as_raw_special_method_type(solver.heap, instance)
+        self.as_raw_special_method_type(solver.heap, instance, solver)
             .and_then(|ty| make_bound_method(solver, instance, ty).ok())
     }
 
@@ -1330,8 +1335,9 @@ fn bind_class_attribute(
     attr: Type,
     read_only_reason: Option<ReadOnlyReason>,
     is_instance_var: bool,
+    env: &dyn TypeEnv,
 ) -> ClassAttribute {
-    let ty = make_bound_classmethod(heap, cls, attr).into_inner();
+    let ty = make_bound_classmethod(heap, cls, attr, env).into_inner();
     if let Some(reason) = read_only_reason {
         ClassAttribute::read_only(ty, reason)
     } else if is_instance_var {
@@ -1347,6 +1353,7 @@ fn make_bound_method_helper(
     obj: Type,
     attr: Type,
     should_bind: &dyn Fn(&FuncMetadata) -> bool,
+    env: &dyn TypeEnv,
 ) -> Result<Type, Type> {
     // Don't bind functions originating from callback protocols, because the self param
     // has already been removed.
@@ -1385,21 +1392,26 @@ fn make_bound_method_helper(
                     bound_methods.push(t.clone());
                     continue;
                 }
-                match make_bound_method_helper(heap, obj.clone(), t.clone(), should_bind) {
+                match make_bound_method_helper(heap, obj.clone(), t.clone(), should_bind, env) {
                     Ok(x) => bound_methods.push(x),
                     Err(_) => return Err(attr),
                 }
             }
-            return Ok(unions(bound_methods, heap));
+            return Ok(unions(bound_methods, env, heap));
         }
         _ => return Err(attr),
     };
     Ok(heap.mk_bound_method(BoundMethod { obj, func }))
 }
 
-fn make_bound_classmethod(heap: &TypeHeap, cls: &ClassBase, attr: Type) -> Result<Type, Type> {
+fn make_bound_classmethod(
+    heap: &TypeHeap,
+    cls: &ClassBase,
+    attr: Type,
+    env: &dyn TypeEnv,
+) -> Result<Type, Type> {
     let should_bind = |meta: &FuncMetadata| meta.flags.is_classmethod;
-    make_bound_method_helper(heap, cls.clone().to_type(heap), attr, &should_bind)
+    make_bound_method_helper(heap, cls.clone().to_type(heap), attr, &should_bind, env)
 }
 
 fn make_bound_method<Ans: LookupAnswer>(
@@ -1410,7 +1422,7 @@ fn make_bound_method<Ans: LookupAnswer>(
     let heap = solver.heap;
     let should_bind =
         |meta: &FuncMetadata| !meta.flags.is_staticmethod && !meta.flags.is_classmethod;
-    make_bound_method_helper(heap, instance.to_type(heap), attr, &should_bind).map(|mut method| {
+    make_bound_method_helper(heap, instance.to_type(heap, solver), attr, &should_bind, solver).map(|mut method| {
         if let InstanceKind::TypeVar(q) = &instance.kind
             && let Restriction::Constraints(constraints) = q.restriction()
         {
@@ -1437,12 +1449,12 @@ fn make_bound_method<Ans: LookupAnswer>(
                         || matches!(ty, Type::Union(union) if union.members.iter().any(is_constraint))
                         || (solver.is_subset_eq(&class_type, ty) && *typevar_is_class)
                     {
-                        *ty = unions(vec![ty.clone(), q.clone().to_type(heap)], heap);
+                        *ty = unions(vec![ty.clone(), q.clone().to_type(heap)], solver, heap);
                     }
                 });
                 if is_constraint(&callable.ret) {
                     // A return type that matches the active constraint preserves the TypeVar.
-                    callable.ret = instance.to_type(heap);
+                    callable.ret = instance.to_type(heap, solver);
                 }
             });
         }
@@ -2478,9 +2490,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         //
         // TODO(stroxler): Ideally we would implement some simple heuristics, similar to
         // first-use based inference we use with assignments, to get more useful types here.
-        let ty = self.solver().force(ty);
+        let ty = self.solver().force(ty, self);
         let descriptor = descriptor_info.map(|((getter, setter, deleter), descriptor_type)| {
-            let Type::ClassType(cls) = self.solver().force(descriptor_type) else {
+            let Type::ClassType(cls) = self.solver().force(descriptor_type, self) else {
                 unreachable!("a detected descriptor must have a class type")
             };
             Descriptor {
@@ -3454,6 +3466,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 self.heap,
                                 &ClassBase::ClassDef(self.as_class_type_unchecked(class)),
                                 inherited_ty,
+                                self,
                             )
                             .into_inner()
                         } else {
@@ -3867,7 +3880,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // special case because it's not legal to use `Self` in other static methods.
         let self_quantified =
             if field_name == &dunder::NEW && matches!(instance.kind, InstanceKind::ClassType(_)) {
-                Some(self.get_self_quantified(instance.class, instance.to_type(self.heap)))
+                Some(self.get_self_quantified(instance.class, instance.to_type(self.heap, self)))
             } else {
                 None
             };
@@ -3879,7 +3892,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             },
             None => instance,
         };
-        match field.instantiate_for(self.heap, instance).0 {
+        match field.instantiate_for(self.heap, instance, self).0 {
             ClassFieldInner::Property { ty, .. } => {
                 // Properties on instances bind to the getter/setter
                 if let Some(getter) = ty.is_property_setter_with_getter() {
@@ -3927,7 +3940,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ty = self.wrap_with_quantified(ty, quantified);
                 }
                 let ty = make_bound_method(self, instance, ty).unwrap_or_else(|ty| {
-                    make_bound_classmethod(self.heap, &instance.to_class_base(), ty).into_inner()
+                    make_bound_classmethod(self.heap, &instance.to_class_base(), ty, self)
+                        .into_inner()
                 });
                 if is_classvar {
                     ClassAttribute::read_only(ty, ReadOnlyReason::ClassVar)
@@ -4053,7 +4067,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ClassFieldInner::Property { mut ty, .. } => {
                 // When accessing a property on a class (not instance), you get the property object itself
                 ty = self.normalize_attr_ty(ty);
-                bind_class_attribute(self.heap, cls, ty, None, false)
+                bind_class_attribute(self.heap, cls, ty, None, false, self)
             }
             ClassFieldInner::Descriptor { descriptor, .. } => {
                 ClassAttribute::descriptor(descriptor, DescriptorBase::ClassDef(cls.clone()))
@@ -4076,7 +4090,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ty = self.wrap_with_quantified(ty, quantified);
                 }
                 ClassAttribute::ReadWrite {
-                    read_type: make_bound_classmethod(self.heap, cls, ty).into_inner(),
+                    read_type: make_bound_classmethod(self.heap, cls, ty, self).into_inner(),
                     is_method: IsMethod::Yes,
                     is_instance_var: false,
                     write_type: None,
@@ -4094,6 +4108,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ty,
                     Some(ReadOnlyReason::ClassObjectInitializedOnBody),
                     false,
+                    self,
                 )
             }
             ClassFieldInner::ClassAttribute {
@@ -4130,6 +4145,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ty,
                             read_only_reason,
                             is_instance_var,
+                            self,
                         ),
                     }
                 }
@@ -5428,7 +5444,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 continue;
             };
             let instance = Instance::of_protocol(ancestor, derived_instance.clone());
-            let instantiated = field.instantiate_for(self.heap, &instance);
+            let instantiated = field.instantiate_for(self.heap, &instance, self);
             if let Some(mapped) = accept(instantiated.ty()) {
                 return Some(mapped);
             }
@@ -5764,7 +5780,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             };
             let new_ty = new_member
                 .value
-                .as_raw_special_method_type(self.heap, &instance)?;
+                .as_raw_special_method_type(self.heap, &instance, self)?;
             Some(new_ty)
         }
     }
@@ -5818,9 +5834,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return None;
         }
         field
-            .as_raw_special_method_type(self.heap, &Instance::of_class(cls))
+            .as_raw_special_method_type(self.heap, &Instance::of_class(cls), self)
             .map(|ty| {
-                match make_bound_classmethod(self.heap, &ClassBase::ClassType(cls.clone()), ty) {
+                match make_bound_classmethod(
+                    self.heap,
+                    &ClassBase::ClassType(cls.clone()),
+                    ty,
+                    self,
+                ) {
                     Ok(bound_classmethod) => bound_classmethod,
                     Err(ty) => ty,
                 }
@@ -5865,14 +5886,17 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else {
             let instance = Instance::of_metaclass(ClassBase::ClassType(cls.clone()), metaclass);
             attr.value
-                .as_raw_special_method_type(self.heap, &instance)
+                .as_raw_special_method_type(self.heap, &instance, self)
                 .and_then(|ty| make_bound_method(self, &instance, ty).ok())
         }
     }
 
     pub fn resolve_named_tuple_element(&self, cls: &ClassType, name: &Name) -> Option<Type> {
         let field = self.get_class_member(cls.class_object(), name)?;
-        match field.instantiate_for(self.heap, &Instance::of_class(cls)).0 {
+        match field
+            .instantiate_for(self.heap, &Instance::of_class(cls), self)
+            .0
+        {
             ClassFieldInner::ClassAttribute {
                 ty,
                 read_only_reason: Some(_),

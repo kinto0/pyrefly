@@ -345,7 +345,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::ClassType(field) = member
                 && self.inherits_from_django_field(field.class_object())
             {
-                let Type::ClassType(field) = self.solver().force(member.clone()) else {
+                let Type::ClassType(field) = self.solver().force(member.clone(), self) else {
                     unreachable!("forcing a field instance preserves its class type")
                 };
                 let override_type = if !infer_arguments
@@ -439,7 +439,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 )?;
                 // Explicit descriptor arguments take precedence over inferred defaults.
                 for (param, arg) in cls.targs().iter_paired() {
-                    let arg = self.solver().force(arg.clone());
+                    let arg = self.solver().force(arg.clone(), self);
                     if !matches!(arg, Type::Any(AnyStyle::Implicit)) {
                         match param.name().as_str() {
                             "_GT" => get_type = arg,
@@ -731,7 +731,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.get_mro_for_class(cls.class_object())
                 .ancestors(self.stdlib)
                 .find(|base| base.is(KnownClass::DjangoQuerySet))
-                .map(|base| base.substitute_with(&cls.substitution()))
+                .map(|base| base.substitute_with(&cls.substitution(), self))
         }
     }
 

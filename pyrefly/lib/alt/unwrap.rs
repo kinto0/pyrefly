@@ -137,7 +137,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match ty {
             Type::Any(style) => self.heap.mk_any(*style),
             Type::Never(style) => self.heap.mk_never_style(*style),
-            _ => self.solver().expand_unwrap(var),
+            _ => self.solver().expand_unwrap(var, self),
         }
     }
 
@@ -435,7 +435,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .chain([&mut vararg_hint, &mut kwarg_hint, &mut return_hint])
             .flatten()
         {
-            self.solver().expand_with_bounds(ty);
+            self.solver().expand_with_bounds(ty, self);
         }
         self.solver().restore_vars(snapshot);
         (param_hints, vararg_hint, kwarg_hint, return_hint)

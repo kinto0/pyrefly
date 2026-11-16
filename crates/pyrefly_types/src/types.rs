@@ -366,7 +366,7 @@ impl TArgs {
     ///
     /// Unions in the substituted arguments are simplified, so type arguments that differ only in
     /// the order, nesting or duplication of union members compare equal.
-    pub fn substitute_with(&self, substitution: &Substitution) -> Self {
+    pub fn substitute_with(&self, substitution: &Substitution, env: &dyn TypeEnv) -> Self {
         let Some((tparams, targs)) = self.0.as_deref() else {
             return Self::default();
         };
@@ -380,7 +380,7 @@ impl TArgs {
                 let mut ty = substitution.substitute_into(ty.clone());
                 ty.transform_mut(&mut |x| {
                     if let Type::Union(u) = x {
-                        let mut merged = unions(mem::take(&mut u.members), &heap);
+                        let mut merged = unions(mem::take(&mut u.members), env, &heap);
                         if let Type::Union(merged_u) = &mut merged {
                             merged_u.display_name.0 = u.display_name.0.take();
                         }
@@ -2130,7 +2130,7 @@ impl Type {
     }
 
     // This doesn't handle generics currently
-    pub fn callable_return_type(&self, heap: &TypeHeap) -> Option<Type> {
+    pub fn callable_return_type(&self, heap: &TypeHeap, env: &dyn TypeEnv) -> Option<Type> {
         let rets = self
             .toplevel_callable_signatures()
             .map(|(callable, _)| callable.ret.clone())
@@ -2138,11 +2138,11 @@ impl Type {
         if rets.is_empty() {
             None
         } else {
-            Some(unions(rets, heap))
+            Some(unions(rets, env, heap))
         }
     }
 
-    pub fn callable_first_param(&self, heap: &TypeHeap) -> Option<Type> {
+    pub fn callable_first_param(&self, heap: &TypeHeap, env: &dyn TypeEnv) -> Option<Type> {
         let params = self
             .toplevel_callable_signatures()
             .filter_map(|(callable, _)| callable.get_first_param().cloned())
@@ -2150,7 +2150,7 @@ impl Type {
         if params.is_empty() {
             None
         } else {
-            Some(unions(params, heap))
+            Some(unions(params, env, heap))
         }
     }
 

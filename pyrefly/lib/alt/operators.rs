@@ -624,6 +624,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     intersect(
                         vec![q.clone().to_type(self.heap), res.clone()],
                         res,
+                        self,
                         self.heap,
                     )
                 } else {
@@ -633,7 +634,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else if let Some(narrowed_type) = narrowed_type {
             f(narrowed_type)
         } else {
-            f(&q.upper_bound(self.stdlib, self.heap))
+            f(&q.upper_bound(self, self.heap))
         }
     }
 

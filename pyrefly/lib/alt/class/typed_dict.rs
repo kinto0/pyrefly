@@ -117,7 +117,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     .map(|(name, field)| (name.clone(), field.required))
                     .collect(),
                 ExtraItems::Extra(ExtraItem {
-                    ty: inner.compute_value_type(self.heap),
+                    ty: inner.compute_value_type(self.heap, self),
                     read_only: false,
                 }),
                 ANONYMOUS_TYPED_DICT.clone(),
@@ -888,7 +888,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         &self,
         typed_dict: &AnonymousTypedDictInner,
     ) -> Option<Type> {
-        let value_ty = typed_dict.compute_value_type(self.heap);
+        let value_ty = typed_dict.compute_value_type(self.heap, self);
         typed_dict
             .fields
             .iter()
@@ -938,7 +938,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             values.push(extra);
             unions_with_literals(
                 values,
-                self.stdlib,
+                self,
                 &|cls| self.get_expandable_enum_member_count(cls),
                 self.heap,
             )
@@ -1220,7 +1220,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
         // Pin any vars in the type: leaking a var in a class field is particularly
         // likely to lead to data races where downstream uses can pin inconsistently.
-        let ty = self.solver().force(ty);
+        let ty = self.solver().force(ty, self);
 
         ClassField::typed_dict_field(name, ty, annotation, read_only_reason)
     }

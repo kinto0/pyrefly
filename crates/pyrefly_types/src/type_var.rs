@@ -22,6 +22,7 @@ use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::Identifier;
 
 use crate::dimension::gradual_size;
+use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::heap::TypeHeap;
@@ -29,7 +30,6 @@ use crate::quantified::Quantified;
 use crate::quantified::QuantifiedKind;
 use crate::quantified::TypeVarLike;
 use crate::simplify::unions;
-use crate::stdlib::Stdlib;
 use crate::types::Type;
 
 mod flag;
@@ -79,13 +79,13 @@ impl Restriction {
     }
 
     /// This restriction as an upper bound for a type parameter of kind `kind`.
-    pub fn as_type(&self, stdlib: &Stdlib, heap: &TypeHeap, kind: QuantifiedKind) -> Type {
+    pub fn as_type(&self, env: &dyn TypeEnv, heap: &TypeHeap, kind: QuantifiedKind) -> Type {
         match self {
             Self::Bound(t) => t.clone(),
-            Self::Constraints(ts) => unions(ts.clone(), heap),
-            Self::ShapeExtension(extension) => extension.upper_bound(stdlib, heap),
+            Self::Constraints(ts) => unions(ts.clone(), env, heap),
+            Self::ShapeExtension(extension) => extension.upper_bound(env, heap),
             Self::Unrestricted => match kind {
-                QuantifiedKind::TypeVar => stdlib.object().clone().to_type(),
+                QuantifiedKind::TypeVar => env.stdlib().object().clone().to_type(),
                 QuantifiedKind::IntVar => gradual_size(),
                 QuantifiedKind::ParamSpec => Type::Ellipsis,
                 QuantifiedKind::TypeVarTuple => Type::any_tuple(),
@@ -96,8 +96,8 @@ impl Restriction {
 
 impl Quantified {
     /// The upper bound of this type parameter as a type.
-    pub fn upper_bound(&self, stdlib: &Stdlib, heap: &TypeHeap) -> Type {
-        self.restriction.as_type(stdlib, heap, self.kind)
+    pub fn upper_bound(&self, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
+        self.restriction.as_type(env, heap, self.kind)
     }
 }
 
@@ -246,8 +246,8 @@ impl TypeVar {
     }
 
     /// The upper bound of this legacy TypeVar as a type.
-    pub fn upper_bound(&self, stdlib: &Stdlib, heap: &TypeHeap) -> Type {
-        self.restriction().as_type(stdlib, heap, self.kind())
+    pub fn upper_bound(&self, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
+        self.restriction().as_type(env, heap, self.kind())
     }
 
     pub fn type_eq_inner(&self, other: &Self, ctx: &mut TypeEqCtx) -> bool {

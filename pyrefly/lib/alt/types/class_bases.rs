@@ -131,7 +131,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> (Type, bool) {
         if let Type::Var(v) = base {
-            base = self.solver().force_var(v);
+            base = self.solver().force_var(v, self);
         }
         if matches!(&base, Type::ClassDef(t) if t.name(self) == "tuple") {
             base = self

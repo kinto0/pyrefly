@@ -130,16 +130,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .get_class_fields(instance.class)
             .is_some_and(|f| f.len() > NARROW_ENUM_LIMIT)
         {
-            return instance.to_type(self.heap);
+            return instance.to_type(self.heap, self);
         }
         // The class is an enum unless it is a stale class of a module that was rebuilt (see
         // `get_class_fields`), which we leave unnarrowed.
         if self.get_enum_from_class(instance.class).is_none() {
-            return instance.to_type(self.heap);
+            return instance.to_type(self.heap, self);
         }
         // Enums derived from enum.Flag cannot be treated as a union of their members
         if self.has_superclass(instance.class, self.stdlib.enum_flag().class_object()) {
-            return instance.to_type(self.heap);
+            return instance.to_type(self.heap, self);
         }
         self.unions(
             self.get_enum_members(instance.class)
@@ -174,7 +174,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::Quantified(q) if q.is_type_var() => match q.restriction() {
                 Restriction::Bound(bound) => self.disjoint_base(bound),
                 Restriction::ShapeExtension(extension) => {
-                    self.disjoint_base(&extension.upper_bound(self.stdlib, self.heap))
+                    self.disjoint_base(&extension.upper_bound(self, self.heap))
                 }
                 Restriction::Constraints(_) | Restriction::Unrestricted => {
                     self.stdlib.object().class_object().dupe()
@@ -273,6 +273,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     intersect(
                         vec![left.clone(), right.clone()],
                         fallback.clone(),
+                        self,
                         self.heap,
                     )
                 } else {
@@ -364,7 +365,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let mut may_be_none = false;
         self.map_over_union(ty, |ty| {
             may_be_none |= match ty {
-                Type::Quantified(q) => self.may_be_none(&q.upper_bound(self.stdlib, self.heap)),
+                Type::Quantified(q) => self.may_be_none(&q.upper_bound(self, self.heap)),
                 _ => self.is_subset_eq(&Type::None, ty),
             };
         });
@@ -510,7 +511,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         self.unions(vec![left.clone(), right.clone()])
                     } else if left.is_any() || right.is_any() {
                         let fallback = if left.is_any() { right } else { left };
-                        intersect(vec![left.clone(), right.clone()], fallback.clone(), self.heap)
+                        intersect(vec![left.clone(), right.clone()], fallback.clone(), self, self.heap)
                     } else if (Self::has_callable_guarantee(left)
                         && (Self::has_callable_guarantee(right)
                             || Self::has_nominal_guarantee(right)))
@@ -518,7 +519,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             && Self::has_nominal_guarantee(left))
                     {
                         // Signature compatibility preserves neither callable identity nor nominal attributes.
-                        intersect(vec![left.clone(), right.clone()], right.clone(), self.heap)
+                        intersect(vec![left.clone(), right.clone()], right.clone(), self, self.heap)
                     } else if let Some(refined) = self.refine_gradual_intersection(left, right) {
                         refined
                     } else if (self.is_typed_dict(left) && is_dict_or_mapping(right))
@@ -529,13 +530,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             && is_mapping_view(right))
                     {
                         // Mutation-safe assignability does not establish disjoint dictionary values.
-                        intersect(vec![left.clone(), right.clone()], right.clone(), self.heap)
+                        intersect(vec![left.clone(), right.clone()], right.clone(), self, self.heap)
                     } else if (left.any(|ty| ty.is_any()) || right.any(|ty| ty.is_any()))
                         && self.is_subset_eq(left, right)
                         && self.is_subset_eq(right, left)
                     {
                         // Gradual assignability in both directions is not type equivalence.
-                        intersect(vec![left.clone(), right.clone()], right.clone(), self.heap)
+                        intersect(vec![left.clone(), right.clone()], right.clone(), self, self.heap)
                     } else {
                         self.intersect_with_fallback(left, right, IntersectFallback::Right)
                     }
@@ -547,7 +548,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else {
             // Meet concrete contracts before gradual evidence can affect assignability.
             self.distribute_over_union(&result, |ty| {
-                intersect(vec![ty.clone(), gradual.clone()], ty.clone(), self.heap)
+                intersect(
+                    vec![ty.clone(), gradual.clone()],
+                    ty.clone(),
+                    self,
+                    self.heap,
+                )
             })
         }
     }
@@ -919,7 +925,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 if parts.is_empty() {
                     (None, true)
                 } else {
-                    (Some(intersect(parts, fallback.clone(), self.heap)), false)
+                    (
+                        Some(intersect(parts, fallback.clone(), self, self.heap)),
+                        false,
+                    )
                 }
             }
             Type::UntypedAlias(alias) => {
@@ -999,7 +1008,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn narrow_typeis_target_from_definite(&self, left: &Type, right: &Type) -> Type {
         if right.is_any() {
-            intersect(vec![left.clone(), right.clone()], left.clone(), self.heap)
+            intersect(
+                vec![left.clone(), right.clone()],
+                left.clone(),
+                self,
+                self.heap,
+            )
         } else {
             // TODO: falling back to Never when the lhs is a union is a hack to get
             // reasonable behavior in cases like this:
@@ -1073,7 +1087,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // so that e.g. isinstance(x, (int, float)) with T(int, str, float)
                     // narrows the else branch to str instead of leaving it as T.
                     result = if let Type::Quantified(q) = &result {
-                        let concrete = q.upper_bound(self.stdlib, self.heap);
+                        let concrete = q.upper_bound(self, self.heap);
                         let subtraction = self.subtract(&concrete, &right);
                         self.intersect_with_fallback(
                             &result,
@@ -1255,14 +1269,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 });
                 for q in quantifieds {
                     // The only time it's safe to simplify a quantified away is when the entire intersection is Never.
-                    let intersection =
-                        narrow(&q.upper_bound(self.stdlib, self.heap), right.clone());
+                    let intersection = narrow(&q.upper_bound(self, self.heap), right.clone());
                     res.push(if matches!(&intersection, Type::Type(t) if t.is_never()) {
                         intersection
                     } else {
                         intersect(
                             vec![q.to_type(self.heap), right.clone()],
                             right.clone(),
+                            self,
                             self.heap,
                         )
                     })
@@ -1435,7 +1449,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     .map(|branch| self.distribute_over_facet_members(branch, f))
                     .filter(|branch| !branch.is_never())
                     .collect();
-                Type::combine_overload_results(remaining, self.heap)
+                Type::combine_overload_results(remaining, self.heap, self)
                     .unwrap_or_else(|| self.heap.mk_never())
             } else {
                 f(member)
@@ -2140,14 +2154,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         // assignable to `T`.
                         let bound = current_narrow
                             .cloned()
-                            .unwrap_or_else(|| q.upper_bound(self.stdlib, self.heap));
+                            .unwrap_or_else(|| q.upper_bound(self, self.heap));
                         let narrowed = self.distribute_over_union(&bound, &narrow_member);
                         if narrowed == bound {
                             t.clone()
                         } else {
                             let q_ty = q.clone().to_type(self.heap);
                             self.distribute_over_union(&narrowed, |n| {
-                                intersect(vec![q_ty.clone(), n.clone()], n.clone(), self.heap)
+                                intersect(vec![q_ty.clone(), n.clone()], n.clone(), self, self.heap)
                             })
                         }
                     }

@@ -28,6 +28,7 @@ use pyrefly_derive::TypeEq;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 
+use crate::env::TypeEnv;
 use crate::heap::TypeHeap;
 use crate::known_class::KnownClass;
 use crate::literal::Lit;
@@ -479,13 +480,13 @@ impl FlagDomain {
 
     /// The single type covering the whole domain: the member itself when there is only one,
     /// otherwise their union.
-    pub fn as_type(self, stdlib: &Stdlib, heap: &TypeHeap) -> Type {
-        let types = self.types(stdlib);
+    pub fn as_type(self, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
+        let types = self.types(env.stdlib());
         assert!(
             !types.is_empty(),
             "a `Flag` domain always has at least one member"
         );
-        unions(types, heap)
+        unions(types, env, heap)
     }
 }
 

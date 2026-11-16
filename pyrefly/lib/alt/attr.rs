@@ -1828,7 +1828,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let combined = match combine {
             Combine::Intersect => self.intersect_guarantees(&types),
-            Combine::Overloaded => Type::combine_overload_results(types, self.heap)?,
+            Combine::Overloaded => Type::combine_overload_results(types, self.heap, self)?,
         };
         let attribute = if is_class_attribute {
             match read_only_reason {
@@ -2541,7 +2541,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Some(_guard) = self.recurse(var) {
             // Ensure that the guard is still held when we call `f`, to avoid
             // non-termination when the var appears inside itself.
-            f(self.solver().force_var(var))
+            f(self.solver().force_var(var, self))
         } else {
             f(self.heap.mk_any_implicit())
         }
@@ -2658,7 +2658,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::Type(ty) => self.as_attribute_base1_of_type(*ty, acc),
             Type::PartialTypedDict(ct) => acc.push(AttributeBase1::TypedDict(ct)),
             Type::AnonymousTypedDict(td) => {
-                let value_ty = td.compute_value_type(self.heap);
+                let value_ty = td.compute_value_type(self.heap, self);
                 acc.push(AttributeBase1::ClassInstance(self.stdlib.dict(
                     self.heap.mk_class_type(self.stdlib.str().clone()),
                     value_ty,
@@ -3249,7 +3249,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
 
             if dunder_bool_ty
-                .callable_return_type(self.heap)
+                .callable_return_type(self.heap, self)
                 .is_some_and(|ret| {
                     ret.is_never()
                         && self.callable_has_explicit_return_annotation(

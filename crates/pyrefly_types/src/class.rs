@@ -654,9 +654,9 @@ impl ClassType {
     ///
     /// This is used to propagate instantiation of base class type parameters when computing
     /// the MRO.
-    pub fn substitute_with(&self, substitution: &Substitution) -> Self {
+    pub fn substitute_with(&self, substitution: &Substitution, env: &dyn TypeEnv) -> Self {
         let mut result = self.clone();
-        result.1 = self.1.substitute_with(substitution);
+        result.1 = self.1.substitute_with(substitution, env);
         if let Some(metadata) = &mut result.2 {
             metadata.recurse_mut(&mut |ty| substitution.substitute_into_mut(ty));
         }

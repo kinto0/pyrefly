@@ -1305,7 +1305,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // (forwarding case), meaning the caller should validate that the
         // remaining args are `*P.args` / `**P.kwargs` and stop matching.
         let var_to_rparams = |var| -> Result<Vec<&Param>, Box<Quantified>> {
-            let ps = match self.solver().force_var(var) {
+            let ps = match self.solver().force_var(var, self) {
                 Type::ParamSpecValue(ps) => ps,
                 Type::Any(_) | Type::Ellipsis => ParamList::everything(),
                 Type::Concatenate(prefix, _) => {
@@ -2278,7 +2278,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // type is now as solved as it will be, so the call is evaluated here.
             if let Type::Callable(callable) = &mut hint {
                 callable.params.visit_mut(&mut |ty| {
-                    self.solver().expand_with_bounds(ty);
+                    self.solver().expand_with_bounds(ty, self);
                     for error in ty.finalize_type_level_dsl_at_boundary() {
                         self.error_with_context(
                             call_errors,
@@ -2777,7 +2777,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 argmap
             }
             Params::ParamSpec(concatenate, p) => {
-                let p = self.solver().expand(p);
+                let p = self.solver().expand(p, self);
                 match p {
                     Type::ParamSpecValue(params) => self.callable_infer_params(
                         callable_name,
@@ -2871,7 +2871,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         });
         if let Some(targs) = ctor_targs {
             let recorded_vars = call_context.captured_vars();
-            self.solver().generalize_class_targs(targs, &recorded_vars);
+            self.solver()
+                .generalize_class_targs(targs, &recorded_vars, self);
         }
         let (overload_table, finish_result, defaults_used) = self.solver().finish_call_boundary(
             self.solver().config.infer_with_first_use,

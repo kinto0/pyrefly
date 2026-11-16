@@ -13,6 +13,7 @@ use pyrefly_derive::VisitMut;
 use ruff_python_ast::name::Name;
 
 use crate::annotation::Qualifier;
+use crate::env::TypeEnv;
 use crate::heap::TypeHeap;
 use crate::read_only::ReadOnlyReason;
 use crate::simplify;
@@ -56,9 +57,9 @@ impl AnonymousTypedDictInner {
     /// Compute the union of all field value types. This is derived from `fields`
     /// rather than stored, to avoid duplicating the type tree at each nesting
     /// level (which caused 2^N memory growth for nested dict literals).
-    pub fn compute_value_type(&self, heap: &TypeHeap) -> Type {
+    pub fn compute_value_type(&self, heap: &TypeHeap, env: &dyn TypeEnv) -> Type {
         let tys: Vec<Type> = self.fields.iter().map(|(_, f)| f.ty.clone()).collect();
-        simplify::unions(tys, heap)
+        simplify::unions(tys, env, heap)
     }
 
     pub fn field(&self, name: &Name) -> Option<&TypedDictField> {

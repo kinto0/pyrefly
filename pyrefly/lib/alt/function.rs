@@ -307,7 +307,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn decorator_param_hints(&self, decorators: &[(Type, usize)]) -> Option<DecoratorParamHints> {
         decorators.iter().rev().find_map(|(decorator_ty, _)| {
             decorator_ty
-                .callable_first_param(self.heap)
+                .callable_first_param(self.heap, self)
                 .and_then(|param_ty| {
                     param_ty
                         .toplevel_callable_signatures()
@@ -1450,7 +1450,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             let owner = Owner::new();
                             let upper_mp = qs
                                 .iter()
-                                .map(|q| (*q, owner.push(q.upper_bound(self.stdlib, self.heap))))
+                                .map(|q| (*q, owner.push(q.upper_bound(self, self.heap))))
                                 .collect();
                             let upper_ty = expected_ty.clone().subst(&upper_mp);
                             // Check if the default is compatible with the parameter type.
@@ -2504,7 +2504,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn subst_function(&self, tparams: &TParams, func: Function) -> Function {
         let mp = tparams
             .as_vec()
-            .map(|p| (p, p.upper_bound(self.stdlib, self.heap)));
+            .map(|p| (p, p.upper_bound(self, self.heap)));
         match self
             .heap
             .mk_function(func)
@@ -2888,7 +2888,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // Turn a `__init__` that could not be bound into a constructor callable by setting its return
             // type, without stripping the `self` parameter.
             let ret_type = t
-                .callable_first_param(self.heap)
+                .callable_first_param(self.heap, self)
                 .unwrap_or_else(|| self.heap.mk_class_type(cls.clone()));
             t.transform_toplevel_callable_signatures(|c: &mut Callable, _| {
                 c.ret = ret_type.clone()
@@ -3055,6 +3055,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             callable,
             self.uniques,
             is_subset,
+            self,
         )
     }
 

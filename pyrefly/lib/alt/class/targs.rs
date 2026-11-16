@@ -712,7 +712,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     let arg =
                         if let Type::Literal(lit) = arg
                             && let Lit::Int(i) = &lit.value
-                            && matches!(param.upper_bound(self.stdlib, self.heap), Type::Int(_))
+                            && matches!(param.upper_bound(self, self.heap), Type::Int(_))
                         {
                             Type::Int(i.as_i64().map(Int::Literal).unwrap_or_else(|| {
                                 Int::Symbolic(Box::new(Type::Literal(lit.clone())))
@@ -732,7 +732,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             let arg = arg.clone();
                             arg.transform(&mut |x| match x {
                                 Type::TypeVar(tv) => {
-                                    *x = tv.upper_bound(self.stdlib, self.heap);
+                                    *x = tv.upper_bound(self, self.heap);
                                 }
                                 Type::TypeLevelDslCall(call) => {
                                     *x = call.type_for_generic_bound_check()
@@ -742,7 +742,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         };
                         self.check_type(
                             &arg_for_check,
-                            &param.upper_bound(self.stdlib, self.heap),
+                            &param.upper_bound(self, self.heap),
                             range,
                             errors,
                             tcc,

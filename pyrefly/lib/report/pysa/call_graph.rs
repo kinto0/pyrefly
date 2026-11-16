@@ -1642,7 +1642,7 @@ impl<'a> CallGraphVisitor<'a> {
                 }
                 Restriction::ShapeExtension(extension) => self.receiver_class_from_type(
                     &extension.upper_bound(
-                        &self.module_answers_context.stdlib,
+                        self.module_context.resolver.type_env(),
                         self.module_answers_context.answers.heap(),
                     ),
                     is_class_method,
@@ -2617,8 +2617,10 @@ impl<'a> CallGraphVisitor<'a> {
                      }| {
                         // TODO(T252263933): Need more precise return types for `__getitem__` in `typed_dict.py`
                         let return_type = if let Some(return_type) = callee_type
-                            .callable_return_type(self.module_answers_context.answers.heap())
-                        {
+                            .callable_return_type(
+                                self.module_answers_context.answers.heap(),
+                                self.module_context.resolver.type_env(),
+                            ) {
                             ScalarTypeProperties::from_type(&return_type, self.module_context)
                         } else {
                             ScalarTypeProperties::none()
@@ -3094,7 +3096,12 @@ impl<'a> CallGraphVisitor<'a> {
     // for a call expression, we could simply query its type (e.g., query the type of `c(1)`).
     fn get_return_type_for_callee(&self, callee_type: Option<&Type>) -> ScalarTypeProperties {
         callee_type
-            .and_then(|ty| ty.callable_return_type(self.module_answers_context.answers.heap()))
+            .and_then(|ty| {
+                ty.callable_return_type(
+                    self.module_answers_context.answers.heap(),
+                    self.module_context.resolver.type_env(),
+                )
+            })
             .map(|return_type| ScalarTypeProperties::from_type(&return_type, self.module_context))
             .unwrap_or(ScalarTypeProperties::none())
     }
@@ -3392,8 +3399,10 @@ impl<'a> CallGraphVisitor<'a> {
             /* base */
             iter_callee_type
                 .and_then(|iter_callee_type| {
-                    iter_callee_type
-                        .callable_return_type(self.module_answers_context.answers.heap())
+                    iter_callee_type.callable_return_type(
+                        self.module_answers_context.answers.heap(),
+                        self.module_context.resolver.type_env(),
+                    )
                 })
                 .as_ref(),
             /* attribute */ Some(&next_callee_name),
@@ -4115,7 +4124,10 @@ impl<'a> CallGraphVisitor<'a> {
                         .answers
                         .get_idx(idx)
                         .unwrap()
-                        .callable_return_type(self.module_answers_context.answers.heap())
+                        .callable_return_type(
+                            self.module_answers_context.answers.heap(),
+                            self.module_context.resolver.type_env(),
+                        )
                         .map_or(ScalarTypeProperties::none(), |type_| {
                             ScalarTypeProperties::from_type(&type_, self.module_context)
                         });

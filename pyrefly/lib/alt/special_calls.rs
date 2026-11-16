@@ -56,8 +56,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// A valid type variable contributes the shape constraints from its normalized upper bound.
     fn assert_shape_input_to_int_tuple(&self, ty: &Type) -> Option<IntTuple> {
         let upper_bound = match ty {
-            Type::Quantified(q) if q.is_type_var() => Some(q.upper_bound(self.stdlib, self.heap)),
-            Type::TypeVar(tv) => Some(tv.upper_bound(self.stdlib, self.heap)),
+            Type::Quantified(q) if q.is_type_var() => Some(q.upper_bound(self, self.heap)),
+            Type::TypeVar(tv) => Some(tv.upper_bound(self, self.heap)),
             _ => None,
         };
         if let Some(upper_bound) = upper_bound {
@@ -83,12 +83,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let expr_b = &args[1];
             let a = self
                 .solver()
-                .force(self.expr_infer_with_hint(expr_a, hint, errors));
-            let b = self.solver().force(self.expr_untype(
-                expr_b,
-                TypeFormContext::FunctionArgument,
-                errors,
-            ));
+                .force(self.expr_infer_with_hint(expr_a, hint, errors), self);
+            let b = self.solver().force(
+                self.expr_untype(expr_b, TypeFormContext::FunctionArgument, errors),
+                self,
+            );
             if !b.is_error() && !self.is_equivalent(&a, &b) {
                 // `a` is a subtype of `b` if every materialization of `a` is a subtype of every
                 // materialization of `b`.
@@ -349,7 +348,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let ret = if args.len() == 2 {
             let actual = self
                 .solver()
-                .force(self.expr_infer_with_hint(&args[0], hint, errors));
+                .force(self.expr_infer_with_hint(&args[0], hint, errors), self);
             let actual_shape = if actual.is_any() {
                 Some(IntTuple::shapeless())
             } else {
@@ -871,16 +870,21 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Returns the list of types passed as the second argument to `isinstance` or `issubclass`.
     pub fn as_class_info(&self, ty: Type) -> Vec<Type> {
-        fn f<Ans: LookupAnswer>(me: &AnswersSolver<'_, '_, Ans>, t: Type, res: &mut Vec<Type>) {
+        fn f<Ans: LookupAnswer>(
+            me: &AnswersSolver<'_, '_, Ans>,
+            t: Type,
+            res: &mut Vec<Type>,
+            env: &dyn TypeEnv,
+        ) {
             match t {
                 Type::Var(v) if let Some(_guard) = me.recurse(v) => {
-                    f(me, me.solver().force_var(v), res)
+                    f(me, me.solver().force_var(v, env), res, env)
                 }
                 Type::ClassType(ref c)
                     if let [arg] = c.targs().as_slice()
                         && c.class_object() == me.stdlib.tuple_object() =>
                 {
-                    f(me, arg.clone(), res)
+                    f(me, arg.clone(), res, env)
                 }
                 Type::ClassType(ref c) if Some(c) == me.stdlib.union_type() => {
                     // Could be anything inside here, so add in Any.
@@ -888,23 +892,23 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 Type::Tuple(Tuple::Concrete(ts)) => {
                     for t in ts {
-                        f(me, t, res)
+                        f(me, t, res, env)
                     }
                 }
                 Type::Union(u) => {
                     for t in u.members {
-                        f(me, t, res)
+                        f(me, t, res, env)
                     }
                 }
-                Type::Tuple(Tuple::Unbounded(t)) => f(me, *t, res),
+                Type::Tuple(Tuple::Unbounded(t)) => f(me, *t, res, env),
                 Type::Tuple(Tuple::Unpacked(unpacked)) => {
                     let (pre, mid, post) = unpacked.into_parts();
                     for t in pre {
-                        f(me, t, res)
+                        f(me, t, res, env)
                     }
-                    f(me, mid, res);
+                    f(me, mid, res, env);
                     for t in post {
-                        f(me, t, res)
+                        f(me, t, res, env)
                     }
                 }
                 Type::Type(inner) if matches!(&*inner, Type::Union(_)) => {
@@ -913,15 +917,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         unreachable!("guarded by matches! above")
                     };
                     for t in u.members {
-                        f(me, me.heap.mk_type_of(t), res)
+                        f(me, me.heap.mk_type_of(t), res, env)
                     }
                 }
-                Type::TypeAlias(ta) => f(me, me.get_type_alias(&ta).as_value(me.stdlib), res),
+                Type::TypeAlias(ta) => f(me, me.get_type_alias(&ta).as_value(me.stdlib), res, env),
                 _ => res.push(t),
             }
         }
         let mut res = Vec::new();
-        f(self, ty, &mut res);
+        f(self, ty, &mut res, self);
         res
     }
 

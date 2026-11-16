@@ -2525,7 +2525,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         for id in self.bindings().owned_lambda_params(owner) {
             if let Some(ty) = self.get_lambda_param_type(*id) {
                 self.current()
-                    .publish_lambda_param_type(*id, self.solver().expand(ty));
+                    .publish_lambda_param_type(*id, self.solver().expand(ty, self));
             }
         }
     }
@@ -2691,7 +2691,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub fn for_display(&self, t: Type) -> Type {
-        self.solver().for_display(t)
+        self.solver().for_display(t, self)
     }
 
     /// Render a type for an error message, after `for_display` resolves its variables and
@@ -2938,7 +2938,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     fn force_exported_answer<K: Solve<Ans>>(&self, mut answer: K::Answer) -> K::Answer {
         if K::EXPORTED {
-            answer.visit_mut(&mut |ty| self.current.solver().force_mut(ty));
+            answer.visit_mut(&mut |ty| self.current.solver().force_mut(ty, self));
         }
         answer
     }
@@ -2951,7 +2951,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) {
         let mut vars = Vec::new();
         answer.visit(&mut |ty| vars.extend(ty.collect_all_vars()));
-        for error in self.solver().sanitize_vars(vars, true) {
+        for error in self.solver().sanitize_vars(vars, true, self) {
             self.report_pin_error(error, range, errors);
         }
     }
@@ -3036,7 +3036,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // Deep-force to resolve all type variables, matching the
                 // invariant that all iterative answers are deep-forced.
                 let mut forced = prior_answer.clone();
-                forced.visit_mut(&mut |x| self.current.solver().force_mut(x));
+                forced.visit_mut(&mut |x| self.current.solver().force_mut(x, self));
                 let answer = AnswerBox::new(forced);
 
                 let answer_erased = AnyAnswer::new::<Key>(answer);
@@ -3122,7 +3122,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // for convergence comparisons: without forcing, structurally identical
         // answers can appear different due to unresolved Var IDs.
         let mut forced = answer;
-        forced.visit_mut(&mut |x| self.current.solver().force_mut(x));
+        forced.visit_mut(&mut |x| self.current.solver().force_mut(x, self));
 
         let answer_erased = AnyAnswer::new::<K>(AnswerBox::new(forced));
 
@@ -3535,7 +3535,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     {
         let final_answer = K::record_recursive(self, answer, var);
         if var != Var::ZERO {
-            self.solver().force_var(var);
+            self.solver().force_var(var, self);
         }
         final_answer
     }
@@ -3782,7 +3782,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub fn record_recursive(&self, ty: Type, recursive: Var) -> Type {
-        self.solver().record_recursive(recursive, ty)
+        self.solver().record_recursive(recursive, ty, self)
     }
 
     /// Check if `got` matches `want`, returning `want` if the check fails.
@@ -4066,7 +4066,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         u.members.iter().for_each(|ty| self.go(ty, true))
                     }
                     Type::Var(v) if let Some(_guard) = self.me.recurse(*v) => {
-                        self.go(&self.me.solver().force_var(*v), in_type)
+                        self.go(&self.me.solver().force_var(*v, self.me), in_type)
                     }
                     _ if in_type => (self.f)(&self.me.heap.mk_type_of(ty.clone())),
                     _ => {

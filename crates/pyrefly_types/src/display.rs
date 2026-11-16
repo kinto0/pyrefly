@@ -833,7 +833,7 @@ impl<'a> TypeDisplayContext<'a> {
         output: &mut impl TypeOutput,
     ) -> fmt::Result {
         let heap = TypeHeap::new();
-        let value_type = inner.compute_value_type(&heap);
+        let value_type = inner.compute_value_type(&heap, self.env);
         self.fmt_helper_generic(&value_type, false, output)
     }
 

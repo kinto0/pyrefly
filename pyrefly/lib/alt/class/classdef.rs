@@ -273,7 +273,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.as_superclass(&tuple_class, want)
         } else {
             self.get_ancestor(class.class_object(), want)
-                .map(|ancestor| ancestor.substitute_with(&class.substitution()))
+                .map(|ancestor| ancestor.substitute_with(&class.substitution(), self))
         }
     }
 

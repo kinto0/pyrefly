@@ -96,7 +96,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
 
                         let mut expanded = ty.clone();
-                        self.solver().expand_with_bounds(&mut expanded);
+                        self.solver().expand_with_bounds(&mut expanded, self);
                         let hides_structure = match &expanded {
                             Type::Literal(_) | Type::LiteralString(_) => false,
                             Type::ClassType(cls) if cls.is(KnownClass::List) => true,

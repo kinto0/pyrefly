@@ -743,9 +743,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 .members
                 .iter()
                 .all(|member| self.is_pydantic_decimal_constraint_value(member)),
-            Type::Quantified(quantified) => self.is_pydantic_decimal_constraint_value(
-                &quantified.upper_bound(self.stdlib, self.heap),
-            ),
+            Type::Quantified(quantified) => {
+                self.is_pydantic_decimal_constraint_value(&quantified.upper_bound(self, self.heap))
+            }
             _ => {
                 !self.is_subset_eq(val, &self.stdlib.bool().clone().to_type())
                     && (self.is_subset_eq(val, &self.stdlib.float().clone().to_type())

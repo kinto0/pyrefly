@@ -154,7 +154,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Type::ClassType(ct) = &mut ty
             && Self::is_singledispatch_class(ct)
             && let [arg] = ct.targs().as_slice()
-            && self.solver().force(arg.clone()).is_never()
+            && self.solver().force(arg.clone(), self).is_never()
         {
             ct.targs_mut().as_mut()[0] = Type::any_implicit();
         }

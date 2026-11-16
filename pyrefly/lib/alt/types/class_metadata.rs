@@ -1011,7 +1011,7 @@ impl Linearization {
                     }
                     let ancestors_through_base = ancestors
                         .iter()
-                        .map(|ancestor| ancestor.substitute_with(&base.substitution()))
+                        .map(|ancestor| ancestor.substitute_with(&base.substitution(), env))
                         .rev()
                         .collect::<Vec<_>>();
                     let mut check_conflicting_targs = |ctype: &ClassType| -> bool {

@@ -749,7 +749,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         vs: QuantifiedHandle,
         infer_with_first_use: bool,
     ) -> Result<(), Vec1<TypeVarSpecializationError>> {
-        self.solver().finish_quantified(vs, infer_with_first_use)
+        self.solver()
+            .finish_quantified(vs, infer_with_first_use, self)
     }
 
     pub fn expr_class_keyword(&self, x: &Expr, errors: &ErrorCollector) -> Annotation {
@@ -1225,19 +1226,17 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     suffix: suffix.to_vec(),
                 }]
             }
-            Type::Var(v) if let Some(_guard) = self.recurse(*v) => {
-                self.iterate(&self.solver().force_var(*v), range, errors, orig_context)
-            }
+            Type::Var(v) if let Some(_guard) = self.recurse(*v) => self.iterate(
+                &self.solver().force_var(*v, self),
+                range,
+                errors,
+                orig_context,
+            ),
             Type::Quantified(q) if q.is_type_var() => {
                 // A TypeVar iterates like its upper bound: `Z: tuple[str, int]` must
                 // unpack positionally rather than collapse to the element join via the
                 // iterable protocol. Mirrors attribute access on a bounded TypeVar.
-                self.iterate(
-                    &q.upper_bound(self.stdlib, self.heap),
-                    range,
-                    errors,
-                    orig_context,
-                )
+                self.iterate(&q.upper_bound(self, self.heap), range, errors, orig_context)
             }
             Type::Union(f) => f
                 .members
@@ -1310,7 +1309,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
 
         let combine = |types: Vec1<Type>| {
-            Type::combine_overload_results(types.into_vec(), self.heap)
+            Type::combine_overload_results(types.into_vec(), self.heap, self)
                 .expect("a nonempty collection of results can always be combined")
         };
         let combine_positions = |positions_by_branch: Vec1<&Vec<Type>>| {
@@ -1400,7 +1399,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Vec<Iterable> {
         match iterable {
             Type::Var(v) if let Some(_guard) = self.recurse(*v) => {
-                self.async_iterate(&self.solver().force_var(*v), range, errors)
+                self.async_iterate(&self.solver().force_var(*v, self), range, errors)
             }
             _ => {
                 let context = || ErrorContext::AsyncIteration(self.for_display(iterable.clone()));
@@ -2643,7 +2642,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         match ty {
             Type::Var(v) => {
                 if let Some(_guard) = self.recurse(*v) {
-                    let forced = self.solver().force_var(*v);
+                    let forced = self.solver().force_var(*v, self);
                     self.force_for_narrowing(&forced, range, errors)
                 } else {
                     // Cycle detected - report as internal error
@@ -2660,7 +2659,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     pub fn expand_mut(&self, ty: &mut Type) {
         // Replace any solved recursive variables with their answers.
-        self.solver().expand_mut(ty);
+        self.solver().expand_mut(ty, self);
     }
 
     fn check_del_typed_dict_field(
@@ -4546,7 +4545,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             if let Some(ret) = callable
                                 .as_ref()
                                 .unwrap_or(&factory_ty)
-                                .callable_return_type(self.heap)
+                                .callable_return_type(self.heap, self)
                             {
                                 self.check_type(&ret, annot_ty, factory.value.range(), errors, tcc);
                             }
@@ -6239,7 +6238,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if let Some(getattr_ty) = self.try_get_from_export(m, dunder::GETATTR) {
             return getattr_ty
                 .clone()
-                .callable_return_type(self.heap)
+                .callable_return_type(self.heap, self)
                 .unwrap_or_else(|| self.heap.mk_any_implicit());
         }
         self.solve_import_missing(name, m, fallback, submodule_error, errors)
@@ -6971,7 +6970,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if let Some(field_name) = self.literal_typed_dict_key_name(key) =>
                     {
                         let field_ty = typed_dict.field(&field_name).map_or_else(
-                            || typed_dict.compute_value_type(self.heap),
+                            || typed_dict.compute_value_type(self.heap, self),
                             |field| field.ty.clone(),
                         );
                         self.check_assign_to_typed_dict_field(
@@ -7223,11 +7222,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) {
         // Expand the type, in case unexpanded `Vars` are hiding further `Var`s that
         // need to be pinned.
-        self.solver().expand_mut(ty);
+        self.solver().expand_mut(ty, self);
         let vars = ty.collect_all_vars();
         // Pin all relevant vars and collect ranges of PartialContained vars
         for var in vars {
-            if let Some(error) = self.solver().pin_placeholder_type(var, pin_partial_types) {
+            if let Some(error) = self
+                .solver()
+                .pin_placeholder_type(var, pin_partial_types, self)
+            {
                 self.report_pin_error(error, ty_range, errors);
             }
         }
@@ -7997,9 +7999,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 Some(self.unions(ts))
             }
-            Type::Var(v) if let Some(_guard) = self.recurse(v) => {
-                self.untype_opt_with_context(self.solver().force_var(v), range, errors, context)
-            }
+            Type::Var(v) if let Some(_guard) = self.recurse(v) => self.untype_opt_with_context(
+                self.solver().force_var(v, self),
+                range,
+                errors,
+                context,
+            ),
             // These are all legal type forms, so we accept them (return `Some`).
             // Only the quantified kinds get a kind check from the validator;
             // `Args`/`Kwargs` pass through unchanged but must be listed
@@ -8075,7 +8080,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     && let Some(_guard) = self.recurse(*v) =>
             {
                 self.untype_opt_with_context(
-                    self.heap.mk_unpack(self.solver().force_var(*v), kind),
+                    self.heap.mk_unpack(self.solver().force_var(*v, self), kind),
                     range,
                     errors,
                     context,

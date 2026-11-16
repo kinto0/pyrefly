@@ -1211,7 +1211,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         param_hint
                                     } else if let Some(default_ty) = default_ty {
                                         let mut resolved = default_ty.clone();
-                                        self.solver().expand_with_bounds(&mut resolved);
+                                        self.solver().expand_with_bounds(&mut resolved, self);
                                         let promoted = resolved
                                             .with_literal_style(LitStyle::Implicit)
                                             .promote(self.stdlib);
@@ -3589,7 +3589,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.distribute_over_union(target.base, |base| {
             let mut base = base.clone();
             if let Type::Var(v) = base {
-                base = self.solver().force_var(v);
+                base = self.solver().force_var(v, self);
             }
             if matches!(&base, Type::ClassDef(t) if t.name(self) == "tuple") {
                 base = self.heap.mk_type_of(self.heap.mk_special_form(SpecialForm::Tuple));
@@ -3630,7 +3630,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         if member_errors.has_hard() {
                             failures.push((member_errors, None));
                         } else {
-                            results.push(self.solver().expand(result));
+                            results.push(self.solver().expand(result, self));
                             errors.extend(member_errors);
                         }
                         self.solver().restore_vars(snapshot);
@@ -3682,10 +3682,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 failures.push((member_errors, Some(return_errors)));
                             } else {
                                 let returns = self.solver().per_row(&outcome.overload_table, || {
-                                    self.solver().expand(outcome.ty.clone())
+                                    self.solver().expand(outcome.ty.clone(), self)
                                 });
                                 results.push(
-                                    Type::combine_overload_results(returns.into_vec(), self.heap)
+                                    Type::combine_overload_results(returns.into_vec(), self.heap, self)
                                         .expect("an applicable index has at least one return"),
                                 );
                                 errors.extend(member_errors);
@@ -4233,7 +4233,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         Restriction::ShapeExtension(extension) => self
                             .subscript_infer_for_type_with_key_present_inner(
                                 SubscriptTarget {
-                                    base: &extension.upper_bound(self.stdlib, self.heap),
+                                    base: &extension.upper_bound(self, self.heap),
                                     receiver: Some(&base),
                                     index_ty: target.index_ty,
                                 },
@@ -4252,7 +4252,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 Type::AnonymousTypedDict(typed_dict) => {
                     // Every key of an anonymous TypedDict is optional and its extra items type is
                     // the union of its field types, so an unknown key is not an error.
-                    let value_ty = typed_dict.compute_value_type(self.heap);
+                    let value_ty = typed_dict.compute_value_type(self.heap, self);
                     self.distribute_over_union(&slice_ty, |ty| {
                         match self.literal_typed_dict_key_name(ty) {
                             Some(key_name) => typed_dict
@@ -4327,8 +4327,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .or_else(|| tuple_carrier_to_shape(shape_arg))
             .or_else(|| {
                 let upper_bound = match shape_arg {
-                    Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
-                    Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
+                    Type::Quantified(q) if q.is_type_var() => q.upper_bound(self, self.heap),
+                    Type::TypeVar(tv) => tv.upper_bound(self, self.heap),
                     _ => return None,
                 };
                 let int_type = self.stdlib.int().clone().to_type();
@@ -4990,7 +4990,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         return self.parse_int_var_argument(arg, shape_argument_context, errors);
                     }
                     if param.kind() == QuantifiedKind::TypeVar
-                        && is_int_tuple_bound(&param.upper_bound(self.stdlib, self.heap), &int_type)
+                        && is_int_tuple_bound(&param.upper_bound(self, self.heap), &int_type)
                     {
                         if let Expr::List(ExprList { elts, .. }) = arg {
                             return self
@@ -5022,8 +5022,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             Type::TypeLevelDslCall(call) => {
                 return call.result_domain() == Some(TypeShapeDslDomain::IntTuple);
             }
-            Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
-            Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
+            Type::Quantified(q) if q.is_type_var() => q.upper_bound(self, self.heap),
+            Type::TypeVar(tv) => tv.upper_bound(self, self.heap),
             _ => return false,
         };
         let int_type = self.stdlib.int().clone().to_type();

@@ -281,7 +281,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         t: Type,
     ) -> (Type, Vec<ShapeError>) {
         let per_row = self.solver().per_row(overload_table, || {
-            self.solver().for_return_boundary(t.clone())
+            self.solver().for_return_boundary(t.clone(), self)
         });
         let type_level_dsl_errors = if per_row.len() == 1 {
             per_row.first().1.clone()
@@ -311,7 +311,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 None => self.heap.mk_any_implicit(),
             };
         }
-        Type::combine_overload_results(per_row.into_vec(), self.heap)
+        Type::combine_overload_results(per_row.into_vec(), self.heap, self)
             .expect("a nonempty collection of results can always be combined")
     }
 
@@ -644,7 +644,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         // `combine_overload_results` answers `None` only for no results at all, which here means
         // no branch accepted the read.
-        match Type::combine_overload_results(accepted, self.heap) {
+        match Type::combine_overload_results(accepted, self.heap, self) {
             Some(combined) => combined,
             None => {
                 let (result, attempt) = first_failure.expect("an overloaded type is never empty");
@@ -804,7 +804,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             };
             let type_for_display = self
                 .solver()
-                .for_display(self.heap.mk_callable_from(signature));
+                .for_display(self.heap.mk_callable_from(signature), self);
             let display_context = TypeDisplayContext::new(self, &[&type_for_display]);
             let signature_for_display = match &type_for_display {
                 Type::Callable(callable) => callable,
@@ -937,10 +937,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
             // Each overload's argmap should use its own var solutions.
             for var in placeholder_vars.iter() {
-                self.solver().force_var(*var);
+                self.solver().force_var(*var, self);
             }
             for param in called_overload.argmap.arg_to_param.values_mut() {
-                self.solver().expand_mut(&mut param.ty);
+                self.solver().expand_mut(&mut param.ty, self);
             }
             self.solver().restore_vars(snapshot);
             let n_errors = called_overload.num_match_errors();

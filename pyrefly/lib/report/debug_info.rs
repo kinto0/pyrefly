@@ -119,7 +119,7 @@ impl DebugInfo {
                         Some(v) => {
                             let mut r = (*v).clone();
                             r.visit_mut(&mut |t| {
-                                answers.solver().expand_mut(t);
+                                answers.solver().expand_mut(t, env);
                             });
                             r.display_with(env).to_string()
                         }

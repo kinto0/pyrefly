@@ -399,7 +399,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             })
             .collect::<Vec<_>>();
         if instance_returns.is_empty() {
-            get_ty.callable_return_type(self.heap)
+            get_ty.callable_return_type(self.heap, self)
         } else {
             Some(self.unions(instance_returns))
         }
@@ -1121,7 +1121,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .freshen_class_targs(class_type.targs_mut(), self.uniques);
         let matched = self.is_subset_eq(&self.heap.mk_class_type(class_type.clone()), hint);
         self.solver()
-            .generalize_class_targs(class_type.targs_mut(), &SmallSet::new());
+            .generalize_class_targs(class_type.targs_mut(), &SmallSet::new(), self);
         self.solver()
             .finish_class_targs(class_type.targs_mut(), self.uniques);
         // Finalizing the fresh vars is required; its specialization errors are dropped because this
@@ -1144,11 +1144,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             forall.body.clone().as_type(),
             self.uniques,
         );
-        if let Some(ret) = instantiated.callable_return_type(self.heap) {
+        if let Some(ret) = instantiated.callable_return_type(self.heap, self) {
             self.is_subset_eq(&ret, hint);
         }
         let _ = self.finish_quantified(vs, self.solver().config.infer_with_first_use);
-        Some(self.solver().expand(instantiated))
+        Some(self.solver().expand(instantiated, self))
     }
 
     fn get_default(&self, map: &TypeMap) -> Option<Type> {
@@ -1164,7 +1164,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             constructor_callable
                 .as_ref()
                 .unwrap_or(factory)
-                .callable_return_type(self.heap)
+                .callable_return_type(self.heap, self)
                 .unwrap_or_else(|| self.heap.mk_any_implicit()),
         )
     }

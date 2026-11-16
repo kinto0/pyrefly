@@ -289,17 +289,15 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // the same safe fallback as an ordinary bound.
         let upper_bound = match restriction {
             Restriction::Bound(bound) => Some(bound.clone()),
-            Restriction::ShapeExtension(extension) => {
-                Some(extension.upper_bound(self.stdlib, self.heap))
-            }
+            Restriction::ShapeExtension(extension) => Some(extension.upper_bound(self, self.heap)),
             Restriction::Constraints(_) | Restriction::Unrestricted => None,
         };
         if let Some(bound_ty) = upper_bound {
             // Default must be a subtype of the upper bound.
             // Per PEP 696: when default is a TypeVar, "T1's bound must be a subtype of T2's bound"
             let default_for_check = match default {
-                Type::TypeVar(tv) => tv.upper_bound(self.stdlib, self.heap),
-                Type::Quantified(q) if q.is_type_var() => q.upper_bound(self.stdlib, self.heap),
+                Type::TypeVar(tv) => tv.upper_bound(self, self.heap),
+                Type::Quantified(q) if q.is_type_var() => q.upper_bound(self, self.heap),
                 _ => default.clone(),
             };
             if !self.is_subset_eq(&default_for_check, &bound_ty) {

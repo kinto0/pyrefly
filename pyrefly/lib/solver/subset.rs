@@ -986,7 +986,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             }
             // Resolve Vars inside Unbounded tuples and re-dispatch.
             (Tuple::Unbounded(inner), Tuple::Concrete(_)) if let Type::Var(v) = &**inner => {
-                let resolved = self.solver.expand(self.solver.expand_unwrap(*v));
+                let resolved = self.solver.expand(
+                    self.solver.expand_unwrap(*v, &self.type_order),
+                    &self.type_order,
+                );
                 if matches!(resolved, Type::Var(_)) {
                     Err(SubsetError::Other)
                 } else {
@@ -1749,7 +1752,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 self.probe(&vars, |me| {
                     me.is_subset_eq(branch, want).is_ok().then(|| {
                         vars.iter()
-                            .map(|&var| (var, me.solver.force_var(var)))
+                            .map(|&var| (var, me.solver.force_var(var, &me.type_order)))
                             .collect::<SmallMap<_, _>>()
                     })
                 })
@@ -1770,6 +1773,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     })
                     .collect(),
                 &self.solver.heap,
+                &self.type_order,
             )
             .expect("a matching branch was found");
             self.is_subset_eq(&combined, &var.to_type(&self.solver.heap))?;
@@ -1864,7 +1868,11 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         };
         let finish_result = self
             .solver
-            .finish_quantified(handle, self.solver.config.infer_with_first_use)
+            .finish_quantified(
+                handle,
+                self.solver.config.infer_with_first_use,
+                &self.type_order,
+            )
             .map_err(SubsetError::TypeVarSpecialization);
         match result {
             Ok(()) => finish_result,
@@ -1950,10 +1958,13 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     // Variables in `want` now have `Any` as a lower bound.
                     // TODO(https://github.com/facebook/pyrefly/issues/105): whether to add a lower
                     // or upper bound should depend on variance.
-                    self.solver
-                        .add_lower_bound(*var, got.clone(), &mut |got, want| {
-                            self.is_subset_eq(got, want)
-                        })
+                    let type_order = self.type_order;
+                    self.solver.add_lower_bound(
+                        *var,
+                        got.clone(),
+                        &mut |got, want| self.is_subset_eq(got, want),
+                        &type_order,
+                    )
                 })
             }
             (_, Type::Any(_)) => {
@@ -1961,10 +1972,13 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     // Variables in `got` now have `Any` as an upper bound.
                     // TODO(https://github.com/facebook/pyrefly/issues/105): whether to add a lower
                     // or upper bound should depend on variance.
-                    self.solver
-                        .add_upper_bound(*var, want.clone(), &mut |got, want| {
-                            self.is_subset_eq(got, want)
-                        })
+                    let type_order = self.type_order;
+                    self.solver.add_upper_bound(
+                        *var,
+                        want.clone(),
+                        &mut |got, want| self.is_subset_eq(got, want),
+                        &type_order,
+                    )
                 })
             }
             (Type::Never(_), _) => Ok(()),
@@ -2035,7 +2049,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     && self
                         .with_snapshot(&u.collect_maybe_placeholder_vars(), |me| {
                             me.is_subset_eq(
-                                &extension.upper_bound(me.type_order.stdlib(), &me.solver.heap),
+                                &extension.upper_bound(&me.type_order, &me.solver.heap),
                                 u,
                             )
                         })
@@ -2085,8 +2099,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // Expand any bound Vars in both expressions
                 let mut got_expanded = Type::Int(s1.clone());
                 let mut want_expanded = Type::Int(s2.clone());
-                self.solver.expand_with_bounds(&mut got_expanded);
-                self.solver.expand_with_bounds(&mut want_expanded);
+                self.solver
+                    .expand_with_bounds(&mut got_expanded, &self.type_order);
+                self.solver
+                    .expand_with_bounds(&mut want_expanded, &self.type_order);
 
                 // Gradual-size fast path. This catches existing gradual leaves
                 // without allocating canonical copies on the common success path.
@@ -2148,7 +2164,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             // A Int like (A + A) // 2 might simplify to A (a Quantified).
             (Type::Int(s), Type::Quantified(q)) if q.kind() == QuantifiedKind::IntVar => {
                 let mut got_expanded = Type::Int(s.clone());
-                self.solver.expand_with_bounds(&mut got_expanded);
+                self.solver
+                    .expand_with_bounds(&mut got_expanded, &self.type_order);
                 if let Type::Int(Int::Symbolic(got_symbolic)) = &got_expanded
                     && !matches!(got_symbolic.as_ref(), Type::Int(_))
                 {
@@ -2178,7 +2195,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             // Quantified <: Int - expand Int, canonicalize, and compare
             (Type::Quantified(q), Type::Int(s)) if q.kind() == QuantifiedKind::IntVar => {
                 let mut want_expanded = Type::Int(s.clone());
-                self.solver.expand_with_bounds(&mut want_expanded);
+                self.solver
+                    .expand_with_bounds(&mut want_expanded, &self.type_order);
                 if let Type::Int(Int::Symbolic(want_symbolic)) = &want_expanded
                     && !matches!(want_symbolic.as_ref(), Type::Int(_))
                 {
@@ -2382,7 +2400,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     name: ANONYMOUS_TYPED_DICT.clone(),
                     fields: got.fields.iter().cloned().collect(),
                     extra_items: ExtraItems::Extra(ExtraItem {
-                        ty: got.compute_value_type(&self.solver.heap),
+                        ty: got.compute_value_type(&self.solver.heap, &self.type_order),
                         read_only: false,
                     }),
                 };
@@ -2392,7 +2410,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // Every key of an anonymous TypedDict is optional, and a key it does not name may
                 // hold any of its field types. So each field of `got` has to fit the same field of
                 // `want`, or else the union of `want`'s field types.
-                let want_value_ty = want.compute_value_type(&self.solver.heap);
+                let want_value_ty = want.compute_value_type(&self.solver.heap, &self.type_order);
                 all(got.fields.iter(), |(name, got_field)| {
                     let want_ty = want
                         .fields
@@ -2409,7 +2427,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 self.is_subset_eq(
                     &self.solver.heap.mk_class_type(stdlib.dict(
                         self.solver.heap.mk_class_type(stdlib.str().clone()),
-                        td.compute_value_type(&self.solver.heap),
+                        td.compute_value_type(&self.solver.heap, &self.type_order),
                     )),
                     want,
                 )
@@ -2420,7 +2438,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     got,
                     &self.solver.heap.mk_class_type(stdlib.dict(
                         self.solver.heap.mk_class_type(stdlib.str().clone()),
-                        td.compute_value_type(&self.solver.heap),
+                        td.compute_value_type(&self.solver.heap, &self.type_order),
                     )),
                 )
             }
@@ -2530,7 +2548,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     return self.is_subset_eq(&gradual_size(), inner);
                 }
                 let mut inner_expanded = (**inner).clone();
-                self.solver.expand_with_bounds(&mut inner_expanded);
+                self.solver
+                    .expand_with_bounds(&mut inner_expanded, &self.type_order);
                 // `inner` is invariantly an `IntVar` dimension variable (or its
                 // bound): `Int::Symbolic(Quantified)` is only constructed for
                 // the `IntVar` kind (see `Int::from_type`), so this arm needs

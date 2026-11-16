@@ -20,6 +20,7 @@ use pyrefly_types::types::Type;
 
 use crate::alt::attr::ClassBase;
 use crate::alt::class::class_field::DescriptorBase;
+use crate::types::env::TypeEnv;
 
 #[derive(Debug)]
 pub enum InstanceKind<'a> {
@@ -103,7 +104,7 @@ impl<'a> Instance<'a> {
         self.targs.substitute_into_mut(raw_member)
     }
 
-    pub fn to_type(&self, heap: &TypeHeap) -> Type {
+    pub fn to_type(&self, heap: &TypeHeap, env: &dyn TypeEnv) -> Type {
         match &self.kind {
             InstanceKind::ClassType(cls) => heap.mk_class_type((*cls).clone()),
             InstanceKind::TypedDict => {
@@ -114,7 +115,7 @@ impl<'a> Instance<'a> {
                 let ub = match q.restriction() {
                     Restriction::Unrestricted => return quantified_ty,
                     Restriction::Bound(b) => b.clone(),
-                    Restriction::Constraints(cs) => unions(cs.clone(), heap),
+                    Restriction::Constraints(cs) => unions(cs.clone(), env, heap),
                     // Shape-extension restrictions need a Stdlib to materialize their ordinary
                     // upper bound. Preserve the quantified instead of inventing a fallback.
                     Restriction::ShapeExtension(_) => return quantified_ty,
@@ -124,7 +125,12 @@ impl<'a> Instance<'a> {
                 if instance_ty == ub {
                     quantified_ty
                 } else {
-                    intersect(vec![quantified_ty, instance_ty.clone()], instance_ty, heap)
+                    intersect(
+                        vec![quantified_ty, instance_ty.clone()],
+                        instance_ty,
+                        env,
+                        heap,
+                    )
                 }
             }
             InstanceKind::SelfType => {

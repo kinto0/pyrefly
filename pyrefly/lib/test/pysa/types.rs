@@ -328,7 +328,8 @@ class MyTypedDict(TypedDict):
                         Default::default()
                     )),
                 ],
-                context.answers_context.answers.heap()
+                context.resolver.type_env(),
+                context.answers_context.answers.heap(),
             ),
             &context
         ),
@@ -362,7 +363,8 @@ class MyTypedDict(TypedDict):
                             context.answers_context.answers.heap().mk_none()
                         )),
                 ],
-                context.answers_context.answers.heap()
+                context.resolver.type_env(),
+                context.answers_context.answers.heap(),
             ),
             &context
         ),
@@ -391,7 +393,8 @@ class MyTypedDict(TypedDict):
                     Type::ClassType(context.answers_context.stdlib.float().clone()),
                     Type::ClassType(context.answers_context.stdlib.int().clone()),
                 ],
-                context.answers_context.answers.heap()
+                context.resolver.type_env(),
+                context.answers_context.answers.heap(),
             ),
             &context
         ),
@@ -530,6 +533,7 @@ class MyTypedDict(TypedDict):
             context.answers_context.stdlib.int().clone().to_type(),
             context.answers_context.stdlib.str().clone().to_type(),
         ],
+        context.resolver.type_env(),
         context.answers_context.answers.heap(),
     ))
     .expect("int and str form a valid Flag domain");
@@ -646,7 +650,8 @@ class MyTypedDict(TypedDict):
                         Default::default()
                     )),
                 ],
-                context.answers_context.answers.heap()
+                context.resolver.type_env(),
+                context.answers_context.answers.heap(),
             ))),
             &context
         ),
@@ -721,7 +726,8 @@ class MyTypedDict(TypedDict):
                             )),
                     ),
                 ],
-                context.answers_context.answers.heap()
+                context.resolver.type_env(),
+                context.answers_context.answers.heap(),
             ),
             &context,
         ),

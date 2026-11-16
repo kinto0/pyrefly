@@ -40,6 +40,7 @@ use vec1::Vec1;
 
 use crate::callable::Callable;
 use crate::callable::Params;
+use crate::env::TypeEnv;
 use crate::function::FuncFlags;
 use crate::function::FuncMetadata;
 use crate::function::Function;
@@ -115,7 +116,11 @@ impl Type {
     }
 
     /// Combine per-overload results of a function call into a single type.
-    pub fn combine_overload_results(results: Vec<Type>, heap: &TypeHeap) -> Option<Type> {
+    pub fn combine_overload_results(
+        results: Vec<Type>,
+        heap: &TypeHeap,
+        env: &dyn TypeEnv,
+    ) -> Option<Type> {
         // Collect into a SmallSet to dedup while preserving order.
         let mut deduped = SmallSet::with_capacity(results.len());
         fn flatten(results: Vec<Type>, deduped: &mut SmallSet<Type>) {
@@ -133,11 +138,11 @@ impl Type {
         if results.len() == 1 {
             return Some(results.split_off_first().0);
         }
-        if let Some(combined) = Self::try_combine_reconstructed_overload(&results, heap) {
+        if let Some(combined) = Self::try_combine_reconstructed_overload(&results, heap, env) {
             return Some(combined);
         }
         if !Self::results_share_a_shape(&results) {
-            return Some(unions(results.into_vec(), heap));
+            return Some(unions(results.into_vec(), env, heap));
         }
         Some(Type::Overloaded(Box::new(results)))
     }
@@ -169,7 +174,11 @@ impl Type {
         results.iter().skip(1).all(|other| same_shape(first, other))
     }
 
-    fn try_combine_reconstructed_overload(reconstructed: &[Type], heap: &TypeHeap) -> Option<Type> {
+    fn try_combine_reconstructed_overload(
+        reconstructed: &[Type],
+        heap: &TypeHeap,
+        env: &dyn TypeEnv,
+    ) -> Option<Type> {
         let (metadata, has_original_metadata) =
             match reconstructed.first()?.toplevel_func_metadata() {
                 Some(m) => (m.clone(), true),
@@ -214,7 +223,7 @@ impl Type {
         let signatures = merged
             .into_iter()
             .map(|((tparams, params, flags), (kind, rets))| {
-                let ret = Self::combine_overload_results(rets, heap)
+                let ret = Self::combine_overload_results(rets, heap, env)
                     .expect("each group has at least one return");
                 let function = Function {
                     signature: Callable { params, ret },
