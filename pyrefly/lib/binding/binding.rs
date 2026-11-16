@@ -3626,9 +3626,12 @@ pub enum ClassFieldDefinition {
     },
     /// Defined by a `def` form. Because of decorators it may not
     /// actually *be* a method, hence the name `MethodLike`.
+    /// `may_be_abstract` is false if the definition alone shows that the field is not an
+    /// abstract method.
     MethodLike {
         definition: Idx<Key>,
         has_return_annotation: bool,
+        may_be_abstract: bool,
         annotation: Option<Idx<KeyAnnotation>>,
     },
     /// A nested class definition within the class body.

@@ -531,6 +531,17 @@ impl<'a> BindingsBuilder<'a> {
                     }
                     _ => (true, false, true),
                 };
+            let may_be_abstract = match &definition {
+                ClassFieldDefinition::MethodLike {
+                    may_be_abstract, ..
+                } => *may_be_abstract,
+                ClassFieldDefinition::DefinedInMethod { .. }
+                | ClassFieldDefinition::NestedClass { .. } => false,
+                ClassFieldDefinition::DeclaredByAnnotation { .. }
+                | ClassFieldDefinition::DeclaredWithoutAnnotation
+                | ClassFieldDefinition::AssignedInBody { .. }
+                | ClassFieldDefinition::DefinedWithoutAssign { .. } => true,
+            };
 
             let docstring_range = field_docstrings.get(&range).copied();
 
@@ -580,6 +591,7 @@ impl<'a> BindingsBuilder<'a> {
                     is_annotated,
                     is_initialized_on_class,
                     is_defined_in_class_body,
+                    may_be_abstract,
                     attrs_field_specifier,
                     range,
                     docstring_range,
@@ -1094,8 +1106,9 @@ impl<'a> BindingsBuilder<'a> {
                 ClassFieldProperties::new(
                     member_annotation.is_some() || class_kind == SynthesizedClassKind::NamedTuple,
                     member_value.is_some(),
-                    true, // Synthesized fields are class body fields
-                    None, // Synthesized fields are never attrs field specifiers
+                    true,  // Synthesized fields are class body fields
+                    false, // Synthesized fields are never abstract methods
+                    None,  // Synthesized fields are never attrs field specifiers
                     range,
                     None, // Synthesized fields don't have docstrings
                 ),

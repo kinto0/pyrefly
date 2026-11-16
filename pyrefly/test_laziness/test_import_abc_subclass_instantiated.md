@@ -3,11 +3,9 @@
 `a` instantiates `Foo` from `b`. `Foo` extends `ABC`, so instantiating it
 checks `Foo` for unimplemented abstract methods.
 
-**Superfluous:**
-- `b -> c::KeyExport("compute")` — the abstract class check computes the
-  full type of every method of `Foo`, and the type of `bar` includes its
-  inferred return type. Whether `bar` is abstract does not depend on its
-  return type.
+Whether `bar` is abstract is decided from its definition, so the check
+does not infer the return type of `bar`, and `c` is not solved beyond the
+exports that binding `b` needs. No superfluous demands.
 
 ## Files
 
@@ -36,9 +34,9 @@ def compute() -> int: return 42
 ```expected
 a: Solutions
 b: Answers
-c: Answers
+c: Exports
 
-(134 builtin demands hidden)
+(117 builtin demands hidden)
 a -> b::Exports(is_special_export)
 a -> b::Load(module_exists)
 a -> b::Exports(export_exists)
@@ -66,10 +64,6 @@ a -> b::KeyClassMetadata(ClassDefIndex(0))
 a -> b::KeyClassMetadata(ClassDefIndex(0))
 a -> b::KeyAbstractClassCheck(ClassDefIndex(0))
   b -> abc::KeyAbstractClassCheck(ClassDefIndex(4))
-  b -> c::Exports(export_exists)
-  b -> c::Exports(is_implicit_reexport)
-  b -> c::Exports(get_deprecated)
-  b -> c::KeyExport(Name("compute"))
 a -> b::KeyClassSynthesizedFields(ClassDefIndex(0))
 a -> b::KeyClassMro(ClassDefIndex(0))
   b -> abc::KeyClassBaseType(ClassDefIndex(4))

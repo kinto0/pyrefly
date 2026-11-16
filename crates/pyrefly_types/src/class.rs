@@ -160,6 +160,9 @@ pub struct ClassFieldProperties {
     is_initialized_on_class: bool,
     // The field is defined in the class body (not in a method via self.x = ...)
     is_defined_in_class_body: bool,
+    /// False if the field's definition alone shows that it is not an abstract method, so that
+    /// checking for abstract members does not need its type.
+    may_be_abstract: bool,
     attrs_field_specifier: Option<AttrsFieldSpecifier>,
     /// An explicit Django method-copy policy set in the class body.
     django_queryset_only: Option<bool>,
@@ -178,6 +181,7 @@ impl ClassFieldProperties {
         is_annotated: bool,
         has_default_value: bool,
         is_defined_in_class_body: bool,
+        may_be_abstract: bool,
         attrs_field_specifier: Option<AttrsFieldSpecifier>,
         range: TextRange,
         docstring_range: Option<TextRange>,
@@ -186,6 +190,7 @@ impl ClassFieldProperties {
             is_annotated,
             is_initialized_on_class: has_default_value,
             is_defined_in_class_body,
+            may_be_abstract,
             attrs_field_specifier,
             django_queryset_only: None,
             range,
@@ -217,6 +222,7 @@ impl ClassFieldProperties {
             is_annotated,
             is_initialized_on_class,
             is_defined_in_class_body,
+            may_be_abstract,
             attrs_field_specifier,
             django_queryset_only,
             range: _,
@@ -225,6 +231,7 @@ impl ClassFieldProperties {
         *is_annotated == other.is_annotated
             && *is_initialized_on_class == other.is_initialized_on_class
             && *is_defined_in_class_body == other.is_defined_in_class_body
+            && *may_be_abstract == other.may_be_abstract
             && *django_queryset_only == other.django_queryset_only
             && match (attrs_field_specifier, &other.attrs_field_specifier) {
                 (None, None) => true,
@@ -305,6 +312,11 @@ impl ClassFields {
             .iter()
             .filter(|(_, prop)| prop.is_defined_in_class_body)
             .map(|(name, _)| name)
+    }
+
+    /// Whether the class defines `name` in a way that shows it is not an abstract method.
+    pub fn defines_concrete_field(&self, name: &Name) -> bool {
+        self.0.get(name).is_some_and(|prop| !prop.may_be_abstract)
     }
 
     pub fn is_field_annotated(&self, name: &Name) -> bool {

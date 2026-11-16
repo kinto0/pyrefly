@@ -2255,6 +2255,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     fn is_implemented_in_class(&self, cls: &Class, field_name: &Name) -> bool {
+        // Deciding this without the field's type avoids inferring method return types.
+        if self
+            .get_class_fields(cls)
+            .is_some_and(|fields| fields.defines_concrete_field(field_name))
+        {
+            return true;
+        }
         // If the class has a synthesized concrete implementation (e.g., `__dataclass_fields__`
         // from @dataclass), that satisfies any protocol requirement for this field.
         if self

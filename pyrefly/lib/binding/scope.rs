@@ -900,12 +900,13 @@ pub enum FlowStyle {
     /// would get `foo.bar` here.
     ImportAs(ModuleName),
     /// Am I a function definition? Used to chain overload definitions.
-    /// Track whether the return type has an explicit annotation and whether this
-    /// definition is marked as an overload.
+    /// Track whether the return type has an explicit annotation, whether this
+    /// definition is marked as an overload, and whether it may be an abstract method.
     FunctionDef {
         function_idx: Idx<KeyDecoratedFunction>,
         has_return_annotation: bool,
         is_overload: bool,
+        may_be_abstract: bool,
     },
     /// Am I a name carrying class identity? `class_idx` is the `Idx<Key>` of
     /// the class's `class_object` binding — the canonical class identity that
@@ -3857,10 +3858,12 @@ impl Scopes {
                     let definition = match &value.style {
                         FlowStyle::FunctionDef {
                             has_return_annotation,
+                            may_be_abstract,
                             ..
                         } => ClassFieldDefinition::MethodLike {
                             definition: value.idx,
                             has_return_annotation: *has_return_annotation,
+                            may_be_abstract: *may_be_abstract,
                             annotation: static_info.annotation(),
                         },
                         // Only treat pristine class definitions as nested classes.

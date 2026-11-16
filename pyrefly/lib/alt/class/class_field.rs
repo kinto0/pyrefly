@@ -2197,6 +2197,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             ClassFieldDefinition::MethodLike {
                 definition,
                 has_return_annotation,
+                may_be_abstract: _,
                 annotation: annot,
             } => {
                 let direct_annotation = annot.map(|a| self.get_idx(a).annotation.clone());

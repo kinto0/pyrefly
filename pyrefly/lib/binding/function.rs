@@ -1102,6 +1102,11 @@ impl<'a> BindingsBuilder<'a> {
 
         let receiver_uses = self.classmethod_receiver_uses(&x);
         let decorators = self.decorators(mem::take(&mut x.decorator_list), def_idx.usage());
+        // A function can only be an abstract method if a decorator makes it one, if it continues
+        // an overload chain, or if it is a protocol member.
+        let may_be_abstract = !decorators.decorators.is_empty()
+            || pred_idx.is_some()
+            || self.scopes.is_in_protocol_class();
         // Method annotations of an `@override` method may be dictated by the base
         // signature; stamping the method lets the solver exempt them.
         let override_func =
@@ -1183,6 +1188,7 @@ impl<'a> BindingsBuilder<'a> {
                 function_idx,
                 has_return_annotation: return_ann_with_range.is_some(),
                 is_overload: decorators.is_overload,
+                may_be_abstract,
             },
         );
 
