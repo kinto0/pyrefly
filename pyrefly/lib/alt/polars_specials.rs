@@ -47,6 +47,7 @@ use crate::binding::polars::polars_column_mutation;
 use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::types::class::Class;
+use crate::types::env::TypeEnv;
 use crate::types::function::FuncDefId;
 use crate::types::function::FunctionKind;
 use crate::types::literal::Lit;
@@ -286,7 +287,7 @@ fn is_polars_selector_name(name: &Name) -> bool {
 /// Map a resolved type to the Polars dtype it names, e.g. the `pl.Float64` class to `Float64`.
 /// Only the modeled scalar dtypes are recognized, and only from a package whose dtype classes
 /// carry Polars' names and meanings; anything else is `None`.
-fn polars_dtype_from_type(ty: &Type) -> Option<PolarsDType> {
+fn polars_dtype_from_type<E: TypeEnv + ?Sized>(env: &E, ty: &Type) -> Option<PolarsDType> {
     let cls = match ty {
         Type::ClassDef(cls) => cls,
         Type::ClassType(cls) => cls.class_object(),
@@ -300,7 +301,7 @@ fn polars_dtype_from_type(ty: &Type) -> Option<PolarsDType> {
     {
         return None;
     }
-    PolarsDType::from_polars_name(cls.name().as_str())
+    PolarsDType::from_polars_name(cls.name_in(env).as_str())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -1286,7 +1287,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return Some(dtype);
         }
         let ty = self.expr_infer(e, &self.error_swallower());
-        polars_dtype_from_type(&ty)
+        polars_dtype_from_type(self, &ty)
     }
 
     fn polars_nested_dtype_from_call(&self, call: &ExprCall) -> Option<PolarsDType> {
@@ -1833,7 +1834,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let mut columns = Vec::with_capacity(fields.len());
         for (name, field) in &fields {
-            columns.push((name.clone(), polars_dtype_from_type(&field.ty())?));
+            columns.push((name.clone(), polars_dtype_from_type(self, &field.ty())?));
         }
         Some(columns)
     }

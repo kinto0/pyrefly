@@ -19,6 +19,7 @@ use pyrefly_python::dunder;
 use pyrefly_types::function::Deprecation;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::typed_dict::ExtraItems;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::commas_iter;
 use pyrefly_util::visit::Visit as VisitTrait;
 use pyrefly_util::visit::VisitMut;
@@ -36,6 +37,7 @@ use crate::error::collector::ErrorCollector;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
 use crate::types::display::ClassDisplayContext;
+use crate::types::env::TypeEnv;
 use crate::types::keywords::DataclassFieldKeywords;
 use crate::types::keywords::DataclassKeywords;
 use crate::types::keywords::DataclassTransformMetadata;
@@ -849,19 +851,20 @@ impl ClassMro {
     /// TODO: We currently omit some classes that are in the runtime MRO:
     /// `Generic`, `Protocol`, and `object`.
     pub fn new(
+        env: &dyn TypeEnv,
         cls: &Class,
         bases_with_mro: Vec<(&ClassType, &ClassMro)>,
         errors: &ErrorCollector,
         targs_consistent: &dyn Fn(&ClassType, &ClassType) -> bool,
     ) -> Self {
-        match Linearization::new(cls, bases_with_mro, errors, targs_consistent) {
+        match Linearization::new(env, cls, bases_with_mro, errors, targs_consistent) {
             Linearization::Cyclic => Self::Cyclic,
             Linearization::Resolved {
                 ancestor_chains,
                 all_bases_complete,
             } => {
                 let (ancestors, merge_complete) =
-                    Linearization::merge(cls, ancestor_chains, errors);
+                    Linearization::merge(env, cls, ancestor_chains, errors);
                 Self::Resolved {
                     ancestors,
                     linearization_complete: all_bases_complete && merge_complete,
@@ -985,6 +988,7 @@ impl Linearization {
     /// - One for each base class's MRO, in the order that base classes are defined
     /// - One consisting of the base classes themselves in the order defined.
     fn new(
+        env: &dyn TypeEnv,
         cls: &Class,
         bases_with_mro: Vec<(&ClassType, &ClassMro)>,
         errors: &ErrorCollector,
@@ -1028,14 +1032,14 @@ impl Linearization {
                                 // we will need to wire additional information for this.
                                 errors
                                     .error_builder(
-                                        cls.range(),
+                                        cls.range_in(env),
                                         ErrorKind::InvalidInheritance,
                                         format!(
                                             "Class `{}` has inconsistent type arguments for base class `{}`: `{}` and `{}`",
                                             ctx.display(cls),
                                             ctx.display(ctype.class_object()),
-                                            Type::ClassType(prev.clone()),
-                                            Type::ClassType(ctype.clone()),
+                                            prev.display_with(env),
+                                            ctype.display_with(env),
                                         ),
                                     )
                                     .emit();
@@ -1068,7 +1072,7 @@ impl Linearization {
                     let ctx = ClassDisplayContext::new(&[cls, base]);
                     errors
                         .error_builder(
-                            cls.range(),
+                            cls.range_in(env),
                             ErrorKind::InvalidInheritance,
                             format!(
                                 "Class `{}` inheriting from `{}` creates a cycle",
@@ -1093,6 +1097,7 @@ impl Linearization {
     ///
     /// Returns a recovery prefix and `false` after reporting nonlinearizable inheritance.
     fn merge(
+        env: &dyn TypeEnv,
         cls: &Class,
         mut ancestor_chains: Vec<AncestorChain>,
         errors: &ErrorCollector,
@@ -1116,7 +1121,7 @@ impl Linearization {
                         .iter()
                         .rev()
                         .skip(1)
-                        .any(|class| class.qname() == candidate.qname())
+                        .any(|class| class.qname_in(env) == candidate.qname_in(env))
                     {
                         rejected = true;
                         break;
@@ -1131,7 +1136,8 @@ impl Linearization {
                 // Strip the selected class from all chains. Any empty chain is removed.
                 let mut chains_to_remove = Vec::new();
                 for (idx, ancestors) in ancestor_chains.iter_mut().enumerate() {
-                    if ancestors.0.last().class_object().qname() == selected.class_object().qname()
+                    if ancestors.0.last().class_object().qname_in(env)
+                        == selected.class_object().qname_in(env)
                     {
                         match ancestors.0.pop() {
                             Ok(_) => {}
@@ -1158,7 +1164,7 @@ impl Linearization {
                 let ctx = ClassDisplayContext::new(&[cls, first_candidate]);
                 errors
                     .error_builder(
-                        cls.range(),
+                        cls.range_in(env),
                         ErrorKind::InvalidInheritance,
                         format!(
                             "Class `{}` has a nonlinearizable inheritance chain detected at `{}`",

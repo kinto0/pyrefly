@@ -999,7 +999,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         range,
                         ErrorKind::NoAccess,
-                        error.to_error_msg(&dunder::CALL),
+                        error.to_error_msg(self, &dunder::CALL),
                     );
                     return CallTarget::Any(AnyStyle::Error);
                 }

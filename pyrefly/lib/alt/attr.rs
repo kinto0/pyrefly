@@ -19,6 +19,7 @@ use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::Var;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::VecExt;
 use pyrefly_util::suggest::Candidate;
 use pyrefly_util::suggest::best_suggestion;
@@ -51,6 +52,7 @@ use crate::state::loader::FindingOrError;
 use crate::types::callable::Params;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
+use crate::types::env::TypeEnv;
 use crate::types::facet::FacetKind;
 use crate::types::function::Function;
 use crate::types::function::FunctionKind;
@@ -340,46 +342,46 @@ impl Attribute {
 }
 
 impl NoAccessReason {
-    pub fn to_error_msg(&self, attr_name: &Name) -> String {
+    pub fn to_error_msg<E: TypeEnv + ?Sized>(&self, env: &E, attr_name: &Name) -> String {
         match self {
             NoAccessReason::ClassUseOfInstanceAttribute(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Instance-only attribute `{attr_name}` of class `{class_name}` is not visible on the class"
                 )
             }
             NoAccessReason::ClassAttributeIsGeneric(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Generic attribute `{attr_name}` of class `{class_name}` is not visible on the class"
                 )
             }
             NoAccessReason::SettingReadOnlyProperty(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Attribute `{attr_name}` of class `{class_name}` is a read-only property and cannot be set"
                 )
             }
             NoAccessReason::SettingReadOnlyDescriptor(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Attribute `{attr_name}` of class `{class_name}` is a read-only descriptor with no `__set__` and cannot be set"
                 )
             }
             NoAccessReason::SuperMethodNeedsImplementation(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Method `{attr_name}` inherited from class `{class_name}` has no implementation and cannot be accessed via `super()`"
                 )
             }
             NoAccessReason::ProxyMethodClassAccess(class) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Proxy method `{attr_name}` of class `{class_name}` can only be accessed on instances"
                 )
             }
             NoAccessReason::ProxyMethodTargetInvalid { class, target } => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!(
                     "Proxy method `{attr_name}` of class `{class_name}` cannot resolve target method `{target}`"
                 )
@@ -452,14 +454,14 @@ impl LookupResult {
 }
 
 impl NotFoundOn {
-    pub fn to_error_msg(self, attr_name: &Name) -> String {
+    pub fn to_error_msg<E: TypeEnv + ?Sized>(self, env: &E, attr_name: &Name) -> String {
         match self {
             NotFoundOn::ClassInstance(class, _) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!("Object of class `{class_name}` has no attribute `{attr_name}`")
             }
             NotFoundOn::ClassObject(class, _) => {
-                let class_name = class.name();
+                let class_name = class.name_in(env);
                 format!("Class `{class_name}` has no class attribute `{attr_name}`")
             }
             NotFoundOn::Module(module) => {
@@ -479,6 +481,7 @@ impl NotFoundOn {
 impl InternalError {
     pub fn add_to(
         self,
+        env: &dyn TypeEnv,
         errors: &ErrorCollector,
         range: TextRange,
         attr_name: &Name,
@@ -487,7 +490,7 @@ impl InternalError {
         let msg = match self {
             InternalError::AttributeBaseUndefined(ty) => format!(
                 "TODO: {todo_ctx} attribute base undefined for type: {} (trying to access {})",
-                ty.deterministic_printing(),
+                ty.deterministic_printing().display_with(env),
                 attr_name
             ),
         };
@@ -671,17 +674,20 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 Ok(ty) => types.push(ty),
                 Err(err) => {
                     can_narrow_none = false;
-                    access_errors.push((err.error_kind(error_kind), err.to_error_msg(attr_name)));
+                    access_errors.push((
+                        err.error_kind(error_kind),
+                        err.to_error_msg(self, attr_name),
+                    ));
                     success = false;
                 }
             }
         }
         for err in not_found {
-            access_errors.push((error_kind, err.to_error_msg(attr_name)));
+            access_errors.push((error_kind, err.to_error_msg(self, attr_name)));
             success = false;
         }
         for err in error {
-            err.add_to(errors, range, attr_name, todo_ctx);
+            err.add_to(self, errors, range, attr_name, todo_ctx);
             success = false;
         }
 
@@ -923,7 +929,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::MissingAttribute,
-                            e.to_error_msg(attr_name),
+                            e.to_error_msg(self, attr_name),
                             context,
                         )
                     }),
@@ -933,7 +939,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             not_found = true;
         }
         for internal_error in lookup_result.internal_error {
-            internal_error.add_to(errors, range, attr_name, todo_ctx);
+            internal_error.add_to(self, errors, range, attr_name, todo_ctx);
             attr_tys.push(self.heap.mk_any_error());
         }
         if not_found {
@@ -1003,7 +1009,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         range,
                         ErrorKind::MissingAttribute,
-                        no_access.to_error_msg(attr_name),
+                        no_access.to_error_msg(self, attr_name),
                         context,
                     );
                     None
@@ -1015,7 +1021,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::MissingAttribute,
-                not_found.to_error_msg(attr_name),
+                not_found.to_error_msg(self, attr_name),
                 context,
             );
             setters.push(None);
@@ -1054,7 +1060,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         range,
                         ErrorKind::MissingAttribute,
-                        no_access.to_error_msg(attr_name),
+                        no_access.to_error_msg(self, attr_name),
                         context,
                     );
                 }
@@ -1067,7 +1073,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::MissingAttribute,
-                not_found.to_error_msg(attr_name),
+                not_found.to_error_msg(self, attr_name),
                 context,
             );
         }
@@ -1190,14 +1196,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Vec<Option<AttrSetter>> {
         let Some(attr_base) = self.as_attribute_base(base.clone()) else {
             InternalError::AttributeBaseUndefined(base.clone())
-                .add_to(errors, range, attr_name, todo_ctx);
+                .add_to(self, errors, range, attr_name, todo_ctx);
             return vec![None];
         };
         let (lookup_found, lookup_not_found, lookup_error) =
             self.lookup_attr(attr_base.clone(), attr_name).decompose();
         let mut setters = Vec::new();
         for e in lookup_error {
-            e.add_to(errors, range, attr_name, todo_ctx);
+            e.add_to(self, errors, range, attr_name, todo_ctx);
             setters.push(None);
         }
         for not_found in lookup_not_found {
@@ -1418,7 +1424,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             base.type_at_facet(&facet).is_some() || base.has_value_less_presence(&facet);
         let Some(attr_base) = self.as_attribute_base(base.ty().clone()) else {
             InternalError::AttributeBaseUndefined(base.ty().clone())
-                .add_to(errors, range, attr_name, todo_ctx);
+                .add_to(self, errors, range, attr_name, todo_ctx);
             return;
         };
         let (lookup_found, lookup_not_found, lookup_error) =
@@ -1434,7 +1440,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
         }
         for error in lookup_error {
-            error.add_to(errors, range, attr_name, todo_ctx);
+            error.add_to(self, errors, range, attr_name, todo_ctx);
         }
         for (attr, _) in lookup_found {
             match attr {

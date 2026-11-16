@@ -88,6 +88,7 @@ use crate::types::callable::PrefixParam;
 use crate::types::callable::Required;
 use crate::types::callable::params_are_gradual_variadic;
 use crate::types::class::ClassKind;
+use crate::types::env::TypeEnv;
 use crate::types::function::FuncDefIndex;
 use crate::types::function::FuncFlags;
 use crate::types::function::FuncMetadata;
@@ -114,17 +115,17 @@ fn default_display_for_expr(expr: &Expr, source: &str) -> Option<String> {
     matches!(inner_expr, Expr::NumberLiteral(_)).then(|| source.to_owned())
 }
 
-fn is_class_property_decorator_class_object(cls: &Class) -> bool {
-    let cls_name = cls.name();
+fn is_class_property_decorator_class_object<E: TypeEnv + ?Sized>(env: &E, cls: &Class) -> bool {
+    let cls_name = cls.name_in(env);
     // Obviously this is just a very naive heuristic. But it's not a crazy convention
     // either and we have important customers that badly wants support of class properties.
     cls_name == "classproperty" || cls_name == "lazy_classproperty"
 }
 
-fn is_class_property_decorator_type(ty: &Type) -> bool {
+fn is_class_property_decorator_type<E: TypeEnv + ?Sized>(env: &E, ty: &Type) -> bool {
     match ty {
-        Type::ClassDef(cls) => is_class_property_decorator_class_object(cls),
-        Type::ClassType(cls) => is_class_property_decorator_class_object(cls.class_object()),
+        Type::ClassDef(cls) => is_class_property_decorator_class_object(env, cls),
+        Type::ClassType(cls) => is_class_property_decorator_class_object(env, cls.class_object()),
         _ => false,
     }
 }
@@ -598,7 +599,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         !self.set_flag_from_special_decorator(&mut flags, &special_decorator)
                     }
                     None => {
-                        if is_class_property_decorator_type(&decorator.ty) {
+                        if is_class_property_decorator_type(self, &decorator.ty) {
                             found_class_property = true;
                         }
                         if matches!(

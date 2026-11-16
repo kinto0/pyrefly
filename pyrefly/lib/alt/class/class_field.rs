@@ -5925,7 +5925,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::NoAccess,
-                    e.to_error_msg(attr_name),
+                    e.to_error_msg(self, attr_name),
                     context,
                 );
                 None
@@ -6046,7 +6046,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         range,
                         ErrorKind::ReadOnly,
-                        e.to_error_msg(attr_name),
+                        e.to_error_msg(self, attr_name),
                         context,
                     );
                     None
@@ -6088,7 +6088,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         range,
                         ErrorKind::ReadOnly,
-                        e.to_error_msg(attr_name),
+                        e.to_error_msg(self, attr_name),
                         context,
                     );
                     None
@@ -6130,7 +6130,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     range,
                     ErrorKind::NoAccess,
-                    reason.to_error_msg(attr_name),
+                    reason.to_error_msg(self, attr_name),
                     context,
                 );
             }
@@ -6868,7 +6868,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::NoAccess,
-                            e.to_error_msg(&dunder::GET),
+                            e.to_error_msg(self, &dunder::GET),
                             None,
                         )
                     }),
@@ -6897,7 +6897,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors,
                             range,
                             ErrorKind::NoAccess,
-                            e.to_error_msg(&dunder::SET),
+                            e.to_error_msg(self, &dunder::SET),
                             None,
                         )
                     }),

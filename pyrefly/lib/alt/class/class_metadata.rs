@@ -2132,7 +2132,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let targs_consistent = |prev: &ClassType, cur: &ClassType| -> bool {
             self.is_subset_eq(&cur.clone().to_type(), &prev.clone().to_type())
         };
-        ClassMro::new(cls, bases_with_mros, errors, &targs_consistent)
+        ClassMro::new(self, cls, bases_with_mros, errors, &targs_consistent)
     }
 
     /// Resolve `cls`'s disjoint-base representative.
