@@ -1034,9 +1034,9 @@ mod tests {
     use crate::types::TArgs;
     use crate::types::Type;
 
-    fn fake_class_type(class_name: &str) -> Type {
+    fn fake_class_type(env: &TestTypeEnv, class_name: &str) -> Type {
         Type::ClassType(ClassType::new(
-            fake_class(class_name, "class_defs_module", 5),
+            fake_class(env, class_name, "class_defs_module", 5),
             TArgs::default(),
         ))
     }
@@ -1046,11 +1046,11 @@ mod tests {
         let env = TestTypeEnv::new();
         let x = || FacetKind::Attribute(Name::new_static("x"));
         let y = || FacetKind::Attribute(Name::new_static("y"));
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
         assert_eq!(type_info.display_with(&env).to_string(), "Foo");
-        type_info.add_narrow(&Vec1::new(x()), fake_class_type("Bar"));
+        type_info.add_narrow(&Vec1::new(x()), fake_class_type(&env, "Bar"));
         assert_eq!(type_info.display_with(&env).to_string(), "Foo (_.x: Bar)");
-        type_info.add_narrow(&Vec1::new(y()), fake_class_type("Baz"));
+        type_info.add_narrow(&Vec1::new(y()), fake_class_type(&env, "Baz"));
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x: Bar, _.y: Baz)"
@@ -1063,21 +1063,27 @@ mod tests {
         let x = || FacetKind::Attribute(Name::new_static("x"));
         let y = || FacetKind::Attribute(Name::new_static("y"));
         let z = || FacetKind::Attribute(Name::new_static("z"));
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
-        type_info.add_narrow(&Vec1::new(x()), fake_class_type("Bar"));
-        type_info.add_narrow(&Vec1::from_vec_push(vec![x()], y()), fake_class_type("Baz"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
+        type_info.add_narrow(&Vec1::new(x()), fake_class_type(&env, "Bar"));
+        type_info.add_narrow(
+            &Vec1::from_vec_push(vec![x()], y()),
+            fake_class_type(&env, "Baz"),
+        );
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x: Bar, _.x.y: Baz)"
         );
-        type_info.add_narrow(&Vec1::from_vec_push(vec![x()], z()), fake_class_type("Qux"));
+        type_info.add_narrow(
+            &Vec1::from_vec_push(vec![x()], z()),
+            fake_class_type(&env, "Qux"),
+        );
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x: Bar, _.x.y: Baz, _.x.z: Qux)"
         );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y()], x()),
-            fake_class_type("Foo"),
+            fake_class_type(&env, "Foo"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
@@ -1092,10 +1098,10 @@ mod tests {
         let y = || FacetKind::Attribute(Name::new_static("y"));
         let z = || FacetKind::Attribute(Name::new_static("z"));
         let w = || FacetKind::Attribute(Name::new_static("w"));
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y()], z()),
-            fake_class_type("Bar"),
+            fake_class_type(&env, "Bar"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
@@ -1103,13 +1109,16 @@ mod tests {
         );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y()], w()),
-            fake_class_type("Baz"),
+            fake_class_type(&env, "Baz"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x.y.z: Bar, _.x.y.w: Baz)"
         );
-        type_info.add_narrow(&Vec1::from_vec_push(vec![x()], y()), fake_class_type("Qux"));
+        type_info.add_narrow(
+            &Vec1::from_vec_push(vec![x()], y()),
+            fake_class_type(&env, "Qux"),
+        );
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x.y: Qux, _.x.y.z: Bar, _.x.y.w: Baz)"
@@ -1122,19 +1131,22 @@ mod tests {
         let x = || FacetKind::Attribute(Name::new_static("x"));
         let y = || FacetKind::Attribute(Name::new_static("y"));
         let z = || FacetKind::Attribute(Name::new_static("z"));
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y()], z()),
-            fake_class_type("Bar"),
+            fake_class_type(&env, "Bar"),
         );
-        type_info.add_narrow(&Vec1::from_vec_push(vec![x()], y()), fake_class_type("Qux"));
+        type_info.add_narrow(
+            &Vec1::from_vec_push(vec![x()], y()),
+            fake_class_type(&env, "Qux"),
+        );
         assert_eq!(
             type_info.display_with(&env).to_string(),
             "Foo (_.x.y: Qux, _.x.y.z: Bar)"
         );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x()], y()),
-            fake_class_type("Qux1"),
+            fake_class_type(&env, "Qux1"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
@@ -1142,7 +1154,7 @@ mod tests {
         );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y()], z()),
-            fake_class_type("Bar1"),
+            fake_class_type(&env, "Bar1"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
@@ -1157,9 +1169,9 @@ mod tests {
             Vec::new(),
             &|ts| {
                 if ts.is_empty() {
-                    fake_class_type("Never")
+                    fake_class_type(&env, "Never")
                 } else {
-                    fake_class_type("FakeUnionType")
+                    fake_class_type(&env, "FakeUnionType")
                 }
             },
             &|_, _| false,
@@ -1176,15 +1188,18 @@ mod tests {
         let idx0 = || FacetKind::Index(0);
         let idx1 = || FacetKind::Index(1);
         let z = || FacetKind::Attribute(Name::new_static("z"));
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
-        type_info.add_narrow(&Vec1::from_vec_push(vec![x()], y()), fake_class_type("Bar"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
+        type_info.add_narrow(
+            &Vec1::from_vec_push(vec![x()], y()),
+            fake_class_type(&env, "Bar"),
+        );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y(), idx0()], z()),
-            fake_class_type("Bar"),
+            fake_class_type(&env, "Bar"),
         );
         type_info.add_narrow(
             &Vec1::from_vec_push(vec![x(), y(), idx1()], z()),
-            fake_class_type("Bar"),
+            fake_class_type(&env, "Bar"),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),
@@ -1212,15 +1227,15 @@ mod tests {
         let env = TestTypeEnv::new();
         let x = || FacetKind::Attribute(Name::new_static("x"));
         let y = || FacetKind::Key("y".to_owned());
-        let mut type_info = TypeInfo::of_ty(fake_class_type("Foo"));
+        let mut type_info = TypeInfo::of_ty(fake_class_type(&env, "Foo"));
         type_info.add_narrow(
             &Vec1::from_vec_push(Vec::new(), x()),
-            fake_class_type("Bar"),
+            fake_class_type(&env, "Bar"),
         );
         assert_eq!(type_info.display_with(&env).to_string(), "Foo (_.x: Bar)");
         type_info.update_for_assignment(
             &Vec1::from_vec_push(vec![x()], y()),
-            Some(fake_class_type("Baz")),
+            Some(fake_class_type(&env, "Baz")),
         );
         assert_eq!(
             type_info.display_with(&env).to_string(),

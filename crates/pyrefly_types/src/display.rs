@@ -2001,7 +2001,6 @@ pub mod tests {
     use crate::callable::PrefixParam;
     use crate::callable::Required;
     use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::data_frame::DataFrameKind;
     use crate::data_frame::DataFrameSchema;
@@ -2036,21 +2035,16 @@ pub mod tests {
     use crate::types::TParams;
     use crate::types::Union;
 
-    pub fn fake_class(name: &str, module: &str, range: u32) -> Class {
+    pub fn fake_class(env: &TestTypeEnv, name: &str, module: &str, range: u32) -> Class {
         let mi = Module::new(
             ModuleName::from_str(module),
             ModulePath::filesystem(PathBuf::from(module)),
             Arc::new("1234567890".to_owned()),
         );
-
-        Class::new(
-            ClassDefIndex(0),
+        env.define_class(
             Identifier::new(Name::new(name), TextRange::empty(TextSize::new(range))),
             NestingContext::toplevel(),
             mi,
-            false,
-            false,
-            None,
         )
     }
 
@@ -2089,8 +2083,13 @@ pub mod tests {
         )
     }
 
-    fn fake_bound_method(method_name: &str, class_name: &str, module_name_str: &str) -> Type {
-        let class = fake_class(class_name, module_name_str, 10);
+    fn fake_bound_method(
+        env: &TestTypeEnv,
+        method_name: &str,
+        class_name: &str,
+        module_name_str: &str,
+    ) -> Type {
+        let class = fake_class(env, class_name, module_name_str, 10);
         let method = Callable::list(
             ParamList::new(vec![
                 Param::Pos(
@@ -2115,7 +2114,7 @@ pub mod tests {
             obj: Type::ClassDef(class.dupe()),
             func: BoundMethodType::Function(Function {
                 signature: method,
-                metadata: FuncMetadata::method(&TestTypeEnv::new(), &class, Name::new(method_name)),
+                metadata: FuncMetadata::method(env, &class, Name::new(method_name)),
             }),
         }))
     }
@@ -2124,13 +2123,13 @@ pub mod tests {
     fn test_display_ignores_tparam_qnames_for_disambiguation() {
         let env = TestTypeEnv::new();
         let hidden = Type::ClassType(ClassType::new(
-            fake_class("C", "hidden", 0),
+            fake_class(&env, "C", "hidden", 0),
             TArgs::default(),
         ));
         let tparam = fake_tparam(0, "T", QuantifiedKind::TypeVar)
             .with_restriction(Restriction::Bound(hidden));
         let visible = Type::ClassType(ClassType::new(
-            fake_class("C", "visible", 0),
+            fake_class(&env, "C", "visible", 0),
             TArgs::new(fake_tparams(vec![tparam]), vec![Type::None]),
         ));
 
@@ -2482,12 +2481,13 @@ pub mod tests {
     }
 
     fn fake_generic_bound_method(
+        env: &TestTypeEnv,
         method_name: &str,
         class_name: &str,
         module_name_str: &str,
         tparams: Arc<TParams>,
     ) -> Type {
-        let class = fake_class(class_name, module_name_str, 10);
+        let class = fake_class(env, class_name, module_name_str, 10);
         let method = Callable::list(
             ParamList::new(vec![
                 Param::Pos(
@@ -2514,11 +2514,7 @@ pub mod tests {
                 tparams,
                 body: Function {
                     signature: method,
-                    metadata: FuncMetadata::method(
-                        &TestTypeEnv::new(),
-                        &class,
-                        Name::new(method_name),
-                    ),
+                    metadata: FuncMetadata::method(env, &class, Name::new(method_name)),
                 },
             }),
         }))
@@ -2528,12 +2524,12 @@ pub mod tests {
     fn test_display() {
         let env = TestTypeEnv::new();
         let heap = TypeHeap::new();
-        let foo1 = fake_class("foo", "mod.ule", 5);
-        let foo2 = fake_class("foo", "mod.ule", 8);
-        let foo3 = fake_class("foo", "ule", 3);
-        let bar = fake_class("bar", "mod.ule", 0);
+        let foo1 = fake_class(&env, "foo", "mod.ule", 5);
+        let foo2 = fake_class(&env, "foo", "mod.ule", 8);
+        let foo3 = fake_class(&env, "foo", "ule", 3);
+        let bar = fake_class(&env, "bar", "mod.ule", 0);
         let bar_tparams = fake_tparams(vec![fake_tparam(0, "T", QuantifiedKind::TypeVar)]);
-        let tuple_param = fake_class("TupleParam", "mod.ule", 0);
+        let tuple_param = fake_class(&env, "TupleParam", "mod.ule", 0);
         let tuple_param_tparams =
             fake_tparams(vec![fake_tparam(1, "T", QuantifiedKind::TypeVarTuple)]);
         let class_type =
@@ -2669,10 +2665,14 @@ pub mod tests {
         );
     }
 
-    fn fake_dataframe(columns: Vec<(Name, PolarsDType)>, completeness: SchemaCompleteness) -> Type {
+    fn fake_dataframe(
+        env: &TestTypeEnv,
+        columns: Vec<(Name, PolarsDType)>,
+        completeness: SchemaCompleteness,
+    ) -> Type {
         Type::DataFrame(Box::new(DataFrameSchema {
             underlying: ClassType::new(
-                fake_class("DataFrame", "polars.dataframe.frame", 0),
+                fake_class(env, "DataFrame", "polars.dataframe.frame", 0),
                 TArgs::default(),
             ),
             columns,
@@ -2682,8 +2682,8 @@ pub mod tests {
         }))
     }
 
-    fn locations_string(t: &Type) -> String {
-        t.get_types_with_locations(&TestTypeEnv::new())
+    fn locations_string(env: &TestTypeEnv, t: &Type) -> String {
+        t.get_types_with_locations(env)
             .into_iter()
             .map(|(s, _)| s)
             .collect()
@@ -2693,13 +2693,14 @@ pub mod tests {
     fn dataframe_annotation_surface_uses_plain_class() {
         let env = TestTypeEnv::new();
         let df = fake_dataframe(
+            &env,
             vec![(Name::new("a"), PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         );
         // reveal_type and hover keep the rich schema form.
         assert_eq!(df.display_with(&env).to_string(), "DataFrame[a: Int64]");
         // Annotation surfaces emit the plain class.
-        assert_eq!(locations_string(&df), "DataFrame");
+        assert_eq!(locations_string(&env, &df), "DataFrame");
         assert_eq!(
             df.get_annotation_parts(&env),
             vec![AnnotationPart::Reference {
@@ -2711,27 +2712,30 @@ pub mod tests {
 
     #[test]
     fn dataframe_annotation_surface_strips_empty_and_partial_and_nested() {
+        let env = TestTypeEnv::new();
         // An empty schema would render as `DataFrame[]`, which is a hard SyntaxError as an annotation.
-        let empty = fake_dataframe(vec![], SchemaCompleteness::Complete);
-        assert_eq!(locations_string(&empty), "DataFrame");
+        let empty = fake_dataframe(&env, vec![], SchemaCompleteness::Complete);
+        assert_eq!(locations_string(&env, &empty), "DataFrame");
 
         let partial = fake_dataframe(
+            &env,
             vec![(Name::new("a"), PolarsDType::Int64)],
             SchemaCompleteness::Partial,
         );
-        assert_eq!(locations_string(&partial), "DataFrame");
+        assert_eq!(locations_string(&env, &partial), "DataFrame");
 
         let optional = Type::optional(fake_dataframe(
+            &env,
             vec![(Name::new("a"), PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         ));
-        assert_eq!(locations_string(&optional), "DataFrame | None");
+        assert_eq!(locations_string(&env, &optional), "DataFrame | None");
     }
 
     #[test]
     fn test_display_qualified() {
         let env = TestTypeEnv::new();
-        let c = fake_class("foo", "mod.ule", 5);
+        let c = fake_class(&env, "foo", "mod.ule", 5);
         let t = Type::ClassType(ClassType::new(c, TArgs::default()));
         let mut ctx = TypeDisplayContext::new(&env, &[&t]);
         assert_eq!(ctx.display(&t).to_string(), "foo");
@@ -2757,7 +2761,7 @@ pub mod tests {
     #[test]
     fn test_display_qualified_except_builtins() {
         let env = TestTypeEnv::new();
-        let foo_class = fake_class("foo", "test", 5);
+        let foo_class = fake_class(&env, "foo", "test", 5);
         let foo_type = Type::ClassType(ClassType::new(foo_class, TArgs::default()));
 
         {
@@ -2766,7 +2770,7 @@ pub mod tests {
             assert_eq!(ctx.display(&foo_type).to_string(), "test.foo");
         }
 
-        let int_class = fake_class("int", "builtins", 6);
+        let int_class = fake_class(&env, "int", "builtins", 6);
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
 
         {
@@ -2788,7 +2792,7 @@ pub mod tests {
     fn test_annotation_parts_preserve_references_and_unicode() {
         let env = TestTypeEnv::new();
         let foo = Type::ClassType(ClassType::new(
-            fake_class("Foo", "test_module", 5),
+            fake_class(&env, "Foo", "test_module", 5),
             TArgs::default(),
         ));
         assert_eq!(
@@ -2813,11 +2817,11 @@ pub mod tests {
 
         let tuple = Type::Tuple(Tuple::Concrete(vec![
             Type::ClassType(ClassType::new(
-                fake_class("int", "builtins", 0),
+                fake_class(&env, "int", "builtins", 0),
                 TArgs::default(),
             )),
             Type::ClassType(ClassType::new(
-                fake_class("str", "builtins", 0),
+                fake_class(&env, "str", "builtins", 0),
                 TArgs::default(),
             )),
         ]));
@@ -2826,7 +2830,7 @@ pub mod tests {
             vec![AnnotationPart::Text("tuple[int, str]".to_owned())]
         );
 
-        let class = Type::ClassDef(fake_class("SomeClass", "test_module", 0));
+        let class = Type::ClassDef(fake_class(&env, "SomeClass", "test_module", 0));
         assert_eq!(
             class.get_annotation_parts(&env),
             vec![
@@ -2914,7 +2918,7 @@ pub mod tests {
         );
 
         // Enum literals (not all of these types make sense, we're only providing what's relevant)
-        let my_enum = ClassType::new(fake_class("MyEnum", "mod.ule", 5), TArgs::default());
+        let my_enum = ClassType::new(fake_class(&env, "MyEnum", "mod.ule", 5), TArgs::default());
         let t = Lit::Enum(Box::new(LitEnum {
             class: my_enum,
             member: Name::new_static("X"),
@@ -3040,7 +3044,7 @@ pub mod tests {
         let p_type = Type::Quantified(Box::new(p.clone()));
         let r_type = Type::Quantified(Box::new(r.clone()));
         let str_type = Type::ClassType(ClassType::new(
-            fake_class("str", "builtins", 0),
+            fake_class(&env, "str", "builtins", 0),
             TArgs::default(),
         ));
         let wrapped = Type::Callable(Box::new(Callable::concatenate(
@@ -3277,7 +3281,7 @@ pub mod tests {
     #[test]
     fn test_display_generic_typeddict() {
         let env = TestTypeEnv::new();
-        let cls = fake_class("C", "test", 0);
+        let cls = fake_class(&env, "C", "test", 0);
         let tparams = fake_tparams(vec![fake_tparam(3, "T", QuantifiedKind::TypeVar)]);
         let t = Type::None;
         let targs = TArgs::new(tparams.dupe(), vec![t]);
@@ -3292,7 +3296,7 @@ pub mod tests {
     #[test]
     fn test_display_bound_method() {
         let env = TestTypeEnv::new();
-        let bound_method = fake_bound_method("foo", "MyClass", "my.module");
+        let bound_method = fake_bound_method(&env, "foo", "MyClass", "my.module");
         let mut ctx = TypeDisplayContext::new(&env, &[&bound_method]);
         assert_eq!(
             ctx.display(&bound_method).to_string(),
@@ -3317,7 +3321,7 @@ pub mod tests {
     #[test]
     fn test_display_bound_method_in_union() {
         let env = TestTypeEnv::new();
-        let bound_method = fake_bound_method("foo", "MyClass", "my.module");
+        let bound_method = fake_bound_method(&env, "foo", "MyClass", "my.module");
         let union = Type::union(vec![bound_method, Type::None]);
         let mut ctx = TypeDisplayContext::new(&env, &[&union]);
         assert_eq!(
@@ -3335,6 +3339,7 @@ pub mod tests {
     fn test_display_generic_bound_method() {
         let env = TestTypeEnv::new();
         let bound_method = fake_generic_bound_method(
+            &env,
             "foo",
             "MyClass",
             "my.module",
@@ -3369,7 +3374,7 @@ pub mod tests {
             fake_tparam(1, "P", QuantifiedKind::ParamSpec),
             fake_tparam(2, "R", QuantifiedKind::TypeVar),
         ]);
-        let method = fake_generic_bound_method("foo", "MyClass", "my.module", tparams);
+        let method = fake_generic_bound_method(&env, "foo", "MyClass", "my.module", tparams);
         let mut ctx = TypeDisplayContext::new(&env, &[&method]);
         assert_eq!(
             ctx.display(&method).to_string(),
@@ -3394,7 +3399,7 @@ pub mod tests {
             fake_tparam(1, "Ts", QuantifiedKind::TypeVarTuple),
             fake_tparam(2, "R", QuantifiedKind::TypeVar),
         ]);
-        let method = fake_generic_bound_method("foo", "MyClass", "my.module", tparams);
+        let method = fake_generic_bound_method(&env, "foo", "MyClass", "my.module", tparams);
         let mut ctx = TypeDisplayContext::new(&env, &[&method]);
         assert_eq!(
             ctx.display(&method).to_string(),
@@ -3414,7 +3419,7 @@ pub mod tests {
     #[test]
     fn test_display_overload() {
         let env = TestTypeEnv::new();
-        let class = fake_class("TestClass", "test", 0);
+        let class = fake_class(&env, "TestClass", "test", 0);
         let sig1 = Function {
             signature: Callable::list(
                 ParamList::new(vec![Param::Pos(
@@ -3424,11 +3429,7 @@ pub mod tests {
                 )]),
                 Type::None,
             ),
-            metadata: FuncMetadata::method(
-                &TestTypeEnv::new(),
-                &class,
-                Name::new_static("overloaded_func"),
-            ),
+            metadata: FuncMetadata::method(&env, &class, Name::new_static("overloaded_func")),
         };
 
         let sig2 = Function {
@@ -3447,11 +3448,7 @@ pub mod tests {
                 ]),
                 Type::None,
             ),
-            metadata: FuncMetadata::method(
-                &TestTypeEnv::new(),
-                &class,
-                Name::new_static("overloaded_func"),
-            ),
+            metadata: FuncMetadata::method(&env, &class, Name::new_static("overloaded_func")),
         };
 
         let overload = Type::Overload(Overload {
@@ -3613,9 +3610,8 @@ def overloaded_func[T](
     }
 
     // Helper functions for testing get_types_with_location
-    fn get_parts(t: &Type) -> Vec<(String, Option<TextRangeWithModule>)> {
-        let env = TestTypeEnv::new();
-        let ctx = TypeDisplayContext::new(&env, &[t]);
+    fn get_parts(env: &TestTypeEnv, t: &Type) -> Vec<(String, Option<TextRangeWithModule>)> {
+        let ctx = TypeDisplayContext::new(env, &[t]);
         let output = ctx.get_types_with_location(t, false);
         output.parts().to_vec()
     }
@@ -3650,22 +3646,24 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_simple_class() {
-        let foo = fake_class("Foo", "test.module", 10);
+        let env = TestTypeEnv::new();
+        let foo = fake_class(&env, "Foo", "test.module", 10);
         let t = Type::ClassType(ClassType::new(foo, TArgs::default()));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_part_has_location(&parts, "Foo", "test.module", 10);
     }
 
     #[test]
     fn test_get_types_with_location_class_with_targs() {
-        let foo = fake_class("Foo", "test.module", 10);
-        let bar = fake_class("Bar", "test.module", 20);
+        let env = TestTypeEnv::new();
+        let foo = fake_class(&env, "Foo", "test.module", 10);
+        let bar = fake_class(&env, "Bar", "test.module", 20);
         let tparams = fake_tparams(vec![fake_tparam(5, "T", QuantifiedKind::TypeVar)]);
 
         let inner_type = Type::ClassType(ClassType::new(bar, TArgs::default()));
         let t = Type::ClassType(ClassType::new(foo, TArgs::new(tparams, vec![inner_type])));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_eq!(parts[0].0, "Foo");
         assert_part_has_location(&parts, "Foo", "test.module", 10);
@@ -3675,8 +3673,8 @@ def overloaded_func[T](
     #[test]
     fn test_get_types_with_location_disambiguated() {
         let env = TestTypeEnv::new();
-        let foo1 = fake_class("Foo", "mod.ule", 5);
-        let foo2 = fake_class("Foo", "mod.ule", 8);
+        let foo1 = fake_class(&env, "Foo", "mod.ule", 5);
+        let foo2 = fake_class(&env, "Foo", "mod.ule", 8);
         let t1 = Type::ClassType(ClassType::new(foo1, TArgs::default()));
         let t2 = Type::ClassType(ClassType::new(foo2, TArgs::default()));
         let union = Type::union(vec![t1.clone(), t2.clone()]);
@@ -3696,8 +3694,9 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_literal() {
+        let env = TestTypeEnv::new();
         let t = Lit::Bool(true).to_implicit_type();
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_output_contains(&parts, "Literal");
         assert_output_contains(&parts, "True");
@@ -3705,14 +3704,15 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_nested_types() {
-        let outer = fake_class("Outer", "test", 10);
-        let inner = fake_class("Inner", "test", 20);
+        let env = TestTypeEnv::new();
+        let outer = fake_class(&env, "Outer", "test", 10);
+        let inner = fake_class(&env, "Inner", "test", 20);
         let tparams = fake_tparams(vec![fake_tparam(6, "T", QuantifiedKind::TypeVar)]);
 
         let inner_type = Type::ClassType(ClassType::new(inner, TArgs::default()));
         let outer_type =
             Type::ClassType(ClassType::new(outer, TArgs::new(tparams, vec![inner_type])));
-        let parts = get_parts(&outer_type);
+        let parts = get_parts(&env, &outer_type);
 
         assert_part_has_location(&parts, "Outer", "test", 10);
         assert_output_contains(&parts, "Inner");
@@ -3720,8 +3720,9 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_type_without_location() {
+        let env = TestTypeEnv::new();
         let t = Type::None;
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_eq!(parts.len(), 1);
         assert_eq!(parts[0].0, "None");
@@ -3730,6 +3731,7 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_tparams() {
+        let env = TestTypeEnv::new();
         let t_param = fake_tparam(7, "T", QuantifiedKind::TypeVar);
         let u_param = fake_tparam(0, "U", QuantifiedKind::TypeVar);
         let ts_param = fake_tparam(0, "Ts", QuantifiedKind::TypeVarTuple);
@@ -3745,7 +3747,7 @@ def overloaded_func[T](
             tparams,
             body: Forallable::Callable(callable),
         }));
-        let parts = get_parts(&generic_callable);
+        let parts = get_parts(&env, &generic_callable);
 
         for param in &["T", "U", "Ts"] {
             assert_output_contains(&parts, param);
@@ -3757,16 +3759,18 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_typed_dict() {
-        let cls = fake_class("MyTypedDict", "mymodule", 25);
+        let env = TestTypeEnv::new();
+        let cls = fake_class(&env, "MyTypedDict", "mymodule", 25);
         let t = Type::ClassType(ClassType::new(cls, TArgs::default()));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_part_has_location(&parts, "MyTypedDict", "mymodule", 25);
     }
 
     #[test]
     fn test_get_types_with_location_enum_literal() {
-        let enum_class = fake_class("Color", "colors", 30);
+        let env = TestTypeEnv::new();
+        let enum_class = fake_class(&env, "Color", "colors", 30);
         let class_type = ClassType::new(enum_class, TArgs::default());
         let enum_lit = Lit::Enum(Box::new(LitEnum {
             class: class_type,
@@ -3774,7 +3778,7 @@ def overloaded_func[T](
             ty: Type::any_implicit(),
         }));
         let t = enum_lit.to_implicit_type();
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         for expected in &["Literal", "Color", "RED"] {
             assert_output_contains(&parts, expected);
@@ -3822,7 +3826,7 @@ def overloaded_func[T](
     #[test]
     fn source_annotation_omits_bound_receiver() {
         let env = TestTypeEnv::new();
-        let annotation = fake_bound_method("method", "Class", "module")
+        let annotation = fake_bound_method(&env, "method", "Class", "module")
             .get_annotation_parts(&env)
             .into_iter()
             .map(|part| match part {
@@ -3836,7 +3840,7 @@ def overloaded_func[T](
     #[test]
     fn source_annotation_surfaces_render_self_as_self() {
         let env = TestTypeEnv::new();
-        let cls = fake_class("MyClass", "mymodule", 40);
+        let cls = fake_class(&env, "MyClass", "mymodule", 40);
         let cls_type = ClassType::new(cls, TArgs::default());
         let t = Type::SelfType(cls_type);
 
@@ -3854,9 +3858,10 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_class_def() {
-        let cls = fake_class("MyClass", "mymodule", 45);
+        let env = TestTypeEnv::new();
+        let cls = fake_class(&env, "MyClass", "mymodule", 45);
         let t = Type::ClassDef(cls);
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_output_contains(&parts, "type");
         assert_part_has_location(&parts, "MyClass", "mymodule", 45);
@@ -3864,21 +3869,22 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_tuple() {
-        let foo = fake_class("Foo", "test", 50);
-        let bar = fake_class("Bar", "test", 55);
+        let env = TestTypeEnv::new();
+        let foo = fake_class(&env, "Foo", "test", 50);
+        let bar = fake_class(&env, "Bar", "test", 55);
         let foo_type = Type::ClassType(ClassType::new(foo, TArgs::default()));
         let bar_type = Type::ClassType(ClassType::new(bar, TArgs::default()));
 
         // Test concrete tuple: tuple[Foo, Bar]
         let concrete_tuple = Type::Tuple(Tuple::Concrete(vec![foo_type.clone(), bar_type.clone()]));
-        let parts = get_parts(&concrete_tuple);
+        let parts = get_parts(&env, &concrete_tuple);
         for expected in &["tuple", "Foo", "Bar"] {
             assert_output_contains(&parts, expected);
         }
 
         // Test unbounded tuple: tuple[Foo, ...]
         let unbounded_tuple = Type::Tuple(Tuple::Unbounded(Box::new(foo_type)));
-        let parts2 = get_parts(&unbounded_tuple);
+        let parts2 = get_parts(&env, &unbounded_tuple);
         for expected in &["tuple", "Foo", "..."] {
             assert_output_contains(&parts2, expected);
         }
@@ -3886,15 +3892,16 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_callable() {
-        let foo = fake_class("Foo", "test", 60);
-        let bar = fake_class("Bar", "test", 65);
+        let env = TestTypeEnv::new();
+        let foo = fake_class(&env, "Foo", "test", 60);
+        let bar = fake_class(&env, "Bar", "test", 65);
         let foo_type = Type::ClassType(ClassType::new(foo, TArgs::default()));
         let bar_type = Type::ClassType(ClassType::new(bar, TArgs::default()));
 
         let param = Param::Pos(Name::new_static("foo"), foo_type, Required::Required);
         let callable = Callable::list(ParamList::new(vec![param]), bar_type);
         let t = Type::Callable(Box::new(callable));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         for expected in &["foo", "Foo", "Bar", "->"] {
             assert_output_contains(&parts, expected);
@@ -3916,7 +3923,7 @@ def overloaded_func[T](
             PreInferenceVariance::Invariant,
         );
         let t = Type::TypeVarTuple(tv_tuple);
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_output_contains(&parts, "TypeVarTuple");
         assert_part_has_location(&parts, "Ts", "test.module", 70);
@@ -3928,10 +3935,11 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_type_var_tuple_arg_in_class() {
+        let env = TestTypeEnv::new();
         // A TypeVarTuple bound to a TypeVarTuple parameter must render with a `*`
         // prefix on the location-aware path too — otherwise quick-fix code generation
         // emits invalid syntax like `TupleParam[Shape]` instead of `TupleParam[*Shape]`.
-        let tuple_param = fake_class("TupleParam", "mod.ule", 0);
+        let tuple_param = fake_class(&env, "TupleParam", "mod.ule", 0);
         let tparams = fake_tparams(vec![fake_tparam(2, "T", QuantifiedKind::TypeVarTuple)]);
         let heap = TypeHeap::new();
         let shape = fake_tparam(1, "Shape", QuantifiedKind::TypeVarTuple);
@@ -3939,7 +3947,7 @@ def overloaded_func[T](
             tuple_param,
             TArgs::new(tparams, vec![shape.to_type(&heap)]),
         ));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_eq!(parts_to_string(&parts), "TupleParam[*Shape]");
     }
@@ -3959,7 +3967,7 @@ def overloaded_func[T](
             PreInferenceVariance::Invariant,
         );
         let t = Type::ParamSpec(param_spec);
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_output_contains(&parts, "ParamSpec");
         assert_part_has_location(&parts, "P", "test.module", 75);
@@ -3971,16 +3979,17 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_super_instance() {
-        let base_class = fake_class("Base", "test", 80);
+        let env = TestTypeEnv::new();
+        let base_class = fake_class(&env, "Base", "test", 80);
         let base_type = ClassType::new(base_class, TArgs::default());
-        let derived_class = fake_class("Derived", "test", 85);
+        let derived_class = fake_class(&env, "Derived", "test", 85);
         let derived_type = ClassType::new(derived_class, TArgs::default());
 
         let t = Type::SuperInstance(Box::new((
             base_type,
             crate::types::SuperObj::Instance(derived_type),
         )));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         for expected in &["super", "Base", "Derived"] {
             assert_output_contains(&parts, expected);
@@ -3991,9 +4000,10 @@ def overloaded_func[T](
 
     #[test]
     fn test_get_types_with_location_partial_typed_dict() {
-        let cls = fake_class("MyTypedDict", "mymodule", 90);
+        let env = TestTypeEnv::new();
+        let cls = fake_class(&env, "MyTypedDict", "mymodule", 90);
         let t = Type::PartialTypedDict(ClassType::new(cls, TArgs::default()));
-        let parts = get_parts(&t);
+        let parts = get_parts(&env, &t);
 
         assert_part_has_location(&parts, "MyTypedDict", "mymodule", 90);
     }

@@ -320,7 +320,6 @@ mod tests {
 
     use super::*;
     use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::literal::LitEnum;
     use crate::literal::LitStyle;
@@ -336,21 +335,16 @@ mod tests {
     use crate::types::TArgs;
     use crate::types::TParams;
 
-    fn fake_class(name: &str, module: &str, range: u32) -> Class {
+    fn fake_class(env: &TestTypeEnv, name: &str, module: &str, range: u32) -> Class {
         let mi = Module::new(
             ModuleName::from_str(module),
             ModulePath::filesystem(PathBuf::from(module)),
             Arc::new("1234567890".to_owned()),
         );
-
-        Class::new(
-            ClassDefIndex(0),
+        env.define_class(
             Identifier::new(Name::new(name), TextRange::empty(TextSize::new(range))),
             NestingContext::toplevel(),
             mi,
-            false,
-            false,
-            None,
         )
     }
 
@@ -432,7 +426,7 @@ mod tests {
         let mut output = OutputWithLocations::new(&context);
 
         // Create an Enum literal with location information
-        let enum_class = ClassType::new(fake_class("Color", "colors", 10), TArgs::default());
+        let enum_class = ClassType::new(fake_class(&env, "Color", "colors", 10), TArgs::default());
 
         let enum_lit = Lit::Enum(Box::new(LitEnum {
             class: enum_class,
@@ -559,8 +553,8 @@ mod tests {
     fn test_output_with_locations_write_type_tuple() {
         let env = TestTypeEnv::new();
         // Test tuple[int, str]
-        let int_class = fake_class("int", "builtins", 30);
-        let str_class = fake_class("str", "builtins", 40);
+        let int_class = fake_class(&env, "int", "builtins", 30);
+        let str_class = fake_class(&env, "str", "builtins", 40);
 
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
         let str_type = Type::ClassType(ClassType::new(str_class, TArgs::default()));
@@ -586,8 +580,8 @@ mod tests {
     fn test_output_with_locations_union_type_splits_properly() {
         let env = TestTypeEnv::new();
         // Create int | str | None type
-        let int_class = fake_class("int", "builtins", 10);
-        let str_class = fake_class("str", "builtins", 20);
+        let int_class = fake_class(&env, "int", "builtins", 10);
+        let str_class = fake_class(&env, "str", "builtins", 20);
 
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
         let str_type = Type::ClassType(ClassType::new(str_class, TArgs::default()));
@@ -629,11 +623,11 @@ mod tests {
         let env = TestTypeEnv::new();
         // Create int & str type (doesn't make sense semantically, but tests the formatting)
         let int_type = Type::ClassType(ClassType::new(
-            fake_class("int", "builtins", 10),
+            fake_class(&env, "int", "builtins", 10),
             TArgs::default(),
         ));
         let str_type = Type::ClassType(ClassType::new(
-            fake_class("str", "builtins", 20),
+            fake_class(&env, "str", "builtins", 20),
             TArgs::default(),
         ));
         let intersect_type =
@@ -674,7 +668,7 @@ mod tests {
         // keyword still displays without a location (not clickable), as tested here.
 
         // Create tuple[int] type
-        let int_class = fake_class("int", "builtins", 10);
+        let int_class = fake_class(&env, "int", "builtins", 10);
         let int_type = Type::ClassType(ClassType::new(int_class, TArgs::default()));
         let tuple_type = Type::Tuple(Tuple::Concrete(vec![int_type]));
 

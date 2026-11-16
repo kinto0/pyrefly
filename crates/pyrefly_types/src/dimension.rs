@@ -1938,12 +1938,13 @@ mod tests {
         use crate::display::tests::fake_class;
         use crate::types::TArgs;
 
+        let env = TestTypeEnv::new();
         let int_class = Type::ClassType(ClassType::new(
-            fake_class("int", "builtins", 0),
+            fake_class(&env, "int", "builtins", 0),
             TArgs::default(),
         ));
         let str_class = Type::ClassType(ClassType::new(
-            fake_class("str", "builtins", 0),
+            fake_class(&env, "str", "builtins", 0),
             TArgs::default(),
         ));
 
@@ -2366,15 +2367,16 @@ mod tests {
         use crate::display::tests::fake_class;
         use crate::types::TArgs;
 
+        let env = TestTypeEnv::new();
         let uniques = UniqueFactory::new();
         let n = Type::Var(Var::new(&uniques));
         let m = Type::Var(Var::new(&uniques));
         let exotic_c = Type::ClassType(ClassType::new(
-            fake_class("C", "testmod", 0),
+            fake_class(&env, "C", "testmod", 0),
             TArgs::default(),
         ));
         let exotic_d = Type::ClassType(ClassType::new(
-            fake_class("D", "testmod", 1),
+            fake_class(&env, "D", "testmod", 1),
             TArgs::default(),
         ));
         let corpus = vec![
@@ -2441,12 +2443,14 @@ mod tests {
         use crate::display::tests::fake_class;
         use crate::types::TArgs;
 
+        let env = TestTypeEnv::new();
+
         let int_class = Type::ClassType(ClassType::new(
-            fake_class("int", "builtins", 0),
+            fake_class(&env, "int", "builtins", 0),
             TArgs::default(),
         ));
         let str_class = Type::ClassType(ClassType::new(
-            fake_class("str", "builtins", 0),
+            fake_class(&env, "str", "builtins", 0),
             TArgs::default(),
         ));
         // Distinct exotic leaves compare non-Equal, deterministically.
