@@ -14,13 +14,11 @@ def test_lstm_initial_state() -> None:
     lstm = nn.LSTM(6, 4, batch_first=True)
     inputs = torch.ones(2, 5, 6)
     hx = (torch.zeros(1, 2, 4), torch.zeros(1, 2, 4))
-    # E: Expected 1 positional argument
     output, (hidden, cell) = lstm(inputs, hx)
     assert_shape(output.shape, (2, 5, 4))
     assert_shape(hidden.shape, (1, 2, 4))
     assert_shape(cell.shape, (1, 2, 4))
 
-    # E: Unexpected keyword argument `hx`
     output, (hidden, cell) = lstm.forward(input=inputs, hx=(hidden, cell))
     assert_shape(output.shape, (2, 5, 4))
     assert_shape(hidden.shape, (1, 2, 4))
@@ -31,7 +29,6 @@ def test_lstm_bidirectional_initial_state() -> None:
     lstm = nn.LSTM(6, 4, num_layers=3, bidirectional=True)
     inputs = torch.ones(5, 2, 6)
     hx = (torch.zeros(6, 2, 4), torch.zeros(6, 2, 4))
-    # E: Unexpected keyword argument `hx`
     output, (hidden, cell) = lstm(inputs, hx=hx)
     assert_shape(output.shape, (5, 2, 8))
     assert_shape(hidden.shape, (6, 2, 4))
@@ -41,10 +38,8 @@ def test_lstm_bidirectional_initial_state() -> None:
 def test_lstm_explicit_none_state() -> None:
     lstm = nn.LSTM(6, 4, batch_first=True)
     inputs = torch.ones(2, 5, 6)
-    # E: Expected 1 positional argument
     output, _ = lstm.forward(inputs, None)
     assert_shape(output.shape, (2, 5, 4))
-    # E: Unexpected keyword argument `hx`
     output, _ = lstm(inputs, hx=None)
     assert_shape(output.shape, (2, 5, 4))
 
@@ -57,7 +52,6 @@ if TYPE_CHECKING:
         lstm = nn.LSTM(6, 4, batch_first=True)
         inputs = torch.ones(batch, steps, 6)
         hx = (torch.zeros(1, batch, 4), torch.zeros(1, batch, 4))
-        # E: Unexpected keyword argument `hx`
         output, (hidden, cell) = lstm.forward(inputs, hx=hx)
         assert_type(output, Tensor[[B, T, 4]])
         assert_type(hidden, Tensor[[1, B, 4]])

@@ -1134,7 +1134,7 @@ class LSTM[
         """Reset parameter data pointer for CUDA contiguous memory. No-op on CPU."""
         ...
     def forward[Shape: IntTuple](
-        self, input: Tensor[Shape]
+        self, input: Tensor[Shape], hx: tuple[Tensor, Tensor] | None = None
     ) -> tuple[
         Tensor[gru_output_shape(Shape, InputSize, HiddenSize, Bidirectional)],
         tuple[
