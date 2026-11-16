@@ -6,6 +6,7 @@
  */
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::visit::VisitMut;
@@ -21,7 +22,7 @@ use crate::types::CalleeKind;
 use crate::types::Type;
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash, Visit, VisitMut
+    Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash, Visit, VisitMut
 )]
 pub struct TypeMap(pub OrderedMap<Name, Type>);
 
@@ -50,7 +51,7 @@ impl TypeMap {
 
 /// Wraps the result of a function call whose keyword arguments have typing effects.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct KwCall {
     /// The metadata of the called function.
     pub func_metadata: FuncMetadata,
@@ -69,7 +70,7 @@ impl KwCall {
 /// Parameters to `typing.dataclass_transform`.
 /// See https://typing.python.org/en/latest/spec/dataclasses.html#dataclass-transform-parameters.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct DataclassTransformMetadata {
     pub eq_default: bool,
     pub order_default: bool,
@@ -122,7 +123,7 @@ impl DataclassTransformMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, TypeEq)]
+#[derive(Visit, TypeEq, TypeOrd)]
 pub struct ConverterMap(OrderedMap<Type, Type>);
 
 impl ConverterMap {
@@ -156,7 +157,7 @@ impl VisitMut<Type> for ConverterMap {
 /// Parameters to dataclass field specifiers.
 /// See https://typing.python.org/en/latest/spec/dataclasses.html#field-specifier-parameters.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct DataclassFieldKeywords {
     pub init: bool,
     /// This field's default, if any. Note that this is derived from the various
@@ -236,7 +237,7 @@ impl DataclassFieldKeywords {
 /// Dataclass parameters.
 /// See https://typing.python.org/en/latest/spec/dataclasses.html#decorator-function-and-class-metaclass-parameters.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct DataclassKeywords {
     pub init: bool,
     pub order: bool,

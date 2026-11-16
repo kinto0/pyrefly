@@ -8,6 +8,7 @@
 use std::fmt;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::qname::QName;
@@ -16,7 +17,7 @@ use crate::type_output::TypeOutput;
 use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct UnpackedTupleParts(Vec<Type>, Type, Vec<Type>); // deliberately opaque to force construction through `Tuple::unpacked`
 
 impl UnpackedTupleParts {
@@ -42,7 +43,7 @@ impl UnpackedTupleParts {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Tuple {
     // tuple[t1, t2]
     Concrete(Vec<Type>),

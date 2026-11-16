@@ -8,6 +8,7 @@
 use std::sync::LazyLock;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::name::Name;
@@ -22,7 +23,7 @@ use crate::types::Substitution;
 use crate::types::Type;
 
 #[derive(
-    Clone, Debug, Visit, VisitMut, TypeEq, PartialEq, Eq, Hash, PartialOrd, Ord
+    Clone, Debug, Visit, VisitMut, TypeEq, TypeOrd, PartialEq, Eq, Hash, PartialOrd, Ord
 )]
 pub struct TypedDictField {
     pub ty: Type,
@@ -47,7 +48,7 @@ impl TypedDictField {
 }
 
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub struct AnonymousTypedDictInner {
     pub fields: Vec<(Name, TypedDictField)>,

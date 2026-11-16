@@ -8,6 +8,7 @@
 //! Column schemas attached to otherwise-opaque DataFrame instances.
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::name::Name;
@@ -18,7 +19,7 @@ use crate::types::Type;
 
 /// Whether `columns` is exhaustive.
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub enum SchemaCompleteness {
     Complete,
@@ -35,7 +36,7 @@ impl SchemaCompleteness {
 }
 
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub enum DataFrameKind {
     Polars,
@@ -51,7 +52,7 @@ impl DataFrameKind {
 
 /// Whether a schema is inferred or declared by an explicit annotation.
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Copy, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub enum SchemaRole {
     Inferred,
@@ -60,7 +61,7 @@ pub enum SchemaRole {
 
 /// A DataFrame with ordered column information.
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub struct DataFrameSchema {
     pub underlying: ClassType,

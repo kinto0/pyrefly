@@ -17,6 +17,7 @@ use std::sync::Arc;
 use dupe::Dupe;
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module::Module;
@@ -37,6 +38,8 @@ use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::function::Deprecation;
 use crate::known_class::KnownClass;
+use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
 use crate::types::Substitution;
 use crate::types::TArgs;
 use crate::types::TParams;
@@ -101,6 +104,25 @@ impl Ord for Class {
 impl PartialOrd for Class {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+/// Classes are ordered by name, then by the position of their name in its module, both read
+/// through the env, and then by `Ord`. `Ord` breaks the remaining ties, so this is a total order
+/// even if two different classes read the same name and position.
+impl TypeOrd for Class {
+    fn type_cmp(&self, other: &Self, ctx: &TypeOrdCtx) -> Ordering {
+        // One allocation holds one definition, so both reads would return the same data.
+        if Arc::ptr_eq(&self.0, &other.0) {
+            return Ordering::Equal;
+        }
+        // `TypeEq` ignores where a class is defined, so moving a class within its file does not
+        // recheck the modules that import it. A union there that holds two classes with the same
+        // name keeps its old member order until it is rechecked.
+        let (a, b) = (self.qname(ctx.env()), other.qname(ctx.env()));
+        (a.id(), a.range().start(), a.range().end())
+            .cmp(&(b.id(), b.range().start(), b.range().end()))
+            .then_with(|| self.cmp(other))
     }
 }
 
@@ -385,7 +407,7 @@ impl Debug for ClassDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum ClassKind {
     StaticMethod(Name),
     ClassMethod(Name),
@@ -551,7 +573,7 @@ impl Class {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct ClassType(Class, TArgs, Option<Arc<DjangoClassMetadata>>);
 
 /// Construction-time Django specializations on nominal class instances.
@@ -564,7 +586,7 @@ pub struct ClassType(Class, TArgs, Option<Arc<DjangoClassMetadata>>);
 /// A many-to-many manager records the target model's primary key type, which replaces the
 /// `int` that the stubs accept in place of model instances.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(TypeEq)]
+#[derive(TypeEq, TypeOrd)]
 pub enum DjangoClassMetadata {
     Manager {
         queryset: ClassType,

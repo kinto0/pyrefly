@@ -10,6 +10,7 @@
 use std::fmt;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::name::Name;
@@ -19,7 +20,7 @@ use crate::literal::write_escaped_string;
 
 /// A non-recursive Polars dtype used as a leaf in composite column dtypes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum PolarsScalarDType {
     Boolean,
     Int8,
@@ -207,7 +208,7 @@ impl PolarsScalarDType {
 
 /// The dimensions of a Polars array dtype.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum PolarsArrayShape {
     /// Dimensions known at type-checking time.
     Known(Vec1<usize>),
@@ -227,7 +228,7 @@ impl PolarsArrayShape {
 
 /// A column dtype. `Unknown` represents a column whose dtype cannot be determined.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(TypeEq)]
+#[derive(TypeEq, TypeOrd)]
 pub enum PolarsDType {
     Scalar(PolarsScalarDType),
     List(Box<PolarsDType>),

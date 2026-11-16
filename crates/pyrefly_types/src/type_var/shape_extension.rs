@@ -15,6 +15,7 @@ use std::fmt;
 use std::fmt::Display;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 
@@ -28,11 +29,11 @@ use crate::types::Type;
 
 /// A type-parameter restriction whose inference policy belongs to the experimental shape system.
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct ShapeExtensionRestriction(ShapeExtensionRestrictionKind);
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 enum ShapeExtensionRestrictionKind {
     Flag(FlagDomain),
     Index,

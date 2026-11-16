@@ -14,6 +14,7 @@ use std::sync::Arc;
 use dupe::Dupe;
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::dunder;
@@ -33,11 +34,13 @@ use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::keywords::DataclassTransformMetadata;
 use crate::type_level_dsl::ResolvedTypeShapeDslFunction;
+use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
 use crate::types::TParams;
 use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Function {
     pub signature: Callable,
     pub metadata: FuncMetadata,
@@ -55,7 +58,7 @@ impl Function {
 
 /// Return-only import recovery does not weaken a signature's input contract.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub enum UnresolvedImports {
     Resolved,
@@ -64,7 +67,7 @@ pub enum UnresolvedImports {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct FuncMetadata {
     pub kind: FunctionKind,
     pub flags: FuncFlags,
@@ -89,7 +92,7 @@ impl FuncMetadata {
 
 /// Metadata extracted from a `@deprecated` decorator.
 #[derive(
-    Clone, Debug, Visit, VisitMut, TypeEq, PartialEq, Eq, PartialOrd, Ord, Hash
+    Clone, Debug, Visit, VisitMut, TypeEq, TypeOrd, PartialEq, Eq, PartialOrd, Ord, Hash
 )]
 pub struct Deprecation {
     pub message: Option<String>,
@@ -110,7 +113,7 @@ impl Deprecation {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub enum PropertyRole {
     Getter,
@@ -121,7 +124,8 @@ pub enum PropertyRole {
 
 /// Shape of a function body.
 #[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq,
+    TypeOrd
 )]
 pub enum BodyKind {
     /// Body is exactly `raise NotImplementedError(...)`. This is the canonical
@@ -180,7 +184,7 @@ impl FuncFacts {
 }
 
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub struct PropertyMetadata {
     pub role: PropertyRole,
@@ -208,7 +212,7 @@ impl PropertyMetadata {
 
 /// A generated descriptor setter that stores values compatible with its read type.
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub struct DescriptorSetterMetadata {
     pub read_type: Type,
@@ -217,7 +221,7 @@ pub struct DescriptorSetterMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct FuncFlags {
     /// The storage contract of a generated `__set__` method.
     pub descriptor_setter: Option<Box<DescriptorSetterMetadata>>,
@@ -299,7 +303,7 @@ impl FuncFlags {
 /// The index of a function definition (`def ..():` statement) within the module,
 /// used as a reference to data associated with the function.
 #[derive(Debug, Clone, Dupe, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
-#[derive(Display, Visit, VisitMut, TypeEq)]
+#[derive(Display, Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct FuncDefIndex(pub u32);
 
 /// Identity of a source-backed function definition.
@@ -318,6 +322,7 @@ impl PartialEq for FuncDefId {
 
 impl Eq for FuncDefId {}
 impl TypeEq for FuncDefId {}
+impl TypeOrd for FuncDefId {}
 
 impl Ord for FuncDefId {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -389,6 +394,23 @@ impl PartialEq for FuncSymbol {
 impl Eq for FuncSymbol {}
 impl TypeEq for FuncSymbol {}
 
+/// Like `Ord`, but compares the class with `TypeOrd`.
+impl TypeOrd for FuncSymbol {
+    fn type_cmp(&self, other: &Self, ctx: &TypeOrdCtx) -> Ordering {
+        self.module
+            .name()
+            .cmp(&other.module.name())
+            .then_with(|| {
+                self.module
+                    .path()
+                    .to_key_eq()
+                    .cmp(&other.module.path().to_key_eq())
+            })
+            .then_with(|| self.cls.type_cmp(&other.cls, ctx))
+            .then_with(|| self.name.cmp(&other.name))
+    }
+}
+
 impl Ord for FuncSymbol {
     fn cmp(&self, other: &Self) -> Ordering {
         self.key().cmp(&other.key())
@@ -436,7 +458,7 @@ impl FuncSymbol {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum FunctionKind {
     IsInstance,
     IsSubclass,

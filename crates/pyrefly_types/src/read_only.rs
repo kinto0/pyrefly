@@ -6,12 +6,13 @@
  */
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 
 /// Indicates whether a `Final` variable was initialized at the point of declaration
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, TypeEq, Visit, VisitMut, PartialOrd, Ord
+    Debug, Clone, PartialEq, Eq, Hash, TypeEq, TypeOrd, Visit, VisitMut, PartialOrd, Ord
 )]
 pub enum IsFinalVariableInitialized {
     Yes,
@@ -20,7 +21,7 @@ pub enum IsFinalVariableInitialized {
 
 /// Represents the specific reason why a field is read-only, to provide better error messages
 #[derive(
-    Debug, Clone, PartialEq, Eq, Hash, TypeEq, Visit, VisitMut, PartialOrd, Ord
+    Debug, Clone, PartialEq, Eq, Hash, TypeEq, TypeOrd, Visit, VisitMut, PartialOrd, Ord
 )]
 pub enum ReadOnlyReason {
     /// Field is marked with a `Final` qualifier

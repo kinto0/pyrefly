@@ -13,6 +13,7 @@ use std::hash::Hasher;
 
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
@@ -29,6 +30,7 @@ use crate::dimension::gradual_size;
 use crate::env::TypeEnv;
 use crate::heap::TypeHeap;
 use crate::stdlib::Stdlib;
+use crate::type_ord::TypeOrd;
 use crate::type_var::PreInferenceVariance;
 use crate::type_var::Restriction;
 use crate::types::Type;
@@ -223,6 +225,9 @@ impl Ord for Quantified {
     }
 }
 
+/// A quantified's identity holds no class, so `TypeOrd` is `Ord`.
+impl TypeOrd for Quantified {}
+
 impl PartialOrd for Quantified {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -230,7 +235,7 @@ impl PartialOrd for Quantified {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum QuantifiedKind {
     TypeVar,
     IntVar,

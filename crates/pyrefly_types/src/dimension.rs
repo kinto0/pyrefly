@@ -16,6 +16,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 
+use pyrefly_derive::TypeOrd;
 use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::DisplayWithCtx;
 
@@ -35,7 +36,7 @@ use crate::types::Type;
 /// Dimensions can be:
 /// - Concrete literals: 2 and 3 in `Tensor[2, 3]`
 /// - Symbolic expressions: N, N+1, N*M in `Tensor[N, N+1]`, `Tensor[N*M]`
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, TypeOrd)]
 pub enum Int {
     /// A concrete integer leaf: the `2` and `3` in `Tensor[2, 3]`, but also any
     /// integer appearing inside a larger expression (e.g. canonicalization

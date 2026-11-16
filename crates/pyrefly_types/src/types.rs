@@ -17,6 +17,7 @@ use std::sync::Arc;
 use dupe::Dupe;
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
@@ -79,7 +80,7 @@ use crate::typed_dict::AnonymousTypedDictInner;
 
 /// An introduced synthetic variable to range over as yet unknown types.
 #[derive(Debug, Copy, Clone, Dupe, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Var(Unique);
 
 impl Display for Var {
@@ -103,7 +104,9 @@ impl Var {
 /// Which of the two uses of `Type::Unpack` this is. They are written the same way in an
 /// annotation but displayed differently, and after a TypedDict instance became an ordinary
 /// `ClassType` the inner type no longer distinguishes them.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 pub enum UnpackKind {
     /// Unpacking a TypeVarTuple or tuple in `*args` position, displayed as `*T`.
     Args,
@@ -130,7 +133,7 @@ impl Display for TParamsSource {
 
 /// Wraps a vector of type parameters.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct TParams(Vec<Quantified>);
 
 static EMPTY_TPARAMS: TParams = TParams(Vec::new());
@@ -264,7 +267,7 @@ impl TParams {
 /// types are not generic, so they carry no allocation, and cloning or dropping them
 /// touches no reference count shared with other threads.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[derive(TypeEq)]
+#[derive(TypeEq, TypeOrd)]
 pub struct TArgs(Option<Arc<(Arc<TParams>, Box<[Type]>)>>);
 
 impl Visit<Type> for TArgs {
@@ -447,7 +450,7 @@ impl<'a> Substitution<'a> {
 
 /// The types of Never. Prefer later ones where we have multiple.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum NeverStyle {
     NoReturn,
     Never,
@@ -455,7 +458,7 @@ pub enum NeverStyle {
 
 /// The types of Any. Prefer later ones where we have multiple.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Display)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum AnyStyle {
     /// The user wrote `Any` literally.
     Explicit,
@@ -502,7 +505,7 @@ impl AnyStyle {
 assert_words!(Type, 4);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum CalleeKind {
     Callable,
     Function(FunctionKind),
@@ -533,7 +536,7 @@ impl FunctionTransform {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct BoundMethod {
     /// Type of the self/cls argument,
     pub obj: Type,
@@ -555,7 +558,7 @@ impl BoundMethod {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum BoundMethodType {
     Function(Function),
     Forall(Forall<Function>),
@@ -693,7 +696,7 @@ impl BoundMethodType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Overload {
     pub signatures: Vec1<OverloadType>,
     pub metadata: Box<FuncMetadata>,
@@ -710,7 +713,7 @@ impl Overload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum OverloadType {
     Function(Function),
     Forall(Forall<Function>),
@@ -760,7 +763,7 @@ impl OverloadType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Forall<T> {
     pub tparams: Arc<TParams>,
     pub body: T,
@@ -774,7 +777,7 @@ impl Forall<Forallable> {
 
 /// These are things that can have Forall around them, so often you see `Forall<Forallable>`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Forallable {
     TypeAlias(TypeAliasData),
     Function(Function),
@@ -858,14 +861,14 @@ impl Forallable {
 /// Either an instance of a class (inside an instance method) or a
 /// class object (inside a classmethod or staticmethod)
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum SuperObj {
     Instance(ClassType),
     Class(ClassType),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Union {
     pub members: Vec<Type>,
     pub display_name: IdentityIgnored<Option<(ModuleName, Name)>>,
@@ -873,7 +876,7 @@ pub struct Union {
 
 // Note: The fact that Literal and LiteralString are at the front is important for
 // optimisations in `unions_with_literals`.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 pub enum Type {
     Literal(Box<Literal>),
     LiteralString(LitStyle),

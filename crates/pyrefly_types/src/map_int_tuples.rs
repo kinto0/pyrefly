@@ -27,6 +27,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
@@ -48,6 +49,8 @@ use crate::tuple::Tuple;
 use crate::type_level_dsl::TypeLevelDslCall;
 use crate::type_level_dsl::TypeLevelDslFunction;
 use crate::type_level_dsl::TypeShapeDslDomain;
+use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
 use crate::type_var::PreInferenceVariance;
 use crate::type_var::Restriction;
 use crate::types::Type;
@@ -76,7 +79,7 @@ fn normalized_mapper(depth: u32) -> Quantified {
 /// `def consume[S: IntTuples](xs: MapIntTuples[lambda T: Box[T], S]) -> S`, the argument is known;
 /// the parameter pattern derives an ordinary `Sequence[Box[IntTuple]]` view from the mapped member
 /// stored here, and parameter inference recovers `S` from the argument's elements.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut)]
 pub enum MapIntTuplesInterpretation {
     Forward,
@@ -84,7 +87,7 @@ pub enum MapIntTuplesInterpretation {
 }
 
 /// A possibly deferred `MapIntTuples[<mapper>, <source>]` operation.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut)]
 pub struct MapIntTuples {
     mapper: TypeLambda,
@@ -492,6 +495,20 @@ fn normalize_tuple(tuple: Tuple) -> Result<NormalizedTuple, ShapeError> {
                 }
             }
         }
+    }
+}
+
+impl TypeOrd for TypeLambda {
+    fn type_cmp(&self, other: &Self, ctx: &TypeOrdCtx) -> Ordering {
+        self.parameter
+            .kind()
+            .cmp(&other.parameter.kind())
+            .then_with(|| {
+                self.parameter
+                    .restriction()
+                    .type_cmp(other.parameter.restriction(), ctx)
+            })
+            .then_with(|| self.normalized_body.type_cmp(&other.normalized_body, ctx))
     }
 }
 

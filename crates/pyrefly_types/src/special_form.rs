@@ -13,6 +13,7 @@ use dupe::Dupe;
 use parse_display::Display;
 use parse_display::FromStr;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::Expr;
@@ -26,7 +27,7 @@ use crate::types::NeverStyle;
 use crate::types::Type;
 
 #[derive(Debug, Clone, Copy, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Visit, VisitMut, TypeEq, Display, FromStr)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd, Display, FromStr)]
 pub enum SpecialForm {
     Annotated,
     Callable,

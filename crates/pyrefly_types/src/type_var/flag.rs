@@ -25,6 +25,7 @@ use std::fmt::Display;
 use std::slice;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 
@@ -184,7 +185,9 @@ impl FlagMember {
 }
 
 /// The integer-tuple portion of a `Flag` domain.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 enum FlagTuple {
     Absent,
     Fixed(usize),
@@ -280,7 +283,9 @@ impl Display for FlagMember {
 ///
 /// Invariant: a domain is never empty. `of` and `join` are the only constructors and both
 /// yield at least one member, so materialization may assume a member exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 pub struct FlagDomain {
     integer: bool,
     boolean: bool,

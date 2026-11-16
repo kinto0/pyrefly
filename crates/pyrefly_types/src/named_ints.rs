@@ -8,13 +8,14 @@
 //! A closed or open collection of named integer `**kwargs` for einops-like APIs.
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use ruff_python_ast::name::Name;
 
 use crate::dimension::Int;
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut)]
 pub struct NamedInt {
     pub name: Name,
@@ -22,7 +23,7 @@ pub struct NamedInt {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut)]
 pub struct NamedInts {
     entries: Box<[NamedInt]>,

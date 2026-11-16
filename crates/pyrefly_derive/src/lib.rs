@@ -14,12 +14,19 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 
 mod type_eq;
+mod type_ord;
 mod visit;
 
 /// Generate `TypeEq` traits.
 #[proc_macro_derive(TypeEq)]
 pub fn derive_type_eq(input: TokenStream) -> TokenStream {
     type_eq::derive_type_eq(input)
+}
+
+/// Generate `TypeOrd` traits.
+#[proc_macro_derive(TypeOrd)]
+pub fn derive_type_ord(input: TokenStream) -> TokenStream {
+    type_ord::derive_type_ord(input)
 }
 
 /// Generate `Visit` traits.

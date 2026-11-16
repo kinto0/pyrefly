@@ -8,6 +8,7 @@
 //! Element dtypes attached to otherwise-opaque Series instances.
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 
@@ -17,7 +18,7 @@ use crate::types::Type;
 
 /// A Series instance carrying its element dtype.
 #[derive(
-    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq
+    Debug, PartialOrd, Ord, Clone, Eq, PartialEq, Hash, Visit, VisitMut, TypeEq, TypeOrd
 )]
 pub struct SeriesSchema {
     pub underlying: ClassType,

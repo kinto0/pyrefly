@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use compact_str::CompactString;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::sys_info::SysInfo;
@@ -80,11 +81,14 @@ use crate::shaped_array::IntTuple;
 use crate::shaped_array::IntTupleView;
 use crate::shaped_array::reduce_axis_shape;
 use crate::tuple::Tuple;
+use crate::type_ord::TypeOrd;
 use crate::type_var::FlagDomain;
 use crate::type_var::FlagMember;
 use crate::types::Type;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 pub enum TypeShapeDslDomain {
     Int,
     IntTuple,
@@ -101,7 +105,9 @@ impl TypeShapeDslDomain {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 /// The type-system domain accepted by one DSL parameter.
 ///
 /// `Value` represents a shape dimension or shape tuple. `Flag` represents literal-preserving
@@ -401,7 +407,9 @@ impl fmt::Display for TypeShapeDslInputDomain {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash
+)]
 struct ResolvedTypeShapeDslNodeId(u32);
 
 impl ResolvedTypeShapeDslNodeId {
@@ -412,7 +420,7 @@ impl ResolvedTypeShapeDslNodeId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 struct ResolvedTypeShapeDslNode {
     id: Arc<FuncDefId>,
     definition: Arc<StructurallyValidatedTypeShapeDslFunction>,
@@ -436,7 +444,7 @@ impl ResolvedTypeShapeDslNode {
 ///
 /// A function with no helper calls has only its root node. Keeping nodes in a flat program lets
 /// helper definitions be shared rather than recursively embedded once helper calls are resolved.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 struct ResolvedTypeShapeDslProgram {
     nodes: Box<[ResolvedTypeShapeDslNode]>,
     edge_count: usize,
@@ -480,7 +488,7 @@ impl ResolvedTypeShapeDslProgram {
 }
 
 /// A validated DSL definition paired with its resolved program.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 pub struct ResolvedTypeShapeDslFunction {
     program: Arc<ResolvedTypeShapeDslProgram>,
 }
@@ -6016,7 +6024,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
 }
 
 /// A deferred type-level DSL invocation retained until the operation's result is consumed.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut)]
 pub struct TypeLevelDslCall {
     pub(crate) function: TypeLevelDslFunction,
@@ -6024,7 +6032,7 @@ pub struct TypeLevelDslCall {
 }
 
 /// The identity of a type-level DSL operation.
-#[derive(Debug, Clone, PartialEq, Eq, TypeEq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, TypeEq, TypeOrd, PartialOrd, Ord, Hash)]
 pub enum TypeLevelDslFunction {
     IndexShape,
     UserDefined(Arc<ResolvedTypeShapeDslFunction>),
@@ -9019,6 +9027,8 @@ fn common_int_tuple_member(shapes: &[IntTuple]) -> IntTuple {
         IntTuple::shapeless()
     }
 }
+
+impl TypeOrd for StructurallyValidatedTypeShapeDslFunction {}
 
 #[cfg(test)]
 mod tests {

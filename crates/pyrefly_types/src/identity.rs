@@ -16,6 +16,7 @@ use pyrefly_util::visit::VisitMut;
 
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
+use crate::type_ord::TypeOrd;
 use crate::types::Type;
 
 /// A wrapper for auxiliary data whose identity should be completely ignored
@@ -75,3 +76,5 @@ impl<T> Deref for IdentityIgnored<T> {
         &self.0
     }
 }
+
+impl<T> TypeOrd for IdentityIgnored<T> {}

@@ -21,6 +21,7 @@ use ruff_python_ast::Int;
 
 use crate::equality::TypeEq;
 use crate::literal::Lit;
+use crate::type_ord::TypeOrd;
 use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -195,3 +196,5 @@ fn parse_ruff_int_str(x: &str) -> BigInt {
     BigInt::from_str_radix(number, radix)
         .expect("Parse success from Ruff means parse success from BigInt")
 }
+
+impl TypeOrd for LitInt {}

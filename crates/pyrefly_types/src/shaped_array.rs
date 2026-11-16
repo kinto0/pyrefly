@@ -8,6 +8,7 @@
 use std::fmt;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::display::DisplayWith;
@@ -37,11 +38,11 @@ use crate::types::Type;
 /// canonical `Int`s, while variadic middles carry the original tuple/type
 /// variable shape carrier.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct IntTuple(IntTupleRepr);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 enum IntTupleRepr {
     Concrete(Vec<Int>),
     Gradual,

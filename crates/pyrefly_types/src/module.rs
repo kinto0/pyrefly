@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use dupe::Dupe;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
@@ -27,7 +28,7 @@ use crate::types::Type;
 /// Any module that does not start with a prefix of the `path` is no longer accessible,
 /// but we keep them around (under an `Arc`) since it's more efficient not to recreate
 /// the `SmallMap` on each access.
-#[derive(Debug, Clone, TypeEq, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, TypeEq, TypeOrd, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ModuleType {
     parts: Box<[Name]>,
     /// Use an OrderedMap so we have a table Hash/Ord instance.

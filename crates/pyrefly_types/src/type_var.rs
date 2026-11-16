@@ -11,6 +11,7 @@ use std::hash::Hash;
 
 use dupe::Dupe;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module::Module;
@@ -61,7 +62,7 @@ impl Display for TypeVar {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Restriction {
     Constraints(Vec<Type>),
     Bound(Type),
@@ -102,7 +103,7 @@ impl Quantified {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum PreInferenceVariance {
     Covariant,
     Contravariant,
@@ -122,7 +123,7 @@ impl Display for PreInferenceVariance {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Variance {
     Covariant,
     Contravariant,
@@ -173,7 +174,7 @@ impl Display for Variance {
     }
 }
 
-#[derive(Debug, PartialEq, TypeEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, PartialEq, TypeEq, TypeOrd, Eq, Ord, PartialOrd)]
 struct TypeVarInner {
     qname: QName,
     kind: QuantifiedKind,

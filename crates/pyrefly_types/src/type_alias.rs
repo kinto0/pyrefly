@@ -10,6 +10,7 @@ use std::fmt;
 use dupe::Dupe;
 use parse_display::Display;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
@@ -29,7 +30,7 @@ use crate::types::Type;
 
 /// The style of a type alias declaration.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum TypeAliasStyle {
     /// A type alias declared with the `type` keyword
     Scoped,
@@ -41,7 +42,7 @@ pub enum TypeAliasStyle {
 
 /// A type alias, which may be scoped (PEP 695) or legacy.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct TypeAlias {
     pub name: Box<Name>,
     /// The expression type retains explicit class specialization for value access.
@@ -138,11 +139,11 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for TypeAlias {
 
 /// The index of a type alias within a file, used to resolve references to recursive type aliases.
 #[derive(Debug, Clone, Dupe, Copy, Eq, PartialEq, Hash, PartialOrd, Ord)]
-#[derive(Display, Visit, VisitMut, TypeEq)]
+#[derive(Display, Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct TypeAliasIndex(pub u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum TypeAliasData {
     /// A recursive reference to a type alias. E.g., when resolving `type X = int | list[X]`,
     /// the `X` in `list[X]` is represented as a `Ref`. This does not store the actual value of the
@@ -164,7 +165,7 @@ impl TypeAliasData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct TypeAliasRef {
     pub name: Name,
     /// Type arguments that this alias has been specialized with.

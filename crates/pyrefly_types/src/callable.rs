@@ -11,6 +11,7 @@ use std::fmt;
 use std::hash::Hash;
 
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::display::DisplayWith;
@@ -37,7 +38,7 @@ use crate::types::TParams;
 use crate::types::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Callable {
     pub params: Params,
     pub ret: Type,
@@ -157,7 +158,7 @@ pub enum ParamOverlay {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct ParamList(Vec<Param>);
 
 impl ParamList {
@@ -326,7 +327,7 @@ fn write_indent<O: TypeOutput>(output: &mut O, indent: usize) -> fmt::Result {
 /// Represents a prefix parameter in `Concatenate`.
 /// Prefix params can be either positional-only or positional (named).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum PrefixParam {
     PosOnly(Option<Name>, Type, Required),
     Pos(Name, Type, Required),
@@ -368,7 +369,7 @@ impl PrefixParam {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Params {
     List(ParamList),
     /// The remaining parameter list of a `functools.partial(...)`: behaves like `List` for
@@ -444,7 +445,7 @@ impl Params {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Param {
     PosOnly(Option<Name>, Type, Required),
     Pos(Name, Type, Required),
@@ -455,7 +456,7 @@ pub enum Param {
 
 /// The default value of an optional parameter, containing its type and an optional
 /// display string for values whose types don't preserve the literal value (e.g. floats).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, TypeOrd)]
 pub struct DefaultValue {
     pub ty: Type,
     /// Display string for defaults that can't be recovered from the type alone,
@@ -505,7 +506,7 @@ impl DefaultValue {
 
 /// Requiredness for a function parameter.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Required {
     Required,
     /// The parameter is optional, with the default value info if available.

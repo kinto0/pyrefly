@@ -9,6 +9,7 @@ use std::fmt;
 
 use compact_str::CompactString;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_util::assert_words;
@@ -36,14 +37,14 @@ static LITERAL_STR_MAX_SIZE: usize = 4096;
 static LITERAL_BYTES_MAX_SIZE: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct Literal {
     pub value: Lit,
     pub style: LitStyle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum LitStyle {
     Implicit,
     Explicit,
@@ -51,7 +52,7 @@ pub enum LitStyle {
 
 /// A literal value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, VisitMut, TypeEq)]
+#[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub enum Lit {
     Str(CompactString),
     Int(LitInt),
@@ -107,7 +108,7 @@ pub(crate) fn write_escaped_string(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(Visit, TypeEq)]
+#[derive(Visit, TypeEq, TypeOrd)]
 pub struct LitEnum {
     pub class: ClassType,
     pub member: Name,

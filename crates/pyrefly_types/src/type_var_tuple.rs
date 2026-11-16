@@ -10,6 +10,7 @@ use std::fmt::Display;
 
 use dupe::Dupe;
 use pyrefly_derive::TypeEq;
+use pyrefly_derive::TypeOrd;
 use pyrefly_python::module::Module;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::qname::QName;
@@ -47,7 +48,7 @@ impl Display for TypeVarTuple {
     }
 }
 
-#[derive(Debug, PartialEq, TypeEq, Eq, Ord, PartialOrd)]
+#[derive(Debug, PartialEq, TypeEq, TypeOrd, Eq, Ord, PartialOrd)]
 struct TypeVarTupleInner {
     qname: QName,
     default: Option<Type>,
