@@ -43,6 +43,7 @@ use lsp_types::CompletionItemTextEdit;
 use lsp_types::TextEdit;
 use pyrefly_build::handle::Handle;
 use pyrefly_python::ast::Ast;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_path::ModulePathDetails;
 use pyrefly_python::module_path::ModuleStyle;
@@ -424,7 +425,7 @@ impl Transaction<'_> {
                     metadata: DefinitionMetadata::VariableOrAttribute(Some(SymbolKind::Function)),
                     module: endpoint.module,
                     definition_range: endpoint.definition_range,
-                    docstring_range: endpoint.docstring_range,
+                    doc_ranges: DocRanges::of_docstring(endpoint.docstring_range),
                     display_name: None,
                 })
                 .collect(),

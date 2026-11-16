@@ -8,6 +8,7 @@
 use pyrefly_build::handle::Handle;
 use pyrefly_python::PYTHON_EXTENSIONS;
 use pyrefly_python::ast::Ast;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::symbol_kind::SymbolKind;
 use pyrefly_types::types::Type;
@@ -95,7 +96,7 @@ impl Transaction<'_> {
             metadata: DefinitionMetadata::Module,
             definition_range,
             module: module_info,
-            docstring_range: None,
+            doc_ranges: DocRanges::default(),
             display_name: Some(symbol_name.to_owned()),
         }))
     }
@@ -155,7 +156,7 @@ impl Transaction<'_> {
                 Export {
                     location: definition_range,
                     symbol_kind: Some(SymbolKind::Variable),
-                    docstring_range: None,
+                    doc_ranges: DocRanges::default(),
                     deprecation: None,
                     is_final: false,
                     special_export: None,
@@ -231,7 +232,7 @@ impl Transaction<'_> {
                             metadata: DefinitionMetadata::Module,
                             definition_range,
                             module: def_item.module,
-                            docstring_range: None,
+                            doc_ranges: DocRanges::default(),
                             display_name: Some(name.to_owned()),
                         }]);
                     }

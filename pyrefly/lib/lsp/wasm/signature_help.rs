@@ -343,7 +343,8 @@ impl Transaction<'_> {
             .unwrap_or_default()
             .into_iter()
             .find_map(|item| {
-                item.docstring_range
+                item.doc_ranges
+                    .docstring()
                     .map(|range| (range, item.module.clone()))
             })
     }

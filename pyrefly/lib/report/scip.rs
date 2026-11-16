@@ -20,6 +20,7 @@ use lsp_types::Uri;
 use protobuf::Message as _;
 use pyrefly_build::handle::Handle;
 use pyrefly_python::ast::Ast;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::docstring::Docstring;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_name::ModuleName;
@@ -608,7 +609,7 @@ impl Indexer<'_> {
                     metadata: definition.metadata,
                     definition_range: definition.definition_range,
                     module: definition.module,
-                    docstring_range: None,
+                    doc_ranges: DocRanges::default(),
                     display_name: Some(x.identifier.id.to_string()),
                 })
             }

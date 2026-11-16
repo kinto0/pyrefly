@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 use dupe::Dupe;
 use pyrefly_build::handle::Handle;
 use pyrefly_config::finder::ConfigFinder;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePathDetails;
 use pyrefly_python::short_identifier::ShortIdentifier;
@@ -200,7 +201,7 @@ fn create_intermediate_definition_from(
                 return Some(IntermediateDefinition::Local(Export {
                     location: undecorated.def.name.range,
                     symbol_kind: Some(symbol_kind),
-                    docstring_range: func.docstring_range,
+                    doc_ranges: DocRanges::of_docstring(func.docstring_range),
                     deprecation: None,
                     is_final: false,
                     special_export: None,
@@ -212,20 +213,18 @@ fn create_intermediate_definition_from(
                         Some(IntermediateDefinition::Local(Export {
                             location: def_key.range(),
                             symbol_kind: Some(SymbolKind::Class),
-                            docstring_range: None,
+                            doc_ranges: DocRanges::default(),
                             deprecation: None,
                             is_final: false,
                             special_export: None,
                         }))
                     }
                     BindingClass::ClassDef(ClassBinding {
-                        def,
-                        docstring_range,
-                        ..
+                        def, doc_ranges, ..
                     }) => Some(IntermediateDefinition::Local(Export {
                         location: def.name.range,
                         symbol_kind: Some(SymbolKind::Class),
-                        docstring_range: *docstring_range,
+                        doc_ranges: doc_ranges.clone(),
                         deprecation: None,
                         is_final: false,
                         special_export: None,
@@ -236,7 +235,7 @@ fn create_intermediate_definition_from(
                 return Some(IntermediateDefinition::Local(Export {
                     location: *target_range,
                     symbol_kind: Some(SymbolKind::Variable),
-                    docstring_range: None,
+                    doc_ranges: DocRanges::default(),
                     deprecation: None,
                     is_final: false,
                     special_export: None,
@@ -265,7 +264,7 @@ fn create_intermediate_definition_from(
                 return Some(IntermediateDefinition::Local(Export {
                     location: def_key.range(),
                     symbol_kind: current_binding.symbol_kind(),
-                    docstring_range: None,
+                    doc_ranges: DocRanges::default(),
                     deprecation: None,
                     is_final: false,
                     special_export: None,

@@ -10,6 +10,7 @@ use std::iter::once;
 use std::iter::once_with;
 
 use pyrefly_build::handle::Handle;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_name::ModuleNameWithKind;
 use pyrefly_python::module_path::ModulePath;
@@ -127,7 +128,7 @@ impl<'a> Transaction<'a> {
                 metadata: DefinitionMetadata::Variable(Some(SymbolKind::Function)),
                 definition_range: fixture.range,
                 module: module_info.clone(),
-                docstring_range: fixture.docstring_range,
+                doc_ranges: DocRanges::of_docstring(fixture.docstring_range),
                 display_name: Some(fixture.name.as_str().to_owned()),
             })
             .collect();
@@ -183,7 +184,7 @@ impl<'a> Transaction<'a> {
                             metadata: DefinitionMetadata::Variable(Some(SymbolKind::Function)),
                             definition_range: fixture.range,
                             module,
-                            docstring_range: fixture.docstring_range,
+                            doc_ranges: DocRanges::of_docstring(fixture.docstring_range),
                             display_name: Some(fixture.name.as_str().to_owned()),
                         });
                         break 'fixtures;

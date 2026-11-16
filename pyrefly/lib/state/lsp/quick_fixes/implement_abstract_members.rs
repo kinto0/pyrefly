@@ -131,7 +131,7 @@ pub(crate) fn implement_abstract_members_code_actions(
                         defining_module: member.defining_class.module(&solver).dupe(),
                         docstring_range: solver
                             .get_class_fields(&member.defining_class)
-                            .and_then(|fields| fields.field_docstring_range(name)),
+                            .and_then(|fields| fields.field_doc_ranges(name)?.docstring()),
                     });
                 }
                 Some(infos)

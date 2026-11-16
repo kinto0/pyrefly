@@ -11,6 +11,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 use pyrefly_graph::calculation::Calculation;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::docstring::Docstring;
 use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
@@ -101,7 +102,7 @@ pub struct ExportOrigin {
 pub struct Export {
     pub location: TextRange,
     pub symbol_kind: Option<SymbolKind>,
-    pub docstring_range: Option<TextRange>,
+    pub doc_ranges: DocRanges,
     pub deprecation: Option<Deprecation>,
     /// Whether the exported symbol is marked with the `Final` special form.
     pub is_final: bool,
@@ -550,7 +551,7 @@ impl Exports {
                         ExportLocation::ThisModule(Export {
                             location: definition.range,
                             symbol_kind: Some(*symbol_kind),
-                            docstring_range: definition.docstring_range,
+                            doc_ranges: definition.doc_ranges.clone(),
                             deprecation,
                             is_final,
                             special_export,
@@ -565,7 +566,7 @@ impl Exports {
                     | DefinitionStyle::MutableCapture(..) => ExportLocation::ThisModule(Export {
                         location: definition.range,
                         symbol_kind: None,
-                        docstring_range: definition.docstring_range,
+                        doc_ranges: definition.doc_ranges.clone(),
                         deprecation,
                         is_final,
                         special_export,
@@ -573,7 +574,7 @@ impl Exports {
                     DefinitionStyle::ImplicitGlobal => ExportLocation::ThisModule(Export {
                         location: definition.range,
                         symbol_kind: Some(SymbolKind::Constant),
-                        docstring_range: None,
+                        doc_ranges: DocRanges::default(),
                         deprecation,
                         is_final,
                         special_export,
@@ -609,7 +610,7 @@ impl Exports {
                     ExportLocation::ThisModule(Export {
                         location: range,
                         symbol_kind: None,
-                        docstring_range: None,
+                        doc_ranges: DocRanges::default(),
                         deprecation: None,
                         is_final: false,
                         special_export: None,

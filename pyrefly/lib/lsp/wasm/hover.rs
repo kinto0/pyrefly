@@ -550,7 +550,7 @@ fn docstring_for_class_object_type(
         transaction.get_exports(&definition_handle).get(qname.id())
         && export.location == qname.range()
     {
-        export.docstring_range
+        export.doc_ranges.docstring()
     } else {
         let ast = transaction.get_ast_or_parse_module(handle, &module);
         Ast::locate_node(&ast, qname.range().start())
@@ -583,7 +583,7 @@ fn docstring_for_class_object_type(
             if export.symbol_kind != Some(SymbolKind::Class) {
                 return None;
             }
-            let range = export.docstring_range?;
+            let range = export.doc_ranges.docstring()?;
             let module = transaction.get_module_info(&implementation_handle)?;
             nonempty_docstring(Docstring(range, module))
         })
@@ -1455,7 +1455,9 @@ fn field_docstring_at_definition(
         AnyNodeRef::StmtClassDef(class) => Some(*class),
         _ => None,
     })?;
-    let range = *BindingsBuilder::extract_field_docstrings(&class.body).get(&name.range)?;
+    let range = BindingsBuilder::extract_field_docstrings(&class.body)
+        .get(&name.range)?
+        .docstring()?;
     Some(Docstring(range, module))
 }
 
@@ -1507,7 +1509,8 @@ fn class_docstring_for_constructor(
             .find_definition(handle, position, preference)
             .ok()
             .and_then(|items| items.into_vec().into_iter().next())?;
-        item.docstring_range
+        item.doc_ranges
+            .docstring()
             .map(|range| Docstring(range, item.module))
             .and_then(nonempty_docstring)
     });
@@ -1650,7 +1653,7 @@ pub fn get_hover_with_verbosity(
         metadata,
         definition_range: definition_location,
         module,
-        docstring_range,
+        doc_ranges,
         display_name,
     }) = definition
     {
@@ -1660,14 +1663,15 @@ pub fn get_hover_with_verbosity(
             display_name.as_deref(),
             fallback_name_from_type,
         );
-        let docstring = docstring_range.map(|range| Docstring(range, module));
+        let docstring = doc_ranges.docstring().map(|range| Docstring(range, module));
         (kind, name, docstring)
     } else {
         (None, fallback_name_from_type, None)
     };
     let docstring = interface_definition
         .and_then(|item| {
-            item.docstring_range
+            item.doc_ranges
+                .docstring()
                 .map(|range| Docstring(range, item.module))
         })
         .and_then(nonempty_docstring)

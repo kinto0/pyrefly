@@ -16,6 +16,7 @@ use pyrefly_derive::TypeEq;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_graph::index::Idx;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::dunder;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::nesting_context::NestingContext;
@@ -2207,7 +2208,7 @@ pub struct ClassBinding {
     /// Whether the class declares any type parameters, decided from syntax alone. A class that
     /// does has a `KeyTParams` / `BindingTParams` pair, which computes them.
     pub has_tparams: bool,
-    pub docstring_range: Option<TextRange>,
+    pub doc_ranges: DocRanges,
 }
 
 #[derive(Clone, Debug)]

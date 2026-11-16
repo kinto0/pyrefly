@@ -374,7 +374,7 @@ impl Transaction<'_> {
         export_info: Option<(Handle, Export)>,
     ) -> Option<lsp_types::Documentation> {
         let (definition_handle, export) = export_info?;
-        let docstring_range = export.docstring_range?;
+        let docstring_range = export.doc_ranges.docstring()?;
         let def_module = self.get_module_info(&definition_handle)?;
         let docstring = Docstring(docstring_range, def_module.clone()).resolve();
         let documentation = lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
@@ -506,9 +506,8 @@ impl Transaction<'_> {
             FindPreference::default(),
         );
 
-        let (definition, Some(docstring_range)) = attribute_definition? else {
-            return None;
-        };
+        let (definition, doc_ranges) = attribute_definition?;
+        let docstring_range = doc_ranges.docstring()?;
         let docstring = Docstring(docstring_range, definition.module);
 
         Some(lsp_types::Documentation::MarkupContent(

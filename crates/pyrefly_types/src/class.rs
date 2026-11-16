@@ -20,6 +20,7 @@ use pyrefly_derive::TypeEq;
 use pyrefly_derive::TypeOrd;
 use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
@@ -167,8 +168,8 @@ pub struct ClassFieldProperties {
     /// An explicit Django method-copy policy set in the class body.
     django_queryset_only: Option<bool>,
     range: TextRange,
-    // The range of the docstring following this field, if present
-    docstring_range: Option<TextRange>,
+    /// The documentation of this field.
+    doc_ranges: DocRanges,
 }
 
 /// The index of a class within the file, used as a reference to data associated with the class.
@@ -184,7 +185,7 @@ impl ClassFieldProperties {
         may_be_abstract: bool,
         attrs_field_specifier: Option<AttrsFieldSpecifier>,
         range: TextRange,
-        docstring_range: Option<TextRange>,
+        doc_ranges: DocRanges,
     ) -> Self {
         Self {
             is_annotated,
@@ -194,7 +195,7 @@ impl ClassFieldProperties {
             attrs_field_specifier,
             django_queryset_only: None,
             range,
-            docstring_range,
+            doc_ranges,
         }
     }
 
@@ -211,10 +212,6 @@ impl ClassFieldProperties {
         self.is_defined_in_class_body
     }
 
-    pub fn docstring_range(&self) -> Option<TextRange> {
-        self.docstring_range
-    }
-
     /// Whether `self` and `other` declare a field the same way, wherever in the file they are.
     /// Locations are read only by the module that declares the field.
     fn same_declaration(&self, other: &Self) -> bool {
@@ -226,7 +223,7 @@ impl ClassFieldProperties {
             attrs_field_specifier,
             django_queryset_only,
             range: _,
-            docstring_range: _,
+            doc_ranges: _,
         } = self;
         *is_annotated == other.is_annotated
             && *is_initialized_on_class == other.is_initialized_on_class
@@ -379,8 +376,14 @@ impl ClassFields {
         Some(self.0.get(name)?.range)
     }
 
-    pub fn field_docstring_range(&self, name: &Name) -> Option<TextRange> {
-        self.0.get(name)?.docstring_range
+    /// The declaration range and documentation of a field.
+    pub fn field_decl(&self, name: &Name) -> Option<(TextRange, &DocRanges)> {
+        let field = self.0.get(name)?;
+        Some((field.range, &field.doc_ranges))
+    }
+
+    pub fn field_doc_ranges(&self, name: &Name) -> Option<&DocRanges> {
+        Some(&self.0.get(name)?.doc_ranges)
     }
 }
 

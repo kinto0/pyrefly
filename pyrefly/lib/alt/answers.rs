@@ -1935,7 +1935,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     AttrDefinition::FullyResolved {
                         cls,
                         range: _,
-                        docstring_range: _,
+                        doc_ranges: _,
                     } => match reference_kind {
                         AttributeReferenceKind::ConstructorCall => index
                             .lock()

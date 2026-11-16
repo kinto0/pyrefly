@@ -8,6 +8,7 @@
 use std::iter;
 
 use dupe::Dupe;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::dunder;
 use pyrefly_python::keywords::is_valid_identifier;
 use pyrefly_python::module_name::ModuleName;
@@ -3384,7 +3385,7 @@ pub enum AttrDefinition {
     FullyResolved {
         cls: Class,
         range: TextRange,
-        docstring_range: Option<TextRange>,
+        doc_ranges: DocRanges,
     },
     PartiallyResolvedImportedModuleAttribute {
         module_name: ModuleName,
@@ -3430,7 +3431,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 None => {
                     for fld in class_fields.names() {
                         if seen.insert(fld)
-                            && let Some(range) = class_fields.field_decl_range(fld)
+                            && let Some((range, doc_ranges)) = class_fields.field_decl(fld)
                         {
                             res.push(AttrInfo {
                                 name: fld.clone(),
@@ -3439,7 +3440,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 definition: AttrDefinition::FullyResolved {
                                     cls: c.dupe(),
                                     range,
-                                    docstring_range: class_fields.field_docstring_range(fld),
+                                    doc_ranges: doc_ranges.clone(),
                                 },
                                 is_reexport: false,
                                 is_from_object,
@@ -3448,7 +3449,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 }
                 Some(expected_attribute_name) => {
-                    if let Some(range) = class_fields.field_decl_range(expected_attribute_name) {
+                    if let Some((range, doc_ranges)) =
+                        class_fields.field_decl(expected_attribute_name)
+                    {
                         res.push(AttrInfo {
                             name: expected_attribute_name.clone(),
                             ty: None,
@@ -3456,8 +3459,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             definition: AttrDefinition::FullyResolved {
                                 cls: c.dupe(),
                                 range,
-                                docstring_range: class_fields
-                                    .field_docstring_range(expected_attribute_name),
+                                doc_ranges: doc_ranges.clone(),
                             },
                             is_reexport: false,
                             is_from_object,

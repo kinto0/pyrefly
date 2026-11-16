@@ -9,6 +9,8 @@ use std::collections::HashMap;
 
 use ruff_python_ast::Expr;
 use ruff_python_ast::Stmt;
+use ruff_python_ast::StmtClassDef;
+use ruff_python_ast::StmtFunctionDef;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 
@@ -77,6 +79,36 @@ impl Docstring {
     /// docstring looks nonempty after rendering.
     pub fn has_content(&self) -> bool {
         !normalize_literal(self.1.code_at(self.0)).trim().is_empty()
+    }
+}
+
+/// The source ranges that document a definition.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocRanges {
+    docstring: Option<TextRange>,
+}
+
+impl DocRanges {
+    /// The documentation of a definition that has only a docstring, such as a module or an
+    /// attribute.
+    pub fn of_docstring(docstring: Option<TextRange>) -> Self {
+        Self { docstring }
+    }
+
+    pub fn of_function(x: &StmtFunctionDef) -> Self {
+        Self::of_docstring(Docstring::range_from_stmts(&x.body))
+    }
+
+    pub fn of_class(x: &StmtClassDef) -> Self {
+        Self::of_docstring(Docstring::range_from_stmts(&x.body))
+    }
+
+    pub fn docstring(&self) -> Option<TextRange> {
+        self.docstring
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.docstring.is_none()
     }
 }
 

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use dupe::Dupe as _;
 use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
-use pyrefly_python::docstring::Docstring;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::keywords::is_valid_identifier;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::short_identifier::ShortIdentifier;
@@ -263,7 +263,7 @@ impl<'a> BindingsBuilder<'a> {
             .find_map(|decorator| parse_deprecation(&decorator.expression))
             .map(Box::new);
         let mut pydantic_config_dict = PydanticConfigDict::default();
-        let docstring_range = Docstring::range_from_stmts(x.body.as_slice());
+        let doc_ranges = DocRanges::of_class(&x);
         let body = mem::take(&mut x.body);
         let field_docstrings = Self::extract_field_docstrings(&body);
         let pydantic_before_validator_fields = self.extract_field_validator_fields(&body);
@@ -467,7 +467,7 @@ impl<'a> BindingsBuilder<'a> {
             class_indices.clone(),
             x.name.clone(),
             has_protocol_base,
-            docstring_range,
+            doc_ranges.docstring(),
         ));
         let previous_tracking = self.begin_classmethod_receivers(&body);
         // Record the class body range for solve-time `typing.Self` resolution.
@@ -543,7 +543,7 @@ impl<'a> BindingsBuilder<'a> {
                 | ClassFieldDefinition::DefinedWithoutAssign { .. } => true,
             };
 
-            let docstring_range = field_docstrings.get(&range).copied();
+            let doc_ranges = field_docstrings.get(&range).cloned().unwrap_or_default();
 
             let attrs_field_specifier =
                 self.attrs_field_specifier(&definition, name.key(), range, &attrs_decorators);
@@ -594,7 +594,7 @@ impl<'a> BindingsBuilder<'a> {
                     may_be_abstract,
                     attrs_field_specifier,
                     range,
-                    docstring_range,
+                    doc_ranges,
                 )
                 .with_django_queryset_only(django_queryset_only.get(name.key()).copied()),
             );
@@ -665,7 +665,7 @@ impl<'a> BindingsBuilder<'a> {
                 is_protocol: has_protocol_base,
                 deprecation,
                 has_tparams,
-                docstring_range,
+                doc_ranges,
             }),
         );
 
@@ -709,10 +709,10 @@ impl<'a> BindingsBuilder<'a> {
         );
     }
 
-    /// Extracts docstrings for each field, mapping the field's range to the docstring's range.
+    /// Extracts the documentation of each field, keyed by the field's range.
     pub fn extract_field_docstrings(
         body: &[ruff_python_ast::Stmt],
-    ) -> SmallMap<TextRange, TextRange> {
+    ) -> SmallMap<TextRange, DocRanges> {
         use ruff_python_ast::Expr;
         use ruff_python_ast::Stmt;
 
@@ -729,26 +729,28 @@ impl<'a> BindingsBuilder<'a> {
                 let first_range = *first_function_ranges
                     .entry(func_def.name.id.clone())
                     .or_insert(func_def.name.range);
-                if let Some(docstring_range) = Docstring::range_from_stmts(&func_def.body) {
-                    field_docstrings.insert(func_def.name.range, docstring_range);
+                let doc_ranges = DocRanges::of_function(func_def);
+                if !doc_ranges.is_empty() {
+                    field_docstrings.insert(func_def.name.range, doc_ranges.clone());
                     // Class field metadata points at the first declaration in an overload chain,
                     // while its documentation belongs to the implementation.
-                    field_docstrings.insert(first_range, docstring_range);
+                    field_docstrings.insert(first_range, doc_ranges);
                 }
             } else if let Stmt::ClassDef(class_def) = stmt {
-                if let Some(docstring_range) = Docstring::range_from_stmts(&class_def.body) {
-                    field_docstrings.insert(class_def.name.range, docstring_range);
+                let doc_ranges = DocRanges::of_class(class_def);
+                if !doc_ranges.is_empty() {
+                    field_docstrings.insert(class_def.name.range, doc_ranges);
                 }
             } else if is_field
                 && let Some(next_stmt) = body.get(i + 1)
                 && let Stmt::Expr(expr_stmt) = next_stmt
                 && matches!(&*expr_stmt.value, Expr::StringLiteral(_))
             {
-                let docstring_range = next_stmt.range();
+                let doc_ranges = DocRanges::of_docstring(Some(next_stmt.range()));
                 let mut target_ranges = Vec::new();
                 Self::collect_field_docstring_target_ranges(stmt, &mut target_ranges);
                 for range in target_ranges {
-                    field_docstrings.insert(range, docstring_range);
+                    field_docstrings.insert(range, doc_ranges.clone());
                 }
             }
 
@@ -1110,7 +1112,7 @@ impl<'a> BindingsBuilder<'a> {
                     false, // Synthesized fields are never abstract methods
                     None,  // Synthesized fields are never attrs field specifiers
                     range,
-                    None, // Synthesized fields don't have docstrings
+                    DocRanges::default(), // Synthesized fields don't have docstrings
                 ),
             );
             let annotation = member_annotation.map(|annotation_expr| {

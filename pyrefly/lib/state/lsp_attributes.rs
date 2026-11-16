@@ -6,7 +6,7 @@
  */
 
 use pyrefly_python::ast::Ast;
-use pyrefly_python::docstring::Docstring;
+use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_path::ModuleStyle;
 use pyrefly_python::sys_info::SysInfo;
@@ -105,7 +105,7 @@ pub(crate) fn definition_from_ast(
     attr_name: &ruff_python_ast::name::Name,
     sys_info: SysInfo,
     module_style: ModuleStyle,
-) -> Option<(TextRange, Option<TextRange>)> {
+) -> Option<(TextRange, DocRanges)> {
     definition_in_suite(
         &ast.body,
         &context.parent_classes,
@@ -125,7 +125,7 @@ fn definition_in_suite(
     attr_name: &ruff_python_ast::name::Name,
     sys_info: SysInfo,
     module_style: ModuleStyle,
-) -> Option<(TextRange, Option<TextRange>)> {
+) -> Option<(TextRange, DocRanges)> {
     let direct = match parent_classes.split_first() {
         Some((class_name, rest)) => body.iter().find_map(|stmt| match stmt {
             Stmt::ClassDef(class_def) if &class_def.name.id == class_name => definition_in_suite(
@@ -172,13 +172,12 @@ fn definition_in_suite(
 fn definition_from_function(
     body: &[Stmt],
     attr_name: &ruff_python_ast::name::Name,
-) -> Option<(TextRange, Option<TextRange>)> {
+) -> Option<(TextRange, DocRanges)> {
     for stmt in body {
         if let Stmt::FunctionDef(func_def) = stmt
             && &func_def.name.id == attr_name
         {
-            let docstring_range = Docstring::range_from_stmts(&func_def.body);
-            return Some((func_def.name.range, docstring_range));
+            return Some((func_def.name.range, DocRanges::of_function(func_def)));
         }
     }
     None
@@ -187,13 +186,12 @@ fn definition_from_function(
 fn definition_from_class(
     body: &[Stmt],
     attr_name: &ruff_python_ast::name::Name,
-) -> Option<(TextRange, Option<TextRange>)> {
+) -> Option<(TextRange, DocRanges)> {
     for stmt in body {
         if let Stmt::ClassDef(class_def) = stmt
             && &class_def.name.id == attr_name
         {
-            let docstring_range = Docstring::range_from_stmts(&class_def.body);
-            return Some((class_def.name.range, docstring_range));
+            return Some((class_def.name.range, DocRanges::of_class(class_def)));
         }
     }
     None
@@ -202,7 +200,7 @@ fn definition_from_class(
 fn definition_from_assignment(
     body: &[Stmt],
     attr_name: &ruff_python_ast::name::Name,
-) -> Option<(TextRange, Option<TextRange>)> {
+) -> Option<(TextRange, DocRanges)> {
     for (idx, stmt) in body.iter().enumerate() {
         let (matches, def_range) = match stmt {
             Stmt::Assign(assign) => {
@@ -226,7 +224,7 @@ fn definition_from_assignment(
             } else {
                 None
             };
-            return Some((def_range?, docstring_range));
+            return Some((def_range?, DocRanges::of_docstring(docstring_range)));
         }
     }
     None
@@ -266,7 +264,7 @@ mod tests {
             ModuleStyle::Executable,
         )
         .unwrap();
-        assert!(docstring.is_some());
+        assert!(docstring.docstring().is_some());
     }
 
     /// Only the branch selected by the environment is searched, not the first branch in the file.
@@ -286,7 +284,10 @@ mod tests {
             ModuleStyle::Executable,
         )
         .unwrap();
-        assert_eq!(&source[docstring.unwrap()], "\"\"\"Current.\"\"\"");
+        assert_eq!(
+            &source[docstring.docstring().unwrap()],
+            "\"\"\"Current.\"\"\""
+        );
     }
 
     #[test]
@@ -332,7 +333,11 @@ mod tests {
                 ModuleStyle::Executable,
             )
             .unwrap();
-            assert_eq!(&source[docstring.unwrap()], "\"\"\"Last.\"\"\"", "{source}");
+            assert_eq!(
+                &source[docstring.docstring().unwrap()],
+                "\"\"\"Last.\"\"\"",
+                "{source}"
+            );
         }
     }
 
@@ -352,6 +357,6 @@ mod tests {
             ModuleStyle::Executable,
         )
         .unwrap();
-        assert_eq!(&source[docstring.unwrap()], "\"\"\"Live.\"\"\"");
+        assert_eq!(&source[docstring.docstring().unwrap()], "\"\"\"Live.\"\"\"");
     }
 }

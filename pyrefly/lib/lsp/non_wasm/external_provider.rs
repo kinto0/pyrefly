@@ -181,6 +181,7 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    use pyrefly_python::docstring::DocRanges;
     use pyrefly_python::module::Module;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
@@ -246,7 +247,7 @@ mod tests {
             metadata: DefinitionMetadata::Variable(None),
             definition_range: TextRange::new(TextSize::new(4), TextSize::new(7)),
             module,
-            docstring_range: None,
+            doc_ranges: DocRanges::default(),
             display_name: Some("foo".to_owned()),
         };
 
@@ -272,7 +273,7 @@ mod tests {
             metadata: DefinitionMetadata::Variable(None),
             definition_range: TextRange::new(TextSize::new(6), TextSize::new(15)),
             module,
-            docstring_range: None,
+            doc_ranges: DocRanges::default(),
             display_name: Some("Exception".to_owned()),
         };
 

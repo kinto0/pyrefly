@@ -3607,9 +3607,7 @@ impl<'a> LookupExport for TransactionHandle<'a> {
         self.with_exports(
             module,
             |exports, lookup| match exports.exports(lookup).get(name)? {
-                ExportLocation::ThisModule(Export {
-                    docstring_range, ..
-                }) => *docstring_range,
+                ExportLocation::ThisModule(Export { doc_ranges, .. }) => doc_ranges.docstring(),
                 _ => None,
             },
             ModuleDep::DocstringRange(name.clone()),

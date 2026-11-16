@@ -28,7 +28,7 @@ fn test_report_factory(
             .unwrap_or_default()
             .into_iter()
             .filter_map(|t| {
-                let docstring_range = t.docstring_range?;
+                let docstring_range = t.doc_ranges.docstring()?;
                 Some(docstring_range)
             })
             .collect::<Vec<_>>();
