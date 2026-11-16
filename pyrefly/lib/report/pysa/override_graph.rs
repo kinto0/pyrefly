@@ -32,7 +32,14 @@ fn find_overridden_base_method(
     class: &Class,
     context: &ModuleContext,
 ) -> Option<FunctionRef> {
-    assert_eq!(class.module(), &context.answers_context.module_info);
+    assert_eq!(
+        class.module_name(),
+        context.answers_context.module_info.name()
+    );
+    assert_eq!(
+        class.module_path(),
+        context.answers_context.module_info.path()
+    );
 
     let defining_class = context
         .resolver
@@ -48,7 +55,7 @@ fn find_overridden_base_method(
     let class_id = ClassId::from_class(&defining_class);
     context
         .resolver
-        .resolve_pysa_solutions(defining_class.module())
+        .resolve_pysa_solutions(defining_class.module_in(context.resolver.type_env()))
         .module_index
         .get_function_ref_for_class_field(class_id, field_name)
 }

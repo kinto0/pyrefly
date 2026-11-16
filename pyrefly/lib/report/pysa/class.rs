@@ -50,6 +50,7 @@ use crate::report::pysa::scope::ScopeParent;
 use crate::report::pysa::scope::get_scope_parent;
 use crate::report::pysa::types::PysaType;
 use crate::report::pysa::types::is_callable_like;
+use crate::types::env::TypeEnv;
 
 /// Represents a unique identifier for a class **within a module**.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
@@ -113,18 +114,27 @@ pub struct ClassRef {
     pub module_id: ModuleId,
     pub class_id: ClassId,
     pub class: Class,
+    /// The class's name, which is exported for debugging purposes only.
+    class_name: Name,
 }
 
 impl ClassRef {
-    pub fn from_class(class: &Class, context: &ModuleContext) -> ClassRef {
+    pub fn new(module_id: ModuleId, class: &Class, env: &dyn TypeEnv) -> ClassRef {
         ClassRef {
-            module_id: context.module_ids().get_from_module(
-                class.module(),
-                context.answers_context.handle.sys_info().dupe(),
-            ),
+            module_id,
             class_id: ClassId::from_class(class),
             class: class.clone(),
+            class_name: class.name_in(env).clone(),
         }
+    }
+
+    pub fn from_class(class: &Class, context: &ModuleContext) -> ClassRef {
+        let env = context.resolver.type_env();
+        let module_id = context.module_ids().get_from_module(
+            class.module_in(env),
+            context.answers_context.handle.sys_info().dupe(),
+        );
+        ClassRef::new(module_id, class, env)
     }
 }
 
@@ -134,7 +144,7 @@ impl std::fmt::Debug for ClassRef {
             .field("module_id", &self.module_id)
             .field("class_id", &self.class_id)
             .field("module_name", &self.class.module_name().as_str())
-            .field("class_name", &self.class.name().as_str())
+            .field("class_name", &self.class_name.as_str())
             // We don't print `class` because it's way too large.
             .finish_non_exhaustive()
     }
@@ -151,7 +161,7 @@ impl Serialize for ClassRef {
         state.serialize_field("module_name", &self.class.module_name())?;
         state.serialize_field("class_id", &self.class_id)?;
         // Exported for debugging purposes only
-        state.serialize_field("class_name", &self.class.name())?;
+        state.serialize_field("class_name", &self.class_name)?;
         state.end()
     }
 }
@@ -284,7 +294,8 @@ pub fn get_class_field_from_current_class_only<'a>(
     // This inlines the logic from `AnswersSolver::get_field_from_current_class_only`,
     // `get_non_synthesized_field_from_current_class_only`, and
     // `get_synthesized_field_from_current_class_only`.
-    assert!(class.module() == &context.module_info);
+    assert!(class.module_name() == context.module_info.name());
+    assert!(class.module_path() == context.module_info.path());
 
     // Non-synthesized field: check class fields list, then look up the answer.
     let class_fields = &context
@@ -331,7 +342,8 @@ pub fn get_class_field_declaration<'a>(
     field_name: &Name,
     context: &'a ModuleAnswersContext,
 ) -> Option<&'a BindingClassField> {
-    assert_eq!(class.module(), &context.module_info);
+    assert_eq!(class.module_name(), context.module_info.name());
+    assert_eq!(class.module_path(), context.module_info.path());
     let key_class_field = KeyClassField(class.index(), field_name.clone());
     // We use `key_to_idx_hashed_opt` below because the key might not be valid (could be a synthesized field).
     context
@@ -341,7 +353,8 @@ pub fn get_class_field_declaration<'a>(
 }
 
 pub fn get_class_mro<'a>(class: &Class, context: &'a ModuleAnswersContext) -> &'a ClassMro {
-    assert_eq!(class.module(), &context.module_info);
+    assert_eq!(class.module_name(), context.module_info.name());
+    assert_eq!(class.module_path(), context.module_info.path());
     context
         .answers
         .get_idx(context.bindings().key_to_idx(&KeyClassMro(class.index())))
@@ -430,7 +443,14 @@ fn export_class_fields(
     context: &ModuleContext,
     ann_assign_map: &AnnAssignMap,
 ) -> HashMap<Name, PysaClassField> {
-    assert_eq!(class.module(), &context.answers_context.module_info);
+    assert_eq!(
+        class.module_name(),
+        context.answers_context.module_info.name()
+    );
+    assert_eq!(
+        class.module_path(),
+        context.answers_context.module_info.path()
+    );
     get_class_fields(class, &context.answers_context)
         .filter(|(_, field)| !is_callable_like(&field.ty()))
         .filter_map(|(name, field)| {
@@ -521,13 +541,19 @@ fn find_definition_ast<'a>(
     class: &Class,
     context: &'a ModuleContext<'a>,
 ) -> Option<&'a StmtClassDef> {
-    assert_eq!(class.module(), &context.answers_context.module_info);
-    Ast::locate_node(&context.answers_context.ast, class.qname().range().start())
+    assert_eq!(
+        class.module_name(),
+        context.answers_context.module_info.name()
+    );
+    assert_eq!(
+        class.module_path(),
+        context.answers_context.module_info.path()
+    );
+    let range = class.range_in(context.resolver.type_env());
+    Ast::locate_node(&context.answers_context.ast, range.start())
         .iter()
         .find_map(|node| match node {
-            AnyNodeRef::StmtClassDef(stmt) if stmt.name.range == class.qname().range() => {
-                Some(*stmt)
-            }
+            AnyNodeRef::StmtClassDef(stmt) if stmt.name.range == range => Some(*stmt),
             _ => None,
         })
 }
@@ -536,7 +562,14 @@ fn get_decorator_callees(
     class: &Class,
     context: &ModuleContext,
 ) -> HashMap<PysaLocation, Vec<Target<FunctionRef>>> {
-    assert_eq!(class.module(), &context.answers_context.module_info);
+    assert_eq!(
+        class.module_name(),
+        context.answers_context.module_info.name()
+    );
+    assert_eq!(
+        class.module_path(),
+        context.answers_context.module_info.path()
+    );
     if let Some(class_def) = find_definition_ast(class, context) {
         resolve_decorator_callees(&class_def.decorator_list, context)
     } else {
@@ -545,6 +578,7 @@ fn get_decorator_callees(
 }
 
 pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefinition> {
+    let env = context.resolver.type_env();
     let mut class_definitions = HashMap::new();
     let ann_assign_map = AnnAssignMap::build(&context.answers_context.ast);
 
@@ -558,7 +592,7 @@ pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefi
             .dupe()
             .unwrap();
         let class_index = class.index();
-        let parent = get_scope_parent(&context.answers_context, class.qname().range());
+        let parent = get_scope_parent(&context.answers_context, class.range_in(env));
         let metadata = context
             .answers_context
             .answers
@@ -597,9 +631,9 @@ pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefi
 
         let class_definition = ClassDefinition {
             class_id: ClassId::from_class(&class),
-            name: class.qname().id().to_string(),
+            name: class.name_in(env).to_string(),
             name_location: PysaLocation::from_text_range(
-                class.qname().range(),
+                class.range_in(env),
                 &context.answers_context.module_info,
             ),
             parent,

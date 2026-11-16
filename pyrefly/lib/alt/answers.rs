@@ -1590,7 +1590,8 @@ impl Answers {
             }
         }
 
-        let pysa_solutions = pysa_context.map(PysaSolutions::build);
+        let pysa_solutions =
+            pysa_context.map(|context| PysaSolutions::build(context, &answers_solver));
         let cinderx_solutions =
             enable_cinderx_solutions.then(|| CinderxSolutions::build(&answers_solver));
 

@@ -51,6 +51,7 @@ use crate::report::cinderx::types::LocatedType;
 use crate::report::cinderx::types::TypeTable;
 use crate::report::cinderx::types::TypeTableEntry;
 use crate::state::state::Transaction;
+use crate::state::state::TransactionTypeEnv;
 
 /// Collected per-module type data for the CinderX report.
 pub(crate) struct ModuleTypeData {
@@ -78,6 +79,7 @@ pub(crate) fn collect_module_types(
     let ast = transaction.get_ast(handle)?;
     let module_info = transaction.get_module_info(handle)?;
     let answers = transaction.get_answers(handle)?;
+    let type_env = transaction.type_env(handle);
 
     let mut contextual_types = build_contextual_types(&ast, &answers, transaction, handle);
     collect_call_contextual_types(&ast, &answers, &mut contextual_types);
@@ -86,6 +88,7 @@ pub(crate) fn collect_module_types(
         module_info: &module_info,
         answers: &answers,
         transaction,
+        type_env: &type_env,
         handle,
         contextual_types: &contextual_types,
         table: TypeTable::new(),
@@ -436,6 +439,7 @@ struct ExpressionCollector<'a> {
     module_info: &'a ModuleInfo,
     answers: &'a Answers,
     transaction: &'a Transaction<'a>,
+    type_env: &'a TransactionTypeEnv<'a>,
     handle: &'a Handle,
     contextual_types: &'a HashMap<TextRange, Type>,
     table: TypeTable,
@@ -493,8 +497,12 @@ impl<'a> ExpressionCollector<'a> {
                 .module_info
                 .lined_buffer()
                 .python_ast_range_for_expr(range, x, parent);
-            let type_index =
-                type_to_structured(&ty, &mut self.table, &mut self.pending_class_traits);
+            let type_index = type_to_structured(
+                self.type_env,
+                &ty,
+                &mut self.table,
+                &mut self.pending_class_traits,
+            );
 
             // Detect facet narrows on attribute/subscript chains (x.attr, x[0], etc.).
             // When any level in the chain has a facet narrow, re-resolve the full
@@ -556,6 +564,7 @@ impl<'a> ExpressionCollector<'a> {
                 match unnarrowed_ty {
                     Some(unnarrowed_ty) => {
                         let unnarrowed_idx = type_to_structured(
+                            self.type_env,
                             &unnarrowed_ty,
                             &mut self.table,
                             &mut self.pending_class_traits,
@@ -574,7 +583,12 @@ impl<'a> ExpressionCollector<'a> {
             // Check if this expression flows into a slot with a contextual type
             // (e.g. a literal assigned to a `__static__` primitive variable).
             let contextual_type = self.contextual_types.get(&x.range()).map(|ctx_ty| {
-                type_to_structured(ctx_ty, &mut self.table, &mut self.pending_class_traits)
+                type_to_structured(
+                    self.type_env,
+                    ctx_ty,
+                    &mut self.table,
+                    &mut self.pending_class_traits,
+                )
             });
 
             self.locations.push(LocatedType {

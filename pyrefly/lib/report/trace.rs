@@ -9,6 +9,7 @@ use dupe::Dupe;
 use pyrefly_build::handle::Handle;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::Expr;
 use ruff_text_size::Ranged;
@@ -33,6 +34,7 @@ struct ModuleOutput {
 fn trace_module(transaction: &Transaction, handle: &Handle) -> Option<ModuleOutput> {
     let info = transaction.get_module_info(handle)?;
     let ast = transaction.get_ast(handle)?;
+    let type_env = transaction.type_env(handle);
 
     let mut types = SmallMap::new();
     let mut definitions = SmallMap::new();
@@ -43,7 +45,10 @@ fn trace_module(transaction: &Transaction, handle: &Handle) -> Option<ModuleOutp
             _ => return,
         };
         if let Some(ty) = transaction.get_type_at(handle, loc.start()) {
-            types.insert(info.display_range(x.range()).to_string(), ty.to_string());
+            types.insert(
+                info.display_range(x.range()).to_string(),
+                ty.display_with(&type_env).to_string(),
+            );
         }
         // TODO: Support multiple definitions
         if let Some(def) = transaction

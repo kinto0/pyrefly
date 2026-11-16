@@ -55,6 +55,7 @@ use crate::report::pysa::scope::ScopeParent;
 use crate::report::pysa::scope::get_scope_parent;
 use crate::report::pysa::types::PysaType;
 use crate::report::pysa::types::is_callable_like;
+use crate::types::env::TypeEnv;
 
 /// Represents a unique identifier for a function **within a module**.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -540,7 +541,8 @@ impl<'a> FunctionNode<'a> {
                 assert_decorated_function_in_context(function, context)
             }
             FunctionNode::ClassField { class, .. } => {
-                assert_eq!(class.module(), &context.module_info);
+                assert_eq!(class.module_name(), context.module_info.name());
+                assert_eq!(class.module_path(), context.module_info.path());
             }
         }
     }
@@ -679,7 +681,7 @@ impl<'a> FunctionNode<'a> {
             }
             FunctionNode::ClassField { class, name, .. } => FunctionRef {
                 module_id: context.module_id,
-                module_name: class.module().name(),
+                module_name: class.module_name(),
                 function_id: FunctionId::ClassField {
                     class_id: ClassId::from_class(class),
                     field_id: ClassFieldId::from_class_and_name(class, name, context),
@@ -858,6 +860,7 @@ pub fn get_all_functions<'a>(
 
 pub fn export_all_functions(
     context: &ModuleAnswersContext,
+    env: &dyn TypeEnv,
 ) -> ModuleFunctionDefinitions<FunctionBaseDefinition> {
     let mut function_base_definitions = ModuleFunctionDefinitions::new();
 
@@ -891,11 +894,11 @@ pub fn export_all_functions(
                         is_property_setter: function.is_property_setter(),
                         is_stub: function.is_stub(),
                         is_def_statement: function.is_def_statement(),
-                        defining_class: function.defining_cls().map(|class| ClassRef {
-                            module_id: context.module_id,
-                            class_id: ClassId::from_class(class),
-                            class: class.clone(),
-                        }),
+                        defining_class: function.defining_cls().map(|class| ClassRef::new(
+                            context.module_id,
+                            class,
+                            env
+                        )),
                     },
                 )
                 .is_none(),

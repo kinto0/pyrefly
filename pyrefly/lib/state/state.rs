@@ -3122,7 +3122,10 @@ impl<'a> Transaction<'a> {
         let answers = self
             .get_answers(handle)
             .expect("answers must be available to build cinderx_solutions");
-        crate::report::cinderx::CinderxSolutions::build_from_answers(&answers)
+        crate::report::cinderx::CinderxSolutions::build_from_answers(
+            &answers,
+            &self.type_env(handle),
+        )
     }
 }
 

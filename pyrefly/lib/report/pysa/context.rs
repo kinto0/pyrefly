@@ -38,12 +38,15 @@ use crate::state::lsp::FindDefinitionItemWithDocstring;
 use crate::state::lsp::FindPreference;
 use crate::state::state::Transaction;
 use crate::state::state::TransactionHandle;
+use crate::state::state::TransactionTypeEnv;
 use crate::types::stdlib::Stdlib;
 
 /// Wraps `&Transaction` to provide only the cross-module operations that pysa needs.
 /// Owns a local cache of resolved PysaSolutions to avoid redundant lookups.
 pub struct PysaResolver<'a> {
     /* private */ transaction: &'a Transaction<'a>,
+    /// Reads the definition data of types in this module's answers.
+    type_env: TransactionTypeEnv<'a>,
     module_ids: &'a ModuleIds,
     /// Handle of the current module
     current_handle: Handle,
@@ -65,6 +68,7 @@ impl<'a> PysaResolver<'a> {
         cache.insert(module_id, current_module_solutions.clone());
         Self {
             transaction,
+            type_env: transaction.type_env(&current_handle),
             module_ids,
             current_handle,
             current_module_solutions,
@@ -86,7 +90,10 @@ impl<'a> PysaResolver<'a> {
             let module_id = module_ids.get_from_handle(handle);
             let answers_context =
                 ModuleAnswersContext::create(handle.clone(), transaction, module_ids);
-            cache.insert(module_id, PysaSolutions::build(&answers_context));
+            cache.insert(
+                module_id,
+                PysaSolutions::build(&answers_context, &transaction.type_env(handle)),
+            );
         }
         let current_module_id = module_ids.get_from_handle(&current_handle);
         let current_module_solutions = cache
@@ -95,6 +102,7 @@ impl<'a> PysaResolver<'a> {
             .dupe();
         Self {
             transaction,
+            type_env: transaction.type_env(&current_handle),
             module_ids,
             current_handle,
             current_module_solutions,
@@ -177,6 +185,10 @@ impl<'a> PysaResolver<'a> {
 
     pub fn module_ids(&self) -> &ModuleIds {
         self.module_ids
+    }
+
+    pub fn type_env(&self) -> &TransactionTypeEnv<'a> {
+        &self.type_env
     }
 
     #[cfg(test)]

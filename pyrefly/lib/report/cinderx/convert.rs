@@ -28,6 +28,7 @@ use crate::report::cinderx::types::hash_class;
 use crate::report::cinderx::types::hash_literal;
 use crate::report::cinderx::types::hash_other_form;
 use crate::report::cinderx::types::hash_variable;
+use crate::types::env::TypeEnv;
 
 /// Canonicalize a fully qualified class name for the CinderX protocol.
 ///
@@ -49,6 +50,7 @@ pub(crate) fn qname_to_full_string(qname: &pyrefly_python::qname::QName) -> Stri
 /// `defining_func` is the fully qualified name of the function (module + optional
 /// class + function name). It is `None` for purely structural `Type::Callable`.
 fn callable_to_structured(
+    env: &dyn TypeEnv,
     params: &Params,
     ret: &Type,
     defining_func: Option<String>,
@@ -59,15 +61,15 @@ fn callable_to_structured(
         Params::List(param_list) | Params::Partial(param_list) => param_list
             .items()
             .iter()
-            .map(|p| type_to_structured(p.as_type(), table, pending_class_traits))
+            .map(|p| type_to_structured(env, p.as_type(), table, pending_class_traits))
             .collect(),
         Params::Ellipsis | Params::Materialization => vec![],
         Params::ParamSpec(prefix, _) => prefix
             .iter()
-            .map(|p| type_to_structured(p.ty(), table, pending_class_traits))
+            .map(|p| type_to_structured(env, p.ty(), table, pending_class_traits))
             .collect(),
     };
-    let ret_idx = type_to_structured(ret, table, pending_class_traits);
+    let ret_idx = type_to_structured(env, ret, table, pending_class_traits);
     let param_hashes: Vec<u64> = param_indices.iter().map(|&i| table.hash_at(i)).collect();
     let ret_hash = table.hash_at(ret_idx);
     let hash = hash_callable(&param_hashes, ret_hash, defining_func.as_deref());
@@ -81,6 +83,7 @@ fn callable_to_structured(
 
 /// Convert a `Quantified` type parameter to a structured variable entry.
 fn quantified_to_structured(
+    env: &dyn TypeEnv,
     q: &Quantified,
     table: &mut TypeTable,
     pending_class_traits: &mut Vec<(usize, Class)>,
@@ -88,11 +91,11 @@ fn quantified_to_structured(
     let name = q.name.to_string();
     let bound_indices: Vec<usize> = match &q.restriction {
         Restriction::Bound(bound) => {
-            vec![type_to_structured(bound, table, pending_class_traits)]
+            vec![type_to_structured(env, bound, table, pending_class_traits)]
         }
         Restriction::Constraints(constraints) => constraints
             .iter()
-            .map(|c| type_to_structured(c, table, pending_class_traits))
+            .map(|c| type_to_structured(env, c, table, pending_class_traits))
             .collect(),
         Restriction::ShapeExtension(extension) => extension
             .upper_bound_class_names()
@@ -175,6 +178,7 @@ fn insert_other_form_with_args(
 /// Newly inserted `ClassType` entries are appended to `pending_class_traits`
 /// for post-processing (traits require solver access, done by the caller).
 pub(crate) fn type_to_structured(
+    env: &dyn TypeEnv,
     ty: &Type,
     table: &mut TypeTable,
     pending_class_traits: &mut Vec<(usize, Class)>,
@@ -185,9 +189,9 @@ pub(crate) fn type_to_structured(
                 .targs()
                 .as_slice()
                 .iter()
-                .map(|arg| type_to_structured(arg, table, pending_class_traits))
+                .map(|arg| type_to_structured(env, arg, table, pending_class_traits))
                 .collect();
-            let raw_qname = qname_to_full_string(ct.qname());
+            let raw_qname = qname_to_full_string(ct.qname_in(env));
             let qname = canonicalize_class_qname(&raw_qname);
             let idx = insert_class_with_args(&qname, arg_indices, table);
             pending_class_traits.push((idx, ct.class_object().clone()));
@@ -204,13 +208,13 @@ pub(crate) fn type_to_structured(
             if has_none && !non_none.is_empty() {
                 // Optional[inner]: wrap the non-None part
                 let inner_idx = if non_none.len() == 1 {
-                    type_to_structured(non_none[0], table, pending_class_traits)
+                    type_to_structured(env, non_none[0], table, pending_class_traits)
                 } else {
                     let inner_union = Type::Union(Box::new(Union {
                         members: non_none.into_iter().cloned().collect(),
                         display_name: IdentityIgnored(None),
                     }));
-                    type_to_structured(&inner_union, table, pending_class_traits)
+                    type_to_structured(env, &inner_union, table, pending_class_traits)
                 };
                 insert_wrapper_other_form("typing.Optional", inner_idx, table)
             } else if !has_none {
@@ -218,23 +222,24 @@ pub(crate) fn type_to_structured(
                 let arg_indices: Vec<usize> = u
                     .members
                     .iter()
-                    .map(|m| type_to_structured(m, table, pending_class_traits))
+                    .map(|m| type_to_structured(env, m, table, pending_class_traits))
                     .collect();
                 insert_other_form_with_args("typing.Union", arg_indices, table)
             } else {
                 // All None (degenerate)
-                type_to_structured(&Type::None, table, pending_class_traits)
+                type_to_structured(env, &Type::None, table, pending_class_traits)
             }
         }
         Type::Any(_) => insert_simple_other_form("typing.Any", table),
         Type::None => insert_simple_other_form("None", table),
         Type::Never(_) => insert_simple_other_form("typing.Never", table),
         Type::Type(inner) => {
-            let inner_idx = type_to_structured(inner, table, pending_class_traits);
+            let inner_idx = type_to_structured(env, inner, table, pending_class_traits);
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
         Type::SpecializedClassDef(class_type) => {
             let inner_idx = type_to_structured(
+                env,
                 &Type::ClassType(class_type.clone()),
                 table,
                 pending_class_traits,
@@ -242,7 +247,7 @@ pub(crate) fn type_to_structured(
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
         Type::PartialTypedDict(ct) => {
-            let qname = qname_to_full_string(ct.qname());
+            let qname = qname_to_full_string(ct.qname_in(env));
             let hash = hash_class(&qname, &[], &["partial_typed_dict"]);
             let sty = StructuredType::Class {
                 qname,
@@ -262,11 +267,11 @@ pub(crate) fn type_to_structured(
             table.insert(sty, hash)
         }
         Type::BoundMethod(bm) => {
-            let self_idx = type_to_structured(&bm.obj, table, pending_class_traits);
+            let self_idx = type_to_structured(env, &bm.obj, table, pending_class_traits);
             let func_type = bm.func.clone().as_type();
-            let func_idx = type_to_structured(&func_type, table, pending_class_traits);
+            let func_idx = type_to_structured(env, &func_type, table, pending_class_traits);
             let defining_class = bm.func.metadata().kind.class().map(|cls| {
-                let raw = qname_to_full_string(cls.qname());
+                let raw = qname_to_full_string(cls.qname_in(env));
                 canonicalize_class_qname(&raw)
             });
             let hash = hash_bound_method(
@@ -282,31 +287,36 @@ pub(crate) fn type_to_structured(
             table.insert(sty, hash)
         }
         Type::TypeGuard(inner) => {
-            let inner_idx = type_to_structured(inner, table, pending_class_traits);
+            let inner_idx = type_to_structured(env, inner, table, pending_class_traits);
             insert_wrapper_other_form("typing.TypeGuard", inner_idx, table)
         }
         Type::TypeIs(inner) => {
-            let inner_idx = type_to_structured(inner, table, pending_class_traits);
+            let inner_idx = type_to_structured(env, inner, table, pending_class_traits);
             insert_wrapper_other_form("typing.TypeIs", inner_idx, table)
         }
         Type::Annotated(inner, _) => {
             // Annotated is transparent for type purposes
-            type_to_structured(inner, table, pending_class_traits)
+            type_to_structured(env, inner, table, pending_class_traits)
         }
         Type::ClassDef(class) => {
             // ClassDef has type `Type[class]`, so emit as typing.Type wrapping the class
-            let raw_qname = qname_to_full_string(class.qname());
+            let raw_qname = qname_to_full_string(class.qname_in(env));
             let qname = canonicalize_class_qname(&raw_qname);
             let inner_idx = insert_simple_class(&qname, table);
             insert_wrapper_other_form("typing.Type", inner_idx, table)
         }
         Type::SelfType(ct) => {
             // Unwrap Self and treat as the underlying ClassType
-            type_to_structured(&Type::ClassType(ct.clone()), table, pending_class_traits)
+            type_to_structured(
+                env,
+                &Type::ClassType(ct.clone()),
+                table,
+                pending_class_traits,
+            )
         }
         Type::TypeAlias(data) | Type::UntypedAlias(data) => match &**data {
             TypeAliasData::Value(ta) => {
-                type_to_structured(&ta.as_type(), table, pending_class_traits)
+                type_to_structured(env, &ta.as_type(), table, pending_class_traits)
             }
             TypeAliasData::Ref(_) => {
                 // Recursive alias reference — fall back to Any
@@ -318,22 +328,22 @@ pub(crate) fn type_to_structured(
             let arg_indices: Vec<usize> = match tuple {
                 pyrefly_types::tuple::Tuple::Concrete(elts) => elts
                     .iter()
-                    .map(|e| type_to_structured(e, table, pending_class_traits))
+                    .map(|e| type_to_structured(env, e, table, pending_class_traits))
                     .collect(),
                 pyrefly_types::tuple::Tuple::Unbounded(inner) => {
-                    vec![type_to_structured(inner, table, pending_class_traits)]
+                    vec![type_to_structured(env, inner, table, pending_class_traits)]
                 }
                 pyrefly_types::tuple::Tuple::Unpacked(unpacked) => {
                     let (prefix, middle, suffix) = unpacked.parts();
                     let mut indices: Vec<usize> = prefix
                         .iter()
-                        .map(|e| type_to_structured(e, table, pending_class_traits))
+                        .map(|e| type_to_structured(env, e, table, pending_class_traits))
                         .collect();
-                    indices.push(type_to_structured(middle, table, pending_class_traits));
+                    indices.push(type_to_structured(env, middle, table, pending_class_traits));
                     indices.extend(
                         suffix
                             .iter()
-                            .map(|e| type_to_structured(e, table, pending_class_traits)),
+                            .map(|e| type_to_structured(env, e, table, pending_class_traits)),
                     );
                     indices
                 }
@@ -345,32 +355,43 @@ pub(crate) fn type_to_structured(
         Type::LiteralString(_) => insert_simple_other_form("typing.LiteralString", table),
         Type::Forall(forall) => {
             // Unwrap Forall and recurse into the body
-            type_to_structured(&forall.body.clone().as_type(), table, pending_class_traits)
+            type_to_structured(
+                env,
+                &forall.body.clone().as_type(),
+                table,
+                pending_class_traits,
+            )
         }
         Type::SuperInstance(si) => {
             let (ct, _) = &**si;
             // Treat super() as the underlying ClassType
-            type_to_structured(&Type::ClassType(ct.clone()), table, pending_class_traits)
+            type_to_structured(
+                env,
+                &Type::ClassType(ct.clone()),
+                table,
+                pending_class_traits,
+            )
         }
-        Type::KwCall(kc) => type_to_structured(&kc.return_ty, table, pending_class_traits),
+        Type::KwCall(kc) => type_to_structured(env, &kc.return_ty, table, pending_class_traits),
         // Callable kinds
         Type::Callable(c) => {
-            callable_to_structured(&c.params, &c.ret, None, table, pending_class_traits)
+            callable_to_structured(env, &c.params, &c.ret, None, table, pending_class_traits)
         }
         Type::Overloaded(_) => {
-            type_to_structured(&Type::any_implicit(), table, pending_class_traits)
+            type_to_structured(env, &Type::any_implicit(), table, pending_class_traits)
         }
         Type::Function(f) => {
             let defining_func = {
                 let kind = &f.metadata.kind;
                 let module = kind.module_name();
                 let class_prefix = match kind.class() {
-                    Some(cls) => format!("{}.", cls.name()),
+                    Some(cls) => format!("{}.", cls.name_in(env)),
                     None => String::new(),
                 };
                 Some(format!("{module}.{class_prefix}{}", kind.function_name()))
             };
             callable_to_structured(
+                env,
                 &f.signature.params,
                 &f.signature.ret,
                 defining_func,
@@ -380,17 +401,17 @@ pub(crate) fn type_to_structured(
         }
         // Variable kinds
         Type::Quantified(q) | Type::QuantifiedValue(q) => {
-            quantified_to_structured(q, table, pending_class_traits)
+            quantified_to_structured(env, q, table, pending_class_traits)
         }
         Type::TypeVar(tv) => {
             let name = tv.qname().id().to_string();
             let bound_indices: Vec<usize> = match tv.restriction() {
                 Restriction::Bound(bound) => {
-                    vec![type_to_structured(bound, table, pending_class_traits)]
+                    vec![type_to_structured(env, bound, table, pending_class_traits)]
                 }
                 Restriction::Constraints(constraints) => constraints
                     .iter()
-                    .map(|c| type_to_structured(c, table, pending_class_traits))
+                    .map(|c| type_to_structured(env, c, table, pending_class_traits))
                     .collect(),
                 Restriction::ShapeExtension(extension) => extension
                     .upper_bound_class_names()
@@ -415,7 +436,7 @@ pub(crate) fn type_to_structured(
                 Lit::Bool(_) => insert_simple_class("builtins.bool", table),
                 Lit::Bytes(_) => insert_simple_class("builtins.bytes", table),
                 Lit::Enum(e) => {
-                    type_to_structured(&e.class.clone().to_type(), table, pending_class_traits)
+                    type_to_structured(env, &e.class.clone().to_type(), table, pending_class_traits)
                 }
             };
             let value_str = format!("{}", lit.value);
