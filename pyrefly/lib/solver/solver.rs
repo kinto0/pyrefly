@@ -1127,7 +1127,7 @@ impl Solver {
     pub fn for_return_boundary(&self, mut t: Type, env: &dyn TypeEnv) -> (Type, Vec<ShapeError>) {
         self.resolve_vars(&mut t, VarExpansionPolicy::Expand, &VarRecurser::new(), env);
         t = t.finalize_exposed_free_quantifieds();
-        let type_level_dsl_errors = t.finalize_type_level_dsl_at_boundary();
+        let type_level_dsl_errors = t.finalize_type_level_dsl_at_boundary(env);
         self.erase_unsolved_variables(&mut t);
         self.simplify_mut(&mut t, env);
         (t, type_level_dsl_errors)

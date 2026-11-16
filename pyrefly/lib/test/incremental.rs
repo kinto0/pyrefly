@@ -5133,6 +5133,36 @@ fn test_stale_generic_class_moved() {
     );
 }
 
+/// A module in an import cycle can build a union from classes that it reads back through the
+/// cycle before the other module is rebuilt. `foo` loses its first class, so each of its classes
+/// moves down one index, and `foo` first reads `members` from the `bar` that was checked against
+/// the old `foo`. `z` then holds each old class beside the new class at the same index, which is
+/// the same class by identity but has another name and position. Sorting the union must not
+/// panic, and the rebuild must equal a clean check at every thread count.
+#[test]
+fn test_displaced_classes_in_union_through_cycle() {
+    let names = (0..24).map(|i| format!("A{i:02}")).collect::<Vec<_>>();
+    let union = names.join(" | ");
+    let classes = names
+        .iter()
+        .map(|name| format!("class {name}: ...\n"))
+        .collect::<String>();
+    let foo = |padding: &str| {
+        format!(
+            "from bar import members\n{padding}{classes}def cond() -> bool: ...\ndef get() -> {union}: ...\nz = members if cond() else get()\n"
+        )
+    };
+    let bar = format!(
+        "from foo import {}\ndef get() -> {union}: ...\nmembers = get()\n",
+        names.join(", ")
+    );
+    assert_rebuild_matches_clean(
+        &[("foo", &foo("class Pad: ...\n")), ("bar", &bar)],
+        &[("foo", &foo(""))],
+        &[],
+    );
+}
+
 /// A union keeps its class members ordered by name, so renaming a class in one module can reorder
 /// a union in another, even when no export of the first module changes and the second module reads
 /// nothing else about the class. The rename changes `obj`, whose class has a new name, so `bar` is

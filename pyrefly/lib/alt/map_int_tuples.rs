@@ -243,9 +243,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if source_is_deferred {
             return Type::TypeLevelDslCall(Box::new(call));
         }
-        match call.evaluate() {
+        match call.evaluate(self) {
             Ok(mut mapped) => {
-                for error in mapped.finalize_type_level_dsl_at_boundary() {
+                for error in mapped.finalize_type_level_dsl_at_boundary(self) {
                     self.error(
                         errors,
                         mapper_range,

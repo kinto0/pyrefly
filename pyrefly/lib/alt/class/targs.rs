@@ -735,7 +735,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     *x = tv.upper_bound(self, self.heap);
                                 }
                                 Type::TypeLevelDslCall(call) => {
-                                    *x = call.type_for_generic_bound_check()
+                                    *x = call.type_for_generic_bound_check(self)
                                 }
                                 _ => {}
                             })

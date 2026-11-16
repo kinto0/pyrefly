@@ -5,6 +5,9 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::mem;
+
+use ruff_python_ast::name::Name;
 use starlark_map::small_map::SmallMap;
 use starlark_map::small_set::SmallSet;
 
@@ -16,6 +19,9 @@ use crate::literal::Lit;
 use crate::quantified::Quantified;
 use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
+use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
+use crate::type_ord::cmp_union_members;
 use crate::type_var::Restriction;
 use crate::types::Type;
 
@@ -26,7 +32,7 @@ use crate::types::Type;
 /// `Never`s with a simple `retain` rather than performing a second flatten pass. If
 /// `simplify_intersections` is ever changed to introduce other kinds of types, this function
 /// must be updated to re-flatten accordingly.
-fn flatten_and_dedup(xs: Vec<Type>, heap: &TypeHeap) -> Vec<Type> {
+fn flatten_and_dedup(xs: Vec<Type>, ctx: &TypeOrdCtx, heap: &TypeHeap) -> Vec<Type> {
     fn flatten(xs: Vec<Type>, res: &mut Vec<Type>) {
         for x in xs {
             match x {
@@ -43,13 +49,7 @@ fn flatten_and_dedup(xs: Vec<Type>, heap: &TypeHeap) -> Vec<Type> {
     // `Never`s (by replacing absorbed intersection types), so dropping them in place here
     // suffices and we don't need a second flatten pass.
     flattened.retain(|x| !x.is_never());
-    // A member marked with its truthiness sorts as the unmarked type, so the marker changes neither
-    // the display order of the union nor the order in which its members are solved.
-    flattened.sort_by(|x, y| {
-        x.ignoring_truthiness_marker()
-            .cmp(y.ignoring_truthiness_marker())
-            .then_with(|| x.cmp(y))
-    });
+    sort_union_members(&mut flattened, ctx);
     flattened.dedup();
     // Keep only the strongest `Any` style, matching `AnyStyle::merge`.
     if let Some(strongest) = flattened
@@ -63,6 +63,58 @@ fn flatten_and_dedup(xs: Vec<Type>, heap: &TypeHeap) -> Vec<Type> {
         flattened.retain(|x| !matches!(x, Type::Any(style) if *style != strongest));
     }
     flattened
+}
+
+/// Unions with at most this many members are sorted by comparing their members directly, which
+/// reads class names only to compare two different classes.
+const SMALL_UNION: usize = 8;
+
+/// The class that a union member is an instance or a class object of, if it is one.
+fn head_class(x: &Type) -> Option<&Class> {
+    match x {
+        Type::ClassType(cls) | Type::SelfType(cls) => Some(cls.class_object()),
+        Type::ClassDef(cls) => Some(cls),
+        _ => None,
+    }
+}
+
+/// Sort union members into the order of `cmp_union_members`.
+fn sort_union_members(xs: &mut [Type], ctx: &TypeOrdCtx) {
+    if xs.len() <= SMALL_UNION {
+        xs.sort_by(|x, y| cmp_union_members(x, y, ctx));
+        return;
+    }
+    // Most members of a large union are instances of different classes, which are ordered by
+    // their names. So each member's class name is read once, and only members whose names tie are
+    // compared in full. The names borrow from the members, so the sort orders indices.
+    let names: Vec<Option<&Name>> = xs
+        .iter()
+        .map(|x| head_class(x.ignoring_truthiness_marker()).map(|cls| cls.name(ctx.env())))
+        .collect();
+    let mut order: Vec<usize> = (0..xs.len()).collect();
+    order.sort_by(|&i, &j| match (names[i], names[j]) {
+        // `TypeOrd` compares the variants first, then the classes, whose names come first.
+        (Some(x_name), Some(y_name))
+            if x_name != y_name
+                && mem::discriminant(xs[i].ignoring_truthiness_marker())
+                    == mem::discriminant(xs[j].ignoring_truthiness_marker()) =>
+        {
+            x_name.cmp(y_name)
+        }
+        _ => cmp_union_members(&xs[i], &xs[j], ctx),
+    });
+    // Move the old `xs[order[k]]` to `xs[k]`, one cycle of the permutation at a time. Each
+    // position is reset to itself in `order` once it holds its member.
+    for start in 0..xs.len() {
+        let mut k = start;
+        while order[k] != start {
+            let next = order[k];
+            xs.swap(k, next);
+            order[k] = k;
+            k = next;
+        }
+        order[k] = k;
+    }
 }
 
 /// Given a list of types to union together,
@@ -113,15 +165,22 @@ fn unions_internal(
     heap: &TypeHeap,
 ) -> Type {
     try_collapse(xs, heap).unwrap_or_else(|xs| {
-        let mut res = flatten_and_dedup(xs, heap);
+        let ctx = &TypeOrdCtx::new(env);
+        let mut res = flatten_and_dedup(xs, ctx, heap);
         if let Some(stdlib) = stdlib {
-            collapse_literals(&mut res, stdlib, enum_members.unwrap_or(&|_| None), heap);
+            collapse_literals(
+                &mut res,
+                stdlib,
+                enum_members.unwrap_or(&|_| None),
+                ctx,
+                heap,
+            );
             promote_anonymous_typed_dicts(&mut res, stdlib, heap, env);
         }
-        collapse_tuple_unions_with_empty(&mut res, heap);
+        collapse_tuple_unions_with_empty(&mut res, ctx, heap);
         collapse_builtins_type(&mut res, heap);
-        collapse_wide_tuple_unions(&mut res, heap, env);
-        collapse_quantifieds(&mut res, stdlib, heap);
+        collapse_wide_tuple_unions(&mut res, heap, ctx);
+        collapse_quantifieds(&mut res, stdlib, ctx, heap);
         // Second pass: squashing can still leave a pathologically large union (e.g. thousands
         // of distinct class types). Widen anything still over the cap to `Any`.
         if res.len() > MAX_UNION_MEMBERS {
@@ -148,7 +207,7 @@ pub fn unions_with_literals(
     unions_internal(xs, env, Some(env.stdlib()), Some(enum_members), heap)
 }
 
-pub fn intersect(ts: Vec<Type>, fallback: Type, _env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
+pub fn intersect(ts: Vec<Type>, fallback: Type, env: &dyn TypeEnv, heap: &TypeHeap) -> Type {
     // A truthiness marker appears only as a member of an intersection, so `object & Falsy` must keep
     // `object`.
     let has_non_object = ts
@@ -170,7 +229,8 @@ pub fn intersect(ts: Vec<Type>, fallback: Type, _env: &dyn TypeEnv, heap: &TypeH
             }
         }
     }
-    flattened.sort();
+    let ctx = TypeOrdCtx::new(env);
+    flattened.sort_by(|x, y| x.type_cmp(y, &ctx));
     flattened.dedup();
     if flattened.is_empty() || flattened.iter().any(|t| t.is_never()) {
         heap.mk_never()
@@ -207,6 +267,7 @@ fn collapse_literals(
     types: &mut Vec<Type>,
     stdlib: &Stdlib,
     enum_members: &dyn Fn(&Class) -> Option<usize>,
+    ctx: &TypeOrdCtx,
     heap: &TypeHeap,
 ) {
     // All literal types we see, plus `true` to indicate the promoted class was found
@@ -348,7 +409,7 @@ fn collapse_literals(
             && let bool = stdlib.bool()
             && literal_types.get(bool) == Some(&false)
             && let bool = bool.clone().to_type()
-            && let Err(new_pos) = types.binary_search(&bool)
+            && let Err(new_pos) = types.binary_search_by(|x| x.type_cmp(&bool, ctx))
         {
             types.insert(new_pos, bool);
         }
@@ -370,7 +431,7 @@ fn promote_anonymous_typed_dicts(
     }
 }
 
-fn collapse_tuple_unions_with_empty(types: &mut Vec<Type>, heap: &TypeHeap) {
+fn collapse_tuple_unions_with_empty(types: &mut Vec<Type>, ctx: &TypeOrdCtx, heap: &TypeHeap) {
     let Some(empty_idx) = types.iter().position(|t| match t {
         Type::Tuple(Tuple::Concrete(elts)) => elts.is_empty(),
         _ => false,
@@ -406,7 +467,7 @@ fn collapse_tuple_unions_with_empty(types: &mut Vec<Type>, heap: &TypeHeap) {
 
     if empty_is_redundant {
         types.remove(empty_idx);
-        types.sort();
+        types.sort_by(|x, y| x.type_cmp(y, ctx));
         types.dedup();
     }
 }
@@ -464,7 +525,12 @@ fn collapse_builtins_type(types: &mut Vec<Type>, heap: &TypeHeap) {
 /// A restricted quantified `Q` whose restriction consists of the types `c_1, ..., c_n` is fully
 /// covered by the union `(Q & c_1) | ... | (Q & c_n)`: every value of `Q` satisfies one of its
 /// restrictions, so the union collapses to just `Q`.
-fn collapse_quantifieds(types: &mut Vec<Type>, stdlib: Option<&Stdlib>, heap: &TypeHeap) {
+fn collapse_quantifieds(
+    types: &mut Vec<Type>,
+    stdlib: Option<&Stdlib>,
+    ctx: &TypeOrdCtx,
+    heap: &TypeHeap,
+) {
     // For each quantified appearing in a `Q & t` member, gather the `t`s.
     let mut quantified_intersects: SmallMap<&Quantified, Vec<(usize, &Type)>> = SmallMap::new();
     for (idx, ty) in types.iter().enumerate() {
@@ -518,7 +584,7 @@ fn collapse_quantifieds(types: &mut Vec<Type>, stdlib: Option<&Stdlib>, heap: &T
             .into_iter()
             .map(|q| heap.mk_quantified(q)),
     );
-    types.sort();
+    types.sort_by(|x, y| x.type_cmp(y, ctx));
     types.dedup();
 }
 
@@ -599,7 +665,7 @@ const TUPLE_UNION_WIDENING_THRESHOLD: usize = 256;
 /// Collapses unions containing more than `TUPLE_UNION_WIDENING_THRESHOLD` tuple variants
 /// into a single tuple type, preventing combinatorial explosion of concrete tuple types at
 /// control-flow joins (keeping type complexity linear O(N) rather than exponential O(2^N)).
-fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap, env: &dyn TypeEnv) {
+fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap, ctx: &TypeOrdCtx) {
     let tuples: Vec<&Tuple> = res
         .iter()
         .filter_map(|t| match t {
@@ -614,10 +680,10 @@ fn collapse_wide_tuple_unions(res: &mut Vec<Type>, heap: &TypeHeap, env: &dyn Ty
     for tuple in &tuples {
         collect_tuple_elements(tuple, heap, &mut element_types);
     }
-    let merged = heap.mk_unbounded_tuple(unions(element_types, env, heap));
+    let merged = heap.mk_unbounded_tuple(unions(element_types, ctx.env(), heap));
     res.retain(|t| !matches!(t, Type::Tuple(_)));
     res.push(merged);
-    res.sort();
+    res.sort_by(|x, y| x.type_cmp(y, ctx));
     res.dedup();
 }
 
@@ -671,12 +737,26 @@ fn collect_unpacked_member(ty: &Type, heap: &TypeHeap, out: &mut Vec<Type>) {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use dupe::Dupe;
+    use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
+    use pyrefly_python::module_path::ModulePath;
+    use pyrefly_python::nesting_context::NestingContext;
+    use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
+    use ruff_text_size::TextSize;
 
+    use crate::class::Class;
+    use crate::class::ClassDefIndex;
+    use crate::class::ClassType;
+    use crate::env::TypeEnv;
     use crate::heap::TypeHeap;
     use crate::lit_int::LitInt;
+    use crate::literal::Lit;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
     use crate::quantified::QuantifiedIdentity;
@@ -685,11 +765,13 @@ mod tests {
     use crate::simplify::intersect;
     use crate::simplify::simplify_tuples_and_distribute_unpacking;
     use crate::simplify::unions;
+    use crate::simplify::unions_with_literals;
     use crate::test_type_env::TestTypeEnv;
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
     use crate::types::NeverStyle;
+    use crate::types::TArgs;
     use crate::types::Type;
     use crate::types::UnpackKind;
 
@@ -1025,5 +1107,85 @@ mod tests {
         );
 
         assert_eq!(res, Type::unbounded_tuple(expected_element_type));
+    }
+
+    #[test]
+    fn test_bool_from_literals_in_canonical_order() {
+        // `Literal[True] | Literal[False]` collapses to `bool`, which goes before `zed` in the
+        // canonical order even though the module of `zed` comes before `builtins`.
+        let heap = TypeHeap::new();
+        let env = TestTypeEnv::new();
+        let zed = ClassType::new(env.class("aaa", "zed"), TArgs::default()).to_type();
+        let res = unions_with_literals(
+            vec![
+                Lit::Bool(true).to_implicit_type(),
+                Lit::Bool(false).to_implicit_type(),
+                zed.clone(),
+            ],
+            &env,
+            &|_| None,
+            &heap,
+        );
+        let bool = env.stdlib().bool().clone().to_type();
+        assert_eq!(res, Type::union(vec![bool, zed]));
+    }
+
+    /// A class that a rebuilt module defines at the index of an old class is the same class by
+    /// identity, but its name and position differ. A union that holds old and new classes still
+    /// sorts like the `Ord` of classes that carry their data, without panicking.
+    #[test]
+    fn test_union_of_displaced_classes_sorts_like_ord() {
+        let heap = TypeHeap::new();
+        let env = TestTypeEnv::new();
+        let module = Module::new(
+            ModuleName::from_str("foo"),
+            ModulePath::namespace(PathBuf::from("foo")),
+            Arc::new(String::new()),
+        );
+        let class = |index: u32, name: String, position: u32| {
+            Class::new(
+                ClassDefIndex(index),
+                Identifier::new(Name::new(name), TextRange::empty(TextSize::new(position))),
+                NestingContext::toplevel(),
+                module.dupe(),
+                false,
+                false,
+                None,
+            )
+        };
+        // The old module had a class before `A00`, so each new class is at the index of the old
+        // class before it.
+        let old = (0..24)
+            .map(|i| class(i + 1, format!("A{i:02}"), 10 * i + 10))
+            .collect::<Vec<_>>();
+        let new = (0..24)
+            .map(|i| class(i, format!("A{i:02}"), 10 * i))
+            .collect::<Vec<_>>();
+        let instance = |cls: &Class| ClassType::new(cls.dupe(), TArgs::default()).to_type();
+        // A small union is sorted directly. Here the new `A01` meets the old `A00`, which is the
+        // same class, before the new `A00` that goes between them.
+        let small = vec![
+            instance(&new[1]),
+            instance(&new[0]),
+            instance(&old[0]),
+            instance(&old[1]),
+        ];
+        // A large union is sorted by class name first.
+        let large = (0..48)
+            .map(|i| match i * 7 % 48 {
+                j if j < 24 => instance(&old[j]),
+                j => instance(&new[j - 24]),
+            })
+            .collect::<Vec<_>>();
+        for members in [small, large] {
+            let mut expected = members.clone();
+            expected.sort();
+            expected.dedup();
+            // Equality compares classes by identity, so compare their names and positions too.
+            assert_eq!(
+                format!("{:?}", unions(members, &env, &heap)),
+                format!("{:?}", Type::union(expected))
+            );
+        }
     }
 }

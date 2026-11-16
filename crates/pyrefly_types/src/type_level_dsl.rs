@@ -65,6 +65,7 @@ use crate::einsum::evaluate_einops_einsum;
 use crate::einsum::evaluate_einsum;
 use crate::einsum::parse_einops_einsum_equation;
 use crate::einsum::parse_einsum_equation;
+use crate::env::TypeEnv;
 use crate::equality::TypeEq as TypeEqTrait;
 use crate::equality::TypeEqCtx;
 use crate::function::FuncDefId;
@@ -82,6 +83,7 @@ use crate::shaped_array::IntTupleView;
 use crate::shaped_array::reduce_axis_shape;
 use crate::tuple::Tuple;
 use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
 use crate::type_var::FlagDomain;
 use crate::type_var::FlagMember;
 use crate::types::Type;
@@ -6286,13 +6288,13 @@ impl TypeLevelDslCall {
         }
     }
 
-    fn normalize_value_argument(ty: &mut Type, domain: TypeShapeDslDomain) {
+    fn normalize_value_argument(ty: &mut Type, domain: TypeShapeDslDomain, ctx: &TypeOrdCtx) {
         if let Type::Union(union) = ty {
             union
                 .members
                 .iter_mut()
-                .for_each(|member| Self::normalize_value_argument(member, domain));
-            union.members.sort();
+                .for_each(|member| Self::normalize_value_argument(member, domain, ctx));
+            union.members.sort_by(|x, y| x.type_cmp(y, ctx));
             union.members.dedup();
             if union.members.len() == 1 {
                 *ty = union.members.pop().expect("union contains one member");
@@ -6307,11 +6309,12 @@ impl TypeLevelDslCall {
     }
 
     /// Normalize values whose DSL parameter domain gives them shape semantics.
-    pub(crate) fn normalize_value_arguments(&mut self) {
+    pub(crate) fn normalize_value_arguments(&mut self, env: &dyn TypeEnv) {
+        let ctx = &TypeOrdCtx::new(env);
         match &self.function {
             TypeLevelDslFunction::IndexShape => {
                 if let Some(shape) = self.args.first_mut() {
-                    Self::normalize_value_argument(shape, TypeShapeDslDomain::IntTuple);
+                    Self::normalize_value_argument(shape, TypeShapeDslDomain::IntTuple, ctx);
                 }
             }
             TypeLevelDslFunction::UserDefined(function) => {
@@ -6321,7 +6324,7 @@ impl TypeLevelDslCall {
                     .zip(function.parameter_domains().iter().copied())
                 {
                     if let TypeShapeDslInputDomain::Value(domain) = domain {
-                        Self::normalize_value_argument(argument, domain);
+                        Self::normalize_value_argument(argument, domain, ctx);
                     }
                 }
             }
@@ -6415,12 +6418,12 @@ impl TypeLevelDslCall {
     /// `tuple[IntTuple[2]]`, while the generic argument remains the unevaluated call so later
     /// specialization can still use its call-site arguments. Invalid calls use their gradual
     /// fallback here; their evaluation error is reported when the public call result is forced.
-    pub fn type_for_generic_bound_check(&self) -> Type {
-        self.evaluate().unwrap_or_else(|_| self.fallback())
+    pub fn type_for_generic_bound_check(&self, env: &dyn TypeEnv) -> Type {
+        self.evaluate(env).unwrap_or_else(|_| self.fallback())
     }
 
     /// Evaluates the call, reporting incompatible concrete shapes.
-    pub fn evaluate(&self) -> Result<Type, ShapeError> {
+    pub fn evaluate(&self, env: &dyn TypeEnv) -> Result<Type, ShapeError> {
         let project = |outcome| match outcome {
             DslOutcome::Value(DslValue::Unknown) => Ok(self.fallback()),
             DslOutcome::Value(value) => Ok(value.into_type()),
@@ -6438,7 +6441,7 @@ impl TypeLevelDslCall {
                 index_shape_from_type(&shape, index).map(|shape| shape.to_shape_arg_type())
             }
             TypeLevelDslFunction::UserDefined(function) => project(function.evaluate(&self.args)),
-            TypeLevelDslFunction::MapIntTuples(map) => map.evaluate(),
+            TypeLevelDslFunction::MapIntTuples(map) => map.evaluate(env),
         }
     }
 }

@@ -38,6 +38,7 @@ use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
 
 use crate::dimension::ShapeError;
+use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::quantified::AnchorIndex;
@@ -141,24 +142,24 @@ impl MapIntTuples {
         }
     }
 
-    pub(crate) fn evaluate(&self) -> Result<Type, ShapeError> {
+    pub(crate) fn evaluate(&self, env: &dyn TypeEnv) -> Result<Type, ShapeError> {
         if let MapIntTuplesInterpretation::ParameterPattern { mapped_member } = &self.interpretation
         {
             return Ok(Type::unbounded_tuple(mapped_member.clone()));
         }
-        self.evaluate_source(&self.source)
+        self.evaluate_source(&self.source, &TypeOrdCtx::new(env))
     }
 
-    fn evaluate_source(&self, source: &Type) -> Result<Type, ShapeError> {
+    fn evaluate_source(&self, source: &Type, ctx: &TypeOrdCtx) -> Result<Type, ShapeError> {
         match source {
             Type::Tuple(tuple) => self.mapper.apply_to_tuple(tuple.clone()),
             Type::Union(union) => {
                 let mut mapped = union
                     .members
                     .iter()
-                    .map(|member| self.evaluate_source(member))
+                    .map(|member| self.evaluate_source(member, ctx))
                     .collect::<Result<Vec<_>, _>>()?;
-                mapped.sort();
+                mapped.sort_by(|x, y| x.type_cmp(y, ctx));
                 mapped.dedup();
                 Ok(match mapped.as_slice() {
                     [result] => result.clone(),
@@ -645,7 +646,7 @@ mod tests {
         );
 
         assert_eq!(
-            call.evaluate().unwrap(),
+            call.evaluate(&TestTypeEnv::new()).unwrap(),
             Type::union(vec![
                 Type::concrete_tuple(vec![int_tuple(&[1])]),
                 Type::unbounded_tuple(IntTuple::shapeless().to_shape_arg_type()),
@@ -657,7 +658,7 @@ mod tests {
     fn preserves_never_source() {
         let call = TypeLevelDslCall::map_int_tuples(identity_lambda(), Type::never());
 
-        assert_eq!(call.evaluate().unwrap(), Type::never());
+        assert_eq!(call.evaluate(&TestTypeEnv::new()).unwrap(), Type::never());
     }
 
     #[test]
@@ -816,7 +817,7 @@ mod tests {
             .make_parameter_pattern(member);
 
         assert_eq!(pattern.fallback(), view);
-        assert_eq!(pattern.evaluate().unwrap(), view);
+        assert_eq!(pattern.evaluate(&TestTypeEnv::new()).unwrap(), view);
         assert_ne!(pattern, forward);
     }
 

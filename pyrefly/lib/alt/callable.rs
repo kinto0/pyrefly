@@ -2279,7 +2279,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::Callable(callable) = &mut hint {
                 callable.params.visit_mut(&mut |ty| {
                     self.solver().expand_with_bounds(ty, self);
-                    for error in ty.finalize_type_level_dsl_at_boundary() {
+                    for error in ty.finalize_type_level_dsl_at_boundary(self) {
                         self.error_with_context(
                             call_errors,
                             range,

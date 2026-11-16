@@ -1818,13 +1818,16 @@ impl Type {
         self
     }
 
-    pub fn finalize_type_level_dsl_at_boundary(&mut self) -> Vec<dimension::ShapeError> {
+    pub fn finalize_type_level_dsl_at_boundary(
+        &mut self,
+        env: &dyn TypeEnv,
+    ) -> Vec<dimension::ShapeError> {
         let mut errors = Vec::new();
 
         // Nested applications are dependencies of the public application being forced here:
         // propagate the first invalid dependency upward so fallback is applied only at that
         // public result-schema boundary.
-        fn force_nested(ty: &mut Type) -> Result<(), dimension::ShapeError> {
+        fn force_nested(ty: &mut Type, env: &dyn TypeEnv) -> Result<(), dimension::ShapeError> {
             let Type::TypeLevelDslCall(call) = ty else {
                 match ty {
                     Type::Callable(_)
@@ -1836,7 +1839,7 @@ impl Type {
                         let mut error = None;
                         ty.recurse_mut(&mut |ty| {
                             if error.is_none() {
-                                error = force_nested(ty).err();
+                                error = force_nested(ty, env).err();
                             }
                         });
                         return match error {
@@ -1846,21 +1849,24 @@ impl Type {
                     }
                 }
             };
-            fn force_call(call: &mut TypeLevelDslCall) -> Result<Type, dimension::ShapeError> {
+            fn force_call(
+                call: &mut TypeLevelDslCall,
+                env: &dyn TypeEnv,
+            ) -> Result<Type, dimension::ShapeError> {
                 for arg in &mut call.args {
-                    force_nested(arg)?;
+                    force_nested(arg, env)?;
                 }
                 if let Some(source) = call.map_int_tuples_source_mut() {
-                    force_nested(source)?;
+                    force_nested(source, env)?;
                 }
-                call.normalize_value_arguments();
+                call.normalize_value_arguments(env);
                 // Mapping can instantiate DSL calls from its lambda body, so the produced type
                 // must cross the same boundary as the source arguments.
-                let mut result = call.evaluate()?;
-                force_nested(&mut result)?;
+                let mut result = call.evaluate(env)?;
+                force_nested(&mut result, env)?;
                 Ok(result)
             }
-            match force_call(call) {
+            match force_call(call, env) {
                 Ok(result) => {
                     *ty = result;
                     Ok(())
@@ -1869,16 +1875,20 @@ impl Type {
                     // Report only the original error if reducing a structured fallback also
                     // encounters a failing nested call.
                     let mut fallback = call.fallback();
-                    let _ = force_nested(&mut fallback);
+                    let _ = force_nested(&mut fallback, env);
                     *ty = fallback;
                     Err(error)
                 }
             }
         }
 
-        fn collect_errors(ty: &mut Type, errors: &mut Vec<dimension::ShapeError>) {
+        fn collect_errors(
+            ty: &mut Type,
+            errors: &mut Vec<dimension::ShapeError>,
+            env: &dyn TypeEnv,
+        ) {
             if matches!(ty, Type::TypeLevelDslCall(_)) {
-                if let Err(error) = force_nested(ty) {
+                if let Err(error) = force_nested(ty, env) {
                     errors.push(error);
                 }
                 return;
@@ -1889,10 +1899,10 @@ impl Type {
                 | Type::BoundMethod(_)
                 | Type::Overload(_)
                 | Type::Forall(_) => {}
-                _ => ty.recurse_mut(&mut |ty| collect_errors(ty, errors)),
+                _ => ty.recurse_mut(&mut |ty| collect_errors(ty, errors, env)),
             }
         }
-        collect_errors(self, &mut errors);
+        collect_errors(self, &mut errors, env);
         errors
     }
 
@@ -2701,6 +2711,7 @@ mod tests {
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
     use crate::shaped_array::IntTuple;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_level_dsl::TypeLevelDslCall;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
@@ -2787,7 +2798,7 @@ mod tests {
         let mut result =
             Type::TypeLevelDslCall(Box::new(TypeLevelDslCall::index_shape(shape, index)));
 
-        let errors = result.finalize_type_level_dsl_at_boundary();
+        let errors = result.finalize_type_level_dsl_at_boundary(&TestTypeEnv::new());
 
         assert!(matches!(errors.as_slice(), [ShapeError::BadIndex { .. }]));
         assert_eq!(
@@ -2805,7 +2816,7 @@ mod tests {
             LitInt::new(0).to_explicit_type(),
         )));
 
-        let errors = result.finalize_type_level_dsl_at_boundary();
+        let errors = result.finalize_type_level_dsl_at_boundary(&TestTypeEnv::new());
 
         assert!(errors.is_empty(), "unexpected DSL errors: {errors:?}");
         assert_eq!(result, IntTuple::shapeless().to_shape_arg_type());
@@ -2820,7 +2831,7 @@ mod tests {
             Type::None,
         )));
 
-        let errors = result.finalize_type_level_dsl_at_boundary();
+        let errors = result.finalize_type_level_dsl_at_boundary(&TestTypeEnv::new());
 
         assert!(errors.is_empty(), "unexpected DSL errors: {errors:?}");
         assert_eq!(
