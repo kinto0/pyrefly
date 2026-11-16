@@ -4537,3 +4537,26 @@ C().method(x=1)
         "Expected parameter documentation for x, got: {report}"
     );
 }
+
+// Bug: hover ignores `Doc` text.
+#[test]
+fn hover_shows_annotated_doc_parameter_documentation() {
+    let code = r#"
+from typing import Annotated
+
+class Doc:
+    def __init__(self, documentation: str, /) -> None: ...
+
+def greet(name: Annotated[str, Doc("Who to greet")]) -> None:
+    print(name)
+#         ^
+
+greet(name="x")
+#     ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    assert!(
+        !report.contains("Who to greet"),
+        "Expected no `Doc` text in hover, got: {report}"
+    );
+}

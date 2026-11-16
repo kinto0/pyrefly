@@ -1289,3 +1289,165 @@ Signature Help Result: active=0
         report.trim(),
     );
 }
+
+/// Reports each parameter of the active signature with its documentation.
+fn get_parameter_documentation_report(
+    state: &State,
+    handle: &Handle,
+    position: TextSize,
+) -> String {
+    let Some(SignatureHelp {
+        signatures,
+        active_signature,
+        ..
+    }) = state.transaction().get_signature_help_at(handle, position)
+    else {
+        return "Signature Help: None".to_owned();
+    };
+    let active_signature = active_signature.expect("signature help sets the active signature");
+    let signature = &signatures[active_signature as usize];
+    signature
+        .parameters
+        .iter()
+        .flatten()
+        .map(|param| {
+            let ParameterInformationLabel::String(label) = &param.label else {
+                unreachable!("signature help uses string labels")
+            };
+            let doc = match &param.documentation {
+                Some(Documentation::MarkupContent(content)) => content.value.as_str(),
+                Some(Documentation::String(s)) => s.as_str(),
+                None => "<none>",
+            };
+            format!("- {label}: {doc}")
+        })
+        .join("\n")
+}
+
+const ANNOTATED_DOC: &str = r#"
+class Doc:
+    def __init__(self, documentation: str, /) -> None: ...
+"#;
+
+// Bug: signature help ignores `Doc` text.
+#[test]
+fn annotated_doc_parameter_documentation_test() {
+    let code = r#"
+from typing import Annotated
+from annotated_doc import Doc
+import annotated_doc
+
+def greet(
+    name: Annotated[str, Doc("Who to greet")],
+    times: Annotated[int, annotated_doc.Doc(
+        """
+        How many times
+        to greet.
+        """
+    )],
+    loud: bool,
+) -> None:
+    """
+    Args:
+        name: docstring text for name
+        loud: shout
+    """
+
+greet()
+#     ^
+
+class App:
+    def get(self, path: Annotated[str, Doc("The URL path")]) -> None: ...
+
+class Item:
+    def __init__(self, price: Annotated[float, Doc("The price")]) -> None: ...
+
+App().get()
+#         ^
+Item()
+#    ^
+"#;
+    let report = get_batched_lsp_operations_report_allow_error(
+        &[("annotated_doc", ANNOTATED_DOC), ("main", code)],
+        get_parameter_documentation_report,
+    );
+    assert_eq!(
+        r#"
+# annotated_doc.py
+
+# main.py
+22 | greet()
+           ^
+- name: str: docstring text for name
+- times: int: <none>
+- loud: bool: shout
+
+31 | App().get()
+               ^
+- path: str: <none>
+
+33 | Item()
+          ^
+- price: float: <none>
+"#
+        .trim(),
+        report.trim(),
+    );
+}
+
+// Bug: signature help ignores `Doc` text.
+#[test]
+fn annotated_doc_parameter_documentation_from_other_module_test() {
+    let lib = r#"
+from typing import Annotated
+from annotated_doc import Doc
+
+def greet(name: Annotated[str, Doc("Who to greet")]) -> None: ...
+
+class App:
+    def get(self, path: Annotated[str, Doc("The URL path")]) -> None: ...
+
+class Item:
+    def __init__(self, price: Annotated[float, Doc("The price")]) -> None: ...
+"#;
+    let code = r#"
+from lib import App, Item, greet
+
+greet()
+#     ^
+App().get()
+#         ^
+Item()
+#    ^
+"#;
+    let report = get_batched_lsp_operations_report_allow_error(
+        &[
+            ("annotated_doc", ANNOTATED_DOC),
+            ("lib", lib),
+            ("main", code),
+        ],
+        get_parameter_documentation_report,
+    );
+    assert_eq!(
+        r#"
+# annotated_doc.py
+
+# lib.py
+
+# main.py
+4 | greet()
+          ^
+- name: str: <none>
+
+6 | App().get()
+              ^
+- path: str: <none>
+
+8 | Item()
+         ^
+- price: float: <none>
+"#
+        .trim(),
+        report.trim(),
+    );
+}
