@@ -4538,6 +4538,70 @@ C().method(x=1)
     );
 }
 
+// Bug: hover on a function does not show the `Doc` text of its parameters.
+#[test]
+fn hover_on_function_shows_annotated_doc_parameter_documentation() {
+    let lib = r#"
+from typing import Annotated
+from typing_extensions import Doc
+
+def greet(
+#    ^
+    name: Annotated[str, Doc("The user's name.")],
+    greeting: Annotated[str, Doc("How to greet the user.")] = "Hello",
+    loud: bool = False,
+) -> None:
+    """Greet a user."""
+"#;
+    let main = r#"
+from lib import greet
+greet("Ada")
+# ^
+"#;
+    let report = get_batched_lsp_operations_report(
+        &[("lib", lib), ("main", main)],
+        |state, handle, position| match get_hover(&state.transaction(), handle, position, false) {
+            Some(Hover {
+                contents: Contents::MarkupContent(markup),
+                ..
+            }) => markup.value,
+            _ => "None".to_owned(),
+        },
+    );
+    assert_eq!(
+        r#"
+# lib.py
+5 | def greet(
+         ^
+```python
+(function) greet: def greet(
+    name    : str,
+    greeting: str  = 'Hello',
+    loud    : bool = False
+) -> None: ...
+```
+---
+Greet a user.
+
+
+# main.py
+3 | greet("Ada")
+      ^
+```python
+(function) greet: def greet(
+    name    : str,
+    greeting: str  = 'Hello',
+    loud    : bool = False
+) -> None: ...
+```
+---
+Greet a user.
+"#
+        .trim(),
+        report.trim(),
+    );
+}
+
 #[test]
 fn hover_shows_annotated_doc_parameter_documentation() {
     let code = r#"
