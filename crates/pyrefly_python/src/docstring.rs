@@ -171,6 +171,19 @@ impl DocRanges {
     pub fn is_empty(&self) -> bool {
         self.docstring().is_none() && self.parameters().is_empty()
     }
+
+    /// The `Doc` text of each documented parameter, read from `module`, which defines it.
+    pub fn parameter_docs<'a>(
+        &'a self,
+        module: &'a Module,
+    ) -> impl Iterator<Item = (String, String)> + 'a {
+        self.parameters().iter().filter_map(|(name, range)| {
+            Some((
+                name.to_string(),
+                clean_annotated_doc(module.code_at(*range))?,
+            ))
+        })
+    }
 }
 
 /// The range of the string literal in the `Doc("...")` metadata of an `Annotated[...]`

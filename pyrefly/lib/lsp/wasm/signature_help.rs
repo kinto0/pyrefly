@@ -349,7 +349,8 @@ impl Transaction<'_> {
             })
     }
 
-    /// Parameter documentation for the callee at `callee_range`, read from its docstring.
+    /// Parameter documentation for the callee at `callee_range`, read from its docstring and
+    /// from `Doc` metadata in its parameter annotations. `Doc` text takes precedence.
     pub(crate) fn parameter_documentation_for_callee(
         &self,
         handle: &Handle,
@@ -362,11 +363,21 @@ impl Transaction<'_> {
             ..Default::default()
         };
 
-        let docs = self
+        let mut docs = self
             .find_range_and_module(handle, position, source_preference)
             .or_else(|| self.find_range_and_module(handle, position, FindPreference::default()))
             .map(|(range, module)| parse_parameter_documentation(module.code_at(range)))
             .unwrap_or_default();
+
+        if let Some(item) = [source_preference, FindPreference::default()]
+            .into_iter()
+            .find_map(|preference| {
+                let items = self.find_definition(handle, position, preference).ok()?;
+                items.into_vec().into_iter().next()
+            })
+        {
+            docs.extend(item.doc_ranges.parameter_docs(&item.module));
+        }
 
         if docs.is_empty() { None } else { Some(docs) }
     }

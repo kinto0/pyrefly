@@ -4538,7 +4538,6 @@ C().method(x=1)
     );
 }
 
-// Bug: hover ignores `Doc` text.
 #[test]
 fn hover_shows_annotated_doc_parameter_documentation() {
     let code = r#"
@@ -4555,8 +4554,10 @@ greet(name="x")
 #     ^
 "#;
     let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
-    assert!(
-        !report.contains("Who to greet"),
-        "Expected no `Doc` text in hover, got: {report}"
+    assert_eq!(
+        report.matches("**Parameter `name`**").count(),
+        2,
+        "Expected parameter documentation at both cursors, got: {report}"
     );
+    assert_eq!(report.matches("Who to greet").count(), 2);
 }

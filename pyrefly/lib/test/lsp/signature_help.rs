@@ -1329,7 +1329,6 @@ class Doc:
     def __init__(self, documentation: str, /) -> None: ...
 "#;
 
-// Bug: signature help ignores `Doc` text.
 #[test]
 fn annotated_doc_parameter_documentation_test() {
     let code = r#"
@@ -1378,24 +1377,24 @@ Item()
 # main.py
 22 | greet()
            ^
-- name: str: docstring text for name
-- times: int: <none>
+- name: str: Who to greet
+- times: int: How many times
+to greet.
 - loud: bool: shout
 
 31 | App().get()
                ^
-- path: str: <none>
+- path: str: The URL path
 
 33 | Item()
           ^
-- price: float: <none>
+- price: float: The price
 "#
         .trim(),
         report.trim(),
     );
 }
 
-// Bug: signature help ignores `Doc` text.
 #[test]
 fn annotated_doc_parameter_documentation_from_other_module_test() {
     let lib = r#"
@@ -1437,15 +1436,15 @@ Item()
 # main.py
 4 | greet()
           ^
-- name: str: <none>
+- name: str: Who to greet
 
 6 | App().get()
               ^
-- path: str: <none>
+- path: str: The URL path
 
 8 | Item()
          ^
-- price: float: <none>
+- price: float: The price
 "#
         .trim(),
         report.trim(),
