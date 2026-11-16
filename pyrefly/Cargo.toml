@@ -25,6 +25,10 @@ name = "commit"
 harness = false
 
 [[bench]]
+name = "handle_hash"
+harness = false
+
+[[bench]]
 name = "micro"
 harness = false
 
