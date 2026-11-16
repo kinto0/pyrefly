@@ -661,6 +661,11 @@ fn initialize_environment_impl<Ans: LookupAnswer>(
     let params = initial_inference_map(solver.get_class_tparams(class).map(|t| &**t));
 
     environment.insert(class.dupe(), params.clone());
+    // Specified variances never change, so a class whose variances are all specified
+    // contributes only its parameters; walking its fields would compute their types for nothing.
+    if !params.values().any(|parameter| parameter.needs_inference()) {
+        return params;
+    }
     let mut on_var = |_name: &Name, _state: InferenceState, _: PreInferenceVariance| {};
 
     // get the variance results of a given class c
@@ -733,6 +738,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
             for (my_class, params) in env.iter() {
                 let mut new_params = params.clone();
+                if !params.values().any(|parameter| parameter.needs_inference()) {
+                    new_environment.insert(my_class.dupe(), new_params);
+                    continue;
+                }
 
                 let mut on_var = |name: &Name, state: InferenceState, _: PreInferenceVariance| {
                     if let Some(parameter) = new_params.get_mut(name) {

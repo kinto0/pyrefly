@@ -4,11 +4,8 @@
 `Wrapper[int]` as `Wrapper[object]`, which needs that variance. `Wrapper`
 mentions `Box[T]` from `b`, and `Box` declares its type parameter covariant.
 
-**Superfluous:**
-- `b -> c::KeyExport("compute")` — inferring the variance of `Wrapper` walks
-  every field of `Box`, even though the variance of `Box` is specified and
-  cannot change. Walking `bar` computes its full type, which includes its
-  inferred return type.
+The variance of `Box` is specified, so variance inference uses it without
+walking the bases and fields of `Box`. No superfluous demands.
 
 ## Files
 
@@ -41,9 +38,9 @@ def compute() -> int: return 42
 ```expected
 a: Solutions
 b: Answers
-c: Answers
+c: Exports
 
-(72 builtin demands hidden)
+(55 builtin demands hidden)
 a -> b::Exports(is_special_export)
 a -> b::Load(module_exists)
 a -> b::Exports(export_exists)
@@ -61,11 +58,4 @@ a -> types::KeyClassMetadata(ClassDefIndex(22))
 a -> types::KeyClassBaseType(ClassDefIndex(22))
 a -> types::KeyClassMro(ClassDefIndex(22))
 a -> types::KeyClassSynthesizedFields(ClassDefIndex(22))
-a -> b::KeyClassBaseType(ClassDefIndex(0))
-a -> b::KeyClassField(ClassDefIndex(0), Name("bar"))
-  b -> c::Exports(export_exists)
-  b -> c::Exports(is_implicit_reexport)
-  b -> c::Exports(get_deprecated)
-  b -> c::KeyExport(Name("compute"))
-a -> b::KeyClassField(ClassDefIndex(0), Name("bar"))
 ```
