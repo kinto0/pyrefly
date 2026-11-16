@@ -42,6 +42,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build]
     if: ${{ (!inputs.is_rollback && success()) || inputs.is_rollback }}
+    permissions:
+      actions: read # download a previous run's artifacts for a rollback
+      contents: write # push the built site to the gh-pages branch
+      pages: read # read the Pages configuration in actions/configure-pages
     steps:
       - name: Get current date
         id: date

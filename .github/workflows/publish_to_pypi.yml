@@ -65,6 +65,8 @@ jobs:
     name: Push version tag
     runs-on: ubuntu-latest
     needs: pypi-publish  # Don't push a tag unless the publish job succeeds
+    permissions:
+      contents: write # push the version tag
     outputs:
       version: ${{ steps.get-version.outputs.version }}
     steps:
@@ -86,6 +88,9 @@ jobs:
   create-release:
     name: Create release
     needs: push-tag
+    # A called workflow can only narrow the permissions it inherits.
+    permissions:
+      contents: write # create the GitHub release
     uses: ./.github/workflows/publish_github_release.yml
     with:
       tag_name: ${{ needs.push-tag.outputs.version }}
@@ -96,6 +101,9 @@ jobs:
     needs:
       - push-tag
       - create-release
+    # A called workflow can only narrow the permissions it inherits.
+    permissions:
+      contents: write # upload archives to the GitHub release
     uses: ./.github/workflows/publish_upload_binaries.yml
     with:
       tag_name: ${{ needs.push-tag.outputs.version }}
