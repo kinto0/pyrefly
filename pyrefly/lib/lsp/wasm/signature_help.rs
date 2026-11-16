@@ -354,20 +354,18 @@ impl Transaction<'_> {
         callee_range: TextRange,
     ) -> Option<HashMap<String, String>> {
         let position = callee_range.end();
+        let source_preference = FindPreference {
+            prefer_pyi: false,
+            include_interpreter_stdlib: true,
+            ..Default::default()
+        };
 
-        let (range, module) = self
-            .find_range_and_module(
-                handle,
-                position,
-                FindPreference {
-                    prefer_pyi: false,
-                    include_interpreter_stdlib: true,
-                    ..Default::default()
-                },
-            )
-            .or_else(|| self.find_range_and_module(handle, position, FindPreference::default()))?;
+        let docs = self
+            .find_range_and_module(handle, position, source_preference)
+            .or_else(|| self.find_range_and_module(handle, position, FindPreference::default()))
+            .map(|(range, module)| parse_parameter_documentation(module.code_at(range)))
+            .unwrap_or_default();
 
-        let docs = parse_parameter_documentation(module.code_at(range));
         if docs.is_empty() { None } else { Some(docs) }
     }
 

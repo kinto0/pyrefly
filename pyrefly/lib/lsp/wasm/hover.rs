@@ -800,10 +800,11 @@ fn parameter_definition_documentation(
         })
         .find(|func| func.range.contains_inclusive(definition_range.start()))?;
 
-    let doc_range = Docstring::range_from_stmts(func.body.as_slice())?;
-    let docs = parse_parameter_documentation(module.code_at(doc_range));
+    let mut docs = Docstring::range_from_stmts(func.body.as_slice())
+        .map(|range| parse_parameter_documentation(module.code_at(range)))
+        .unwrap_or_default();
     let key = name.as_str();
-    docs.get(key).cloned().map(|doc| (key.to_owned(), doc))
+    docs.remove(key).map(|doc| (key.to_owned(), doc))
 }
 
 fn keyword_argument_identifier(
