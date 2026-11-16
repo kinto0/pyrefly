@@ -79,6 +79,25 @@ ERROR packages/a/vendor/m.py:1:* (glob)
 [1]
 ```
 
+## `--force-exclude` skips a given path that its config excludes
+
+The root config excludes `vendor`, so `--force-exclude` skips
+`packages/a/vendor` without an error.
+
+```scrut
+$ cd $TMPDIR/workspace && $PYREFLY check --force-exclude packages/a/vendor --python-version 3.13.0 --output-format=min-text
+[0]
+```
+
+Each file gets the excludes of its own config. The config of `packages/b`
+does not exclude `vendor`.
+
+```scrut
+$ cd $TMPDIR/workspace && $PYREFLY check --force-exclude packages/a/vendor/m.py packages/b/vendor/m.py --python-version 3.13.0 --output-format=min-text
+ WARN packages/b/vendor/m.py:1:* (glob)
+[0]
+```
+
 ## `pyrefly check .` checks the same files as `pyrefly check`
 
 `packages/b` is below `.`, so the root config governs it, the same as in

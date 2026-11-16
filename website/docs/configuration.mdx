@@ -123,8 +123,10 @@ correspond to different but useful ways we expect most people to interact with P
       filtered to that directory. Directories with different configs are different projects,
       and one run checks all of them: each file belongs to the given project whose config root
       is its nearest ancestor, and is checked once, with that config.
-      An exclude that matches the given directory, or one of its parents, does not apply, so
-      you can check a directory that the config excludes.
+      A given directory is checked even if `project-excludes` excludes it: an exclude that
+      matches the directory, or one of its parents, does not apply. The other excludes still
+      apply to the files under it, such as `**/generated`. Pass `--force-exclude` to skip a
+      given directory that the excludes match instead.
 - **Per-file** or **Single-file** mode: when given files (and optionally [`--project-excludes`](#project-excludes))
   during a CLI invocation, find the relevant config file for each file listed.
   `project-includes` and `project-excludes` are ignored from the config file, but it is used
@@ -229,6 +231,15 @@ or remove `project-excludes`.
   exclude items in your [`search-path`](#search-path).
 - Flag equivalent: `--project-excludes`, which replaces `project-excludes`.
   `--extend-project-excludes` adds patterns to `project-excludes` instead.
+  `--force-exclude` applies the excludes to the paths given in the CLI invocation too.
+  How the flags apply to each kind of check:
+
+  | Flag | `pyrefly check` | `pyrefly check dir` | `pyrefly check file.py` |
+  |---|---|---|---|
+  | None | The config's `project-excludes` | The config's `project-excludes`, except the ones that match `dir` | The default excludes. The config's `project-excludes` are not used |
+  | `--project-excludes X` | `X` replaces the config's `project-excludes` | `X` replaces the config's `project-excludes`. An `X` that matches `dir` does not apply | `X` replaces the default excludes. A file that `X` matches is not checked |
+  | `--extend-project-excludes X` | `X` is added to the config's `project-excludes` | `X` is added to the config's `project-excludes`. An `X` that matches `dir` does not apply | `X` is added to the default excludes. A file that `X` matches is not checked |
+  | `--force-exclude` | No effect | `dir` is skipped if the excludes match it | `file.py` is skipped if the `project-excludes` of its config match it |
 - Equivalent configs: `exclude` in Pyright and mypy
 - Notes:
     - While not explicitly part of `project-excludes`, there are several patterns that are

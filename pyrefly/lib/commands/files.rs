@@ -100,6 +100,10 @@ pub struct FilesArgs {
     /// Files given explicitly are still checked.
     #[arg(long)]
     exclude_scripts: bool,
+    /// Skip the files and directories given explicitly that the `project-excludes` of their config
+    /// exclude, as `pyrefly check` with no paths does.
+    #[arg(long)]
+    force_exclude: bool,
 
     /// Explicitly set the Pyrefly configuration to use when type checking.
     /// In "single-file checking mode," this config is applied to all files being checked, ignoring
@@ -621,23 +625,32 @@ fn filter_files(
     FilteredGlobs::new(files_to_check, excludes, None, hidden_dir_filter)
 }
 
-/// Skips the PEP 723 scripts among the files of `inner`, except the `explicit_files` that the user
-/// names, which `inner` yields as they are. A script runs in its own environment, so a tool such
-/// as `uv check` checks scripts separately from the project.
-struct ExcludeScripts {
+/// Skips the files of `inner` under the `force_excluded` paths. If `exclude_scripts`, also skips
+/// the PEP 723 scripts among its files, except the `explicit_files` that the user names, which
+/// `inner` yields as they are. A script runs in its own environment, so a tool such as `uv check`
+/// checks scripts separately from the project.
+struct SkipFiles {
     inner: Box<dyn Includes>,
+    exclude_scripts: bool,
     explicit_files: SmallSet<PathBuf>,
+    force_excluded: Vec<PathBuf>,
 }
 
-impl ExcludeScripts {
+impl SkipFiles {
     fn keeps(&self, path: &Path) -> bool {
-        self.explicit_files.contains(path)
-            || path.extension().is_none_or(|extension| extension != "py")
-            || fs::read_to_string(path).map_or(true, |source| script::metadata(&source).is_none())
+        !self
+            .force_excluded
+            .iter()
+            .any(|excluded| path.starts_with(excluded))
+            && (!self.exclude_scripts
+                || self.explicit_files.contains(path)
+                || path.extension().is_none_or(|extension| extension != "py")
+                || fs::read_to_string(path)
+                    .map_or(true, |source| script::metadata(&source).is_none()))
     }
 }
 
-impl Includes for ExcludeScripts {
+impl Includes for SkipFiles {
     fn roots(&self) -> Vec<PathBuf> {
         self.inner.roots()
     }
@@ -689,14 +702,20 @@ impl FilesArgs {
         };
         let extend_project_excludes = absolutize(Globs::new(self.extend_project_excludes)?);
         let files_to_check = absolutize(Globs::new_expanded(self.files)?);
-        let explicit_files = files_to_check
+        // After expansion, every pattern is a path.
+        let explicit_paths: Vec<PathBuf> = files_to_check
+            .globs()
+            .iter()
+            .map(|path| path.as_path().to_path_buf())
+            .collect();
+        let explicit_files: SmallSet<PathBuf> = files_to_check
             .explicit_files()
             .map(Path::to_path_buf)
             .collect();
         let (includes, config_finder, upsell) = if files_to_check.is_empty() {
             get_globs_and_config_for_project(
                 self.config,
-                project_excludes,
+                project_excludes.clone(),
                 &extend_project_excludes,
                 config_override,
                 wrapper,
@@ -706,17 +725,43 @@ impl FilesArgs {
             get_globs_and_config_for_paths(
                 self.config,
                 files_to_check,
-                project_excludes,
+                project_excludes.clone(),
                 &extend_project_excludes,
                 config_override,
                 wrapper,
                 scope,
             )?
         };
-        let includes = if self.exclude_scripts {
-            Box::new(ExcludeScripts {
+        let force_excluded = if self.force_exclude {
+            // Each path gets the excludes that project mode gives its config.
+            let mut config_globs: SmallMap<ArcId<ConfigFile>, FilteredGlobs> = SmallMap::new();
+            explicit_paths
+                .into_iter()
+                .filter(|path| {
+                    let config = config_finder.python_file(
+                        ModuleNameWithKind::guaranteed(ModuleName::unknown()),
+                        &ModulePath::filesystem(path.clone()),
+                    );
+                    config_globs
+                        .entry(config.dupe())
+                        .or_insert_with(|| {
+                            let mut globs =
+                                config.get_filtered_globs(project_excludes.clone(), scope);
+                            globs.add_excludes(extend_project_excludes.globs());
+                            globs
+                        })
+                        .is_excluded(path)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let includes = if self.exclude_scripts || !force_excluded.is_empty() {
+            Box::new(SkipFiles {
                 inner: includes,
+                exclude_scripts: self.exclude_scripts,
                 explicit_files,
+                force_excluded,
             })
         } else {
             includes
@@ -736,6 +781,7 @@ impl FilesArgs {
             project_excludes: None,
             extend_project_excludes: Vec::new(),
             exclude_scripts: false,
+            force_exclude: false,
         }
         .resolve(args, wrapper)
     }
@@ -757,14 +803,16 @@ mod tests {
         fs::write(&module, "x = 1\n").unwrap();
         fs::write(&stub, metadata).unwrap();
         let files = |explicit_files: Vec<PathBuf>| {
-            let includes = ExcludeScripts {
+            let includes = SkipFiles {
                 inner: Box::new(FilteredGlobs::new(
                     Globs::new(vec![root.to_string_lossy().into_owned()]).unwrap(),
                     Globs::empty(),
                     None,
                     HiddenDirFilter::Disabled,
                 )),
+                exclude_scripts: true,
                 explicit_files: explicit_files.into_iter().collect(),
+                force_excluded: Vec::new(),
             };
             let mut files = includes.files_iter().unwrap().collect::<Vec<_>>();
             files.sort();

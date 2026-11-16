@@ -1158,6 +1158,12 @@ impl FilteredGlobs {
         self.filter.excludes.append(excludes);
     }
 
+    /// Whether the excludes, hidden-directory filter, or ignore files of these globs exclude
+    /// `path`, whether or not the includes match it.
+    pub fn is_excluded(&self, path: &Path) -> bool {
+        self.filter.is_excluded(path)
+    }
+
     /// The files that these globs include, sorted. Unlike [`Includes::files_iter`], returns no
     /// files instead of an error when nothing matches.
     pub fn matched_files(&self) -> anyhow::Result<Vec<PathBuf>> {
