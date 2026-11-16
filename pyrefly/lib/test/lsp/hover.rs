@@ -4517,3 +4517,24 @@ fn hover_repeated_live_conditional_method() {
     assert!(!report.contains("First."), "got: {report}");
     assert!(report.contains("int"), "got: {report}");
 }
+
+// Bug: hover looks up the callee at its start, so for `C().method` it finds `C`, not `method`.
+#[test]
+fn hover_shows_parameter_doc_for_method_keyword_argument() {
+    let code = r#"
+class C:
+    def method(self, x: int) -> None:
+        """
+        Args:
+            x: documentation for x
+        """
+
+C().method(x=1)
+#          ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    assert!(
+        !report.contains("documentation for x"),
+        "Expected no parameter documentation for x, got: {report}"
+    );
+}
