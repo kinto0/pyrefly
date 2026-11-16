@@ -19,7 +19,6 @@ use lsp_types::Range;
 use lsp_types::Uri;
 use pyrefly_build::handle::Handle;
 use pyrefly_python::ast::Ast;
-use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::docstring::Docstring;
 use pyrefly_python::docstring::parse_parameter_documentation;
 use pyrefly_python::dunder;
@@ -62,6 +61,7 @@ use crate::alt::answers_solver::AnswersSolver;
 use crate::binding::binding::Key;
 use crate::binding::bindings::BindingsBuilder;
 use crate::error::error::Error;
+use crate::export::doc_ranges::function_doc_ranges;
 use crate::export::exports::ExportLocation;
 use crate::lsp::module_helpers::collect_symbol_def_paths;
 use crate::lsp::module_helpers::to_real_path;
@@ -764,7 +764,7 @@ fn parameter_definition_documentation(
     let mut docs = Docstring::range_from_stmts(func.body.as_slice())
         .map(|range| parse_parameter_documentation(module.code_at(range)))
         .unwrap_or_default();
-    docs.extend(DocRanges::of_function(func).parameter_docs(&module));
+    docs.extend(function_doc_ranges(func).parameter_docs(&module));
     let key = name.as_str();
     docs.remove(key).map(|doc| (key.to_owned(), doc))
 }

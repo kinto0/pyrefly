@@ -36,6 +36,7 @@ use crate::binding::binding::Key;
 use crate::binding::bindings::Bindings;
 use crate::binding::narrow::identifier_and_chain_for_expr;
 use crate::binding::narrow::identifier_and_chain_prefix_for_expr;
+use crate::export::doc_ranges::doc_ranges_from_parts;
 use crate::export::exports::Export;
 use crate::state::lsp::ImportFormat;
 
@@ -201,7 +202,10 @@ fn create_intermediate_definition_from(
                 return Some(IntermediateDefinition::Local(Export {
                     location: undecorated.def.name.range,
                     symbol_kind: Some(symbol_kind),
-                    doc_ranges: DocRanges::new(func.docstring_range, &undecorated.def.parameters),
+                    doc_ranges: doc_ranges_from_parts(
+                        func.docstring_range,
+                        &undecorated.def.parameters,
+                    ),
                     deprecation: None,
                     is_final: false,
                     special_export: None,

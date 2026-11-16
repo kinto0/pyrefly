@@ -42,6 +42,8 @@ use crate::binding::stmt::is_special_import_function;
 use crate::binding::stmt::special_import_form;
 use crate::binding::stmt::special_import_module;
 use crate::export::deprecation::parse_deprecation;
+use crate::export::doc_ranges::class_doc_ranges;
+use crate::export::doc_ranges::function_doc_ranges;
 use crate::export::special::SpecialExport;
 use crate::types::globals::ImplicitGlobal;
 
@@ -763,7 +765,7 @@ impl DefinitionsBuilder {
                 self.add_identifier_with_docs(
                     name,
                     DefinitionStyle::Unannotated(SymbolKind::Class),
-                    DocRanges::of_class(class_def),
+                    class_doc_ranges(class_def),
                 );
                 return; // These things are inside a scope
             }
@@ -1025,7 +1027,7 @@ impl DefinitionsBuilder {
                 self.add_identifier_with_docs(
                     name,
                     DefinitionStyle::Unannotated(SymbolKind::Function),
-                    DocRanges::of_function(func_def),
+                    function_doc_ranges(func_def),
                 );
                 return; // don't recurse because a separate scope
             }

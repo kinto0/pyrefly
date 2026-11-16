@@ -8,16 +8,11 @@
 use std::collections::HashMap;
 
 use ruff_python_ast::Expr;
-use ruff_python_ast::Parameters;
 use ruff_python_ast::Stmt;
-use ruff_python_ast::StmtClassDef;
-use ruff_python_ast::StmtFunctionDef;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 
-use crate::ast::Ast;
-use crate::dunder;
 use crate::module::Module;
 
 const STRING_LITERAL_PATTERNS: [(&str, &str); 8] = [
@@ -117,30 +112,9 @@ impl DocRanges {
         Self(DocRangesRepr::Docstring(docstring))
     }
 
-    pub fn of_function(x: &StmtFunctionDef) -> Self {
-        Self::new(Docstring::range_from_stmts(&x.body), &x.parameters)
-    }
-
-    /// A class's parameters are those of its `__init__`.
-    pub fn of_class(x: &StmtClassDef) -> Self {
-        let docstring = Docstring::range_from_stmts(&x.body);
-        match x.body.iter().rev().find_map(|stmt| match stmt {
-            Stmt::FunctionDef(init) if init.name.id == dunder::INIT => Some(init),
-            _ => None,
-        }) {
-            Some(init) => Self::new(docstring, &init.parameters),
-            None => Self::of_docstring(docstring),
-        }
-    }
-
-    /// The documentation of a function with the given docstring and parameters.
-    pub fn new(docstring: Option<TextRange>, parameters: &Parameters) -> Self {
-        let parameters: Box<[_]> = parameters
-            .iter()
-            .filter_map(|param| {
-                Some((param.name().id.clone(), annotated_doc(param.annotation()?)?))
-            })
-            .collect();
+    /// The documentation of a function with the given docstring and the `Doc` string range of
+    /// each documented parameter.
+    pub fn new(docstring: Option<TextRange>, parameters: Box<[(Name, TextRange)]>) -> Self {
         if parameters.is_empty() {
             Self::of_docstring(docstring)
         } else {
@@ -184,41 +158,6 @@ impl DocRanges {
             ))
         })
     }
-}
-
-/// The range of the string literal in the `Doc("...")` metadata of an `Annotated[...]`
-/// annotation, as in `name: Annotated[str, Doc("The user's name")]`. This is the
-/// [annotated-doc](https://github.com/fastapi/annotated-doc) convention that FastAPI uses.
-/// `Doc` is matched by name, and when there is more than one, the last applies, as PEP 727
-/// specifies. An implicitly concatenated string is skipped, because it has no single literal to
-/// read back.
-fn annotated_doc(annotation: &Expr) -> Option<TextRange> {
-    fn is_named(x: &Expr, name: &str) -> bool {
-        match x {
-            Expr::Name(x) => x.id == name,
-            Expr::Attribute(x) => x.attr.id == name,
-            _ => false,
-        }
-    }
-    let Expr::Subscript(annotated) = annotation else {
-        return None;
-    };
-    if !is_named(&annotated.value, "Annotated") {
-        return None;
-    }
-    Ast::unpack_slice(&annotated.slice)
-        .iter()
-        .skip(1)
-        .rev()
-        .find_map(|metadata| match metadata {
-            Expr::Call(call)
-                if is_named(&call.func, "Doc")
-                    && let [Expr::StringLiteral(text)] = &*call.arguments.args =>
-            {
-                (!text.value.is_implicit_concatenated()).then_some(text.range)
-            }
-            _ => None,
-        })
 }
 
 /// The documentation text of a `Doc("...")` string literal, given its source: the string
@@ -984,10 +923,6 @@ pub fn parse_sphinx_param_types(docstring: &str) -> HashMap<&str, DocstringParam
 mod tests {
     use std::ops::Range;
 
-    use ruff_python_ast::PySourceType;
-    use ruff_python_ast::Stmt;
-
-    use crate::ast::Ast;
     use crate::docstring::CodeBlockKind;
     use crate::docstring::DocRanges;
     use crate::docstring::Docstring;
@@ -1855,64 +1790,6 @@ result : str
     fn test_parse_sphinx_param_types_ignores_prose() {
         let doc = "Summary : with a colon.\n\nSee also: nothing (really): at all.\n:returns: x\n";
         assert_eq!(param_types(doc), expected(&[]));
-    }
-
-    /// The `Doc` text of each documented parameter of the first statement of `source`.
-    fn annotated_docs(source: &str) -> Vec<(String, String)> {
-        let (module, _, _) = Ast::parse(source, PySourceType::Python);
-        let doc_ranges = match module.body.first() {
-            Some(Stmt::FunctionDef(x)) => DocRanges::of_function(x),
-            Some(Stmt::ClassDef(x)) => DocRanges::of_class(x),
-            _ => panic!("expected a function or class definition"),
-        };
-        doc_ranges
-            .parameters()
-            .iter()
-            .map(|(name, range)| {
-                let doc = clean_annotated_doc(&source[*range]).expect("non-blank `Doc` text");
-                (name.to_string(), doc)
-            })
-            .collect()
-    }
-
-    #[test]
-    fn test_doc_ranges_parameters() {
-        let source = r#"
-def f(
-    a: Annotated[int, Doc("plain name")],
-    b: typing.Annotated[int, annotated_doc.Doc('attribute name')],
-    c: Annotated[int, Doc("first"), Doc("last")],
-    *args: Annotated[int, Doc("varargs")],
-    d: Annotated[int, "not a Doc"],
-    e: int,
-    f: Annotated[int, Doc(f"not a literal")],
-    g: list[Doc("not Annotated")],
-    h: Annotated[int, Doc("implicitly " "concatenated")],
-): ...
-"#;
-        assert_eq!(
-            annotated_docs(source),
-            vec![
-                ("a".to_owned(), "plain name".to_owned()),
-                ("b".to_owned(), "attribute name".to_owned()),
-                ("c".to_owned(), "last".to_owned()),
-                ("args".to_owned(), "varargs".to_owned()),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_doc_ranges_class_parameters_come_from_init() {
-        let source = r#"
-class C:
-    """Docstring."""
-    def __init__(self, a: Annotated[int, Doc("from init")]) -> None: ...
-    def other(self, b: Annotated[int, Doc("not from init")]) -> None: ...
-"#;
-        assert_eq!(
-            annotated_docs(source),
-            vec![("a".to_owned(), "from init".to_owned())]
-        );
     }
 
     #[test]
