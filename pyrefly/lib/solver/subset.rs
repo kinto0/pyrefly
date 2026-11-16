@@ -2220,9 +2220,16 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (_, Type::Quantified(_)) => Err(SubsetError::Other),
             (l, Type::Intersect(u)) => all(u.0.iter(), |u| self.is_subset_eq(l, u)),
             (l, Type::Union(u_union)) => {
+                let l_vs = l.collect_maybe_placeholder_vars();
+                // A member equal to `l` matches without solving anything. If `l` has no
+                // placeholder vars, neither do the members tried before it (members with vars
+                // are tried last), so the first successful match below can't solve anything
+                // either. Skipping the search avoids comparing `l` against every other member.
+                if l_vs.is_empty() && u_union.members.contains(l) {
+                    return Ok(());
+                }
                 let ordered_us = self.solver.partial_sort_by_vars(&u_union.members);
                 let mut error = None;
-                let l_vs = l.collect_maybe_placeholder_vars();
                 // Take the first successful match.
                 for (u, vs) in ordered_us {
                     let all_vs = l_vs.iter().copied().chain(vs).collect::<Vec<_>>();
