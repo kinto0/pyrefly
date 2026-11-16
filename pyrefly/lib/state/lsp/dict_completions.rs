@@ -18,6 +18,7 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::data_frame::DataFrameKind;
 use pyrefly_types::facet::FacetKind;
 use pyrefly_types::known_class::KnownClass;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::AnyNodeRef;
 use ruff_python_ast::Expr;
 use ruff_python_ast::ExprCall;
@@ -41,6 +42,7 @@ use crate::binding::narrow::int_from_slice;
 use crate::lsp::wasm::completion::RankedCompletion;
 use crate::state::lsp::TransactionHandle;
 use crate::state::state::Transaction;
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 const STRING_LITERAL_CURSOR_ALLOWANCE: TextSize = TextSize::new(4);
@@ -862,7 +864,12 @@ impl<'a> Transaction<'a> {
         else {
             return false;
         };
-        Self::add_literal_completions_from_type(&field_ty, completions, true);
+        Self::add_literal_completions_from_type(
+            &self.type_env(handle),
+            &field_ty,
+            completions,
+            true,
+        );
         true
     }
 
@@ -976,7 +983,12 @@ impl<'a> Transaction<'a> {
         if suggestions.is_empty() {
             return false;
         }
-        Self::push_dict_key_completions(suggestions, completions, context.needs_quotes());
+        Self::push_dict_key_completions(
+            &self.type_env(handle),
+            suggestions,
+            completions,
+            context.needs_quotes(),
+        );
         true
     }
 
@@ -1062,12 +1074,13 @@ impl<'a> Transaction<'a> {
     }
 
     fn push_dict_key_completions(
+        env: &dyn TypeEnv,
         suggestions: BTreeMap<String, Option<Type>>,
         completions: &mut Vec<RankedCompletion>,
         quote: bool,
     ) {
         for (label, ty_opt) in suggestions {
-            let detail = ty_opt.as_ref().map(|ty| ty.to_string());
+            let detail = ty_opt.as_ref().map(|ty| ty.display_with(env).to_string());
             let insert_text = quote.then(|| format!("\"{label}\""));
             completions.push(RankedCompletion::new(CompletionItem {
                 label,
@@ -1129,6 +1142,7 @@ impl<'a> Transaction<'a> {
         };
         // Clients filter on the text from the start of the edit, which includes the dot.
         let accessor = module_info.code_at(TextRange::new(dot, attribute.start()));
+        let type_env = self.type_env(handle);
         for (key, ty) in keys {
             let quoted_key = if f_string_quotes.is_empty() {
                 to_string(&key).expect("Serializing a string cannot fail")
@@ -1140,7 +1154,7 @@ impl<'a> Transaction<'a> {
             completions.push(RankedCompletion::new(CompletionItem {
                 filter_text: Some(format!("{accessor}{key}")),
                 label: key,
-                detail: Some(ty.to_string()),
+                detail: Some(ty.display_with(&type_env).to_string()),
                 kind: Some(CompletionItemKind::Field),
                 text_edit: Some(CompletionItemTextEdit::TextEdit(TextEdit {
                     range: edit_range,

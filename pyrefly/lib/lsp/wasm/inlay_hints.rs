@@ -143,6 +143,7 @@ impl<'a> Transaction<'a> {
         import_format: ImportFormat,
         limit: Option<TextRange>,
     ) -> Option<Vec<InlayHintData>> {
+        let type_env = self.type_env(handle);
         let is_interesting = |e: &Expr, ty: &Type, class_name: Option<&Name>| {
             !ty.is_any()
                 && match e {
@@ -170,11 +171,11 @@ impl<'a> Transaction<'a> {
                         // Exclude enum literals
                         match &**value {
                             Expr::Name(object) => {
-                                *object.id() != *lit_enum.class.name()
+                                *object.id() != *lit_enum.class.name_in(&type_env)
                                     || *attr.id() != *lit_enum.member
                             }
                             Expr::Attribute(ExprAttribute { attr: object, .. }) => {
-                                *object.id() != *lit_enum.class.name()
+                                *object.id() != *lit_enum.class.name_in(&type_env)
                                     || *attr.id() != *lit_enum.member
                             }
                             _ => true,
@@ -311,7 +312,7 @@ impl<'a> Transaction<'a> {
                     let class_name = if let Type::ClassType(cls) = &ty
                         && cls.targs().is_empty()
                     {
-                        Some(cls.name())
+                        Some(cls.name_in(&type_env))
                     } else {
                         None
                     };
@@ -377,7 +378,7 @@ impl<'a> Transaction<'a> {
                     let class_name = if let Type::ClassType(cls) = &ty
                         && cls.targs().is_empty()
                     {
-                        Some(cls.name())
+                        Some(cls.name_in(&type_env))
                     } else {
                         None
                     };

@@ -395,6 +395,7 @@ use crate::tsp::type_facts::TypeFactsQuery;
 use crate::tsp::type_facts::type_fact;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassType;
+use crate::types::env::TypeEnv;
 
 enum RequestError {
     Cancelled,
@@ -7329,16 +7330,16 @@ impl Server {
 
         let path_remapper = self.path_remapper.clone();
         let type_hierarchy_item_from_class_type =
-            move |class_type: &ClassType| -> Option<TypeHierarchyItem> {
+            move |env: &dyn TypeEnv, class_type: &ClassType| -> Option<TypeHierarchyItem> {
                 let class = class_type.class_object();
-                let module = class.module();
+                let module = class.module_in(env);
                 let uri = module_info_to_uri(module, path_remapper.as_ref())?;
-                let range = module.to_lsp_range(class.range());
+                let range = module.to_lsp_range(class.range_in(env));
                 Some(TypeHierarchyItem {
-                    name: class.name().to_string(),
+                    name: class.name_in(env).to_string(),
                     kind: SymbolKind::Class,
                     tags: None,
-                    detail: Some(format!("{}.{}", module.name(), class.name())),
+                    detail: Some(format!("{}.{}", module.name(), class.name_in(env))),
                     uri,
                     range,
                     selection_range: range,
@@ -7367,16 +7368,19 @@ impl Server {
 
                 let mro = solutions.get(&KeyClassMro(target.def_index));
                 let stdlib = transaction.as_ref().get_stdlib(handle);
+                let type_env = transaction.as_ref().type_env(handle);
                 let mut items = Vec::new();
                 // Skip the implicit trailing `object` for cyclic MROs.
                 if let ClassMro::Resolved { ancestors, .. } = mro {
                     for ancestor in ancestors {
-                        if let Some(item) = type_hierarchy_item_from_class_type(ancestor) {
+                        if let Some(item) = type_hierarchy_item_from_class_type(&type_env, ancestor)
+                        {
                             items.push(item);
                         }
                     }
                     if !target.is_object
-                        && let Some(item) = type_hierarchy_item_from_class_type(stdlib.object())
+                        && let Some(item) =
+                            type_hierarchy_item_from_class_type(&type_env, stdlib.object())
                     {
                         items.push(item);
                     }

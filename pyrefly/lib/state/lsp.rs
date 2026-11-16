@@ -3692,7 +3692,8 @@ impl<'a> Transaction<'a> {
             // A callback protocol borrows the signature of a class's `__call__`, so the
             // class is what defines it.
             FunctionKind::CallbackProtocol(cls) => {
-                let qname = cls.qname();
+                let env = self.type_env(handle);
+                let qname = cls.qname_in(&env);
                 Some(Ok(TextRangeWithModule::new(
                     qname.module().clone(),
                     qname.range(),

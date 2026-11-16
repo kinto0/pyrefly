@@ -85,6 +85,7 @@ use tsp_types::UnionType;
 
 use crate::lsp::module_helpers::to_real_path;
 use crate::state::state::Transaction;
+use crate::types::env::TypeEnv;
 
 /// Monotonic counter used to assign unique ids to converted types.
 static NEXT_TYPE_ID: AtomicI32 = AtomicI32::new(1);
@@ -175,6 +176,7 @@ pub fn convert_type_in_transaction(
     // warm path.
     let stdlib = transaction.get_stdlib(source_handle);
     convert_type_with_resolvers(
+        &transaction.type_env(source_handle),
         ty,
         Some(&resolve_func_range),
         Some(&resolve_module_path),
@@ -212,6 +214,7 @@ pub(crate) fn resolve_export_location(
 /// source-range and module-URI resolvers, plus the stdlib classes used to
 /// encode sentinel-like types (see [`StdlibClasses`]).
 pub fn convert_type_with_resolvers<'a>(
+    env: &'a dyn TypeEnv,
     ty: &PyreflyType,
     func_range_resolver: Option<&'a FuncRangeResolver<'a>>,
     module_path_resolver: Option<&'a ModulePathResolver<'a>>,
@@ -219,6 +222,7 @@ pub fn convert_type_with_resolvers<'a>(
     stdlib: StdlibClasses<'a>,
 ) -> TspType {
     TypeConverter {
+        env,
         resolve_func_range: func_range_resolver,
         resolve_module_path: module_path_resolver,
         resolve_export: export_location_resolver,
@@ -234,8 +238,10 @@ pub fn convert_type_with_resolvers<'a>(
 /// locations are needed.
 #[cfg(test)]
 pub fn convert_type(ty: &PyreflyType) -> TspType {
+    use pyrefly_types::test_type_env::TestTypeEnv;
+
     let stdlib = TestStdlib::new();
-    convert_type_with_resolvers(ty, None, None, None, stdlib.classes())
+    convert_type_with_resolvers(&TestTypeEnv::new(), ty, None, None, None, stdlib.classes())
 }
 
 /// Stand-in for the real `Stdlib` classes used by the resolver-free tests,
@@ -300,6 +306,7 @@ fn test_class(module_name: ModuleName, name: &str) -> PyreflyClassType {
 
 /// Holds an optional range resolver and drives recursive type conversion.
 struct TypeConverter<'a> {
+    env: &'a dyn TypeEnv,
     resolve_func_range: Option<&'a FuncRangeResolver<'a>>,
     resolve_module_path: Option<&'a ModulePathResolver<'a>>,
     resolve_export: Option<&'a ExportLocationResolver<'a>>,
@@ -324,13 +331,13 @@ impl TypeConverter<'_> {
             PyreflyType::ClassType(ct) => self.convert_class_type(ct, TypeFlags::INSTANCE),
 
             // --- Class definitions (the class object itself, e.g. `type[int]`) ---
-            PyreflyType::ClassDef(cls) => convert_class_def(cls),
+            PyreflyType::ClassDef(cls) => convert_class_def(self.env, cls),
             PyreflyType::SpecializedClassDef(ct) => {
                 self.convert_class_type(ct, TypeFlags::INSTANTIABLE)
             }
 
             // --- Literals (Literal[42], Literal["hi"], etc.) ---
-            PyreflyType::Literal(lit) => convert_literal(lit),
+            PyreflyType::Literal(lit) => convert_literal(self.env, lit),
 
             // --- Functions ---
             PyreflyType::Function(func) => {
@@ -389,7 +396,7 @@ impl TypeConverter<'_> {
 
             // A partial TypedDict is an instance of the TypedDict's class.
             PyreflyType::PartialTypedDict(class_type) => {
-                let declaration = make_class_declaration(class_type.class_object());
+                let declaration = make_class_declaration(self.env, class_type.class_object());
                 TspType::Class(TspClassType {
                     declaration: Declaration::Regular(declaration),
                     flags: TypeFlags::INSTANCE,
@@ -439,6 +446,7 @@ impl TypeConverter<'_> {
                 };
                 TspType::Class(TspClassType {
                     declaration: Declaration::Regular(make_class_declaration(
+                        self.env,
                         self.stdlib.tuple_class,
                     )),
                     flags: TypeFlags::INSTANCE,
@@ -589,7 +597,7 @@ impl TypeConverter<'_> {
     /// Convert a pyrefly `ClassType` (an instantiated class) to a TSP `ClassType`.
     fn convert_class_type(&self, ct: &PyreflyClassType, flags: TypeFlags) -> TspType {
         let cls = ct.class_object();
-        let declaration = make_class_declaration(cls);
+        let declaration = make_class_declaration(self.env, cls);
         let type_args: Option<Vec<TspType>> = {
             let args = ct.targs();
             let slice = args.as_slice();
@@ -933,8 +941,8 @@ fn map_type_flags(mut ty: TspType, update: impl FnOnce(TypeFlags) -> TypeFlags) 
 
 /// Convert a pyrefly `Class` (class definition object) to a TSP `ClassType`
 /// with the `Instantiable` flag.
-fn convert_class_def(cls: &Class) -> TspType {
-    let declaration = make_class_declaration(cls);
+fn convert_class_def(env: &dyn TypeEnv, cls: &Class) -> TspType {
+    let declaration = make_class_declaration(env, cls);
 
     TspType::Class(TspClassType {
         declaration: Declaration::Regular(declaration),
@@ -948,12 +956,12 @@ fn convert_class_def(cls: &Class) -> TspType {
 }
 
 /// Convert a pyrefly `Literal` to a TSP `ClassType` with `literal_value`.
-fn convert_literal(lit: &pyrefly_types::literal::Literal) -> TspType {
+fn convert_literal(env: &dyn TypeEnv, lit: &pyrefly_types::literal::Literal) -> TspType {
     match &lit.value {
         Lit::Enum(e) => {
             // For enum literals, use the enum class as the declaration source
             let cls = e.class.class_object();
-            let declaration = make_class_declaration(cls);
+            let declaration = make_class_declaration(env, cls);
             TspType::Class(TspClassType {
                 declaration: Declaration::Regular(declaration),
                 flags: TypeFlags::LITERAL,
@@ -1108,8 +1116,8 @@ fn make_typevar_declared(qname: &pyrefly_python::qname::QName) -> DeclaredType {
 }
 
 /// Build a `RegularDeclaration` from a pyrefly `Class`.
-fn make_class_declaration(cls: &Class) -> RegularDeclaration {
-    let qname = cls.qname();
+fn make_class_declaration(env: &dyn TypeEnv, cls: &Class) -> RegularDeclaration {
+    let qname = cls.qname_in(env);
     let module = qname.module();
     let module_path = qname.module_path();
     let range = qname.range();
@@ -1120,7 +1128,7 @@ fn make_class_declaration(cls: &Class) -> RegularDeclaration {
     RegularDeclaration {
         category: DeclarationCategory::Class,
         kind: DeclarationKind::Regular,
-        name: Some(cls.name().to_string()),
+        name: Some(cls.name_in(env).to_string()),
         node: Node {
             range: lsp_range_to_tsp(lsp_range),
             uri,
@@ -1205,6 +1213,7 @@ mod tests {
     use pyrefly_types::quantified::AnchorIndex;
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::special_form::SpecialForm;
+    use pyrefly_types::test_type_env::TestTypeEnv;
     use pyrefly_types::tuple::Tuple;
     use pyrefly_types::type_alias::TypeAliasIndex;
     use pyrefly_types::type_var::PreInferenceVariance;
@@ -1774,6 +1783,7 @@ mod tests {
         };
         let stdlib = TestStdlib::new();
         let tsp = convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             Some(&module_path_resolver),
@@ -1857,6 +1867,7 @@ mod tests {
             ))
         };
         match convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             None,
@@ -1982,6 +1993,7 @@ mod tests {
         };
         let ty = PyreflyType::TypeAlias(Box::new(TypeAliasData::Ref(make_ref())));
         match convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             None,
@@ -2049,6 +2061,7 @@ mod tests {
             ))
         };
         match convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             None,
@@ -2086,6 +2099,7 @@ mod tests {
             ))
         };
         match convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             None,
@@ -2251,6 +2265,7 @@ mod tests {
             panic!("unexpected export lookup for {module}.{name}");
         };
         match convert_type_with_resolvers(
+            &TestTypeEnv::new(),
             &ty,
             None,
             None,

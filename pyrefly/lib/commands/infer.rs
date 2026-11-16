@@ -43,6 +43,7 @@ use crate::state::lsp::AnnotationKind;
 use crate::state::require::Require;
 use crate::state::state::State;
 use crate::types::class::Class;
+use crate::types::env::TypeEnv;
 use crate::types::heap::TypeHeap;
 use crate::types::simplify::unions_with_literals;
 use crate::types::stdlib::Stdlib;
@@ -152,9 +153,9 @@ impl ParameterAnnotation {
     }
 }
 
-fn is_container(hint: &Type) -> bool {
+fn is_container(env: &dyn TypeEnv, hint: &Type) -> bool {
     match hint {
-        Type::ClassType(c) => c.name().eq("list") || c.name().eq("dict"),
+        Type::ClassType(c) => c.name_in(env).eq("list") || c.name_in(env).eq("dict"),
         _ => false,
     }
 }
@@ -192,7 +193,7 @@ enum AnnotationImport {
 /// and a set of `(source_module, importable_name)` pairs to import.
 fn format_hints(
     inlay_hints: Vec<(ruff_text_size::TextSize, Type, AnnotationKind)>,
-    stdlib: &Stdlib,
+    env: &dyn TypeEnv,
     enum_members: &dyn Fn(&Class) -> Option<usize>,
     heap: &TypeHeap,
     current_module_name: ModuleName,
@@ -204,7 +205,7 @@ fn format_hints(
     let mut qualified_hints = Vec::new();
     let mut needed_imports = HashSet::new();
     for (position, hint, kind) in inlay_hints {
-        let is_container = is_container(&hint);
+        let is_container = is_container(env, &hint);
         let contains_self_type = hint.any(|sub_type| matches!(sub_type, Type::SelfType(_)));
         // Collect QNames before hint_to_string consumes the type. Each QName
         // carries the defining module, so we know exactly where to import from.
@@ -215,8 +216,8 @@ fn format_hints(
             }
             // A DataFrame/Series renders as its underlying class, which `universe` does not visit.
             let qname = match sub_type {
-                Type::DataFrame(schema) => Some(schema.underlying.qname()),
-                Type::Series(schema) => Some(schema.underlying.qname()),
+                Type::DataFrame(schema) => Some(schema.underlying.qname_in(env)),
+                Type::Series(schema) => Some(schema.underlying.qname_in(env)),
                 _ => sub_type.qname(),
             };
             if let Some(qname) = qname {
@@ -233,7 +234,7 @@ fn format_hints(
         let mut uses_incomplete = false;
         let formatted_hint = hint_to_string(
             hint,
-            stdlib,
+            env.stdlib(),
             enum_members,
             heap,
             &mut typing_imports,
@@ -390,7 +391,7 @@ impl InferArgs {
                 .take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)))
                 .last()
                 .map_or(TextSize::new(0), |stmt| stmt.range().end());
-            let stdlib = transaction.get_stdlib(&handle);
+            let type_env = transaction.type_env(&handle);
             let inferred_types: Option<Vec<(ruff_text_size::TextSize, Type, AnnotationKind)>> =
                 transaction.inferred_types(&handle, flags.return_types(), flags.containers());
             let parameter_annotations = if flags.parameter_types() {
@@ -408,7 +409,7 @@ impl InferArgs {
                 let heap = TypeHeap::new();
                 let (annotations, needed_imports) = format_hints(
                     parameter_types,
-                    &stdlib,
+                    &type_env,
                     &|cls| {
                         transaction
                             .ad_hoc_solve(&handle, "infer_enum_metadata", |solver| {

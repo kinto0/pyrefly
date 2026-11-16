@@ -76,6 +76,7 @@ use crate::state::require::Require;
 use crate::state::state::State;
 use crate::state::state::Transaction;
 use crate::state::state::TransactionHandle;
+use crate::types::env::TypeEnv;
 
 /// All parameters with merge keys: positional-only → index, keyword-capable → name,
 /// variadic → singleton, implicit receiver → `None`.
@@ -461,6 +462,7 @@ const IMPLICIT_GENERIC_BUILTINS: &[KnownClass] = &[
 const IMPLICIT_STDLIB_CLASSES: &[KnownClass] = &[KnownClass::LoggingLogger, KnownClass::RePattern];
 
 fn parse_variables(
+    env: &dyn TypeEnv,
     module: &Module,
     answers: &Answers,
     exports: &SmallMap<Name, ExportLocation>,
@@ -475,7 +477,12 @@ fn parse_variables(
     /// `list()`, or an explicitly specialized class like `Spam[int]()`. Other generic classes are
     /// left out because their type arguments are inferred. Instances of `IMPLICIT_STDLIB_CLASSES`
     /// are exempt whatever the call.
-    fn untyped_if_call(answers: &Answers, idx: Idx<Key>, expr: &Expr) -> SlotCounts {
+    fn untyped_if_call(
+        env: &dyn TypeEnv,
+        answers: &Answers,
+        idx: Idx<Key>,
+        expr: &Expr,
+    ) -> SlotCounts {
         let Expr::Call(call) = expr else {
             return SlotCounts::default();
         };
@@ -502,7 +509,7 @@ fn parse_variables(
             // doesn't match. Nested modules like `a.b.Spam()` are left out too.
             Expr::Attribute(attr) => {
                 cls.targs().is_empty()
-                    && *cls.name() == attr.attr.id
+                    && *cls.name_in(env) == attr.attr.id
                     && attr
                         .value
                         .as_name_expr()
@@ -510,8 +517,8 @@ fn parse_variables(
                         .is_some_and(|t| matches!(t.ty(), Type::Module(_)))
             }
             Expr::Subscript(sub) => match sub.value.as_ref() {
-                Expr::Name(n) => *cls.name() == n.id,
-                Expr::Attribute(attr) => *cls.name() == attr.attr.id,
+                Expr::Name(n) => *cls.name_in(env) == n.id,
+                Expr::Attribute(attr) => *cls.name_in(env) == attr.attr.id,
                 _ => false,
             },
             _ => false,
@@ -638,10 +645,14 @@ fn parse_variables(
                     // flow (e.g. a later `while True: ... break`). Skip optional imports
                     // (`try: import x; except _: x = None`) like plain imports.
                     _ if involves_import_or_def(bindings, *idx, &mut SmallSet::new()) => continue,
-                    Binding::NameAssign(na) => untyped_if_call(answers, *idx, na.expr.as_ref()),
+                    Binding::NameAssign(na) => {
+                        untyped_if_call(env, answers, *idx, na.expr.as_ref())
+                    }
                     Binding::MultiTargetAssign(_, rhs_idx, _, _) => match bindings.get(*rhs_idx) {
                         Binding::Function { .. } | Binding::ClassDef(..) => continue,
-                        Binding::Expr(_, expr) => untyped_if_call(answers, *idx, expr.as_ref()),
+                        Binding::Expr(_, expr) => {
+                            untyped_if_call(env, answers, *idx, expr.as_ref())
+                        }
                         _ => {
                             unreachable!(
                                 "MultiTargetAssign RHS should be Expr, Function, or ClassDef"
@@ -1637,6 +1648,7 @@ impl ModuleSymbols {
         merge_overloads(&mut functions);
         let mut classes = parse_classes(&module, &answers, &hidden_classes);
         let mut variables = parse_variables(
+            &transaction.type_env(handle),
             &module,
             &answers,
             &exports,

@@ -40,6 +40,7 @@ use pyrefly_types::display::LspDisplayMode;
 use pyrefly_types::type_var::Variance;
 use pyrefly_types::types::Type;
 use pyrefly_util::absolutize::Absolutize as _;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::lined_buffer::LineNumber;
 use regex::Regex;
 use ruff_python_ast::AnyNodeRef;
@@ -529,11 +530,12 @@ fn docstring_for_class_object_type(
     handle: &Handle,
     type_: &Type,
 ) -> Option<Docstring> {
+    let env = transaction.type_env(handle);
     let qname = match type_ {
-        Type::ClassDef(cls) => cls.qname(),
+        Type::ClassDef(cls) => cls.qname_in(&env),
         Type::SpecializedClassDef(cls) => cls.qname(),
         Type::Type(inner) => match inner.as_ref() {
-            Type::ClassType(cls) => cls.qname(),
+            Type::ClassType(cls) => cls.qname_in(&env),
             _ => return None,
         },
         _ => return None,
@@ -678,7 +680,7 @@ fn type_parameter_hover_display(
     Some(format!(
         "{}@{} ({})",
         quantified.name(),
-        owner.name(),
+        owner.name_in(solver),
         display_variance_for_hover(variance.get(quantified.name()))
     ))
 }
@@ -1343,7 +1345,8 @@ fn in_keyword_hover(
             contents: Contents::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: format!(
-                    "```python\n(keyword) in\n```\n---\nIteration over `{iterable_type}`\n\n{documentation}\n\n[Python language reference]({reference})"
+                    "```python\n(keyword) in\n```\n---\nIteration over `{}`\n\n{documentation}\n\n[Python language reference]({reference})",
+                    iterable_type.display_with(&transaction.type_env(handle)),
                 ),
             }),
             range: Some(module.to_lsp_range(token.range())),

@@ -127,7 +127,7 @@ pub(crate) fn implement_abstract_members_code_actions(
                         ty,
                         is_coroutine,
                         is_class_var: member.value.is_class_var(),
-                        defining_module: member.defining_class.module().dupe(),
+                        defining_module: member.defining_class.module_in(&solver).dupe(),
                         docstring_range: solver
                             .get_class_fields(&member.defining_class)
                             .and_then(|fields| fields.field_docstring_range(name)),

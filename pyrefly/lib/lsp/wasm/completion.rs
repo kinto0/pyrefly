@@ -29,6 +29,7 @@ use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_types::display::LspDisplayMode;
 use pyrefly_types::literal::Lit;
 use pyrefly_types::tuple::Tuple;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::thread_pool::ThreadPool;
 use ruff_python_ast::AnyNodeRef;
 use ruff_python_ast::ExprContext;
@@ -61,6 +62,7 @@ use crate::state::lsp::ImportFormat;
 use crate::state::lsp::MIN_CHARACTERS_TYPED_AUTOIMPORT;
 use crate::state::state::Transaction;
 use crate::types::callable::Param;
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 /// Classification of a completion item's source, used for ranking.
@@ -190,6 +192,7 @@ pub(crate) fn supports_snippet_completions(capabilities: &lsp_types::ClientCapab
 /// `TypedDict("M", {"class": int})`, and via the parameters synthesized for its
 /// constructor — and inserting those would not parse.
 fn push_kwarg_completion(
+    env: &dyn TypeEnv,
     name: &Name,
     ty: &Type,
     seen: &mut SmallSet<(String, String)>,
@@ -199,7 +202,7 @@ fn push_kwarg_completion(
         return;
     }
     let label = format!("{}=", name.as_str());
-    let detail = ty.to_string();
+    let detail = ty.display_with(env).to_string();
     if seen.insert((label.clone(), detail.clone())) {
         completions.push(RankedCompletion::new(CompletionItem {
             label,
@@ -258,6 +261,7 @@ impl Transaction<'_> {
 
     /// Adds completion items for literal types (e.g., `Literal["foo", "bar"]`).
     pub(crate) fn add_literal_completions_from_type(
+        env: &dyn TypeEnv,
         param_type: &Type,
         completions: &mut Vec<RankedCompletion>,
         in_string_literal: bool,
@@ -278,14 +282,19 @@ impl Transaction<'_> {
                 completions.push(RankedCompletion::new(CompletionItem {
                     label,
                     kind: Some(CompletionItemKind::Value),
-                    detail: Some(format!("{param_type}")),
+                    detail: Some(param_type.display_with(env).to_string()),
                     insert_text: Some(insert_text),
                     ..Default::default()
                 }));
             }
             Type::Union(u) => {
                 for member in &u.members {
-                    Self::add_literal_completions_from_type(member, completions, in_string_literal);
+                    Self::add_literal_completions_from_type(
+                        env,
+                        member,
+                        completions,
+                        in_string_literal,
+                    );
                 }
             }
             _ => {}
@@ -383,12 +392,13 @@ impl Transaction<'_> {
         completions: &mut Vec<RankedCompletion>,
     ) {
         let mut seen = SmallSet::new();
+        let type_env = self.type_env(handle);
         if let Some(mod_module) = self.get_ast(handle)
             && let Some(fields) =
                 self.typed_dict_constructor_kwargs(handle, mod_module.as_ref(), position)
         {
             for (name, ty) in fields {
-                push_kwarg_completion(&Name::new(name), &ty, &mut seen, completions);
+                push_kwarg_completion(&type_env, &Name::new(name), &ty, &mut seen, completions);
             }
         }
         if let Some(CallInfo {
@@ -409,7 +419,13 @@ impl Transaction<'_> {
                             | Param::KwOnly(name, ty, _)
                             | Param::Varargs(Some(name), ty) => {
                                 if name.as_str() != "self" {
-                                    push_kwarg_completion(&name, &ty, &mut seen, completions);
+                                    push_kwarg_completion(
+                                        &type_env,
+                                        &name,
+                                        &ty,
+                                        &mut seen,
+                                        completions,
+                                    );
                                 }
                             }
                             // `**kwargs: Unpack[TypedDict]` accepts each field as a keyword
@@ -426,7 +442,13 @@ impl Transaction<'_> {
                                     .into_iter()
                                     .flatten()
                                 {
-                                    push_kwarg_completion(&name, &field.ty, &mut seen, completions);
+                                    push_kwarg_completion(
+                                        &type_env,
+                                        &name,
+                                        &field.ty,
+                                        &mut seen,
+                                        completions,
+                                    );
                                 }
                             }
                             Param::Varargs(None, _)
@@ -570,6 +592,7 @@ impl Transaction<'_> {
         if let Some(answers) = self.get_answers(handle)
             && let Some(module_info) = self.get_module_info(handle)
         {
+            let type_env = self.type_env(handle);
             let bindings = answers.bindings();
             let matcher = SkimMatcherV2::default();
             for idx in bindings.available_definitions(position) {
@@ -615,7 +638,7 @@ impl Transaction<'_> {
                         t.function_deprecation().is_some()
                     }
                 });
-                let detail = ty.as_ref().map(|t| t.to_string());
+                let detail = ty.as_ref().map(|t| t.display_with(&type_env).to_string());
                 let documentation = self.get_documentation_from_export(export_info);
                 let is_incompatible =
                     self.is_incompatible_with_expected_type(handle, expected_type, ty.as_ref());
@@ -657,7 +680,12 @@ impl Transaction<'_> {
         in_string_literal: bool,
     ) {
         if let Some(expected) = self.get_expected_type_at(handle, position) {
-            Self::add_literal_completions_from_type(&expected, completions, in_string_literal);
+            Self::add_literal_completions_from_type(
+                &self.type_env(handle),
+                &expected,
+                completions,
+                in_string_literal,
+            );
         }
     }
 
@@ -871,7 +899,12 @@ impl Transaction<'_> {
             return;
         };
         if let Some(subject_type) = self.get_type_trace(handle, subject.range()) {
-            Self::add_literal_completions_from_type(&subject_type, completions, in_string_literal);
+            Self::add_literal_completions_from_type(
+                &self.type_env(handle),
+                &subject_type,
+                completions,
+                in_string_literal,
+            );
         }
     }
 
@@ -1229,7 +1262,7 @@ impl Transaction<'_> {
                             },
                         })),
                         label,
-                        detail: attr.ty.map(|ty| ty.to_string()),
+                        detail: attr.ty.map(|ty| ty.display_with(&solver).to_string()),
                         kind: Some(CompletionItemKind::Variable),
                         tags: if attr.is_deprecated {
                             Some(vec![CompletionItemTag::Deprecated])
