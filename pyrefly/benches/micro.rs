@@ -11,7 +11,8 @@
 //! Each case builds a synthetic Python snippet that stresses one part of the
 //! checker (enum member resolution, enum value access, exhaustiveness, protocol
 //! structural matching, narrowing, gradual-typing calls, type-variable joins,
-//! inferred typed dicts, overload resolution, nested generic construction, and the
+//! inferred typed dicts, unions of typed dicts, overload resolution, nested generic
+//! construction, and the
 //! Polars/pandas schema-tracking dispatch chain run against non-DataFrame receivers)
 //! and times a single in-memory check of it. `SHARED_STATE`
 //! pre-initializes the stdlib once, so only the snippet's check is measured, and
@@ -282,6 +283,22 @@ fn inferred_typed_dict(count: usize) -> String {
         format!("\"field{i}\": {value}")
     });
     format!("mapping = {{{entries}}}")
+}
+
+/// A union of `members` TypedDicts whose fields refer back to the union, followed by
+/// `body`. Libraries that describe a schema this way make checks against the union
+/// expensive if they scale with the number of members times the size of each
+/// member's fields.
+fn typed_dict_union(members: usize, body: &str) -> String {
+    let classes = joined(members, "\n", |i| {
+        format!(
+            "class Foo{i}(TypedDict):\n    kind: Literal['k{i}']\n    child: NotRequired[Node]\n    maybe: NotRequired[Node | None]\n    children: NotRequired[list[Node]]"
+        )
+    });
+    let names = joined(members, ", ", |i| format!("Foo{i}"));
+    format!(
+        "from __future__ import annotations\nfrom typing import Literal, NotRequired, TypedDict, Union\n{classes}\nNode = Union[{names}]\n{body}"
+    )
 }
 
 /// `overloads` `@overload` signatures, each with a distinct parameter type, plus
@@ -599,6 +616,37 @@ fn typevar_mapping(c: &mut Criterion) {
 
 fn anon_typed_dict(c: &mut Criterion) {
     measure(c, "inferred_typed_dict_64", inferred_typed_dict(64), 0);
+}
+
+fn typed_dict_unions(c: &mut Criterion) {
+    // Assigning the union to a larger union that contains it.
+    measure(
+        c,
+        "typed_dict_union_widen_60",
+        typed_dict_union(60, "def widen(n: Node) -> Node | None:\n    return n\n"),
+        0,
+    );
+    // Contextually typing a nested dict literal against the union. The literal matches the last
+    // members, so every other member is tried first.
+    measure(
+        c,
+        "typed_dict_union_literal_60",
+        typed_dict_union(
+            60,
+            "def nested() -> Node:\n    return {'kind': 'k59', 'child': {'kind': 'k58', 'maybe': None}}\n",
+        ),
+        0,
+    );
+    // `get` with a default on the union: one overload per field, for every member.
+    measure(
+        c,
+        "typed_dict_union_get_default_60",
+        typed_dict_union(
+            60,
+            "def get_child(n: Node) -> object:\n    return n.get('child', {})\n",
+        ),
+        0,
+    );
 }
 
 fn overloads(c: &mut Criterion) {
@@ -1115,6 +1163,7 @@ criterion_group!(
     vararg_call,
     typevar_mapping,
     anon_typed_dict,
+    typed_dict_unions,
     overloads,
     nested_generic_constructor,
     nested_nongeneric_constructor,
