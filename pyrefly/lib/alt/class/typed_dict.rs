@@ -375,7 +375,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Whether each field of `typed_dict` is required, keyed by field name. Unlike
     /// `typed_dict_fields`, this does not instantiate any field types.
-    fn typed_dict_field_requiredness(&self, typed_dict: &ClassType) -> SmallMap<Name, bool> {
+    pub fn typed_dict_field_requiredness(&self, typed_dict: &ClassType) -> SmallMap<Name, bool> {
         let class = typed_dict.class_object();
         match self.get_metadata_for_class(class).typed_dict_metadata() {
             None => SmallMap::new(),

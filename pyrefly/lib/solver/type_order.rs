@@ -184,6 +184,14 @@ impl<'solver, Ans: LookupAnswer> TypeOrder<'solver, Ans> {
         self.0.typed_dict_fields(typed_dict)
     }
 
+    pub fn typed_dict_field(self, typed_dict: &ClassType, name: &Name) -> Option<TypedDictField> {
+        self.0.typed_dict_field(typed_dict, name)
+    }
+
+    pub fn typed_dict_field_requiredness(self, typed_dict: &ClassType) -> SmallMap<Name, bool> {
+        self.0.typed_dict_field_requiredness(typed_dict)
+    }
+
     pub fn typed_dict_kw_param_info(self, typed_dict: &ClassType) -> Vec<(Name, Type, Required)> {
         self.0.typed_dict_kw_param_info(typed_dict)
     }

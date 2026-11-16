@@ -93,12 +93,6 @@ fn as_type_alias(ty: &Type) -> Option<&TypeAliasData> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum TypedDictFieldId {
-    Name(Name),
-    ExtraItems,
-}
-
 enum OverloadCapture {
     NotApplicable,
     NoMatch,
@@ -114,14 +108,8 @@ struct GotTypedDict {
     extra_items: ExtraItems,
 }
 
-impl TypedDictFieldId {
-    fn display_name(&self) -> Name {
-        match self {
-            TypedDictFieldId::Name(name) => name.clone(),
-            TypedDictFieldId::ExtraItems => Name::from("<extra_items>"),
-        }
-    }
-}
+/// Stands in for a TypedDict's `extra_items` in field-mismatch errors, which name a field.
+const EXTRA_ITEMS_FIELD: Name = Name::new_static("<extra_items>");
 
 fn ok_or(b: bool, e: SubsetError) -> Result<(), SubsetError> {
     b.then_some(()).ok_or(e)
@@ -1221,14 +1209,6 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         }
     }
 
-    fn get_typed_dict_fields(&self, td: &ClassType) -> SmallMap<TypedDictFieldId, TypedDictField> {
-        self.type_order
-            .typed_dict_fields(td)
-            .into_iter()
-            .map(|(name, field)| (TypedDictFieldId::Name(name), field))
-            .collect()
-    }
-
     fn is_subset_typed_dict_field(
         &mut self,
         got: (&Name, &TypedDictField),
@@ -1339,66 +1319,69 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         let type_order = self.type_order;
         let got_name = got.name(&type_order);
         let want_name = want.name(&type_order);
-        let (got_fields, want_fields) = {
-            let mut got_fields = self.get_typed_dict_fields(got);
-            let mut want_fields = self.get_typed_dict_fields(want);
-            let got_extra_items = self.type_order.typed_dict_extra_items(got);
-            let want_extra_items = self.type_order.typed_dict_extra_items(want);
-            if [&got_extra_items, &want_extra_items]
-                .iter()
-                .any(|extra| !matches!(extra, ExtraItems::Default))
-            {
-                // If either TypedDict has extra_items restrictions, add extra_items as a
-                // non-required pseudo-field.
-                got_fields.insert(
-                    TypedDictFieldId::ExtraItems,
-                    self.typed_dict_extra_items_field(got_extra_items),
-                );
-                want_fields.insert(
-                    TypedDictFieldId::ExtraItems,
-                    self.typed_dict_extra_items_field(want_extra_items),
-                );
-            }
-            (got_fields, want_fields)
+        let type_order = self.type_order;
+        let got_extra_items = type_order.typed_dict_extra_items(got);
+        let want_extra_items = type_order.typed_dict_extra_items(want);
+        // If either TypedDict restricts extra items, each side's `extra_items` acts as a
+        // non-required pseudo-field. It stands in for the keys that side does not declare, and
+        // the two pseudo-fields are compared with each other.
+        let extra = (!matches!(got_extra_items, ExtraItems::Default)
+            || !matches!(want_extra_items, ExtraItems::Default))
+        .then(|| {
+            (
+                self.typed_dict_extra_items_field(got_extra_items),
+                self.typed_dict_extra_items_field(want_extra_items),
+            )
+        });
+        // Resolving a field clones its type, which can be large, and `all` stops at the first
+        // mismatch. Failing comparisons are common, e.g. when matching against a union of
+        // TypedDicts, so resolve each field only when the comparison reaches it.
+        let field = |typed_dict: &ClassType, name: &Name| {
+            type_order
+                .typed_dict_field(typed_dict, name)
+                .expect("every name in `typed_dict_field_requiredness` resolves to a field")
         };
-        all(want_fields.iter(), |(k, want_v)| {
-            let field_name = k.display_name();
-            got_fields
-                .get(k)
-                .or_else(|| got_fields.get(&TypedDictFieldId::ExtraItems))
-                .map_or(
-                    Err(SubsetError::TypedDict(Box::new(
-                        TypedDictSubsetError::MissingField {
-                            got: got_name.clone(),
-                            want: want_name.clone(),
-                            field: field_name.clone(),
-                        },
-                    ))),
-                    |got_v| {
-                        self.is_subset_typed_dict_field(
-                            (got_name, got_v),
-                            (want_name, want_v),
-                            &field_name,
-                        )
+        let got_names = type_order.typed_dict_field_requiredness(got);
+        let want_names = type_order.typed_dict_field_requiredness(want);
+        all(want_names.keys(), |k| {
+            let want_v = field(want, k);
+            let got_v = got_names.contains_key(k).then(|| field(got, k));
+            match got_v
+                .as_ref()
+                .or(extra.as_ref().map(|(got_extra, _)| got_extra))
+            {
+                None => Err(SubsetError::TypedDict(Box::new(
+                    TypedDictSubsetError::MissingField {
+                        got: got_name.clone(),
+                        want: want_name.clone(),
+                        field: k.clone(),
                     },
-                )
+                ))),
+                Some(got_v) => {
+                    self.is_subset_typed_dict_field((got_name, got_v), (want_name, &want_v), k)
+                }
+            }
         })?;
-        want_fields
-            .get(&TypedDictFieldId::ExtraItems)
-            .map_or(Ok(()), |want_v| {
-                // Make sure all fields in `got` that aren't on `want` match the latter's `extra_items` type.
-                all(got_fields.iter(), |(k, got_v)| {
-                    if want_fields.contains_key(k) {
-                        Ok(())
-                    } else {
-                        self.is_subset_typed_dict_field(
-                            (got_name, got_v),
-                            (want_name, want_v),
-                            &k.display_name(),
-                        )
-                    }
-                })
-            })
+        let Some((got_extra_v, want_extra_v)) = &extra else {
+            return Ok(());
+        };
+        self.is_subset_typed_dict_field(
+            (got_name, got_extra_v),
+            (want_name, want_extra_v),
+            &EXTRA_ITEMS_FIELD,
+        )?;
+        // Make sure all fields in `got` that aren't on `want` match the latter's `extra_items` type.
+        all(got_names.keys(), |k| {
+            if want_names.contains_key(k) {
+                Ok(())
+            } else {
+                self.is_subset_typed_dict_field(
+                    (got_name, &field(got, k)),
+                    (want_name, want_extra_v),
+                    k,
+                )
+            }
+        })
     }
 
     fn is_subset_partial_typed_dict_field(
