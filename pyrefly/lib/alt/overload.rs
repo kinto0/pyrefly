@@ -563,7 +563,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         );
                     }
                 }
-                error_builder.with_context(context).emit();
+                error_builder.with_context(self, context).emit();
             }
             errors.extend(closest_overload.arg_errors);
             call_errors.extend(closest_overload.call_errors);
@@ -849,7 +849,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let mut builder = errors
             .error_builder(arguments_range, ErrorKind::NoMatchingOverload, header)
-            .with_context(context)
+            .with_context(self, context)
             .with_details(details);
         if closest_overload_call_errors.is_empty() {
             // If there were no call errors, the failure must have been an arity mismatch.

@@ -4923,6 +4923,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::BadOverride
                         },
                         message: error.to_error_msg(
+                            self,
                             cls.name_in(self),
                             parent.name_in(self),
                             field_name,

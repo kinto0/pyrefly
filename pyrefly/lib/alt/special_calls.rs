@@ -708,7 +708,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     &mut |x, y| self.is_subset_eq_with_reason(x, y),
                                 ) {
                                     let error_msg = subset_err
-                                        .to_error_msg()
+                                        .to_error_msg(self)
                                         .map(|msg| format!(": {msg}"))
                                         .unwrap_or_default();
                                     unsafe_overlap_errors.push(format!(

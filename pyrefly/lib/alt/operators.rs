@@ -1134,7 +1134,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors,
                                 x.range,
                                 ErrorKind::UnsupportedOperation,
-                                context().format(),
+                                context().format(self),
                             );
                             return self.heap.mk_class_type(self.stdlib.bool().clone());
                         }
@@ -1250,7 +1250,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     x.range,
                     ErrorKind::UnsupportedOperation,
-                    context().format(),
+                    context().format(self),
                 ),
             }
         };

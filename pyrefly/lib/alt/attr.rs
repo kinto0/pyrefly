@@ -137,6 +137,7 @@ pub enum AttrSubsetError {
 impl AttrSubsetError {
     pub fn to_error_msg(
         &self,
+        env: &dyn TypeEnv,
         child_class: &Name,
         parent_class: &Name,
         attr_name: &Name,
@@ -200,8 +201,8 @@ impl AttrSubsetError {
                 };
                 format!(
                     "{got_desc}`{child_class}.{attr_name}` has type `{}`, which is not assignable to `{}`{want_desc}`{parent_class}.{attr_name}`",
-                    got.clone().deterministic_printing(),
-                    want.clone().deterministic_printing()
+                    got.clone().deterministic_printing().display_with(env),
+                    want.clone().deterministic_printing().display_with(env)
                 )
             }
             AttrSubsetError::Invariant {
@@ -212,8 +213,8 @@ impl AttrSubsetError {
             } => {
                 format!(
                     "`{child_class}.{attr_name}` has type `{}`, which is not consistent with `{}` in `{parent_class}.{attr_name}` (the type of read-write attributes cannot be changed)",
-                    got.clone().deterministic_printing(),
-                    want.clone().deterministic_printing()
+                    got.clone().deterministic_printing().display_with(env),
+                    want.clone().deterministic_printing().display_with(env)
                 )
             }
             AttrSubsetError::Contravariant {
@@ -235,8 +236,8 @@ impl AttrSubsetError {
                 };
                 format!(
                     "{got_desc}`{child_class}.{attr_name}` has type `{}`, which is not assignable from `{}`{want_desc}`{parent_class}.{attr_name}`",
-                    got.clone().deterministic_printing(),
-                    want.clone().deterministic_printing()
+                    got.clone().deterministic_printing().display_with(env),
+                    want.clone().deterministic_printing().display_with(env)
                 )
             }
         }
@@ -726,7 +727,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let mut builder = errors
                 .error_builder(range, kind, header)
                 .with_details(details)
-                .with_context(context);
+                .with_context(self, context);
             if can_narrow_none {
                 builder = builder.with_quick_fix(ErrorQuickFix::AssertNotNone);
             }
@@ -1224,7 +1225,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     range,
                     ErrorKind::AttributeAssignOnNever,
                     format!("Assigning to attribute `{attr_name}` on an object with type `Never`"),
-                ).with_detail("If this is unexpected, the object type may have been incorrectly narrowed to `Never` by previous checks".to_owned()).with_context(context).emit();
+                ).with_detail("If this is unexpected, the object type may have been incorrectly narrowed to `Never` by previous checks".to_owned()).with_context(self, context).emit();
                 setters.push(None);
                 continue;
             }
@@ -1691,7 +1692,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::ImplicitImport,
                     format!("Module `{name}` exists, but was not imported explicitly. You are relying on other modules to load it."),
                 )
-                .with_context(context)
+                .with_context(self, context)
                 .with_quick_fix(ErrorQuickFix::ImportModule { module: name })
                 .emit();
                 Ok(ty)

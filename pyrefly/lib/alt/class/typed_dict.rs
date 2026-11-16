@@ -245,6 +245,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         };
                     self.solver()
                         .error_builder(
+                            self,
                             &item_ty,
                             &partial_td_ty,
                             check_errors,

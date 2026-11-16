@@ -8,12 +8,14 @@
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::function::FunctionKind;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::name::Name;
 use ruff_text_size::TextRange;
 
 use crate::binding::binding::AnnotationTarget;
 use crate::config::error_kind::ErrorKind;
 use crate::types::display::TypeDisplayContext;
+use crate::types::env::TypeEnv;
 use crate::types::types::Type;
 
 /// General context for an error. For many errors, the root cause is some steps removed from what
@@ -59,7 +61,7 @@ pub enum ErrorContext {
 
 impl ErrorContext {
     /// Return secondary annotations that label relevant spans with type information.
-    pub fn annotations(&self) -> Vec<(TextRange, String)> {
+    pub fn annotations(&self, env: &dyn TypeEnv) -> Vec<(TextRange, String)> {
         match self {
             Self::BinaryOp(_op, left, right, left_range, right_range) => {
                 let ctx = TypeDisplayContext::new(&[left, right]);
@@ -76,7 +78,10 @@ impl ErrorContext {
                 ]
             }
             Self::UnaryOp(_op, operand, operand_range) => {
-                vec![(*operand_range, format!("has type `{operand}`"))]
+                vec![(
+                    *operand_range,
+                    format!("has type `{}`", operand.display_with(env)),
+                )]
             }
             _ => Vec::new(),
         }

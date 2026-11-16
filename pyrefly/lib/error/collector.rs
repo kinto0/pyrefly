@@ -30,6 +30,7 @@ use crate::error::error::ReportedError;
 use crate::error::style::ErrorStyle;
 use crate::module::module_info::ModuleInfo;
 use crate::state::errors::find_containing_range;
+use crate::types::env::TypeEnv;
 
 #[derive(Debug, Default)]
 struct ModuleErrors {
@@ -690,10 +691,17 @@ pub struct ErrorBuilder<'a> {
     kind: ErrorKind,
     header: String,
     details: Vec<String>,
-    context: Option<ErrorContext>,
+    context: Option<RenderedErrorContext>,
     annotations: Vec<(TextRange, String)>,
     quick_fixes: Vec<ErrorQuickFix>,
     deprecated_tag: bool,
+}
+
+/// An `ErrorContext` rendered to text, so that emitting the error needs no `TypeEnv`.
+struct RenderedErrorContext {
+    kind: ErrorKind,
+    header: String,
+    annotations: Vec<(TextRange, String)>,
 }
 
 impl ErrorBuilder<'_> {
@@ -788,9 +796,22 @@ impl ErrorBuilder<'_> {
     /// (demoting the original header to first detail), its annotations are prepended,
     /// and the ErrorKind is overridden. If called more than once, the last context wins.
     /// `with_context(None)` clears the context.
-    pub fn with_context(mut self, ctx: Option<impl FnOnce() -> ErrorContext>) -> Self {
+    ///
+    /// The context is rendered here, with `env`, so it is only computed for active builders.
+    pub fn with_context(
+        mut self,
+        env: &dyn TypeEnv,
+        ctx: Option<impl FnOnce() -> ErrorContext>,
+    ) -> Self {
         if self.active {
-            self.context = ctx.map(|ctx| ctx());
+            self.context = ctx.map(|ctx| {
+                let ctx = ctx();
+                RenderedErrorContext {
+                    kind: ctx.as_error_kind(),
+                    header: ctx.format(env),
+                    annotations: ctx.annotations(env),
+                }
+            });
         }
         self
     }
@@ -803,10 +824,10 @@ impl ErrorBuilder<'_> {
         let (mut kind, mut header, mut details, mut annotations) =
             (self.kind, self.header, self.details, self.annotations);
         if let Some(ctx) = self.context {
-            kind = ctx.as_error_kind();
+            kind = ctx.kind;
             details.insert(0, header);
-            header = ctx.format();
-            let mut ctx_annotations = ctx.annotations();
+            header = ctx.header;
+            let mut ctx_annotations = ctx.annotations;
             ctx_annotations.extend(annotations);
             annotations = ctx_annotations;
         }

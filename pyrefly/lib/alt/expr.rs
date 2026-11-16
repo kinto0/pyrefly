@@ -1464,7 +1464,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         x.range,
                         ErrorKind::NotAsync,
-                        ErrorContext::Await(self.for_display(ty.clone())).format(),
+                        ErrorContext::Await(self.for_display(ty.clone())).format(self),
                     ),
                 })
             }

@@ -33,6 +33,7 @@ use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::type_var::ShapeExtensionRestriction;
 use pyrefly_types::types::TArgs;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::gas::Gas;
 use pyrefly_util::lock::Mutex;
 use pyrefly_util::lock::RwLock;
@@ -73,6 +74,7 @@ use crate::types::callable::PrefixParam;
 use crate::types::callable::Required;
 use crate::types::class::Class;
 use crate::types::class::ClassType;
+use crate::types::env::TypeEnv;
 use crate::types::function::Function;
 use crate::types::module::ModuleType;
 use crate::types::simplify::simplify_tuples_and_distribute_unpacking;
@@ -2614,6 +2616,7 @@ impl Solver {
     /// Returns a builder so the caller can chain additional decorations before emitting.
     pub fn error_builder<'a>(
         &self,
+        env: &dyn TypeEnv,
         got: &Type,
         want: &Type,
         errors: &'a ErrorCollector,
@@ -2627,16 +2630,17 @@ impl Solver {
         }
         let tcc = tcc();
         let msg = tcc.kind.format_error(
+            env,
             &self.for_display(got.clone()),
             &self.for_display(want.clone()),
             errors.module().name(),
         );
         let mut builder = errors.error_builder(loc, tcc.kind.as_error_kind(), msg);
-        builder = builder.with_context(tcc.context.map(|ctx| || ctx));
+        builder = builder.with_context(env, tcc.context.map(|ctx| || ctx));
         for (range, label) in tcc.annotations {
             builder = builder.with_annotation(range, label);
         }
-        if let Some(detail) = subset_error.to_error_msg() {
+        if let Some(detail) = subset_error.to_error_msg(env) {
             builder = builder.with_detail(detail);
         }
         builder
@@ -2859,6 +2863,7 @@ impl TypeVarSpecializationError {
             ),
             Self::BadBoundSpecialization { name, got, want } => {
                 TypeCheckKind::TypeVarSpecialization(name).format_error(
+                    ans,
                     &ans.for_display(got),
                     &ans.for_display(want),
                     ans.module().name(),
@@ -2915,7 +2920,7 @@ pub enum TypedDictSubsetError {
 }
 
 impl TypedDictSubsetError {
-    fn to_error_msg(self) -> String {
+    fn to_error_msg(self, env: &dyn TypeEnv) -> String {
         match self {
             TypedDictSubsetError::MissingField { got, want, field } => {
                 format!("Field `{field}` is present in `{want}` and absent in `{got}`")
@@ -2939,8 +2944,8 @@ impl TypedDictSubsetError {
                 field,
             } => format!(
                 "Field `{field}` in `{got}` has type `{}`, which is not consistent with `{}` in `{want}` (read-write fields must have the same type)",
-                got_field_ty.deterministic_printing(),
-                want_field_ty.deterministic_printing()
+                got_field_ty.deterministic_printing().display_with(env),
+                want_field_ty.deterministic_printing().display_with(env)
             ),
             TypedDictSubsetError::CovariantFieldMismatch {
                 got,
@@ -2950,8 +2955,8 @@ impl TypedDictSubsetError {
                 field,
             } => format!(
                 "Field `{field}` in `{got}` has type `{}`, which is not assignable to `{}`, the type of `{want}.{field}` (read-only fields are covariant)",
-                got_field_ty.deterministic_printing(),
-                want_field_ty.deterministic_printing()
+                got_field_ty.deterministic_printing().display_with(env),
+                want_field_ty.deterministic_printing().display_with(env)
             ),
         }
     }
@@ -2970,7 +2975,7 @@ pub enum OpenTypedDictSubsetError {
 }
 
 impl OpenTypedDictSubsetError {
-    fn to_error_msg(self) -> String {
+    fn to_error_msg(self, env: &dyn TypeEnv) -> String {
         let (msg, got) = match self {
             Self::MissingField { got, want, field } => (
                 format!(
@@ -2995,7 +3000,7 @@ impl OpenTypedDictSubsetError {
             } => (
                 format!(
                     "`{got}` is an open TypedDict with unknown extra items, which may not be compatible with `extra_items` type `{}` in `{want}`",
-                    extra_items.deterministic_printing(),
+                    extra_items.deterministic_printing().display_with(env),
                 ),
                 got,
             ),
@@ -3041,7 +3046,7 @@ pub enum SubsetError {
 }
 
 impl SubsetError {
-    pub fn to_error_msg(self) -> Option<String> {
+    pub fn to_error_msg(self, env: &dyn TypeEnv) -> Option<String> {
         match self {
             SubsetError::PosParamName(got, want) => Some(format!(
                 "Positional parameter name mismatch: got `{got}`, want `{want}`"
@@ -3050,7 +3055,12 @@ impl SubsetError {
                 let count = types.len();
                 let types = types
                     .iter()
-                    .map(|ty| format!("`{}`", ty.clone().deterministic_printing()))
+                    .map(|ty| {
+                        format!(
+                            "`{}`",
+                            ty.clone().deterministic_printing().display_with(env)
+                        )
+                    })
                     .join(" and ");
                 Some(if count == 1 {
                     format!("Callable is missing a positional parameter with type {types}")
@@ -3070,10 +3080,15 @@ impl SubsetError {
             )),
             SubsetError::IncompatibleAttribute(inner) => {
                 let (protocol, got, attribute, err) = &*inner;
-                Some(err.to_error_msg(&Name::new(format!("{got}")), protocol, attribute))
+                Some(err.to_error_msg(
+                    env,
+                    &Name::new(got.display_with(env).to_string()),
+                    protocol,
+                    attribute,
+                ))
             }
-            SubsetError::TypedDict(err) => Some(err.to_error_msg()),
-            SubsetError::OpenTypedDict(err) => Some(err.to_error_msg()),
+            SubsetError::TypedDict(err) => Some(err.to_error_msg(env)),
+            SubsetError::OpenTypedDict(err) => Some(err.to_error_msg(env)),
             SubsetError::Shape(err) => Some(err.to_string()),
             SubsetError::InternalError(msg) => Some(format!("Pyrefly internal error: {msg}")),
             SubsetError::TypeOfProtocolNeedsConcreteClass(want) => Some(format!(

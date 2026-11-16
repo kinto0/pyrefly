@@ -955,7 +955,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             );
             let mut builder = if let Some(ctx) = context {
                 errors
-                    .error_builder(range, ErrorKind::Deprecated, ctx().format())
+                    .error_builder(range, ErrorKind::Deprecated, ctx().format(self))
                     .with_detail(header)
                     .without_deprecated_tag()
             } else {
@@ -2443,7 +2443,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ErrorKind::NoMatchingOverload,
                     "No intersection member accepts this call".to_owned(),
                 )
-                .with_context(context);
+                .with_context(self, context);
             for (index, arg_errors, attempt_errors, attempt_return_errors) in failures {
                 builder = builder
                     .with_detail(format!("  {}", self.display(targets[index].ty.clone())))

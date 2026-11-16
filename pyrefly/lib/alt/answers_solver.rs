@@ -3952,7 +3952,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) {
         let mut builder = self
             .solver()
-            .error_builder(got, want, errors, loc, tcc, error);
+            .error_builder(self, got, want, errors, loc, tcc, error);
         if let Some(replacement) = self.suggest_enum_member_for_value(got, want) {
             builder = builder
                 .with_detail(format!("Did you mean `{replacement}`?"))
@@ -4153,7 +4153,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> Type {
         errors
             .error_builder(range, kind, msg)
-            .with_context(context)
+            .with_context(self, context)
             .emit();
         self.heap.mk_any_error()
     }

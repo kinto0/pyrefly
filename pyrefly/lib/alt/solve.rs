@@ -1164,7 +1164,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     )
                     .and_then(|iter_ty| self.unwrap_iterable(&iter_ty))
                     .unwrap_or_else(|| {
-                        self.error(errors, range, ErrorKind::NotIterable, context().format())
+                        self.error(
+                            errors,
+                            range,
+                            ErrorKind::NotIterable,
+                            context().format(self),
+                        )
                     });
                 vec![Iterable::OfType(ty)]
             }
@@ -1262,7 +1267,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         )
                     })
                     .unwrap_or_else(|| {
-                        self.error(errors, range, ErrorKind::NotIterable, context().format())
+                        self.error(
+                            errors,
+                            range,
+                            ErrorKind::NotIterable,
+                            context().format(self),
+                        )
                     });
                 vec![Iterable::OfType(ty)]
             }
@@ -1395,7 +1405,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             _ => {
                 let context = || ErrorContext::AsyncIteration(self.for_display(iterable.clone()));
                 let ty = self.unwrap_async_iterable(iterable).unwrap_or_else(|| {
-                    self.error(errors, range, ErrorKind::NotIterable, context().format())
+                    self.error(
+                        errors,
+                        range,
+                        ErrorKind::NotIterable,
+                        context().format(self),
+                    )
                 });
                 vec![Iterable::OfType(ty)]
             }
@@ -2186,7 +2201,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             errors.error_builder(
                                 range,
                                 ErrorKind::BadContextManager,
-                                context().format(),
+                                context().format(self),
                             )
                         })
                         .with_error_details(error),
@@ -6311,7 +6326,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             errors
                 .error_builder(diagnostic.range, kind, header)
                 .with_details(details)
-                .with_context(ctx.as_deref())
+                .with_context(self, ctx.as_deref())
                 .emit();
         }
     }
