@@ -38,6 +38,7 @@ use pyrefly_types::types::Forall;
 use pyrefly_types::types::Overload;
 use pyrefly_types::types::OverloadType;
 use pyrefly_types::types::UnpackKind;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::owner::Owner;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::name::Name;
@@ -585,7 +586,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     )
                 {
                     return Err(SubsetError::OpenTypedDictKwargs(
-                        u_typed_dict.name().clone(),
+                        u_typed_dict.name_in(&self.type_order).clone(),
                     ));
                 }
                 for (name, ty, required) in self.type_order.typed_dict_kw_param_info(&u_typed_dict)
@@ -1332,8 +1333,9 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         got: &ClassType,
         want: &ClassType,
     ) -> Result<(), SubsetError> {
-        let got_name = got.name();
-        let want_name = want.name();
+        let type_order = self.type_order;
+        let got_name = got.name_in(&type_order);
+        let want_name = want.name_in(&type_order);
         let (got_fields, want_fields) = {
             let mut got_fields = self.get_typed_dict_fields(got);
             let mut want_fields = self.get_typed_dict_fields(want);
@@ -1441,7 +1443,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                         SubsetError::OpenTypedDict(Box::new(
                             OpenTypedDictSubsetError::MissingField {
                                 got: got_name.clone(),
-                                want: want.name().clone(),
+                                want: want.name_in(&self.type_order).clone(),
                                 field: k.clone(),
                             },
                         ))
@@ -1469,7 +1471,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (ExtraItems::Default, want_extra_items) => Err(SubsetError::OpenTypedDict(Box::new(
                 OpenTypedDictSubsetError::UnknownFields {
                     got: got_name,
-                    want: want.name().clone(),
+                    want: want.name_in(&self.type_order).clone(),
                     extra_items: want_extra_items.extra_item(self.type_order.stdlib()).ty,
                 },
             ))),
@@ -1504,7 +1506,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // `want` that is missing the field.
                 Err(SubsetError::TypedDict(Box::new(
                     TypedDictSubsetError::MissingField {
-                        got: want.name().clone(),
+                        got: want.name_in(&self.type_order).clone(),
                         want: ANONYMOUS_TYPED_DICT.clone(),
                         field: k.clone(),
                     },
@@ -1517,7 +1519,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 Err(SubsetError::TypedDict(Box::new(
                     TypedDictSubsetError::MissingField {
                         got: ANONYMOUS_TYPED_DICT.clone(),
-                        want: want.name().clone(),
+                        want: want.name_in(&self.type_order).clone(),
                         field: k.clone(),
                     },
                 )))
@@ -2136,10 +2138,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     ));
                 }
                 Err(SubsetError::Shape(ShapeError::structural_mismatch(
-                    got_expanded.to_string(),
-                    got_canonical.to_string(),
-                    want_expanded.to_string(),
-                    want_canonical.to_string(),
+                    got_expanded.display_with(&self.type_order).to_string(),
+                    got_canonical.display_with(&self.type_order).to_string(),
+                    want_expanded.display_with(&self.type_order).to_string(),
+                    want_canonical.display_with(&self.type_order).to_string(),
                 )))
             }
             // Int <: Quantified - expand, canonicalize Int, and compare.
@@ -2162,10 +2164,14 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     Ok(())
                 } else {
                     Err(SubsetError::Shape(ShapeError::structural_mismatch(
-                        Type::Int(s.clone()).to_string(),
-                        got_canonical.to_string(),
-                        Type::Quantified(q.clone()).to_string(),
-                        want_canonical.to_string(),
+                        Type::Int(s.clone())
+                            .display_with(&self.type_order)
+                            .to_string(),
+                        got_canonical.display_with(&self.type_order).to_string(),
+                        Type::Quantified(q.clone())
+                            .display_with(&self.type_order)
+                            .to_string(),
+                        want_canonical.display_with(&self.type_order).to_string(),
                     )))
                 }
             }
@@ -2194,10 +2200,14 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     Ok(())
                 } else {
                     Err(SubsetError::Shape(ShapeError::structural_mismatch(
-                        Type::Quantified(q.clone()).to_string(),
-                        got_canonical.to_string(),
-                        Type::Int(s.clone()).to_string(),
-                        want_canonical.to_string(),
+                        Type::Quantified(q.clone())
+                            .display_with(&self.type_order)
+                            .to_string(),
+                        got_canonical.display_with(&self.type_order).to_string(),
+                        Type::Int(s.clone())
+                            .display_with(&self.type_order)
+                            .to_string(),
+                        want_canonical.display_with(&self.type_order).to_string(),
                     )))
                 }
             }
@@ -2420,7 +2430,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     }
                     Type::PartialTypedDict(want) => {
                         let got = GotTypedDict {
-                            name: got.name().clone(),
+                            name: got.name_in(&self.type_order).clone(),
                             fields: self.type_order.typed_dict_fields(got),
                             extra_items: self.type_order.typed_dict_extra_items(got),
                         };
@@ -2713,15 +2723,15 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (Type::ClassDef(got), Type::Type(want)) => {
                 let res = self.is_subset_eq(&self.type_order.promote_silently(got), want);
                 if res.is_ok()
-                    && got.is_protocol()
+                    && got.is_protocol_in(&self.type_order)
                     && let Type::ClassType(want_cls) = &**want
-                    && want_cls.class_object().is_protocol()
+                    && want_cls.class_object().is_protocol_in(&self.type_order)
                 {
                     // We only allow concrete class names to be assigned to `type[T]` if `T` is a protocol.
                     // We do this check after all other checks on these types so that callers in contexts
                     // in which this error isn't applicable can drop it without losing other errors.
                     return Err(SubsetError::TypeOfProtocolNeedsConcreteClass(
-                        want_cls.name().clone(),
+                        want_cls.name_in(&self.type_order).clone(),
                     ));
                 }
                 res

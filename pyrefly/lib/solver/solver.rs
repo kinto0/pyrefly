@@ -2844,7 +2844,7 @@ impl TypeVarSpecializationError {
                 restriction,
             } => format!(
                 "`{}` is not a valid `{restriction}` value for type variable `{name}`",
-                ans.for_display(got),
+                ans.display(got),
             ),
             Self::ConflictingShapeExtensionSpecialization {
                 name,
@@ -2853,9 +2853,9 @@ impl TypeVarSpecializationError {
                 restriction,
             } => format!(
                 "`{}` is incompatible with selected `{}` value `{}` for type variable `{name}`",
-                ans.for_display(constraint),
+                ans.display(constraint),
                 restriction.kind_name(),
-                ans.for_display(selected),
+                ans.display(selected),
             ),
             Self::BadBoundSpecialization { name, got, want } => {
                 TypeCheckKind::TypeVarSpecialization(name).format_error(
@@ -2867,9 +2867,9 @@ impl TypeVarSpecializationError {
             Self::BadConstraintSpecialization { name, got, want } => {
                 format!(
                     "`{}` is not assignable to any of constraints {} of type variable `{name}`",
-                    ans.for_display(got),
+                    ans.display(got),
                     want.into_iter()
-                        .map(|want| format!("`{}`", ans.for_display(want)))
+                        .map(|want| format!("`{}`", ans.display(want)))
                         .join(", ")
                 )
             }
@@ -2878,7 +2878,7 @@ impl TypeVarSpecializationError {
                     "Overload type was not compatible with solved type variables: {}",
                     solved_constraints
                         .into_iter()
-                        .map(|(name, ty)| format!("{} = {}", name, ans.for_display(ty)))
+                        .map(|(name, ty)| format!("{} = {}", name, ans.display(ty)))
                         .join(", ")
                 )
             }
