@@ -4419,14 +4419,7 @@ fn intvar_typevar_unify_order(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use std::sync::Arc;
-
-    use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
-    use pyrefly_python::module_path::ModulePath;
-    use pyrefly_python::nesting_context::NestingContext;
-    use pyrefly_types::class::ClassDefIndex;
     use pyrefly_types::class::ClassType;
     use pyrefly_types::dimension::Int;
     use pyrefly_types::dimension::canonicalize;
@@ -4437,12 +4430,12 @@ mod tests {
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::quantified::QuantifiedOrigin;
     use pyrefly_types::shaped_array::IntTuple;
+    use pyrefly_types::test_type_env::TestTypeEnv;
     use pyrefly_types::type_var::PreInferenceVariance;
     use pyrefly_types::types::AnyStyle;
     use pyrefly_types::types::TArgs;
     use pyrefly_types::types::Union;
     use pyrefly_types::types::UnpackKind;
-    use ruff_python_ast::Identifier;
     use ruff_text_size::TextSize;
 
     use super::*;
@@ -4583,7 +4576,8 @@ mod tests {
         });
         let uniques = UniqueFactory::new();
         let var = Var::new(&uniques);
-        let bound = Type::ClassType(fake_array(TArgs::default()));
+        let env = TestTypeEnv::new();
+        let bound = Type::ClassType(ClassType::new(env.class("test", "Array"), TArgs::default()));
         let param = quantified_with_restriction(
             QuantifiedKind::TypeVar,
             0,
@@ -4797,26 +4791,6 @@ mod tests {
         assert_eq!(quantified_gradual_type(&precise_int_tuple), precise_bound);
         assert!(quantified_gradual_type(&ordinary_bound).is_any());
         assert!(quantified_gradual_type(&unrestricted).is_any());
-    }
-
-    fn fake_array(targs: TArgs) -> ClassType {
-        let module = Module::new(
-            ModuleName::from_str("test"),
-            ModulePath::filesystem(PathBuf::from("test")),
-            Arc::new("fake module contents".to_owned()),
-        );
-        ClassType::new(
-            Class::new(
-                ClassDefIndex(0),
-                Identifier::new(Name::new("Array"), TextRange::empty(TextSize::new(0))),
-                NestingContext::toplevel(),
-                module,
-                false,
-                false,
-                None,
-            ),
-            targs,
-        )
     }
 
     #[test]
