@@ -671,19 +671,9 @@ impl Solver {
         self.protocol_cache.lock().len()
     }
 
-    /// Store a protocol conformance result.
-    pub fn store_protocol_cache<Ans: LookupAnswer>(
-        &self,
-        got: &Type,
-        want: &Type,
-        result: &Result<(), SubsetError>,
-        type_order: TypeOrder<'_, Ans>,
-    ) {
-        // SCC-local answers are provisional until the SCC converges. They may use
-        // stable cached results, but must not publish results to a persistent cache.
-        if type_order.has_active_scc() {
-            return;
-        }
+    /// Store a protocol conformance result. The result must not depend on provisional
+    /// SCC-local answers.
+    pub fn store_protocol_cache(&self, got: &Type, want: &Type, result: &Result<(), SubsetError>) {
         self.protocol_cache
             .lock()
             .insert((got.clone(), want.clone()), result.clone());

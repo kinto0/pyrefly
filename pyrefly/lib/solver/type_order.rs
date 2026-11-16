@@ -88,6 +88,10 @@ impl<'solver, Ans: LookupAnswer> TypeOrder<'solver, Ans> {
         self.0.has_active_scc()
     }
 
+    pub fn scc_local_reads(self) -> u64 {
+        self.0.stack().scc_local_reads()
+    }
+
     pub fn stdlib(self) -> &'solver Stdlib {
         self.0.stdlib
     }

@@ -734,6 +734,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         } else {
             None
         };
+        let scc_local_reads = self.type_order.scc_local_reads();
         let res = self.is_subset_protocol_inner(got.clone(), protocol);
         // Clean up assumptions
         if let Some(key) = class_check {
@@ -745,11 +746,14 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         // 2. No coinductive assumptions were used during this check
         //    (otherwise the result may be contingent on an assumption
         //    that could be invalidated by rollback)
+        // 3. The check read no provisional SCC-local answer. Outside an SCC, every answer is
+        //    final; inside one, the check may still have read only final answers.
         let used_coinductive =
             self.coinductive_assumptions_used || self.type_order.coinductive_assumptions_used();
-        if has_no_vars && !used_coinductive {
-            self.solver
-                .store_protocol_cache(&got, &want, &res, self.type_order);
+        let is_final = !self.type_order.has_active_scc()
+            || self.type_order.scc_local_reads() == scc_local_reads;
+        if has_no_vars && !used_coinductive && is_final {
+            self.solver.store_protocol_cache(&got, &want, &res);
         }
 
         // Restore: propagate any coinductive usage upward

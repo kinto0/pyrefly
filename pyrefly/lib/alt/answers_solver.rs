@@ -552,6 +552,10 @@ pub struct CalcStack {
     /// driver, owns an SCC. Merges preserve the oldest identity so nested
     /// drivers leave the merged SCC for the suspended outer driver to commit.
     next_scc_owner: Cell<u64>,
+    /// Counts reads of SCC-local answers: previous-iteration answers, placeholders, and answers
+    /// computed in the current iteration. These are provisional until the SCC converges, so a
+    /// calculation during which this count does not change used only final answers.
+    scc_local_reads: Cell<u64>,
 }
 
 /// One active entry on `CalcStack`. Dropping the guard pops the entry and
@@ -591,7 +595,16 @@ impl CalcStack {
             position_of: RefCell::new(FxHashMap::default()),
             pending_completed_scc: RefCell::new(None),
             next_scc_owner: Cell::new(0),
+            scc_local_reads: Cell::new(0),
         }
+    }
+
+    fn record_scc_local_read(&self) {
+        self.scc_local_reads.set(self.scc_local_reads.get() + 1);
+    }
+
+    pub fn scc_local_reads(&self) -> u64 {
+        self.scc_local_reads.get()
     }
 
     /// Pop the current frame and take the completed SCC (if any).
@@ -2772,10 +2785,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             let frame = self.stack().push(self.answer_scope, &current);
             let borrowed = match frame.action() {
                 BindingAction::Calculate => self.calculate_and_record_answer(&current, idx),
-                BindingAction::SccLocalAnswer(type_erased) => type_erased
-                    .downcast_ref::<K::Answer>()
-                    .expect("SccLocalAnswer downcast failed: type mismatch"),
+                BindingAction::SccLocalAnswer(type_erased) => {
+                    self.stack().record_scc_local_read();
+                    type_erased
+                        .downcast_ref::<K::Answer>()
+                        .expect("SccLocalAnswer downcast failed: type mismatch")
+                }
                 BindingAction::NeedsColdPlaceholder => {
+                    self.stack().record_scc_local_read();
                     self.attempt_to_unwind_cycle_from_here(&current, idx)
                 }
             };

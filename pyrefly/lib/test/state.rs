@@ -376,9 +376,9 @@ def g(n: int):
         .transaction()
         .get_answers(&foo)
         .expect("lazily reached module should retain answers");
-    // BUG: `A <: SupportsBar` is checked while the return types of `f` and `g` form a cycle.
-    // The check reads no provisional answer from that cycle, but its result is not cached.
-    assert_eq!(answers.solver().protocol_cache_len(), 0);
+    // `A <: SupportsBar` is checked while the return types of `f` and `g` form a cycle. The
+    // check reads no provisional answer from that cycle, so its result is cached.
+    assert_eq!(answers.solver().protocol_cache_len(), 1);
 }
 
 /// Regression for the TSP type converter's export-location resolution.
