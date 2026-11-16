@@ -583,7 +583,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         format!(
                             "Incompatible types in string interpolation (expression has type `{}`, placeholder has type `{}`)",
                             self.display(actual.clone()),
-                            self.for_display(expected),
+                            self.display(expected),
                         ),
                     )
                     .emit();

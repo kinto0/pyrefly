@@ -3162,7 +3162,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     &callee.expr.arguments.keywords,
                     errors,
                 );
-                match ty.callee_kind() {
+                match ty.callee_kind(self) {
                 Some(CalleeKind::Function(FunctionKind::AssertType)) => self
                     .call_assert_type(
                         &callee.expr.arguments.args,
@@ -3677,7 +3677,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // `builtins.enumerate` function form is accepted defensively for alternate stubs.
         let is_enumerate = matches!(ty, Type::ClassDef(cls) if cls.is(KnownClass::Enumerate))
             || matches!(
-                ty.callee_kind(),
+                ty.callee_kind(self),
                 Some(CalleeKind::Function(FunctionKind::Def(func)))
                     if func.has_toplevel_qname("builtins", "enumerate")
             );

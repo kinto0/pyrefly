@@ -739,7 +739,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Shapes `{}` recovered from this argument are not assignable to the `MapIntTuples` source `{}`",
                     self.display(source),
-                    self.for_display(map_source.clone()),
+                    self.display(map_source.clone()),
                 ),
                 context,
             );

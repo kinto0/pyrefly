@@ -16,14 +16,19 @@
 
 use pretty_assertions::assert_eq;
 use pyrefly_build::handle::Handle;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_text_size::TextSize;
 
 use crate::state::state::State;
 use crate::test::util::get_batched_lsp_operations_report_allow_error;
 
 fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String {
-    match state.transaction().get_expected_type_at(handle, position) {
-        Some(t) => format!("Expected Type: `{t}`"),
+    let transaction = state.transaction();
+    match transaction.get_expected_type_at(handle, position) {
+        Some(t) => format!(
+            "Expected Type: `{}`",
+            t.display_with(&transaction.type_env(handle))
+        ),
         None => "Expected Type: None".to_owned(),
     }
 }

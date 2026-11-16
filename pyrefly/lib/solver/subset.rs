@@ -3368,10 +3368,10 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 // Reject cross-structural cases: extras must all be on one side.
                 if has_got_extras && has_want_extras {
                     return Err(SubsetError::Shape(ShapeError::StructuralMismatch {
-                        got: format!("[{}]", got_shape),
-                        got_canonical: format!("[{}]", got_shape),
-                        want: format!("[{}]", want_shape),
-                        want_canonical: format!("[{}]", want_shape),
+                        got: format!("[{}]", got_shape.display_with(&self.type_order)),
+                        got_canonical: format!("[{}]", got_shape.display_with(&self.type_order)),
+                        want: format!("[{}]", want_shape.display_with(&self.type_order)),
+                        want_canonical: format!("[{}]", want_shape.display_with(&self.type_order)),
                     }));
                 }
 

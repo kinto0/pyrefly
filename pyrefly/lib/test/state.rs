@@ -30,6 +30,7 @@ use pyrefly_python::sys_info::PythonPlatform;
 use pyrefly_python::sys_info::PythonVersion;
 use pyrefly_python::sys_info::SysInfo;
 use pyrefly_util::arc_id::ArcId;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::events::CategorizedEvents;
 use pyrefly_util::lock::Mutex;
 use pyrefly_util::prelude::SliceExt;
@@ -535,7 +536,10 @@ class Plain: ...
     let solutions = transaction.get_solutions(&main).unwrap();
     let class = |name: &str| match solutions.get(&KeyExport(Name::new(name))) {
         Type::ClassDef(cls) => cls.dupe(),
-        ty => panic!("`{name}` should be a class, got `{ty}`"),
+        ty => panic!(
+            "`{name}` should be a class, got `{}`",
+            ty.display_with(&transaction.type_env(&main))
+        ),
     };
     let type_env = transaction.type_env(&main);
     let tparam_names = |cls: &Class| {

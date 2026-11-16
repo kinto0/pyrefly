@@ -44,6 +44,7 @@ use crate::types::callable::Param;
 use crate::types::callable::Params;
 use crate::types::callable::unexpected_keyword;
 use crate::types::class::Class;
+use crate::types::env::TypeEnv;
 use crate::types::function::FunctionKind;
 use crate::types::literal::Lit;
 use crate::types::tuple::Tuple;
@@ -276,7 +277,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 errors,
                 range,
                 ErrorKind::RevealType,
-                format!("revealed type: {}", type_info.display_with(&ctx)),
+                format!("revealed type: {}", type_info.display_with_context(&ctx)),
             );
             ret
         } else {
@@ -380,8 +381,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             ErrorKind::AssertType,
                             format!(
                                 "assert_shape({}, {}) failed",
-                                format_assert_shape_shape(&actual_shape),
-                                format_assert_shape_shape(&shape)
+                                format_assert_shape_shape(self, &actual_shape),
+                                format_assert_shape_shape(self, &shape)
                             ),
                         );
                     }
@@ -1019,10 +1020,11 @@ fn runtime_keyword_parameter(callee_ty: &Type) -> RuntimeKeywordParameter<'_> {
     }
 }
 
-fn format_assert_shape_shape(shape: &IntTuple) -> String {
+fn format_assert_shape_shape(env: &dyn TypeEnv, shape: &IntTuple) -> String {
+    let rendered = shape.display_with(env);
     match shape.as_concrete() {
         Some([]) => "()".to_owned(),
-        Some([_]) => format!("({shape},)"),
-        _ => format!("({shape})"),
+        Some([_]) => format!("({rendered},)"),
+        _ => format!("({rendered})"),
     }
 }

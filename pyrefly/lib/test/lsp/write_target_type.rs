@@ -19,6 +19,7 @@
 
 use pretty_assertions::assert_eq;
 use pyrefly_build::handle::Handle;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 
@@ -31,12 +32,12 @@ use crate::test::util::mk_multi_file_state_assert_no_errors;
 fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String {
     let transaction = state.transaction();
     let hover = match transaction.get_type_at(handle, position) {
-        Some(t) => format!("`{t}`"),
+        Some(t) => format!("`{}`", t.display_with(&transaction.type_env(handle))),
         None => "None".to_owned(),
     };
     let computed = match transaction.get_computed_type_at_range(handle, TextRange::empty(position))
     {
-        Some(t) => format!("`{t}`"),
+        Some(t) => format!("`{}`", t.display_with(&transaction.type_env(handle))),
         None => "None".to_owned(),
     };
     format!("Hover: {hover}\nComputed: {computed}")
@@ -55,6 +56,7 @@ fn class_field_declaration_preserves_self() {
         transaction
             .get_type_at(handle, position)
             .unwrap()
+            .display_with(&transaction.type_env(handle))
             .to_string(),
     );
     for range in [
@@ -66,6 +68,7 @@ fn class_field_declaration_preserves_self() {
             transaction
                 .get_computed_type_at_range(handle, range)
                 .unwrap()
+                .display_with(&transaction.type_env(handle))
                 .to_string(),
         );
     }
@@ -107,6 +110,7 @@ fn class_field_definition_ownership() {
             transaction
                 .get_type_at(handle, position)
                 .unwrap()
+                .display_with(&transaction.type_env(handle))
                 .to_string(),
             "hover for {code}",
         );
@@ -119,6 +123,7 @@ fn class_field_definition_ownership() {
                 transaction
                     .get_computed_type_at_range(handle, range)
                     .unwrap()
+                    .display_with(&transaction.type_env(handle))
                     .to_string(),
                 "computed type for {code}",
             );
@@ -172,6 +177,7 @@ fn class_field_declaration_type_invariants() {
             transaction
                 .get_type_at(handle, position)
                 .unwrap()
+                .display_with(&transaction.type_env(handle))
                 .to_string(),
             "hover for {code}",
         );
@@ -180,6 +186,7 @@ fn class_field_declaration_type_invariants() {
             transaction
                 .get_computed_type_at_range(handle, TextRange::at(position, 1.into()))
                 .unwrap()
+                .display_with(&transaction.type_env(handle))
                 .to_string(),
             "computed type for {code}",
         );
@@ -460,7 +467,7 @@ class E:
     let transaction = state.transaction();
     let report = |label: &str, range: TextRange| {
         let ty = match transaction.get_computed_type_at_range(handle, range) {
-            Some(t) => format!("`{t}`"),
+            Some(t) => format!("`{}`", t.display_with(&transaction.type_env(handle))),
             None => "None".to_owned(),
         };
         format!("{label}: {ty}\n")

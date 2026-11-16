@@ -122,6 +122,7 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
@@ -133,6 +134,7 @@ mod tests {
     use crate::class::ClassType;
     use crate::equality::TypeEq;
     use crate::equality::TypeEqCtx;
+    use crate::test_type_env::TestTypeEnv;
     use crate::types::TArgs;
 
     fn underlying_class() -> ClassType {
@@ -186,7 +188,7 @@ mod tests {
         )
         .to_type();
         assert_eq!(
-            format!("{df}"),
+            df.display_with(&TestTypeEnv::new()).to_string(),
             "DataFrame[a: Int64, ...]",
             "a Partial schema shows known columns plus a trailing marker for the unknown rest"
         );

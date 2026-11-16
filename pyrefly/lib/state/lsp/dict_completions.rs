@@ -586,7 +586,9 @@ impl<'a> Transaction<'a> {
             };
             if let Some(treats_strings_as_columns) = self
                 .get_type_trace(handle, call.func.range())
-                .and_then(|ty| polars_function_treats_strings_as_columns(&ty))
+                .and_then(|ty| {
+                    polars_function_treats_strings_as_columns(&self.type_env(handle), &ty)
+                })
             {
                 if !treats_strings_as_columns && !inside_column_helper {
                     return None;

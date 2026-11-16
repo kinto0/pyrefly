@@ -1959,6 +1959,7 @@ mod tests {
 
     #[test]
     fn concrete_projects_to_int_dims_not_literals() {
+        let env = TestTypeEnv::new();
         let n = Type::Quantified(Box::new(Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
@@ -1980,7 +1981,10 @@ mod tests {
                 Type::Int(Int::Symbolic(Box::new(n))),
             ]))
         );
-        assert_eq!(projected.to_string(), "tuple[Int[2], Int[N]]");
+        assert_eq!(
+            projected.display_with(&env).to_string(),
+            "tuple[Int[2], Int[N]]"
+        );
     }
 
     #[test]
@@ -2048,6 +2052,7 @@ mod tests {
 
     #[test]
     fn affixed_tuple_carrier_middle_displays_as_bare_splat() {
+        let env = TestTypeEnv::new();
         let middle = Type::Quantified(Box::new(Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
@@ -2065,7 +2070,10 @@ mod tests {
             IntTuple::unpacked(vec![dim(1)], middle, vec![dim(2)]).to_string(),
             "1, *S, 2"
         );
-        assert_eq!(IntTuple::shapeless().to_string(), "*IntTuple");
+        assert_eq!(
+            IntTuple::shapeless().display_with(&env).to_string(),
+            "*IntTuple"
+        );
     }
 
     #[test]

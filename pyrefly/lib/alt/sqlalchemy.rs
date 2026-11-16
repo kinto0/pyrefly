@@ -254,7 +254,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         format!(
                             "`{}` is not assignable to field `{field_name}` with type `{}`",
                             self.display(got_ty),
-                            self.for_display(expected_ty)
+                            self.display(expected_ty)
                         ),
                     );
                 }

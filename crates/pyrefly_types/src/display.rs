@@ -1878,6 +1878,18 @@ impl<'e> DisplayWith<dyn TypeEnv + 'e> for Class {
     }
 }
 
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for IntTuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Lit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
 impl<'e> DisplayWith<dyn TypeEnv + 'e> for bool {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         Display::fmt(self, f)
@@ -1992,6 +2004,7 @@ pub mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use ruff_text_size::TextSize;
     use starlark_map::smallset;
@@ -2026,6 +2039,7 @@ pub mod tests {
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
     use crate::shaped_array::IntTuple;
+    use crate::test_type_env::TestTypeEnv;
     use crate::tuple::Tuple;
     use crate::type_alias::TypeAlias;
     use crate::type_alias::TypeAliasData;
@@ -2126,6 +2140,7 @@ pub mod tests {
 
     #[test]
     fn test_display_ignores_tparam_qnames_for_disambiguation() {
+        let env = TestTypeEnv::new();
         let hidden = Type::ClassType(ClassType::new(
             fake_class("C", "hidden", 0),
             TArgs::default(),
@@ -2137,18 +2152,25 @@ pub mod tests {
             TArgs::new(fake_tparams(vec![tparam]), vec![Type::None]),
         ));
 
-        assert_eq!(visible.to_string(), "C[None]");
+        assert_eq!(visible.display_with(&env).to_string(), "C[None]");
     }
 
     #[test]
     fn test_display_int_type_marks_standalone_sizes() {
+        let env = TestTypeEnv::new();
         let heap = TypeHeap::new();
         let n = fake_tparam(0, "N", QuantifiedKind::IntVar).to_type(&heap);
         let m = fake_tparam(1, "M", QuantifiedKind::IntVar).to_type(&heap);
 
         assert_eq!(Type::Int(Int::Literal(3)).to_string(), "Int[3]");
         assert_eq!(
-            Type::Int(Int::Symbolic(Box::new(n.clone()))).to_string(),
+            Type::Int(Int::Literal(3)).display_with(&env).to_string(),
+            "Int[3]"
+        );
+        assert_eq!(
+            Type::Int(Int::Symbolic(Box::new(n.clone())))
+                .display_with(&env)
+                .to_string(),
             "Int[N]"
         );
         assert_eq!(
@@ -2159,7 +2181,10 @@ pub mod tests {
             .to_string(),
             "Int[N * M]"
         );
-        assert_eq!(Type::Int(Int::Int).to_string(), "Int[int]");
+        assert_eq!(
+            Type::Int(Int::Int).display_with(&env).to_string(),
+            "Int[int]"
+        );
     }
 
     #[test]
@@ -2414,14 +2439,15 @@ pub mod tests {
 
     #[test]
     fn test_display_int_tuple_type() {
+        let env = TestTypeEnv::new();
         let concrete = Type::IntTuple(Box::new(IntTuple::new(vec![
             Int::Literal(2),
             Int::Literal(3),
         ])));
-        assert_eq!(concrete.to_string(), "IntTuple[2, 3]");
+        assert_eq!(concrete.display_with(&env).to_string(), "IntTuple[2, 3]");
 
         let gradual = Type::IntTuple(Box::new(IntTuple::shapeless()));
-        assert_eq!(gradual.to_string(), "IntTuple");
+        assert_eq!(gradual.display_with(&env).to_string(), "IntTuple");
     }
 
     fn fake_generic_bound_method(
@@ -2615,12 +2641,13 @@ pub mod tests {
 
     #[test]
     fn dataframe_annotation_surface_uses_plain_class() {
+        let env = TestTypeEnv::new();
         let df = fake_dataframe(
             vec![(Name::new("a"), PolarsDType::Int64)],
             SchemaCompleteness::Complete,
         );
         // reveal_type and hover keep the rich schema form.
-        assert_eq!(df.to_string(), "DataFrame[a: Int64]");
+        assert_eq!(df.display_with(&env).to_string(), "DataFrame[a: Int64]");
         // Annotation surfaces emit the plain class.
         assert_eq!(locations_string(&df), "DataFrame");
         assert_eq!(
@@ -3165,12 +3192,15 @@ pub mod tests {
 
     #[test]
     fn test_display_generic_typeddict() {
+        let env = TestTypeEnv::new();
         let cls = fake_class("C", "test", 0);
         let tparams = fake_tparams(vec![fake_tparam(3, "T", QuantifiedKind::TypeVar)]);
         let t = Type::None;
         let targs = TArgs::new(tparams.dupe(), vec![t]);
         assert_eq!(
-            Type::ClassType(ClassType::new(cls, targs)).to_string(),
+            Type::ClassType(ClassType::new(cls, targs))
+                .display_with(&env)
+                .to_string(),
             "C[None]"
         );
     }
@@ -3856,6 +3886,7 @@ def overloaded_func[T](
     }
 
     fn display_filtered_param_list(params: &ParamList, overlay: SmallSet<&str>) -> String {
+        let env = TestTypeEnv::new();
         let overlay = ParamOverlay::Subset(overlay.iter().map(Name::new).collect());
         format!(
             "{}",
@@ -3865,7 +3896,9 @@ def overloaded_func[T](
                 output.write_str("(")?;
                 params.fmt_with_type(
                     &mut output,
-                    &|t: &Type, o: &mut DisplayOutput| o.write_str(&format!("{t}")),
+                    &|t: &Type, o: &mut DisplayOutput| {
+                        o.write_str(&t.display_with(&env).to_string())
+                    },
                     &overlay,
                 )?;
                 output.write_str(")")

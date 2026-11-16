@@ -17,6 +17,7 @@ use pyrefly_types::quantified::QuantifiedOrigin;
 use pyrefly_types::shaped_array::IntTuple;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::Type;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
 use ruff_text_size::Ranged;
 
@@ -27,6 +28,7 @@ use crate::state::load::FileContents;
 use crate::state::require::Require;
 use crate::state::state::State;
 use crate::test::util::TestEnv;
+use crate::types::env::TypeEnv;
 
 const SHAPE_EXTENSIONS: &str = "class MapIntTuples: ...\n";
 const CONSUMER: &str = "from mapmod import anchor\n\nvalue = anchor\n";
@@ -105,12 +107,18 @@ fn solve_mapper_parameter(state: &State, mapmod: &Handle) -> (bool, Type) {
     (both_unsolved, parameter)
 }
 
-fn assert_mapper_parameter(parameter: Type, expected_name: &str) {
+fn assert_mapper_parameter(env: &dyn TypeEnv, parameter: Type, expected_name: &str) {
     let Type::Type(parameter) = parameter else {
-        panic!("mapper parameter should denote a type form, got `{parameter}`");
+        panic!(
+            "mapper parameter should denote a type form, got `{}`",
+            parameter.display_with(env)
+        );
     };
     let Type::Quantified(parameter) = *parameter else {
-        panic!("mapper parameter should denote a quantified, got `{parameter}`");
+        panic!(
+            "mapper parameter should denote a quantified, got `{}`",
+            parameter.display_with(env)
+        );
     };
     assert_eq!(parameter.name().as_str(), expected_name);
     assert_eq!(
@@ -131,7 +139,7 @@ fn map_int_tuples_mapper_parameter_is_order_independent_and_incremental() {
         both_unsolved,
         "the parameter and enclosing annotation must be unsolved to test solve order"
     );
-    assert_mapper_parameter(parameter, "Elem");
+    assert_mapper_parameter(&state.transaction().type_env(&mapmod), parameter, "Elem");
 
     let mut transaction = state.new_committable_transaction(Require::Everything, None);
     transaction.as_mut().set_memory(vec![(
@@ -144,7 +152,7 @@ fn map_int_tuples_mapper_parameter_is_order_independent_and_incremental() {
     state.commit_transaction(transaction, None);
 
     let (_, parameter) = solve_mapper_parameter(&state, &mapmod);
-    assert_mapper_parameter(parameter, "Item");
+    assert_mapper_parameter(&state.transaction().type_env(&mapmod), parameter, "Item");
 }
 
 #[test]

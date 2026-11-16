@@ -198,7 +198,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let swallowed_errors = self.error_swallower();
         for helper_call in definition.helper_calls() {
             let callee = self.expr_infer(helper_call.callee(), &swallowed_errors);
-            match callee.callee_kind() {
+            match callee.callee_kind(self) {
                 Some(CalleeKind::Function(FunctionKind::TypeShapeDsl(helper_id, helper))) => {
                     let argument_domains = match helper_call.argument_domains(
                         parameter_domains,
@@ -981,7 +981,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 _ => {}
             }
         }
-        let Some(CalleeKind::Function(function_kind)) = callee.callee_kind() else {
+        let Some(CalleeKind::Function(function_kind)) = callee.callee_kind(self) else {
             return None;
         };
         if function_kind == FunctionKind::Len {
@@ -1067,7 +1067,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         type_form_context: TypeFormContext<'_>,
         errors: &ErrorCollector,
     ) -> Type {
-        match callee.callee_kind() {
+        match callee.callee_kind(self) {
             Some(CalleeKind::Function(FunctionKind::TypeShapeDsl(_, function))) => self
                 .parse_user_defined_type_level_dsl_call(call, function, type_form_context, errors),
             Some(CalleeKind::Function(FunctionKind::Def(id)))

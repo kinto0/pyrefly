@@ -1282,7 +1282,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         {
             return Some(SpecialDecorator::PropertyDeleter(&decorator.ty));
         }
-        match decorator.ty.callee_kind() {
+        match decorator.ty.callee_kind(self) {
             Some(CalleeKind::Function(FunctionKind::Overload)) => Some(SpecialDecorator::Overload),
             Some(CalleeKind::Class(ClassKind::StaticMethod(name))) => {
                 Some(SpecialDecorator::StaticMethod(name))
@@ -1404,7 +1404,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             SpecialDecorator::DataclassTransformCall(kws) => {
                 flags.dataclass_transform_metadata =
-                    Some(DataclassTransformMetadata::from_type_map(kws));
+                    Some(DataclassTransformMetadata::from_type_map(kws, self));
                 true
             }
             SpecialDecorator::AbstractMethod => {
@@ -2364,7 +2364,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Return type `{}` must be assignable to the first argument type `{}`",
                     self.display(ty_narrow.clone()),
-                    self.for_display(ty_arg.as_type().clone())
+                    self.display(ty_arg.as_type().clone())
                 ),
             );
         }
@@ -2631,7 +2631,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             self.heap
                                 .mk_callable_from(original_overload_func.signature.clone())
                         ),
-                        self.for_display(self.heap.mk_callable_from(impl_sig.clone())),
+                        self.display(self.heap.mk_callable_from(impl_sig.clone())),
                     ),
                 );
                 for e in specialization_errors {
@@ -3146,7 +3146,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 format!(
                                     "`{method_name}` method self type `{}` refers to class `{}`, which is not a superclass of class `{cls_name}`",
                                     self.display(self_ty.clone()),
-                                    self.for_display((**inner).clone()),
+                                    self.display((**inner).clone()),
                                 ),
                             )
                             .emit();
@@ -3195,7 +3195,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 format!(
                                     "`{method_name}` method cls type `{}` refers to class `{}`, which is not a superclass of class `{cls_name}`",
                                     self.display(cls_ty.clone()),
-                                    self.for_display((**f).clone()),
+                                    self.display((**f).clone()),
                                 ),
                             )
                             .emit();

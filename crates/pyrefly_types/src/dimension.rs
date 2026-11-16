@@ -1712,6 +1712,7 @@ mod tests {
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
+    use pyrefly_util::display::DisplayWithCtx;
     use pyrefly_util::uniques::UniqueFactory;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::Int as AstInt;
@@ -1728,6 +1729,7 @@ mod tests {
     use crate::quantified::Quantified;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedOrigin;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::TypeVar;
     use crate::types::AnyStyle;
@@ -1785,6 +1787,7 @@ mod tests {
 
     #[test]
     fn display_preserves_precedence_after_identity_elision() {
+        let env = TestTypeEnv::new();
         let add = || Int::Add(Box::new(Int::Literal(2)), Box::new(Int::Literal(3)));
         let expressions = [
             Int::Mul(Box::new(Int::Literal(1)), Box::new(add())),
@@ -1793,7 +1796,7 @@ mod tests {
         ];
 
         for expression in expressions {
-            assert_eq!(expression.to_string(), "2 + 3");
+            assert_eq!(expression.display_with(&env).to_string(), "2 + 3");
         }
     }
 

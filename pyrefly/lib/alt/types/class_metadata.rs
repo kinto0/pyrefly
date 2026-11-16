@@ -6,8 +6,6 @@
  */
 
 use std::fmt;
-use std::fmt::Display;
-use std::fmt::Formatter;
 use std::iter;
 use std::sync::Arc;
 
@@ -589,16 +587,6 @@ impl Metaclass {
 /// separately as part of `ClassMetadata`.
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq, Default)]
 struct Keywords(Vec<(Name, Type)>);
-
-impl Display for Keywords {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f,
-            "[{}]",
-            commas_iter(|| self.0.iter().map(|(n, ty)| format!("{n}: {ty}")))
-        )
-    }
-}
 
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq)]
 pub struct TypedDictMetadata {

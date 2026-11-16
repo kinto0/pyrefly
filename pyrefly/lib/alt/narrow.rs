@@ -24,6 +24,7 @@ use pyrefly_types::simplify::simplify_tuples;
 use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_info::JoinStyle;
 use pyrefly_types::typed_dict::ExtraItems;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::prelude::SliceExt;
 use pyrefly_util::visit::Visit;
 use ruff_python_ast::Arguments;
@@ -698,7 +699,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let func_ty = self.expr_infer(func, errors);
         if args.args.len() > 1 {
             let second_arg = &args.args[1];
-            let op = match func_ty.callee_kind() {
+            let op = match func_ty.callee_kind(self) {
                 Some(CalleeKind::Function(FunctionKind::IsInstance)) => Some(
                     AtomicNarrowOp::IsInstance(second_arg.clone(), NarrowSource::Call),
                 ),
@@ -2048,7 +2049,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             AtomicNarrowOp::NotTypeGuard(_, _) => ty.clone(),
             AtomicNarrowOp::TypeIs(t, arguments) => {
                 let is_builtin_callable =
-                    t.callee_kind() == Some(CalleeKind::Function(FunctionKind::Callable));
+                    t.callee_kind(self) == Some(CalleeKind::Function(FunctionKind::Callable));
                 if let CallTargetLookup::Ok(call_target) = self.as_call_target(t.clone()) {
                     let args = arguments.args.map(CallArg::expr_maybe_starred);
                     let kws = arguments.keywords.map(CallKeyword::new);
@@ -2728,7 +2729,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Returns None if the remaining type can't be formatted nicely.
     fn format_missing_cases(&self, ty: &Type) -> Option<String> {
         match ty {
-            Type::Literal(lit) => Some(format!("{}", lit.value)),
+            Type::Literal(lit) => Some(lit.value.display_with(self).to_string()),
             Type::None => Some("None".to_owned()),
             Type::ClassType(cls) => {
                 let display = self.display(self.heap.mk_class_type(cls.clone()));

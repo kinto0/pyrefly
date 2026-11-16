@@ -241,7 +241,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Dispatch type `{}` is not a subtype of fallback first argument type `{}`",
                     self.display(dispatch_ty.clone()),
-                    self.for_display(fallback_first.clone()),
+                    self.display(fallback_first.clone()),
                 ),
             );
         }

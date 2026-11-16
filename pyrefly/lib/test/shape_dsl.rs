@@ -19,6 +19,7 @@ use pyrefly_types::type_level_dsl::TypeShapeDslInputDomain;
 use pyrefly_types::type_var::FlagDomain;
 use pyrefly_types::type_var::FlagMember;
 use pyrefly_types::type_var::Restriction;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::name::Name;
 
 use crate::binding::binding::KeyExport;
@@ -682,7 +683,8 @@ def diag_extent(n: Int, k: int) -> Int:
                     FunctionKind::TypeShapeDsl(_, function)
                         if function.parameter_domains() == expected_parameters
                             && function.result_domain() == expected_result)),
-            "expected `{name}` to retain type-level DSL metadata, got `{ty}`"
+            "expected `{name}` to retain type-level DSL metadata, got `{}`",
+            ty.display_with(&state.transaction().type_env(&main))
         );
         assert_eq!(attribute_symbol_kind_from_type(ty), SymbolKind::Function);
     }
@@ -730,7 +732,8 @@ fn test_broadcast_is_a_user_defined_type_shape_dsl_function() {
                             TypeShapeDslInputDomain::Value(TypeShapeDslDomain::IntTuple),
                         ]
                         && resolved.result_domain() == TypeShapeDslDomain::IntTuple)),
-        "expected `broadcast` to be a user-defined type-level DSL function, got `{broadcast}`",
+        "expected `broadcast` to be a user-defined type-level DSL function, got `{}`",
+        broadcast.display_with(&state.transaction().type_env(&main)),
     );
 }
 #[test]
@@ -766,7 +769,8 @@ def duplicate(x: Int, x: Int) -> Int:
         assert!(
             matches!(ty, Type::Function(function)
                 if matches!(&function.metadata.kind, FunctionKind::Def(_))),
-            "expected invalid DSL declaration `{name}` to recover as an ordinary function, got `{ty}`"
+            "expected invalid DSL declaration `{name}` to recover as an ordinary function, got `{}`",
+            ty.display_with(&state.transaction().type_env(&main))
         );
     }
 }
@@ -909,7 +913,10 @@ N = IntVar("N")
     let solutions = state.transaction().get_solutions(&main).unwrap();
     match solutions.get(&KeyExport(Name::new("N"))) {
         Type::TypeVar(tv) => assert_eq!(tv.kind(), QuantifiedKind::IntVar),
-        ty => panic!("expected `N` to solve to a raw IntVar, got `{ty}`"),
+        ty => panic!(
+            "expected `N` to solve to a raw IntVar, got `{}`",
+            ty.display_with(&state.transaction().type_env(&main))
+        ),
     }
 }
 
@@ -1147,10 +1154,16 @@ x: Array[float, [2, 3]]
     let solutions = state.transaction().get_solutions(&main).unwrap();
     let ty = solutions.get(&KeyExport(Name::new("x")));
     let Type::ClassType(array) = ty else {
-        panic!("expected an ordinary generic class, got `{ty}`");
+        panic!(
+            "expected an ordinary generic class, got `{}`",
+            ty.display_with(&state.transaction().type_env(&main))
+        );
     };
     let [dtype, shape] = array.targs().as_slice() else {
-        panic!("expected dtype and shape arguments, got `{ty}`");
+        panic!(
+            "expected dtype and shape arguments, got `{}`",
+            ty.display_with(&state.transaction().type_env(&main))
+        );
     };
     assert!(matches!(dtype, Type::ClassType(cls) if cls.is(KnownClass::Float)));
     assert!(matches!(shape, Type::IntTuple(_)));
@@ -9489,7 +9502,10 @@ symbolic: IntTuple[2, *Elements[IntTuple], 3]
     for name in ["concrete", "symbolic"] {
         let ty = solutions.get(&KeyExport(Name::new(name)));
         let Type::IntTuple(shape) = ty else {
-            panic!("expected `{name}` to solve to an `IntTuple`, got `{ty}`");
+            panic!(
+                "expected `{name}` to solve to an `IntTuple`, got `{}`",
+                ty.display_with(&state.transaction().type_env(&main))
+            );
         };
         match shape.to_tuple() {
             // Flattened to a fixed length, so `iterate_int_tuple` never sees a middle.
@@ -9500,8 +9516,9 @@ symbolic: IntTuple[2, *Elements[IntTuple], 3]
                     matches!(middle, Type::IntTuple(s) if s.is_shapeless())
                         || matches!(middle, Type::Tuple(Tuple::Unbounded(elt))
                             if elt.is_any() || is_gradual_size(elt)),
-                    "`{name}` has non-gradual unpacked middle `{middle}`; folding the \
-                     ends into the element type would now double-count them"
+                    "`{name}` has non-gradual unpacked middle `{}`; folding the \
+                     ends into the element type would now double-count them",
+                    middle.display_with(&state.transaction().type_env(&main))
                 );
             }
         }
@@ -10969,13 +10986,15 @@ def helper_{level}(shape: IntTuple, choice: int) -> IntTuple:
             if matches!(&function.metadata.kind,
                 FunctionKind::TypeShapeDsl(_, resolved)
                     if resolved.helper_graph_metrics() == (33, 64, 32))),
-        "expected a flat 33-node/64-edge depth-32 graph, got `{helper_32}`",
+        "expected a flat 33-node/64-edge depth-32 graph, got `{}`",
+        helper_32.display_with(&state.transaction().type_env(&main)),
     );
     let helper_33 = solutions.get(&KeyExport(Name::new("helper_33")));
     assert!(
         matches!(helper_33, Type::Function(function)
             if matches!(&function.metadata.kind, FunctionKind::Def(_))),
-        "depth-33 helper should recover as an ordinary function, got `{helper_33}`",
+        "depth-33 helper should recover as an ordinary function, got `{}`",
+        helper_33.display_with(&state.transaction().type_env(&main)),
     );
     let errors = state
         .transaction()

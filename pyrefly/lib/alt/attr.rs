@@ -3241,7 +3241,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         format!(
                             "The `__bool__` attribute of `{}` has type `{}`, which is not callable",
                             self.display(union_member_ty.clone()),
-                            self.for_display(ty),
+                            self.display(ty),
                         ),
                     );
                     return;

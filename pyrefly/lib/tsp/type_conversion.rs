@@ -1223,6 +1223,7 @@ mod tests {
     use pyrefly_types::types::NeverStyle;
     use pyrefly_types::types::Type as PyreflyType;
     use pyrefly_types::types::Var;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use tsp_types::SynthesizedType;
     use tsp_types::SynthesizedTypeMetadata;
@@ -1249,7 +1250,7 @@ mod tests {
     /// Build a TSP `SynthesizedType` whose stub content is the type's display
     /// string. Used only in tests.
     fn synthesized(ty: &PyreflyType) -> TspType {
-        let display = ty.to_string();
+        let display = ty.display_with(&TestTypeEnv::new()).to_string();
         TspType::Synthesized(SynthesizedType {
             flags: TypeFlags::INSTANCE,
             id: next_id(),

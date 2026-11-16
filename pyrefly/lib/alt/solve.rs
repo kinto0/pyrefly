@@ -3096,7 +3096,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     ErrorKind::BadUnpacking,
                                     format!(
                                         "Cannot unpack {} (of size {}+) into {}",
-                                        iterable_ty,
+                                        iterable_ty.display_with(self),
                                         min_len,
                                         expect.message(),
                                     ),
@@ -3110,7 +3110,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadUnpacking,
                                 format!(
                                     "Cannot unpack {} (of unknown size) into {}",
-                                    iterable_ty,
+                                    iterable_ty.display_with(self),
                                     expect.message(),
                                 ),
                             );
@@ -3132,7 +3132,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                         ErrorKind::BadUnpacking,
                                         format!(
                                             "Cannot unpack {} (of size {}) into {}",
-                                            iterable_ty,
+                                            iterable_ty.display_with(self),
                                             ts.len(),
                                             expectation,
                                         ),

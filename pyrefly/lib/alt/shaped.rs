@@ -342,7 +342,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             format!(
                 "`Shaped` tuple `{}` does not agree with its shape `{}`",
                 self.display(base.clone()),
-                self.for_display(shape)
+                self.display(shape)
             )
         };
         // A malformed annotation means what other checkers read: the base alone.

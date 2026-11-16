@@ -7,6 +7,7 @@
 
 use pretty_assertions::assert_eq;
 use pyrefly_build::handle::Handle;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_text_size::TextSize;
 
 use crate::state::state::State;
@@ -14,8 +15,12 @@ use crate::test::util::get_batched_lsp_operations_report;
 use crate::test::util::get_batched_lsp_operations_report_allow_error;
 
 fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String {
-    if let Some(t) = state.transaction().get_type_at(handle, position) {
-        format!("Hover Result: `{t}`")
+    let transaction = state.transaction();
+    if let Some(t) = transaction.get_type_at(handle, position) {
+        format!(
+            "Hover Result: `{}`",
+            t.display_with(&transaction.type_env(handle))
+        )
     } else {
         "Hover Result: None".to_owned()
     }

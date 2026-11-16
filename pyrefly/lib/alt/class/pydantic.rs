@@ -715,7 +715,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     format!(
                         "Pydantic `{label}` value has type `{}`, which is not assignable to field type `{}`",
                         self.display(val.clone()),
-                        self.for_display(field_ty.clone())
+                        self.display(field_ty.clone())
                     ),
                 );
             }
@@ -788,7 +788,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "Default value `{}` violates Pydantic `{}` constraint `{}` for field `{}`",
                         self.display(default_ty.clone()),
                         label,
-                        self.for_display(constraint_ty.clone()),
+                        self.display(constraint_ty.clone()),
                         field_name
                     ),
                 );
@@ -912,7 +912,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     };
                     let func = self.expr_infer(&call.func, &ignore_errors);
                     !func
-                        .callee_kind()
+                        .callee_kind(self)
                         .is_some_and(|kind| dm.kind.field_specifiers().contains(&kind))
                 });
             // A metadata item whose `__get_pydantic_core_schema__` hook is defined outside
@@ -1289,7 +1289,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     "Argument value `{}` is not valid for Pydantic field `{}` with type `{}`",
                     self.display(value_ty.clone()),
                     info.field_name,
-                    self.for_display(field_ty.clone()),
+                    self.display(field_ty.clone()),
                 ),
             );
         }
@@ -1329,7 +1329,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         "Argument value `{}` violates Pydantic `{}` constraint `{}` for field `{}`",
                         self.display(value_ty.clone()),
                         label,
-                        self.for_display(constraint_ty.clone()),
+                        self.display(constraint_ty.clone()),
                         info.field_name
                     ),
                 );

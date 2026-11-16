@@ -18,6 +18,7 @@ use pyrefly_types::type_alias::TypeAliasData;
 use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::Type;
 use pyrefly_types::types::Union;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
 
 use crate::report::cinderx::types::StructuredType;
@@ -439,7 +440,7 @@ pub(crate) fn type_to_structured(
                     type_to_structured(env, &e.class.clone().to_type(), table, pending_class_traits)
                 }
             };
-            let value_str = format!("{}", lit.value);
+            let value_str = lit.value.display_with(env).to_string();
             let promoted_hash = table.hash_at(promoted_idx);
             let hash = hash_literal(&value_str, promoted_hash);
             let sty = StructuredType::Literal {

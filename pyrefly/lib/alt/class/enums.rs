@@ -750,7 +750,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 format!(
                     "Enum member `{member}` has type `{}`, must match the `_value_` attribute annotation of `{}`",
                     self.display(value.clone()),
-                    self.for_display(annotation.clone()),
+                    self.display(annotation.clone()),
                 ),
             );
         }

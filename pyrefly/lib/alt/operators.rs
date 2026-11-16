@@ -1352,21 +1352,21 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // Explicit/implicit literal style is typing metadata, not runtime identity.
                 if l1.value != l2.value {
                     emit_literal_warning(
-                        &l1.value.to_string(),
-                        &l2.value.to_string(),
+                        &l1.value.display_with(self).to_string(),
+                        &l2.value.display_with(self).to_string(),
                         if is_op { "False" } else { "True" },
                     );
                 } else if is_bool_literal(&l1.value) {
                     emit_literal_warning(
-                        &l1.value.to_string(),
-                        &l2.value.to_string(),
+                        &l1.value.display_with(self).to_string(),
+                        &l2.value.display_with(self).to_string(),
                         if is_op { "True" } else { "False" },
                     );
                 }
             }
             (Type::Literal(l), Type::None) => {
                 emit_literal_warning(
-                    &l.value.to_string(),
+                    &l.value.display_with(self).to_string(),
                     "None",
                     if is_op { "False" } else { "True" },
                 );
@@ -1374,7 +1374,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             (Type::None, Type::Literal(l)) => {
                 emit_literal_warning(
                     "None",
-                    &l.value.to_string(),
+                    &l.value.display_with(self).to_string(),
                     if is_op { "False" } else { "True" },
                 );
             }

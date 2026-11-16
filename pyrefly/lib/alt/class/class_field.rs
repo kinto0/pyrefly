@@ -1618,7 +1618,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
         let callee_kind = self
             .expr_infer(&call.func, &self.error_swallower())
-            .callee_kind();
+            .callee_kind(self);
         if matches!(
             &callee_kind,
             Some(CalleeKind::Function(FunctionKind::DataclassField))
@@ -2918,7 +2918,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let errors = self.error_swallower();
         let callee_ty = self.expr_infer(&call.func, &errors);
         if !matches!(
-            callee_ty.callee_kind(),
+            callee_ty.callee_kind(self),
             Some(CalleeKind::Class(ClassKind::Property(_)))
         ) {
             return None;
@@ -3550,7 +3550,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // so we can ignore any errors encountered here.
         let ignore_errors = self.error_swallower();
         let func_ty = self.expr_infer(func, &ignore_errors);
-        let func_kind = func_ty.callee_kind();
+        let func_kind = func_ty.callee_kind(self);
         if let Some(func_kind) = func_kind
             && dm.kind.field_specifiers().contains(&func_kind)
         {

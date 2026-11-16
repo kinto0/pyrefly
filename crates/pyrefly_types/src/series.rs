@@ -43,6 +43,7 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
@@ -52,6 +53,7 @@ mod tests {
     use crate::class::Class;
     use crate::class::ClassDefIndex;
     use crate::class::ClassType;
+    use crate::test_type_env::TestTypeEnv;
     use crate::types::TArgs;
 
     fn underlying_class() -> ClassType {
@@ -84,7 +86,10 @@ mod tests {
     #[test]
     fn display_shows_the_element_dtype() {
         let s = series(PolarsDType::Int64).to_type();
-        assert_eq!(format!("{s}"), "Series[Int64]");
+        assert_eq!(
+            s.display_with(&TestTypeEnv::new()).to_string(),
+            "Series[Int64]"
+        );
     }
 
     #[test]

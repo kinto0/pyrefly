@@ -41,6 +41,7 @@ use pyrefly_types::type_var::Restriction;
 use pyrefly_types::types::BoundMethodType;
 use pyrefly_types::types::Forallable;
 use pyrefly_types::types::Type;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::Fmt;
 use pyrefly_util::events::CategorizedEvents;
 use pyrefly_util::lined_buffer::LineNumber;
@@ -365,7 +366,7 @@ pub(crate) fn literal_value_shape_name(env: &dyn TypeEnv, value: &Lit) -> String
                 lit_enum.member
             )
         }
-        _ => value.to_string(),
+        _ => value.display_with(env).to_string(),
     }
 }
 

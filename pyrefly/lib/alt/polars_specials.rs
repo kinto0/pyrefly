@@ -418,13 +418,13 @@ impl PolarsFunction {
         }
     }
 
-    fn from_callee(callee: &Type) -> Option<Self> {
+    fn from_callee(env: &dyn TypeEnv, callee: &Type) -> Option<Self> {
         if let Type::ClassType(cls) = callee
             && is_polars_col(cls.class_object())
         {
             return Some(Self::Col);
         }
-        match callee.callee_kind() {
+        match callee.callee_kind(env) {
             Some(CalleeKind::Function(FunctionKind::Def(id))) => Some(Self::from_id(&id)),
             _ => None,
         }
@@ -432,8 +432,11 @@ impl PolarsFunction {
 }
 
 /// For a resolved `polars.col` or `polars.lit`, whether strings name columns rather than values.
-pub(crate) fn polars_function_treats_strings_as_columns(callee: &Type) -> Option<bool> {
-    match PolarsFunction::from_callee(callee)? {
+pub(crate) fn polars_function_treats_strings_as_columns(
+    env: &dyn TypeEnv,
+    callee: &Type,
+) -> Option<bool> {
+    match PolarsFunction::from_callee(env, callee)? {
         PolarsFunction::Col => Some(true),
         PolarsFunction::Lit => Some(false),
         _ => None,
@@ -1219,7 +1222,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 },
             );
         }
-        match PolarsFunction::from_callee(callee) {
+        match PolarsFunction::from_callee(self, callee) {
             Some(PolarsFunction::Csv(function)) => {
                 return self
                     .infer_polars_csv_schema(arguments, function)
@@ -2779,7 +2782,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     fn polars_function(&self, func: &Expr) -> Option<PolarsFunction> {
-        PolarsFunction::from_callee(&self.expr_infer(func, &self.error_swallower()))
+        PolarsFunction::from_callee(self, &self.expr_infer(func, &self.error_swallower()))
     }
 
     fn polars_col_attribute_name(&self, expr: &Expr) -> Option<Name> {

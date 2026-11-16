@@ -1139,7 +1139,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 errors, range, ErrorKind::BadTypedDictKey,
                             format!(
                                 "`{}` is not assignable to `extra_items` type `{}` of TypedDict `{}`",
-                                self.display(field_ty.clone()), self.for_display(ty), base.name_in(self)));
+                                self.display(field_ty.clone()), self.display(ty), base.name_in(self)));
                         }
                     } else {
                         // The field needs to be non-required and its type consistent with the extra_items type.
@@ -1159,7 +1159,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                 ErrorKind::BadTypedDictKey,
                                 format!(
                                     "`{}` is not consistent with `extra_items` type `{}` of TypedDict `{}`",
-                                    self.display(field_ty.clone()), self.for_display(ty), base.name_in(self)),
+                                    self.display(field_ty.clone()), self.display(ty), base.name_in(self)),
                             );
                         }
                     }

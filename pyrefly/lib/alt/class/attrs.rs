@@ -535,7 +535,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // These converters are overloaded, so match on the resolved definition identity via
         // `callee_kind` (which looks through overloads) rather than a bare `Type::Function`.
         let Some(CalleeKind::Function(FunctionKind::Def(id))) =
-            self.expr_infer(&call.func, errors).callee_kind()
+            self.expr_infer(&call.func, errors).callee_kind(self)
         else {
             return None;
         };

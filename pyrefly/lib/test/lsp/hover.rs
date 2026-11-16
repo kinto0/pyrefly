@@ -17,6 +17,7 @@ use pyrefly_build::handle::Handle;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::sys_info::PythonVersion;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::thread_pool::TEST_THREAD_COUNT;
 use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
@@ -1231,11 +1232,12 @@ Record(value='text')
             transaction.get_answers(&lib).is_some(),
             retention == Require::Everything
         );
+        let type_env = transaction.type_env(&main);
         for (offset, _) in caller.match_indices("value=") {
             let position = TextSize::try_from(offset).unwrap();
             let call_type = transaction
                 .get_expected_type_at(&main, position)
-                .map(|ty| ty.to_string());
+                .map(|ty| ty.display_with(&type_env).to_string());
             // Signature help cannot currently recover this generic call's parameter type.
             if caller[..offset]
                 .lines()
@@ -1255,14 +1257,14 @@ Record(value='text')
             assert_eq!(
                 transaction
                     .get_type_at(&main, position)
-                    .map(|ty| ty.to_string()),
+                    .map(|ty| ty.display_with(&type_env).to_string()),
                 expected,
                 "retention {retention:?}; position {position:?}",
             );
             assert_eq!(
                 transaction
                     .get_type_at_preserving_declaration(&main, position)
-                    .map(|ty| ty.to_string()),
+                    .map(|ty| ty.display_with(&type_env).to_string()),
                 expected,
             );
             assert_eq!(
@@ -1271,7 +1273,7 @@ Record(value='text')
                         &main,
                         TextRange::new(position, position + TextSize::from(5))
                     )
-                    .map(|ty| ty.to_string()),
+                    .map(|ty| ty.display_with(&type_env).to_string()),
                 expected,
             );
             let hover = get_hover(&transaction, &main, position, false);

@@ -459,7 +459,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let enum_metadata = self.enum_metadata(cls, metaclass, &bases_with_metadata, errors);
 
         let is_final = decorators.iter().any(|(decorator, _)| {
-            decorator.ty.callee_kind() == Some(CalleeKind::Function(FunctionKind::Final))
+            decorator.ty.callee_kind(self) == Some(CalleeKind::Function(FunctionKind::Final))
         });
         let deprecation = decorators
             .iter()
@@ -473,7 +473,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // an invalid TypedDict/Protocol target as disjoint would let narrowing
         // incorrectly intersect it to Never.
         let has_valid_disjoint_base_decorator = decorators.iter().any(|(decorator, range)| {
-            if decorator.ty.callee_kind() != Some(CalleeKind::Function(FunctionKind::DisjointBase))
+            if decorator.ty.callee_kind(self)
+                != Some(CalleeKind::Function(FunctionKind::DisjointBase))
             {
                 return false;
             }
@@ -500,7 +501,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let total_ordering_metadata = decorators
             .iter()
             .position(|(decorator, _)| {
-                decorator.ty.callee_kind()
+                decorator.ty.callee_kind(self)
                     == Some(CalleeKind::Function(FunctionKind::TotalOrdering))
             })
             .map(|decorator| TotalOrderingMetadata { decorator });
@@ -861,7 +862,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
         }
         for (decorator, range) in decorators {
-            match decorator.ty.callee_kind() {
+            match decorator.ty.callee_kind(self) {
                 Some(CalleeKind::Function(FunctionKind::RuntimeCheckable)) => {
                     if let Some(proto) = &mut protocol_metadata {
                         proto.is_runtime_checkable = true;
@@ -1135,8 +1136,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             if let Type::KwCall(call) = &decorator.ty
                 && call.has_function_kind(FunctionKind::DataclassTransform)
             {
-                dataclass_transform_metadata =
-                    Some(DataclassTransformMetadata::from_type_map(&call.keywords));
+                dataclass_transform_metadata = Some(DataclassTransformMetadata::from_type_map(
+                    &call.keywords,
+                    self,
+                ));
             }
         }
         // A metaclass-based dataclass_transform (e.g. SQLAlchemy's `DCTransformDeclarative`)
@@ -1459,7 +1462,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         let mut has_dataclass_decorator = false;
         for (decorator, _) in decorators {
-            match decorator.ty.callee_kind() {
+            match decorator.ty.callee_kind(self) {
                 // `@dataclass`
                 Some(CalleeKind::Function(FunctionKind::Dataclass)) => {
                     has_dataclass_decorator = true;
@@ -2046,7 +2049,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             cls.name_in(self),
                             self.display(candidate_metaclass_type.clone()),
                             origin(*candidate_name),
-                            self.for_display(base_metaclass_type),
+                            self.display(base_metaclass_type),
                             origin(Some(base_name)),
                         ),
                     );

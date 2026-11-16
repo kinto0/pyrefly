@@ -43,6 +43,7 @@ use crate::class::ClassType;
 use crate::data_frame::DataFrameSchema;
 use crate::dimension;
 use crate::dimension::Int;
+use crate::env::TypeEnv;
 use crate::function::Deprecation;
 use crate::function::FuncMetadata;
 use crate::function::Function;
@@ -1760,15 +1761,15 @@ impl Type {
         matches!(self, Type::None)
     }
 
-    pub fn callee_kind(&self) -> Option<CalleeKind> {
+    pub fn callee_kind(&self, env: &dyn TypeEnv) -> Option<CalleeKind> {
         match self {
             Type::Callable(_) => Some(CalleeKind::Callable),
             Type::Function(func) => Some(CalleeKind::Function(func.metadata.kind.clone())),
-            Type::ClassDef(c) => Some(CalleeKind::Class(c.kind())),
+            Type::ClassDef(c) => Some(CalleeKind::Class(c.kind_in(env))),
             Type::SpecializedClassDef(c) => Some(CalleeKind::Class(c.class_object().kind())),
-            Type::Forall(forall) => forall.body.clone().as_type().callee_kind(),
+            Type::Forall(forall) => forall.body.clone().as_type().callee_kind(env),
             Type::Overload(overload) => Some(CalleeKind::Function(overload.metadata.kind.clone())),
-            Type::KwCall(call) => call.return_ty.callee_kind(),
+            Type::KwCall(call) => call.return_ty.callee_kind(env),
             _ => None,
         }
     }
