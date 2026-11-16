@@ -68,6 +68,17 @@ $ cd $TMPDIR/workspace && $PYREFLY check packages/b/vendor --python-version 3.13
 [0]
 ```
 
+## A directory that the config excludes is checked
+
+The root config excludes `vendor`, but an exclude that matches a given
+directory does not apply to it.
+
+```scrut
+$ cd $TMPDIR/workspace && $PYREFLY check packages/a/vendor --python-version 3.13.0 --output-format=min-text
+ERROR packages/a/vendor/m.py:1:* (glob)
+[1]
+```
+
 ## `pyrefly check .` checks the same files as `pyrefly check`
 
 `packages/b` is below `.`, so the root config governs it, the same as in
@@ -218,6 +229,7 @@ A glob matches no files that are not Python files, but a shell passes them:
 ```scrut
 $ cd $TMPDIR/workspace && $PYREFLY check 'packages/a/*' --python-version 3.13.0 --output-format=min-text
 ERROR packages/a/m.py:1:* (glob)
+ERROR packages/a/vendor/m.py:1:* (glob)
 [1]
 ```
 
@@ -225,6 +237,7 @@ ERROR packages/a/m.py:1:* (glob)
 $ cd $TMPDIR/workspace && $PYREFLY check packages/a/* --python-version 3.13.0 --output-format=min-text
 ERROR packages/a/m.py:1:* (glob)
 ERROR packages/a/pyproject.toml:1:* (glob)
+ERROR packages/a/vendor/m.py:1:* (glob)
 [1]
 ```
 

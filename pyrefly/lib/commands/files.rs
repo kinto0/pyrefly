@@ -24,6 +24,7 @@ use pyrefly_util::absolutize::Absolutize as _;
 use pyrefly_util::arc_id::ArcId;
 use pyrefly_util::args::clap_env;
 use pyrefly_util::globs::FilteredGlobs;
+use pyrefly_util::globs::Glob;
 use pyrefly_util::globs::Globs;
 use pyrefly_util::globs::HiddenDirFilter;
 use pyrefly_util::includes::Includes;
@@ -79,7 +80,8 @@ pub struct FilesArgs {
     /// A glob is expanded to the directories and Python files that it matches, as a shell expands
     /// it, and each of them is checked as if it was given on its own.
     /// A directory with a configuration file is checked in project-checking mode, limited to the
-    /// directory: the files under it that the config includes are checked. Directories with
+    /// directory: the files under it that the config includes are checked. An exclude that
+    /// matches the directory itself, or one of its parents, does not apply. Directories with
     /// different configs are different projects, and each file is checked with the config of the
     /// given project whose config root is its nearest ancestor.
     /// A file, or a directory with no config or with a config that uses a build system, is checked
@@ -334,16 +336,19 @@ fn get_globs_and_config_for_paths(
     }
     let projects = project_dirs
         .into_iter()
-        .map(|(config, dirs)| {
+        .flat_map(|(config, dirs)| {
             debug!("Directories {} have config: {}", dirs, config);
             let mut includes = config.get_filtered_globs(project_excludes.clone(), scope);
             includes.add_excludes(extend_project_excludes.globs());
             errors.extend(includes.errors().into_iter().map(ConfigError::warn));
-            Project {
-                config,
-                dirs,
-                includes,
-            }
+            dirs.globs()
+                .iter()
+                .map(|dir| Project {
+                    config: config.dupe(),
+                    dir: dir.clone(),
+                    includes: includes.without_excludes_of(dir.as_path()),
+                })
+                .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
     let Ok(projects) = Vec1::try_from_vec(projects) else {
@@ -434,19 +439,20 @@ fn project_config<'a>(
         .map_or(project_configs.first(), |(config, _)| config)
 }
 
-/// A project that directories given to `pyrefly check` run in project mode.
+/// A directory given to `pyrefly check` that runs project mode.
 struct Project {
     config: ArcId<ConfigFile>,
-    /// The directories given for this project.
-    dirs: Globs,
-    /// The includes of `config`.
+    dir: Glob,
+    /// The includes of `config`, without the excludes that match `dir` or one of its parents,
+    /// since the user names `dir`.
     includes: FilteredGlobs,
 }
 
 impl Project {
-    /// Whether `path` is under `dirs`, and gets `config`, so that no other project checks it.
+    /// Whether `path` is under `dir`, and gets `config`, so that the projects of other configs do
+    /// not check it.
     fn owns(&self, lookup: &LookupCallback, path: &Path) -> bool {
-        self.dirs.covers(path) && lookup(path) == self.config
+        self.dir.matches(path) && lookup(path) == self.config
     }
 }
 
@@ -466,7 +472,7 @@ impl Includes for PathIncludes {
     fn roots(&self) -> Vec<PathBuf> {
         self.projects
             .iter()
-            .flat_map(|project| project.dirs.roots())
+            .map(|project| project.dir.as_path().to_path_buf())
             .chain(self.files.iter().flat_map(|files| files.roots()))
             .collect()
     }
@@ -477,7 +483,7 @@ impl Includes for PathIncludes {
             files.extend(
                 project
                     .includes
-                    .matched_files_under(&project.dirs)?
+                    .matched_files_under(&project.dir)?
                     .into_iter()
                     .filter(|path| (self.lookup)(path) == project.config),
             );

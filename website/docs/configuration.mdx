@@ -123,6 +123,8 @@ correspond to different but useful ways we expect most people to interact with P
       filtered to that directory. Directories with different configs are different projects,
       and one run checks all of them: each file belongs to the given project whose config root
       is its nearest ancestor, and is checked once, with that config.
+      An exclude that matches the given directory, or one of its parents, does not apply, so
+      you can check a directory that the config excludes.
 - **Per-file** or **Single-file** mode: when given files (and optionally [`--project-excludes`](#project-excludes))
   during a CLI invocation, find the relevant config file for each file listed.
   `project-includes` and `project-excludes` are ignored from the config file, but it is used

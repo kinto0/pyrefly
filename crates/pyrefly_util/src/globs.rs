@@ -1165,13 +1165,34 @@ impl FilteredGlobs {
         Ok(Globs::merged_files_iter(explicit_files, walked_files).collect())
     }
 
-    /// The files under `dirs` that these globs include, sorted. Only `dirs` are walked, so an
-    /// include outside of them is never walked. Returns no files when nothing matches.
-    pub fn matched_files_under(&self, dirs: &Globs) -> anyhow::Result<Vec<PathBuf>> {
-        let (explicit_files, walked_files) = dirs.matched_files(&self.filter, None)?;
+    /// The files under `dir` that these globs include, sorted. Only `dir` is walked, so an include
+    /// outside of it is never walked. Returns no files when nothing matches.
+    pub fn matched_files_under(&self, dir: &Glob) -> anyhow::Result<Vec<PathBuf>> {
+        let (explicit_files, walked_files) =
+            Globs(vec![dir.clone()]).matched_files(&self.filter, None)?;
         Ok(Globs::merged_files_iter(explicit_files, walked_files)
             .filter(|path| self.includes.covers(path))
             .collect())
+    }
+
+    /// These globs without the excludes that match `dir` or one of its parents. The other
+    /// excludes still apply to the files under `dir`.
+    pub fn without_excludes_of(&self, dir: &Path) -> Self {
+        let excludes = self
+            .filter
+            .excludes
+            .globs()
+            .iter()
+            .filter(|exclude| !exclude.matches(dir))
+            .cloned()
+            .collect();
+        Self {
+            includes: self.includes.clone(),
+            filter: GlobFilter {
+                excludes: Globs(excludes),
+                ..self.filter.for_walk()
+            },
+        }
     }
 }
 
