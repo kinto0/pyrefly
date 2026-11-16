@@ -24,6 +24,10 @@ semantic highlighting, and code completion.
   - [scikit-learn](https://github.com/scikit-learn/scikit-learn)
   - [Polars](https://github.com/pola-rs/polars)
   - [pandas-stubs](https://github.com/pandas-dev/pandas-stubs)
+  - [Narwhals](https://github.com/narwhals-dev/narwhals)
+  - [napari](https://github.com/napari/napari) ([blog post](https://napari.org/island-dispatch/blog/from-any-to-certainty.html))
+  - [MONAI](https://github.com/Project-MONAI/MONAI)
+  - [Nilearn](https://github.com/nilearn/nilearn)
 - **[Dify](https://github.com/langgenius/dify)**: Pyrefly reports type coverage in CI ([case study](https://pyrefly.org/blog/dify-pyrefly-coverage-ci/)).
 - **[Positron](https://positron.posit.co/blog/posts/2026-03-31-python-type-checkers/)**: Pyrefly is the default Python language server.
 
