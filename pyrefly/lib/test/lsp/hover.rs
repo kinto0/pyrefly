@@ -4538,7 +4538,6 @@ C().method(x=1)
     );
 }
 
-// Bug: hover on a function does not show the `Doc` text of its parameters.
 #[test]
 fn hover_on_function_shows_annotated_doc_parameter_documentation() {
     let lib = r#"
@@ -4583,6 +4582,13 @@ greet("Ada")
 ---
 Greet a user.
 
+---
+**Parameter `name`**
+The user's name.
+
+**Parameter `greeting`**
+How to greet the user.
+
 
 # main.py
 3 | greet("Ada")
@@ -4596,6 +4602,13 @@ Greet a user.
 ```
 ---
 Greet a user.
+
+---
+**Parameter `name`**
+The user's name.
+
+**Parameter `greeting`**
+How to greet the user.
 "#
         .trim(),
         report.trim(),
