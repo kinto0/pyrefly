@@ -143,6 +143,31 @@ ERROR packages/a/m.py:1:* (glob)
 [1]
 ```
 
+`app` imports `mylib` from `lib`, and each directory has its own copy of
+`dep`. `lib` is checked with its own environment, and `mylib` is also checked
+with the environment of `app` when `app` imports it, so `app` sees one copy of
+`Frame`.
+
+```scrut
+$ mkdir -p $TMPDIR/envs/app/env $TMPDIR/envs/lib/env && cd $TMPDIR/envs && \
+> printf 'site-package-path = ["env", "../lib"]\nskip-interpreter-query = true\n' > app/pyrefly.toml && \
+> printf 'site-package-path = ["env"]\nskip-interpreter-query = true\n' > lib/pyrefly.toml && \
+> echo 'class Frame: ...' > app/env/dep.py && \
+> echo 'class Frame: ...' > lib/env/dep.py && \
+> printf 'from dep import Frame\ndef width(frame: Frame) -> int:\n    return 0\n' > lib/mylib.py && \
+> printf 'from dep import Frame\nfrom mylib import width\nwidth(Frame())\n' > app/main.py && \
+> $PYREFLY check app lib --output-format=min-text
+[0]
+```
+
+A path that matches no files is not an error when another path has files:
+
+```scrut
+$ cd $TMPDIR/workspace && $PYREFLY check packages/a missing --python-version 3.13.0 --output-format=min-text
+ERROR packages/a/m.py:1:* (glob)
+[1]
+```
+
 ## A file runs single-file mode
 
 A file is checked even if the config excludes it.
