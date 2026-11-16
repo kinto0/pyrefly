@@ -1676,7 +1676,6 @@ fn test_overlapping_exports_cycle_detected() {
 
 // Synthetic defense-in-depth reproducer for https://github.com/facebook/pyrefly/issues/4171.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_deep_scc_chain_stabilizes_after_epoch_cap() {
     const LEVELS: usize = 208;
 
@@ -1735,9 +1734,7 @@ fn test_deep_scc_chain_stabilizes_after_epoch_cap() {
 /// Editing `z` changes `foo.x` twice, once directly and once through `bar.y`, which cycle detection
 /// reports as a cycle. The recheck that follows recomputes `foo`, `bar` and `main` together, and
 /// `bar.w` and `main.v` change in it.
-// Bug: nothing consumes the export changes of that last recheck, so the commit panics.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_changes_after_cycle_detection_are_committed() {
     let mut i = Incremental::new();
     i.set("foo", "import bar\nz = 1\nx = (bar.y, z)");
@@ -4424,10 +4421,7 @@ fn test_stale_cycle_class_out_of_range_attribute_in_owner() {
 /// Like `test_stale_cycle_class_out_of_range_attribute_in_owner`, but `v` names `B` at its new
 /// index, so it changes and `b` is rechecked. `a`'s exports then change again, which `run_internal`
 /// reports as a cycle, so its fallback rechecks `a`, `b` and `main` together.
-// Bug: the fallback's final recheck changes exports of `main`, and nothing takes those changes, so
-// the commit panics.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_stale_cycle_class_out_of_range_corrected_by_recheck() {
     assert_rebuild_matches_clean(
         &[
@@ -4836,10 +4830,7 @@ fn test_stale_cycle_type_parameter_removed_owner_specializes() {
 /// `a` drops `f` and reads back `g`, `b`'s alias of the old `f`. `a`'s exports change again after
 /// `b` is rechecked, which `run_internal` reports as a cycle, so its fallback rechecks `a`, `b` and
 /// `main` together.
-// Bug: the fallback's final recheck changes exports of `main`, and nothing takes those changes, so
-// the commit panics.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_stale_cycle_function_removed() {
     assert_rebuild_matches_clean(
         &[
@@ -4861,10 +4852,7 @@ fn test_stale_cycle_function_removed() {
 /// `a` declares `k` before `f` and reads back `g`, `b`'s alias of the old `f`, whose type parameter
 /// has the declaration index that the type parameter of `k` now has. As in
 /// `test_stale_cycle_function_removed`, the recheck ends in the cycle fallback.
-// Bug: the fallback's final recheck changes exports of `main`, and nothing takes those changes, so
-// the commit panics.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_stale_cycle_function_type_parameter_displaced() {
     assert_rebuild_matches_clean(
         &[
@@ -4889,10 +4877,7 @@ fn test_stale_cycle_function_type_parameter_displaced() {
 /// `a` drops `e`, declared before `f`, and reads back `g`, `b`'s alias of the old `f`, whose type
 /// parameter has a declaration index that `a` no longer has. As in
 /// `test_stale_cycle_function_removed`, the recheck ends in the cycle fallback.
-// Bug: the fallback's final recheck changes exports of `main`, and nothing takes those changes, so
-// the commit panics.
 #[test]
-#[should_panic(expected = "Transaction has uncommitted changes")]
 fn test_stale_cycle_function_type_parameter_removed() {
     assert_rebuild_matches_clean(
         &[

@@ -2488,8 +2488,8 @@ impl<'a> Transaction<'a> {
     /// any of the changed modules is marked dirty.
     ///
     /// This is called from `run_internal` when a mutable dependency cycle is detected
-    /// (i.e., the same module changes twice in one run), as a fallback to ensure all
-    /// cyclic modules reach a stable state.
+    /// (i.e., the same module changes twice in one run), or when the run reaches its epoch
+    /// limit, as a fallback to ensure all cyclic modules reach a stable state.
     fn invalidate_rdeps(&mut self, mut follow: Vec<ArcId<ModuleDataMut>>) {
         // All modules discovered so far (to avoid revisiting).
         let mut dirty: SmallMap<Handle, ArcId<ModuleDataMut>> =
@@ -2566,8 +2566,10 @@ impl<'a> Transaction<'a> {
         const MAX_EPOCHS: usize = 100;
         let mut seen_deps: SmallMap<ArcId<ModuleDataMut>, ModuleChanges> = SmallMap::new();
 
-        for i in 1..=MAX_EPOCHS {
-            debug!("Running epoch {i} of run {run_number}");
+        let mut epoch = 0;
+        let changed = loop {
+            epoch += 1;
+            debug!("Running epoch {epoch} of run {run_number}");
             self.run_step(handles, require, custom_thread_pool)?;
             let changed = mem::take(&mut *self.data.changed.lock());
             if changed.is_empty() {
@@ -2587,11 +2589,15 @@ impl<'a> Transaction<'a> {
                     "Mutable dependency cycle detected: overlapping export changes. \
                      Invalidating cycle."
                 );
-                // We are in a cycle of mutual dependencies, so give up.
-                // Just invalidate everything in the cycle and recompute it all.
-                // Use coarse-grained invalidation to ensure all cyclic modules reach stable state
-                self.invalidate_rdeps(changed.into_map(|(m, _)| m));
-                return self.run_step(handles, require, custom_thread_pool);
+                break changed;
+            }
+            if epoch == MAX_EPOCHS {
+                // This should be extremely rare and indicates an unexpected edge case.
+                tracing::warn!(
+                    "Exceeded maximum epochs ({MAX_EPOCHS}) without stabilizing. \
+                     This may indicate an unexpected dependency pattern. Forcing invalidation."
+                );
+                break changed;
             }
 
             // No cycle detected. Merge the new deps into our tracking set.
@@ -2605,17 +2611,19 @@ impl<'a> Transaction<'a> {
                     }
                 }
             }
-        }
-        // If we reach here, we've exceeded MAX_EPOCHS without stabilizing.
-        // This should be extremely rare and indicates an unexpected edge case.
-        // Force invalidation and one final run as a fallback.
-        tracing::warn!(
-            "Exceeded maximum epochs ({MAX_EPOCHS}) without stabilizing. \
-             This may indicate an unexpected dependency pattern. Forcing invalidation."
-        );
-        let changed = mem::take(&mut *self.data.changed.lock());
+        };
+        // Give up on fine-grained invalidation: recompute everything downstream of the modules
+        // that changed in the last epoch, together in one final epoch.
         self.invalidate_rdeps(changed.into_map(|(m, _)| m));
-        self.run_step(handles, require, custom_thread_pool)
+        self.run_step(handles, require, custom_thread_pool)?;
+        // `invalidate_rdeps` marked the modules in `changed` and every module that transitively
+        // reads them, so this epoch recomputes every module that read a recomputed module in an
+        // earlier epoch. A module reads another only after that one is cleaned for the current
+        // epoch, so every read in this epoch sees this epoch's exports. The changes that this
+        // epoch records, and the modules that they mark dirty, therefore need no further epoch.
+        self.data.changed.lock().clear();
+        self.data.dirty.lock().clear();
+        Ok(())
     }
 
     pub fn run(
