@@ -23,6 +23,7 @@ use pyrefly_types::typed_dict::ANONYMOUS_TYPED_DICT;
 use pyrefly_types::typed_dict::ExtraItems;
 use pyrefly_types::types::TArgs;
 use pyrefly_types::types::TParams;
+use pyrefly_util::display::DisplayWithCtx;
 use pyrefly_util::display::count;
 use pyrefly_util::display::pluralize;
 use pyrefly_util::owner::Owner;
@@ -2283,7 +2284,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             call_errors,
                             range,
                             ErrorKind::UnsupportedOperation,
-                            format!("Cannot evaluate type-level shape DSL call: {error}"),
+                            format!(
+                                "Cannot evaluate type-level shape DSL call: {}",
+                                error.display_with(self)
+                            ),
                             context,
                         );
                     }

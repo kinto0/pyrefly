@@ -6552,7 +6552,7 @@ impl ResolvedTypeShapeDslProgram {
                                 unreachable!("validated Invalid return has a string message")
                             };
                             DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: message.value.to_str().to_owned(),
+                                message: message.value.to_str().to_owned().into(),
                             })
                         }
                         TypeShapeDslReturnKind::Gradual(domain) => {
@@ -7158,7 +7158,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                         }
                         EinsumClassification::Invalid(error) => {
                             return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: error.message(),
+                                message: error.message().into(),
                             });
                         }
                     },
@@ -7169,7 +7169,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                             }
                             EinopsEinsumClassification::Invalid(error) => {
                                 return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                    message: error.message(),
+                                    message: error.message().into(),
                                 });
                             }
                         }
@@ -7217,7 +7217,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                         EinopsPatternClassification::Supported(pattern) => Some(pattern),
                         EinopsPatternClassification::Invalid(error) => {
                             return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: error.message(operation),
+                                message: error.message(operation).into(),
                             });
                         }
                     },
@@ -7342,7 +7342,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                         GufuncClassification::Unsupported(_unsupported) => None,
                         GufuncClassification::Invalid(error) => {
                             return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: error.message(),
+                                message: error.message().into(),
                             });
                         }
                     },
@@ -7413,7 +7413,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                         let index = if index < 0 { index + length } else { index };
                         if index < 0 || index >= length {
                             return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: "IntTuple index out of bounds".to_owned(),
+                                message: "IntTuple index out of bounds".to_owned().into(),
                             });
                         }
                         DslOutcome::Value(DslValue::Dimension(shape[index as usize].clone()))
@@ -7482,7 +7482,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                         let index = if index < 0 { index + length } else { index };
                         if index < 0 || index >= length {
                             return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                                message: "`IntTuples` index out of bounds".to_owned(),
+                                message: "`IntTuples` index out of bounds".to_owned().into(),
                             });
                         }
                         DslOutcome::Value(DslValue::Shape(shapes[index as usize].clone()))
@@ -7738,7 +7738,7 @@ impl StructurallyValidatedTypeShapeDslFunction {
                 };
                 if step == Some(0) {
                     return DslOutcome::Invalid(ShapeError::ShapeComputation {
-                        message: "range() arg 3 must not be zero".to_owned(),
+                        message: "range() arg 3 must not be zero".to_owned().into(),
                     });
                 }
                 let (Some(start), Some(stop), Some(step)) = (start, stop, step) else {
@@ -7826,7 +7826,8 @@ impl StructurallyValidatedTypeShapeDslFunction {
                             DslOutcome::Invalid(ShapeError::ShapeComputation {
                                 message: format!(
                                     "Flag sequence `.index` value `{item}` was not found"
-                                ),
+                                )
+                                .into(),
                             })
                         }
                     },
@@ -8763,7 +8764,7 @@ fn evaluate_dimension_arithmetic(
             "modulo"
         };
         return DslOutcome::Invalid(ShapeError::ShapeComputation {
-            message: format!("dimension integer {operation} by zero"),
+            message: format!("dimension integer {operation} by zero").into(),
         });
     }
     let left = operand(left);
@@ -8776,7 +8777,7 @@ fn evaluate_dimension_arithmetic(
         return evaluate_i64_arithmetic(*left, op, *right).map_or_else(
             |operation| {
                 DslOutcome::Invalid(ShapeError::ShapeComputation {
-                    message: format!("dimension integer {operation} by zero"),
+                    message: format!("dimension integer {operation} by zero").into(),
                 })
             },
             |value| {
@@ -8806,7 +8807,7 @@ fn evaluate_flag_int_arithmetic(left: i64, op: TypeShapeDslArithmeticOp, right: 
     evaluate_i64_arithmetic(left, op, right).map_or_else(
         |operation| {
             DslOutcome::Invalid(ShapeError::ShapeComputation {
-                message: format!("Flag integer {operation} by zero"),
+                message: format!("Flag integer {operation} by zero").into(),
             })
         },
         |value| {
@@ -8951,7 +8952,7 @@ impl DslValue {
             TypeShapeDslDomain::Int => match Int::from_type(ty) {
                 Some(dimension) => match canonicalize(Type::Int(dimension)) {
                     Type::Int(dimension) => Self::Dimension(dimension),
-                    canonical => unreachable!("canonicalizing a dimension yields `{canonical}`"),
+                    canonical => unreachable!("canonicalizing a dimension yields `{canonical:?}`"),
                 },
                 None => Self::Unknown,
             },

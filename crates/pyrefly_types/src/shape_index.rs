@@ -11,6 +11,7 @@
 
 use crate::dimension::Int;
 use crate::dimension::ShapeError;
+use crate::dimension::ShapeMessage;
 use crate::known_class::KnownClass;
 use crate::quantified::QuantifiedKind;
 use crate::quantified::TypeVarLike;
@@ -550,7 +551,7 @@ pub fn lower_index_type(ty: &Type) -> IndexTypeLowering {
 /// produces a gradual shape, while algebra failures retain their indexing-specific diagnostic.
 pub fn index_shape_from_type(shape: &IntTuple, index: &Type) -> Result<IntTuple, ShapeError> {
     let bad_index = |error: ShapeError| ShapeError::BadIndex {
-        message: error.to_string(),
+        message: ShapeMessage::default().error(error),
     };
     let components = match lower_index_type(index) {
         IndexTypeLowering::Precise(components) => components,
@@ -560,13 +561,18 @@ pub fn index_shape_from_type(shape: &IntTuple, index: &Type) -> Result<IntTuple,
             // This branch only protects malformed internal calls, where solver display context
             // is unavailable.
             return Err(ShapeError::BadIndex {
-                message: format!("`{index}` is not a valid index value"),
+                message: ShapeMessage::default()
+                    .text("`")
+                    .ty(index.clone())
+                    .text("` is not a valid index value"),
             });
         }
     };
     if ellipsis_count(&components) > 1 {
         return Err(ShapeError::BadIndex {
-            message: "an index may contain at most one ellipsis".to_owned(),
+            message: "an index may contain at most one ellipsis"
+                .to_owned()
+                .into(),
         });
     }
     match components.as_slice() {

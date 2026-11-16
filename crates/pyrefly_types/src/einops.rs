@@ -12,6 +12,7 @@ use std::collections::HashSet;
 
 use crate::dimension::Int;
 use crate::dimension::ShapeError;
+use crate::dimension::ShapeMessage;
 use crate::shaped_array::IntTuple;
 use crate::shaped_array::IntTupleView;
 use crate::shaped_array::canonicalize_int_dim;
@@ -413,7 +414,8 @@ pub(crate) fn evaluate_einops_pattern(
         return Err(ShapeError::ShapeComputation {
             message: format!(
                 "einops.{operation}: axis '{name}' must have a nonnegative length, got {value}"
-            ),
+            )
+            .into(),
         });
     }
     if let Some(name) = axis_lengths
@@ -423,7 +425,7 @@ pub(crate) fn evaluate_einops_pattern(
         .min()
     {
         return Err(ShapeError::ShapeComputation {
-            message: format!("einops.{operation}: axis '{name}' is not used in the pattern"),
+            message: format!("einops.{operation}: axis '{name}' is not used in the pattern").into(),
         });
     }
     let IntTupleView::Concrete(input_dimensions) = input.view() else {
@@ -439,7 +441,8 @@ pub(crate) fn evaluate_einops_pattern(
                 message: format!(
                     "einops.{operation}: expected input rank at least {fixed_rank}, got {}",
                     input_dimensions.len()
-                ),
+                )
+                .into(),
             });
         }
         false if input_dimensions.len() == fixed_rank => 0,
@@ -448,7 +451,8 @@ pub(crate) fn evaluate_einops_pattern(
                 message: format!(
                     "einops.{operation}: expected input rank {fixed_rank}, got {}",
                     input_dimensions.len()
-                ),
+                )
+                .into(),
             });
         }
     };
@@ -471,11 +475,12 @@ pub(crate) fn evaluate_einops_pattern(
         let dimension = &input_dimensions[input_index];
         input_index += 1;
         if composition.is_empty() {
-            if matches!(dimension, Int::Literal(value) if *value != 1) {
+            if let Int::Literal(value) = dimension
+                && *value != 1
+            {
                 return Err(ShapeError::ShapeComputation {
-                    message: format!(
-                        "einops.{operation}: expected a unit input axis, got {dimension}"
-                    ),
+                    message: format!("einops.{operation}: expected a unit input axis, got {value}")
+                        .into(),
                 });
             }
             continue;
@@ -487,9 +492,13 @@ pub(crate) fn evaluate_einops_pattern(
                 }
                 Some(length) if !dimensions_compatible(dimension, length) => {
                     return Err(ShapeError::ShapeComputation {
-                        message: format!(
-                            "einops.{operation}: axis '{name}' has conflicting dimensions {dimension} and {length}"
-                        ),
+                        message: ShapeMessage::default()
+                            .text(format!(
+                                "einops.{operation}: axis '{name}' has conflicting dimensions "
+                            ))
+                            .dim(dimension.clone())
+                            .text(" and ")
+                            .dim(length.clone()),
                     });
                 }
                 Some(_) => {}
@@ -525,7 +534,7 @@ pub(crate) fn evaluate_einops_pattern(
                 return Err(ShapeError::ShapeComputation {
                     message: format!(
                         "einops.{operation}: dimension {total} cannot be divided into the requested axes"
-                    ),
+                    ).into(),
                 });
             }
             for name in unresolved {
@@ -540,7 +549,7 @@ pub(crate) fn evaluate_einops_pattern(
                 return Err(ShapeError::ShapeComputation {
                     message: format!(
                         "einops.{operation}: dimension {total} cannot be divided into the requested axes"
-                    ),
+                    ).into(),
                 });
             }
             bindings.insert(
@@ -550,9 +559,11 @@ pub(crate) fn evaluate_einops_pattern(
         } else {
             if !dimensions_compatible(dimension, &known) {
                 return Err(ShapeError::ShapeComputation {
-                    message: format!(
-                        "einops.{operation}: input dimension {dimension} does not match composed dimension {known}"
-                    ),
+                    message: ShapeMessage::default()
+                        .text(format!("einops.{operation}: input dimension "))
+                        .dim(dimension.clone())
+                        .text(" does not match composed dimension ")
+                        .dim(known),
                 });
             }
         }
@@ -598,7 +609,10 @@ pub(crate) fn evaluate_einops_pattern(
 
 #[cfg(test)]
 mod tests {
+    use pyrefly_util::display::DisplayWithCtx;
+
     use super::*;
+    use crate::test_type_env::TestTypeEnv;
 
     fn evaluate(spec: &str, dimensions: &[i64]) -> Result<IntTuple, ShapeError> {
         let EinopsPatternClassification::Supported(pattern) =
@@ -891,7 +905,8 @@ mod tests {
                 &negative,
             ),
             Err(ShapeError::ShapeComputation { message })
-                if message == "einops.repeat: axis 'd' must have a nonnegative length, got -2"
+                if message.display_with(&TestTypeEnv::new()).to_string()
+                    == "einops.repeat: axis 'd' must have a nonnegative length, got -2"
         ));
     }
 }

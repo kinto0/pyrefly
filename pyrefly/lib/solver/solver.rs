@@ -3089,7 +3089,7 @@ impl SubsetError {
             }
             SubsetError::TypedDict(err) => Some(err.to_error_msg(env)),
             SubsetError::OpenTypedDict(err) => Some(err.to_error_msg(env)),
-            SubsetError::Shape(err) => Some(err.to_string()),
+            SubsetError::Shape(err) => Some(err.display_with(env).to_string()),
             SubsetError::InternalError(msg) => Some(format!("Pyrefly internal error: {msg}")),
             SubsetError::TypeOfProtocolNeedsConcreteClass(want) => Some(format!(
                 "Only concrete classes may be assigned to `type[{want}]` because `{want}` is a protocol"

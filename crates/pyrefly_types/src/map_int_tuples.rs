@@ -248,7 +248,9 @@ impl TypeLevelDslCall {
 
 fn invalid_source() -> ShapeError {
     ShapeError::ShapeComputation {
-        message: "Source argument to `MapIntTuples` must be an `IntTuples` value".to_owned(),
+        message: "Source argument to `MapIntTuples` must be an `IntTuples` value"
+            .to_owned()
+            .into(),
     }
 }
 
@@ -346,7 +348,8 @@ impl TypeLambda {
                 .ok_or_else(|| ShapeError::ShapeComputation {
                     message:
                         "Source argument to `MapIntTuples` must contain only `IntTuple` values"
-                            .to_owned(),
+                            .to_owned()
+                            .into(),
                 })
         };
         let map_all = |types: Vec<Type>| types.iter().map(map).collect::<Result<Vec<_>, _>>();
@@ -456,14 +459,16 @@ fn normalize_tuple(tuple: Tuple) -> Result<NormalizedTuple, ShapeError> {
             if middle.is_kind_type_var_tuple() {
                 return Err(ShapeError::ShapeComputation {
                     message: "`MapIntTuples` does not support an unresolved `TypeVarTuple`"
-                        .to_owned(),
+                        .to_owned()
+                        .into(),
                 });
             }
             let Type::Tuple(middle) = middle else {
                 return Err(ShapeError::ShapeComputation {
                     message:
                         "Source argument to `MapIntTuples` must be an eagerly reducible tuple type"
-                            .to_owned(),
+                            .to_owned()
+                            .into(),
                 });
             };
             match normalize_tuple(middle)? {
@@ -495,6 +500,7 @@ mod tests {
     use std::collections::hash_map::DefaultHasher;
 
     use pyrefly_python::module_name::ModuleName;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
 
@@ -506,6 +512,7 @@ mod tests {
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_level_dsl::TypeLevelDslCall;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
@@ -661,7 +668,7 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(
-            error.to_string(),
+            error.display_with(&TestTypeEnv::new()).to_string(),
             "Source argument to `MapIntTuples` must contain only `IntTuple` values"
         );
     }
@@ -686,6 +693,7 @@ mod tests {
             identity_lambda()
                 .apply_to_tuple(source)
                 .unwrap_err()
+                .display_with(&TestTypeEnv::new())
                 .to_string(),
             "`MapIntTuples` does not support an unresolved `TypeVarTuple`"
         );

@@ -24,6 +24,7 @@ use pyrefly_types::tuple::Tuple;
 use pyrefly_types::type_level_dsl::TypeLevelDslCall;
 use pyrefly_types::types::TParams;
 use pyrefly_types::types::Type;
+use pyrefly_util::display::DisplayWithCtx;
 use ruff_python_ast::Expr;
 use ruff_python_ast::Identifier;
 use ruff_text_size::Ranged;
@@ -249,7 +250,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         errors,
                         mapper_range,
                         ErrorKind::InvalidAnnotation,
-                        error.to_string(),
+                        error.display_with(self).to_string(),
                     );
                 }
                 mapped
@@ -259,7 +260,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     errors,
                     source.range(),
                     ErrorKind::InvalidAnnotation,
-                    error.to_string(),
+                    error.display_with(self).to_string(),
                 );
                 fallback()
             }

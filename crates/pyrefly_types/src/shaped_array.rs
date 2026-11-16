@@ -15,6 +15,7 @@ use pyrefly_util::display::commas_iter;
 
 use crate::dimension::Int;
 use crate::dimension::ShapeError;
+use crate::dimension::ShapeMessage;
 use crate::dimension::canonicalize;
 use crate::dimension::gradual_size;
 use crate::dimension::is_gradual_size;
@@ -1119,13 +1120,13 @@ pub fn reduce_axis_shape(
                 }
             } else {
                 ShapeError::ShapeComputation {
-                    message: policy.invalid_axis_message.to_owned(),
+                    message: policy.invalid_axis_message.to_owned().into(),
                 }
             });
         };
         if *selected {
             return Err(ShapeError::ShapeComputation {
-                message: policy.duplicate_axis_message.to_owned(),
+                message: policy.duplicate_axis_message.to_owned().into(),
             });
         }
         *selected = true;
@@ -1281,7 +1282,8 @@ fn broadcast_concrete_with_unpacked(
     } else {
         Err(ShapeError::ShapeComputation {
             message: "Cannot broadcast concrete dims with variadic shape: alignment is ambiguous"
-                .to_owned(),
+                .to_owned()
+                .into(),
         })
     }
 }
@@ -1403,12 +1405,12 @@ pub(crate) fn broadcast_dim(a_ty: &Int, b_ty: &Int, position: usize) -> Result<I
         (_, Int::Int) => Ok(a_ty.clone()),
         // Different non-broadcastable types: incompatible
         _ => Err(ShapeError::ShapeComputation {
-            message: format!(
-                "Cannot broadcast dimension {} with dimension {} at position {}",
-                dim_to_type(&a_ty),
-                dim_to_type(&b_ty),
-                position
-            ),
+            message: ShapeMessage::default()
+                .text("Cannot broadcast dimension ")
+                .ty(dim_to_type(&a_ty))
+                .text(" with dimension ")
+                .ty(dim_to_type(&b_ty))
+                .text(format!(" at position {position}")),
         }),
     }
 }
@@ -1423,6 +1425,7 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
     use pyrefly_python::nesting_context::NestingContext;
+    use pyrefly_util::display::DisplayWithCtx;
     use pyrefly_util::visit::VisitMut;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::Int as AstInt;
@@ -1457,6 +1460,7 @@ mod tests {
     use crate::shaped_array::shape_to_tuple_carrier;
     use crate::shaped_array::shape_to_tuple_carrier_arg;
     use crate::shaped_array::tuple_carrier_to_shape;
+    use crate::test_type_env::TestTypeEnv;
     use crate::tuple::Tuple;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var::Restriction;
@@ -1874,7 +1878,10 @@ mod tests {
         let right = IntTuple::new(vec![dim(5), dim(4)]);
 
         assert_eq!(
-            broadcast_shapes(&left, &right).unwrap_err().to_string(),
+            broadcast_shapes(&left, &right)
+                .unwrap_err()
+                .display_with(&TestTypeEnv::new())
+                .to_string(),
             "Cannot broadcast dimension Int[3] with dimension Int[5] at position 1"
         );
     }
@@ -1898,7 +1905,10 @@ mod tests {
 
         for (left, right) in [(&concrete, &unpacked), (&unpacked, &concrete)] {
             assert_eq!(
-                broadcast_shapes(left, right).unwrap_err().to_string(),
+                broadcast_shapes(left, right)
+                    .unwrap_err()
+                    .display_with(&TestTypeEnv::new())
+                    .to_string(),
                 "Cannot broadcast concrete dims with variadic shape: alignment is ambiguous"
             );
         }

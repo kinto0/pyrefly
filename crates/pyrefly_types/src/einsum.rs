@@ -158,7 +158,7 @@ fn resolve_label_extent(
                     return Err(ShapeError::ShapeComputation {
                         message: format!(
                             "{operation}: {label_kind} '{label}' has conflicting dimensions {previous} and {value}"
-                        ),
+                        ).into(),
                     });
                 }
                 _ => literal = Some(*value),
@@ -275,7 +275,8 @@ pub(crate) fn evaluate_einops_einsum(
                 "einops.einsum: expected {} operands, got {}",
                 equation.inputs.len(),
                 operands.len()
-            ),
+            )
+            .into(),
         });
     }
 
@@ -296,7 +297,8 @@ pub(crate) fn evaluate_einops_einsum(
                     if has_ellipsis { "at least " } else { "" },
                     fixed_rank,
                     dimensions.len()
-                ),
+                )
+                .into(),
             });
         }
         let ellipsis_rank = dimensions.len() - fixed_rank;
@@ -489,7 +491,8 @@ pub(crate) fn evaluate_einsum(
                 "einsum: expected {} operands, got {}",
                 equation.input_ranks.len(),
                 operands.len()
-            ),
+            )
+            .into(),
         });
     }
 
@@ -501,7 +504,8 @@ pub(crate) fn evaluate_einsum(
                 message: format!(
                     "einsum: operand {index} expected rank {expected}, got {}",
                     dimensions.len()
-                ),
+                )
+                .into(),
             });
         }
     }
@@ -534,12 +538,12 @@ pub(crate) fn evaluate_einsum(
                     Some(previous) => match broadcast_dim(&previous, &found, 0) {
                         Ok(broadcasted) => broadcasted,
                         Err(_) => match (&previous, &found) {
-                            (Int::Literal(_), Int::Literal(_)) => {
+                            (Int::Literal(previous), Int::Literal(found)) => {
                                 return Err(ShapeError::ShapeComputation {
                                     message: format!(
                                         "einsum: index '{}' has conflicting dimensions {previous} and {found}",
                                         label.name
-                                    ),
+                                    ).into(),
                                 });
                             }
                             (Int::Literal(_), _) => previous,
@@ -610,7 +614,9 @@ mod tests {
         assert_eq!(
             evaluate_einsum(&equation, &[conflicting]),
             Err(ShapeError::ShapeComputation {
-                message: "einsum: index 'i' has conflicting dimensions 2 and 3".to_owned(),
+                message: "einsum: index 'i' has conflicting dimensions 2 and 3"
+                    .to_owned()
+                    .into(),
             })
         );
         let concrete = IntTuple::new(vec![Int::Literal(2); 3]);

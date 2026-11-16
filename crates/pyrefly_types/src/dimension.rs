@@ -17,6 +17,9 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
 
+use pyrefly_util::display::DisplayWith;
+
+use crate::env::TypeEnv;
 use crate::equality::TypeEq;
 use crate::known_class::KnownClass;
 use crate::literal::Lit;
@@ -401,6 +404,12 @@ const ATOM_PREC: u8 = 5;
 impl Display for Int {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt_prec(f, 0)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for Int {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, _env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        Display::fmt(self, f)
     }
 }
 
@@ -1499,7 +1508,7 @@ pub enum ShapeError {
 
     /// General shape computation error from a meta-shape function or broadcasting.
     /// The message is self-contained (no "Invalid dimension value N:" prefix).
-    ShapeComputation { message: String },
+    ShapeComputation { message: ShapeMessage },
 
     /// Structural mismatch between dimension types
     StructuralMismatch {
@@ -1522,15 +1531,70 @@ pub enum ShapeError {
 
     /// An indexing failure produced while evaluating the `index_shape` intrinsic.
     /// The solving layer reports this with the ordinary `BadIndex` diagnostic category.
-    BadIndex { message: String },
+    BadIndex { message: ShapeMessage },
 
     /// Operation not supported on variadic shapes.
     /// Triggers fixture fallback instead of a user-visible error.
     Unsupported { message: String },
 }
 
-impl Display for ShapeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+/// The text of a shape error. The dimensions and types in it are rendered by the code that reports
+/// the error, which has a `TypeEnv`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct ShapeMessage(Vec<ShapeMessagePart>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ShapeMessagePart {
+    Text(String),
+    Dim(Int),
+    Type(Type),
+    Error(Box<ShapeError>),
+}
+
+impl ShapeMessage {
+    pub fn text(mut self, text: impl Into<String>) -> Self {
+        self.0.push(ShapeMessagePart::Text(text.into()));
+        self
+    }
+
+    pub fn dim(mut self, dim: Int) -> Self {
+        self.0.push(ShapeMessagePart::Dim(dim));
+        self
+    }
+
+    pub fn ty(mut self, ty: Type) -> Self {
+        self.0.push(ShapeMessagePart::Type(ty));
+        self
+    }
+
+    pub fn error(mut self, error: ShapeError) -> Self {
+        self.0.push(ShapeMessagePart::Error(Box::new(error)));
+        self
+    }
+}
+
+impl From<String> for ShapeMessage {
+    fn from(text: String) -> Self {
+        Self::default().text(text)
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ShapeMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
+        for part in &self.0 {
+            match part {
+                ShapeMessagePart::Text(text) => f.write_str(text)?,
+                ShapeMessagePart::Dim(dim) => DisplayWith::fmt(dim, f, env)?,
+                ShapeMessagePart::Type(ty) => DisplayWith::fmt(ty, f, env)?,
+                ShapeMessagePart::Error(error) => DisplayWith::fmt(&**error, f, env)?,
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'e> DisplayWith<dyn TypeEnv + 'e> for ShapeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, env: &(dyn TypeEnv + 'e)) -> fmt::Result {
         match self {
             Self::RankMismatch { got, want } => {
                 write!(
@@ -1542,9 +1606,7 @@ impl Display for ShapeError {
             Self::InvalidDimension { value, reason } => {
                 write!(f, "Invalid dimension value {}: {}", value, reason)
             }
-            Self::ShapeComputation { message } => {
-                write!(f, "{}", message)
-            }
+            Self::ShapeComputation { message } => DisplayWith::fmt(message, f, env),
             Self::StructuralMismatch {
                 got: _,
                 got_canonical,
@@ -1570,7 +1632,7 @@ impl Display for ShapeError {
                     got, max
                 )
             }
-            Self::BadIndex { message } => f.write_str(message),
+            Self::BadIndex { message } => DisplayWith::fmt(message, f, env),
             Self::Unsupported { message } => {
                 write!(f, "Unsupported: {}", message)
             }

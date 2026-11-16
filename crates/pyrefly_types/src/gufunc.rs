@@ -16,6 +16,7 @@ use std::iter::repeat_n;
 
 use crate::dimension::Int;
 use crate::dimension::ShapeError;
+use crate::dimension::ShapeMessage;
 use crate::shaped_array::IntTuple;
 use crate::shaped_array::IntTupleView;
 use crate::shaped_array::broadcast_dim;
@@ -378,7 +379,8 @@ fn split_operand(
                     message: format!(
                         "gufunc: operand {index} requires at least rank {core_rank}, got {}",
                         dimensions.len()
-                    ),
+                    )
+                    .into(),
                 });
             }
             let split = dimensions.len() - core_rank;
@@ -510,7 +512,8 @@ pub(crate) fn evaluate_gufunc(
                 "gufunc: expected {} operands, got {}",
                 signature.inputs.len(),
                 operands.len()
-            ),
+            )
+            .into(),
         });
     }
 
@@ -542,9 +545,13 @@ pub(crate) fn evaluate_gufunc(
                 Some(extent) if *extent == Int::Int => *extent = dimension,
                 Some(extent) => {
                     return Err(ShapeError::ShapeComputation {
-                        message: format!(
-                            "gufunc: core dimension '{name}' has conflicting extents {extent} and {dimension}"
-                        ),
+                        message: ShapeMessage::default()
+                            .text(format!(
+                                "gufunc: core dimension '{name}' has conflicting extents "
+                            ))
+                            .dim(extent.clone())
+                            .text(" and ")
+                            .dim(dimension),
                     });
                 }
                 None => {
@@ -576,12 +583,14 @@ mod tests {
     use pyrefly_python::module::Module;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_python::module_path::ModulePath;
+    use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::Identifier;
     use ruff_python_ast::name::Name;
     use ruff_text_size::TextRange;
     use ruff_text_size::TextSize;
 
     use super::*;
+    use crate::test_type_env::TestTypeEnv;
     use crate::type_var::PreInferenceVariance;
     use crate::type_var_tuple::TypeVarTuple;
     use crate::types::Type;
@@ -814,6 +823,7 @@ mod tests {
         assert_eq!(
             evaluate_gufunc(&signature("(),()->()"), &[shape(&[2])])
                 .expect_err("one operand is missing")
+                .display_with(&TestTypeEnv::new())
                 .to_string(),
             "gufunc: expected 2 operands, got 1"
         );
@@ -823,6 +833,7 @@ mod tests {
                 &[shape(&[3]), shape(&[3, 4])],
             )
             .expect_err("the first operand has insufficient rank")
+            .display_with(&TestTypeEnv::new())
             .to_string(),
             "gufunc: operand 0 requires at least rank 2, got 1"
         );
@@ -833,12 +844,14 @@ mod tests {
         assert_eq!(
             evaluate_gufunc(&signature("(n),(n)->()"), &[shape(&[1]), shape(&[5])])
                 .expect_err("core dimension one must not broadcast")
+                .display_with(&TestTypeEnv::new())
                 .to_string(),
             "gufunc: core dimension 'n' has conflicting extents 1 and 5"
         );
         assert_eq!(
             evaluate_gufunc(&signature("(n,n)->(n)"), &[shape(&[3, 4])])
                 .expect_err("repeated core dimensions must agree")
+                .display_with(&TestTypeEnv::new())
                 .to_string(),
             "gufunc: core dimension 'n' has conflicting extents 3 and 4"
         );

@@ -1195,14 +1195,22 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) {
         for error in errors_to_add.into_iter().unique() {
             match error {
-                ReturnTypeResolutionError::TypeLevelDsl(ShapeError::BadIndex { message }) => {
-                    self.error_with_context(errors, range, ErrorKind::BadIndex, message, context)
-                }
+                ReturnTypeResolutionError::TypeLevelDsl(ShapeError::BadIndex { message }) => self
+                    .error_with_context(
+                        errors,
+                        range,
+                        ErrorKind::BadIndex,
+                        message.display_with(self).to_string(),
+                        context,
+                    ),
                 ReturnTypeResolutionError::TypeLevelDsl(error) => self.error_with_context(
                     errors,
                     range,
                     ErrorKind::UnsupportedOperation,
-                    format!("Cannot evaluate type-level shape DSL call: {error}"),
+                    format!(
+                        "Cannot evaluate type-level shape DSL call: {}",
+                        error.display_with(self)
+                    ),
                     context,
                 ),
             };
