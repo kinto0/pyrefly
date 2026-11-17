@@ -49,8 +49,13 @@ impl Watcher {
         Ok(Self(WatcherInner::Watchman(Watchman::new(path).await?)))
     }
 
-    pub fn notify(paths: &[PathBuf]) -> anyhow::Result<Self> {
-        Ok(Self(WatcherInner::Notify(NotifyWatcher::new(paths)?)))
+    /// Watches the `recursive` paths with everything under them, and the `non_recursive`
+    /// directories with only their direct entries.
+    pub fn notify(recursive: &[PathBuf], non_recursive: &[PathBuf]) -> anyhow::Result<Self> {
+        Ok(Self(WatcherInner::Notify(NotifyWatcher::new(
+            recursive,
+            non_recursive,
+        )?)))
     }
 }
 
@@ -62,11 +67,14 @@ struct NotifyWatcher {
 }
 
 impl NotifyWatcher {
-    fn new(paths: &[PathBuf]) -> anyhow::Result<Self> {
+    fn new(recursive: &[PathBuf], non_recursive: &[PathBuf]) -> anyhow::Result<Self> {
         let (sender, receiver) = channel();
         let mut watcher = recommended_watcher(sender)?;
-        for path in paths {
+        for path in recursive {
             watcher.watch(path, RecursiveMode::Recursive)?;
+        }
+        for path in non_recursive {
+            watcher.watch(path, RecursiveMode::NonRecursive)?;
         }
         Ok(Self { watcher, receiver })
     }

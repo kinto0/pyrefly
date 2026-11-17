@@ -1769,12 +1769,18 @@ async fn run_watch(
             thread_count,
         )?;
         let config_paths = command.checker.config_paths();
-        // A config file can be outside of the roots, so it is watched on its own.
-        let watched = roots
+        // A config file can be outside of the roots. Its directory is watched instead of the file,
+        // because an editor can save the file by replacing it, which ends a watch on the file.
+        let config_dirs = config_paths
+            .iter()
+            .filter_map(|path| path.parent())
+            .filter(|dir| !roots.iter().any(|root| dir.starts_with(root)))
+            .map(Path::to_path_buf)
+            .collect::<SmallSet<_>>()
             .into_iter()
-            .chain(config_paths.iter().cloned())
             .collect::<Vec<_>>();
-        Ok((Watcher::notify(&watched)?, command, config_paths, upsell))
+        let watcher = Watcher::notify(&roots, &config_dirs)?;
+        Ok((watcher, command, config_paths, upsell))
     };
     let (mut watcher, mut command, mut config_paths, mut upsell) = start()?;
     let mut events = CategorizedEvents::default();
