@@ -177,18 +177,20 @@ impl FullCheckArgs {
         thread_count: ThreadCount,
     ) -> anyhow::Result<(CommandExitStatus, Option<CheckResult>)> {
         self.config_override.validate()?;
-        let (files_to_check, config_finder, upsell) =
-            self.files.resolve(self.config_override, wrapper)?;
-        run_check(
-            self.args,
-            version,
-            self.watch,
-            files_to_check,
-            config_finder,
-            upsell,
-            thread_count,
-        )
-        .await
+        let resolve = || {
+            self.files
+                .clone()
+                .resolve(self.config_override.clone(), wrapper.clone())
+        };
+        if self.watch {
+            run_watch(self.args, version, resolve, thread_count).await?;
+            return Ok((CommandExitStatus::Success, None));
+        }
+        let (files_to_check, config_finder, upsell) = resolve()?;
+        let (status, check_result) =
+            self.args
+                .run_once(version, files_to_check, config_finder, upsell, thread_count)?;
+        Ok((status, Some(check_result)))
     }
 }
 
@@ -198,40 +200,6 @@ fn resolve_relative_to(relative_to: Option<&String>) -> PathBuf {
         || std::env::current_dir().ok().unwrap_or_default(),
         |x| PathBuf::from_str(x.as_str()).unwrap(),
     )
-}
-
-async fn run_check(
-    args: CheckArgs,
-    version: &str,
-    watch: bool,
-    files_to_check: Box<dyn Includes>,
-    config_finder: ConfigFinder,
-    upsell: UpsellDecision,
-    thread_count: ThreadCount,
-) -> anyhow::Result<(CommandExitStatus, Option<CheckResult>)> {
-    if watch {
-        let roots = files_to_check.roots();
-        info!(
-            "Watching for files in {}",
-            display::intersperse_iter(";", || roots.iter().map(|p| p.display()))
-        );
-        let watcher = Watcher::notify(&roots)?;
-        run_watch(
-            args,
-            watcher,
-            version,
-            files_to_check,
-            config_finder,
-            upsell,
-            thread_count,
-        )
-        .await?;
-        Ok((CommandExitStatus::Success, None))
-    } else {
-        let (status, check_result) =
-            args.run_once(version, files_to_check, config_finder, upsell, thread_count)?;
-        Ok((status, Some(check_result)))
-    }
 }
 
 /// Main arguments for Pyrefly type checker
@@ -1612,6 +1580,27 @@ impl IncrementalChecker {
         )
     }
 
+    /// The files of the configs of the configured file set.
+    fn config_files(&self) -> SmallSet<PathBuf> {
+        self.handles
+            .path_data
+            .iter()
+            .filter_map(|path| {
+                let config = self
+                    .state
+                    .config_finder()
+                    .python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), path);
+                match &config.source {
+                    ConfigSource::File(file)
+                    | ConfigSource::PythonToolMarker(file)
+                    | ConfigSource::Marker(file)
+                    | ConfigSource::FailedParse(file) => Some(file.clone()),
+                    ConfigSource::Synthetic(_) => None,
+                }
+            })
+            .collect()
+    }
+
     /// Return the number of configured files checked by this checker.
     pub fn checked_file_count(&self) -> usize {
         self.handles.len()
@@ -1747,26 +1736,55 @@ impl IncrementalCheckCommand {
     }
 }
 
+/// Checks the files that `resolve` gives, and checks them again after each change to them. A
+/// change to a config file or other project metadata resolves the files and configs again and
+/// starts a fresh check, since a config can change both which files are checked and how.
 async fn run_watch(
     args: CheckArgs,
-    mut watcher: Watcher,
     version: &str,
-    files_to_check: Box<dyn Includes>,
-    config_finder: ConfigFinder,
-    upsell: UpsellDecision,
+    resolve: impl Fn() -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)>,
     thread_count: ThreadCount,
 ) -> anyhow::Result<()> {
-    // TODO: We currently make 1 unrealistic assumptions, which should be fixed in the future:
-    // - Config search is stable across incremental runs.
-    let mut command =
-        IncrementalCheckCommand::new(args, files_to_check, config_finder, thread_count)?;
-    if let Err(e) = command.check(version, &CategorizedEvents::default(), upsell) {
-        eprintln!("{e:#}");
-    }
+    let start = || -> anyhow::Result<(Watcher, IncrementalCheckCommand, UpsellDecision)> {
+        let (files_to_check, config_finder, upsell) = resolve()?;
+        let roots = files_to_check.roots();
+        info!(
+            "Watching for files in {}",
+            display::intersperse_iter(";", || roots.iter().map(|p| p.display()))
+        );
+        let command = IncrementalCheckCommand::new(
+            args.clone(),
+            files_to_check,
+            config_finder,
+            thread_count,
+        )?;
+        // A config file can be outside of the roots, so it is watched on its own.
+        let watched = roots
+            .into_iter()
+            .chain(command.checker.config_files())
+            .collect::<Vec<_>>();
+        Ok((Watcher::notify(&watched)?, command, upsell))
+    };
+    let (mut watcher, mut command, mut upsell) = start()?;
+    let mut events = CategorizedEvents::default();
     loop {
-        let events = get_watcher_events(&mut watcher).await?;
-        if let Err(e) = command.check(version, &events, UpsellDecision::Skip) {
+        if let Err(e) = command.check(version, &events, upsell) {
             eprintln!("{e:#}");
+        }
+        upsell = UpsellDecision::Skip;
+        events = get_watcher_events(&mut watcher).await?;
+        if events
+            .iter()
+            .any(|path| ConfigFile::is_watched_metadata(path))
+        {
+            match start() {
+                Ok(started) => {
+                    (watcher, command, _) = started;
+                    events = CategorizedEvents::default();
+                }
+                // Keep checking with the previous configs until the metadata is valid again.
+                Err(e) => eprintln!("{e:#}"),
+            }
         }
     }
 }
@@ -3099,6 +3117,43 @@ def go(w: Widget) -> int:
             .check("test", &CategorizedEvents::default(), UpsellDecision::Skip)
             .unwrap();
         assert_eq!(fs::read_dir(glean_dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn incremental_checker_config_files() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path().join("project");
+        fs::create_dir(&root).unwrap();
+        let path = root.join("main.py");
+        fs::write(&path, "x = 1\n").unwrap();
+        assert!(
+            incremental_checker(&root, vec![path.clone()])
+                .config_files()
+                .is_empty(),
+            "a synthesized config has no file to watch",
+        );
+
+        let config_file = root.join("pyrefly.toml");
+        let mut config = test_config(&root);
+        config.source = ConfigSource::File(config_file.clone());
+        let checker = IncrementalChecker::new(
+            RequireLevels {
+                specified: Require::Errors,
+                default: Require::Exports,
+            },
+            Box::new(TestIncludes {
+                root: root.clone(),
+                initial_files: vec![path],
+            }),
+            ConfigFinder::new_constant(ArcId::new(config)),
+            ThreadCount::Inline,
+        )
+        .unwrap();
+        assert_eq!(
+            checker.config_files().into_iter().collect::<Vec<_>>(),
+            vec![config_file],
+            "the config file of a checked file is watched",
+        );
     }
 
     #[test]
