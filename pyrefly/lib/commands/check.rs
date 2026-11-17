@@ -1586,17 +1586,12 @@ impl IncrementalChecker {
             .path_data
             .iter()
             .filter_map(|path| {
-                let config = self
-                    .state
+                self.state
                     .config_finder()
-                    .python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), path);
-                match &config.source {
-                    ConfigSource::File(file)
-                    | ConfigSource::PythonToolMarker(file)
-                    | ConfigSource::Marker(file)
-                    | ConfigSource::FailedParse(file) => Some(file.clone()),
-                    ConfigSource::Synthetic(_) => None,
-                }
+                    .python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), path)
+                    .source
+                    .file()
+                    .map(Path::to_path_buf)
             })
             .collect()
     }

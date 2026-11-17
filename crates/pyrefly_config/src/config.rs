@@ -260,16 +260,20 @@ pub enum OutputFormat {
 }
 
 impl ConfigSource {
-    /// The config root marked by a config or marker file
-    pub fn root_from_file(&self) -> Option<&Path> {
+    /// The config or marker file that this config comes from, if any.
+    pub fn file(&self) -> Option<&Path> {
         match self {
             Self::File(path)
             | Self::PythonToolMarker(path)
             | Self::Marker(path)
-            | Self::FailedParse(path) => path.parent(),
-            // Synthetic roots are deliberately excluded
+            | Self::FailedParse(path) => Some(path),
             Self::Synthetic(_) => None,
         }
+    }
+
+    /// The config root marked by a config or marker file
+    pub fn root_from_file(&self) -> Option<&Path> {
+        self.file()?.parent()
     }
 }
 
