@@ -19,6 +19,7 @@ use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::quantified::TypeVarLike;
 use pyrefly_types::shaped_array::is_int_tuples_type;
+use pyrefly_types::type_level_dsl::DslIntegerDomain;
 use pyrefly_types::type_level_dsl::ParsedTypeShapeDslFunction;
 use pyrefly_types::type_level_dsl::ResolvedTypeShapeDslFunction;
 use pyrefly_types::type_level_dsl::StructurallyValidatedTypeShapeDslFunction;
@@ -37,6 +38,7 @@ use pyrefly_types::type_level_dsl::TypeShapeDslParameterUse;
 use pyrefly_types::type_level_dsl::TypeShapeDslProgramError;
 use pyrefly_types::type_level_dsl::TypeShapeDslReturnKind;
 use pyrefly_types::type_level_dsl::TypeShapeDslSlotReturnKind;
+use pyrefly_types::type_level_dsl::type_shape_dsl_narrowable_flag_domain;
 use pyrefly_types::type_var::FlagDomain;
 use pyrefly_types::type_var::FlagMember;
 use pyrefly_types::type_var::Restriction;
@@ -68,14 +70,6 @@ impl TypeFormContext<'_> {
             _ => false,
         }
     }
-}
-
-/// The domain accepted by scalar and sequence narrowing operations. Boolean conditions are
-/// validated separately against `Flag[bool]`.
-fn type_shape_dsl_narrowable_flag_domain() -> FlagDomain {
-    FlagDomain::of(FlagMember::Int)
-        .join(FlagDomain::of(FlagMember::IntTuple))
-        .join(FlagDomain::of(FlagMember::NoneType))
 }
 
 fn type_shape_dsl_representable_flag_domain() -> FlagDomain {
@@ -131,12 +125,8 @@ fn type_shape_dsl_comparison_domain(
                 .is_none_or(|domain| domain == FlagDomain::of(FlagMember::Int))
             && uses.is_some_and(|uses| {
                 uses.iter().all(|use_| {
-                    matches!(parameter_domains[use_.parameter()], TypeShapeDslInputDomain::Flag(domain)
-                        if (domain == FlagDomain::of(FlagMember::Int)
-                            && use_.narrowing() == TypeShapeDslParameterNarrowing::Unnarrowed)
-                            || (use_.narrowing() == TypeShapeDslParameterNarrowing::Integer
-                                && domain.contains(FlagMember::Int)
-                                && domain.is_subset_of(type_shape_dsl_narrowable_flag_domain())))
+                    parameter_domains[use_.parameter()].integer_domain(use_.narrowing())
+                        == Some(DslIntegerDomain::Flag)
                 })
             })
     };
@@ -544,20 +534,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ..
                     } => {
                         let valid = uses.iter().all(|use_| {
-                            let narrowing = use_.narrowing();
                             parameter_domains[use_.parameter()]
-                                .can_use_as(TypeShapeDslDomain::Int, narrowing)
-                                || match parameter_domains[use_.parameter()] {
-                                TypeShapeDslInputDomain::Flag(domain)
-                                    if narrowing == TypeShapeDslParameterNarrowing::Integer =>
-                                {
-                                    domain.is_subset_of(type_shape_dsl_narrowable_flag_domain())
-                                }
-                                TypeShapeDslInputDomain::Flag(domain) => {
-                                    domain == FlagDomain::of(FlagMember::Int)
-                                }
-                                _ => false,
-                            }
+                                .integer_domain(use_.narrowing())
+                                .is_some()
                         });
                         (!valid).then_some("`@shape_transform` dimension arithmetic operands must be annotated as `Int`, as `Int | None` narrowed to exclude `None`, or as a compatible integer Flag")
                     }
@@ -706,33 +685,32 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         ..
                     } => {
                         let valid = uses.iter().all(|use_| {
-                            match parameter_domains[use_.parameter()] {
-                                TypeShapeDslInputDomain::Flag(domain) => match required {
-                                    TypeShapeDslFlagValueKind::Int
-                                        if use_.narrowing()
-                                            == TypeShapeDslParameterNarrowing::Integer =>
-                                    {
-                                        domain.is_subset_of(type_shape_dsl_narrowable_flag_domain())
-                                    }
-                                    TypeShapeDslFlagValueKind::Int => {
-                                        domain == FlagDomain::of(FlagMember::Int)
-                                    }
-                                    TypeShapeDslFlagValueKind::String => {
-                                        domain.contains(FlagMember::Str)
-                                            && domain.is_subset_of(type_shape_dsl_optional_flag_domain(
-                                                FlagMember::Str,
-                                            ))
-                                    }
-                                    TypeShapeDslFlagValueKind::Sequence
-                                        if use_.narrowing()
-                                            != TypeShapeDslParameterNarrowing::Unnarrowed =>
-                                    {
-                                        domain.is_subset_of(type_shape_dsl_narrowable_flag_domain())
-                                    }
-                                    TypeShapeDslFlagValueKind::Sequence => {
-                                        domain.is_subset_of(FlagDomain::of(FlagMember::IntTuple))
-                                    }
-                                },
+                            match (required, parameter_domains[use_.parameter()]) {
+                                (TypeShapeDslFlagValueKind::Int, input_domain) => {
+                                    input_domain.integer_domain(use_.narrowing())
+                                        == Some(DslIntegerDomain::Flag)
+                                }
+                                (
+                                    TypeShapeDslFlagValueKind::String,
+                                    TypeShapeDslInputDomain::Flag(domain),
+                                ) => {
+                                    domain.contains(FlagMember::Str)
+                                        && domain.is_subset_of(
+                                            type_shape_dsl_optional_flag_domain(FlagMember::Str),
+                                        )
+                                }
+                                (
+                                    TypeShapeDslFlagValueKind::Sequence,
+                                    TypeShapeDslInputDomain::Flag(domain),
+                                ) if use_.narrowing()
+                                    != TypeShapeDslParameterNarrowing::Unnarrowed =>
+                                {
+                                    domain.is_subset_of(type_shape_dsl_narrowable_flag_domain())
+                                }
+                                (
+                                    TypeShapeDslFlagValueKind::Sequence,
+                                    TypeShapeDslInputDomain::Flag(domain),
+                                ) => domain.is_subset_of(FlagDomain::of(FlagMember::IntTuple)),
                                 _ => false,
                             }
                         });
