@@ -1853,10 +1853,16 @@ impl CheckArgs {
 
         let state = Forgetter::new(State::new(config_finder, thread_count), true);
         let require_levels = self.get_required_levels();
-        let mut transaction = Forgetter::new(
-            state.as_ref().new_transaction(require_levels.default, None),
-            true,
-        );
+        // The dependency graph report reads the dependencies between modules, which a
+        // one-shot transaction does not record.
+        let transaction = if self.output.dependency_graph.is_some() {
+            state.as_ref().new_transaction(require_levels.default, None)
+        } else {
+            state
+                .as_ref()
+                .new_one_shot_transaction(require_levels.default)
+        };
+        let mut transaction = Forgetter::new(transaction, true);
         let (loaded_handles, _, sourcedb_errors) = handles.all(state.as_ref().config_finder());
 
         // With several files to check, config errors are not fatal when the configs are found,

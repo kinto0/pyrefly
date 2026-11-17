@@ -701,8 +701,8 @@ struct ModuleDataMut {
     // never pay for a clone.
     deps: RwLock<Arc<HashMap<Handle, ModuleDeps>>>,
     /// The reverse dependencies of this module. This is used to invalidate on change.
-    /// Note that if we are only running once, e.g. on the command line, this isn't valuable.
-    /// But we create it anyway for simplicity, since it doesn't seem to add much overhead.
+    /// A one-off check does not need it, so `State::new_one_shot_transaction` records neither
+    /// `deps` nor `rdeps`.
     // Copy-on-write: same sharing discipline as `deps`.
     rdeps: Mutex<Arc<HashSet<Handle>>>,
     /// Last-computed value of `tensor_shapes_available` for this module.
@@ -883,6 +883,10 @@ pub(crate) struct TransactionData<'a> {
     updated_loaders: LockedMap<(ArcId<ConfigFile>, Option<SitePackagePath>), Arc<LoaderFindCache>>,
     memory_overlay: MemoryFilesOverlay,
     default_require: Require,
+    /// Whether to record dependency edges (`deps`/`rdeps`) between modules.
+    /// Invariant: if false, no export of a module computed in this transaction ever changes,
+    /// so no module needs to find its dependents, and the transaction is never committed.
+    track_deps: bool,
     /// The epoch when this transaction was created
     base: Epoch,
     /// The current epoch, gets incremented every time we recompute
@@ -1356,6 +1360,7 @@ impl<'a> Transaction<'a> {
     /// in-memory handle contain only itself, which would make any file an IDE
     /// has open look unused.
     pub fn get_rdeps(&self, handle: &Handle) -> HashSet<Handle> {
+        assert!(self.data.track_deps, "dependencies are not tracked");
         let path = handle.path().as_path();
         let mut rdeps = HashSet::new();
         for copy in self.copies(handle) {
@@ -1406,6 +1411,7 @@ impl<'a> Transaction<'a> {
     /// not getting what you want, because the set of rdeps of in-memory file for IDE service will
     /// only contain itself.
     pub fn get_transitive_rdeps(&self, handle: Handle) -> HashSet<Handle> {
+        assert!(self.data.track_deps, "dependencies are not tracked");
         let mut transitive_rdeps = HashSet::new();
         let mut work_list = self.copies(&handle);
         while let Some(handle) = work_list.pop() {
@@ -1994,6 +2000,11 @@ impl<'a> Transaction<'a> {
                 load_result = module_data.state.get_load();
             }
             if !changed.is_empty() {
+                assert!(
+                    self.data.track_deps,
+                    "Exports of `{}` changed in a transaction that does not track dependencies",
+                    module_data.handle.module()
+                );
                 self.data
                     .changed
                     .lock()
@@ -3041,6 +3052,7 @@ impl<'a> Transaction<'a> {
     /// paths of its direct dependencies. Bundled typeshed and in-memory modules are
     /// excluded.
     pub fn get_dependency_graph(&self, handles: &[Handle]) -> Vec<(PathBuf, Vec<PathBuf>)> {
+        assert!(self.data.track_deps, "dependencies are not tracked");
         // Build a set of module names → filesystem paths for the handles the
         // caller cares about (i.e. the project files from the config globs).
         let mut included: HashMap<ModuleName, PathBuf> = HashMap::with_capacity(handles.len());
@@ -3254,7 +3266,9 @@ impl<'a> TransactionHandle<'a> {
                     deps: ModuleDeps::default(),
                 }
             });
-            deferred.deps.add_dep(dep);
+            if self.transaction.data.track_deps {
+                deferred.deps.add_dep(dep);
+            }
             deferred.module_data
         };
         let imported_handle = |config: &ConfigFile, module: ModuleName, path: ModulePath| {
@@ -3409,7 +3423,8 @@ impl Drop for TransactionHandle<'_> {
     fn drop(&mut self) {
         // get_mut() avoids RefCell runtime borrow check since drop has &mut self.
         let deferred = mem::take(self.deferred_deps.get_mut());
-        if deferred.is_empty() {
+        // Without dependency tracking, `deferred_deps` only caches the imported modules.
+        if deferred.is_empty() || !self.transaction.data.track_deps {
             return;
         }
         let mut deps_lock = self.module_data.deps.write();
@@ -4061,7 +4076,24 @@ impl State {
         let start = Timer::start();
         let readable = self.state.read();
         let state_lock_blocked = start.elapsed();
-        self.transaction_from_guard(readable, default_require, subscriber, state_lock_blocked)
+        self.transaction_from_guard(
+            readable,
+            default_require,
+            true,
+            subscriber,
+            state_lock_blocked,
+        )
+    }
+
+    /// Create a transaction for a one-off check, which records no dependencies between modules.
+    /// Dependencies only matter when a change must find the modules that depend on it, which never
+    /// happens in a transaction that is not invalidated after it starts computing and is never
+    /// committed (the return type is not a `CommittingTransaction`).
+    pub fn new_one_shot_transaction<'a>(&'a self, default_require: Require) -> Transaction<'a> {
+        let start = Timer::start();
+        let readable = self.state.read();
+        let state_lock_blocked = start.elapsed();
+        self.transaction_from_guard(readable, default_require, false, None, state_lock_blocked)
     }
 
     /// Build a transaction over the state `readable` observes. Takes the guard
@@ -4071,6 +4103,7 @@ impl State {
         &'a self,
         readable: RwLockReadGuard<'a, StateData>,
         default_require: Require,
+        track_deps: bool,
         subscriber: Option<Box<dyn Subscriber + 'a>>,
         state_lock_blocked: Duration,
     ) -> Transaction<'a> {
@@ -4094,6 +4127,7 @@ impl State {
                 base: now,
                 now,
                 default_require,
+                track_deps,
                 todo: Default::default(),
                 changed: Default::default(),
                 dirty: Default::default(),
@@ -4167,7 +4201,7 @@ impl State {
     ) -> Transaction<'a> {
         let state = self.commit_transaction_inner::<Downgrade>(transaction, telemetry);
         // Already holding the lock, so there was nothing to wait for.
-        self.transaction_from_guard(state, default_require, None, Duration::ZERO)
+        self.transaction_from_guard(state, default_require, true, None, Duration::ZERO)
     }
 
     /// Apply the transaction to shared state, then release or downgrade the
@@ -4198,6 +4232,7 @@ impl State {
                             base,
                             now,
                             default_require: _,
+                            track_deps: _,
                             state: _,
                             todo,
                             changed,

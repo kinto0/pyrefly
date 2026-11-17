@@ -292,6 +292,55 @@ else:
         .unwrap();
 }
 
+fn one_shot_env() -> (TestEnv, [Handle; 2]) {
+    let mut env = TestEnv::new();
+    env.add("foo", "x: int = 1\n");
+    env.add(
+        "main",
+        "from foo import x\ny: str = x  # E: `int` is not assignable to `str`\n",
+    );
+    let sys_info = env.sys_info();
+    let handle = |name: &str| {
+        Handle::new(
+            ModuleName::from_str(name),
+            ModulePath::memory(PathBuf::from(format!("{name}.py"))),
+            sys_info.dupe(),
+        )
+    };
+    (env, [handle("foo"), handle("main")])
+}
+
+#[test]
+fn test_one_shot_transaction_checks_across_modules() {
+    let (env, handles) = one_shot_env();
+    let state = State::new(env.config_finder(), TEST_THREAD_COUNT);
+    let mut transaction = state.new_one_shot_transaction(Require::Errors);
+    transaction.set_memory(env.get_memory());
+    transaction.run(&handles, Require::Errors, None);
+    transaction
+        .get_errors(&handles)
+        .check_against_expectations()
+        .unwrap();
+}
+
+#[test]
+#[should_panic(expected = "does not track dependencies")]
+fn test_one_shot_transaction_rejects_export_changes() {
+    let (env, handles) = one_shot_env();
+    let state = State::new(env.config_finder(), TEST_THREAD_COUNT);
+    let mut transaction = state.new_one_shot_transaction(Require::Errors);
+    transaction.set_memory(env.get_memory());
+    transaction.run(&handles, Require::Errors, None);
+    // `main` depends on `x`, but nothing recorded that, so the change cannot reach it.
+    transaction.set_memory(vec![(
+        PathBuf::from("foo.py"),
+        Some(Arc::new(FileContents::from_source(
+            "x: str = ''\n".to_owned(),
+        ))),
+    )]);
+    transaction.run(&handles, Require::Errors, None);
+}
+
 #[test]
 fn test_ad_hoc_solve_does_not_persist_diagnostics() {
     let mut env = TestEnv::new();

@@ -186,8 +186,10 @@ fn compute_errors(
         State::new(ConfigFinder::new_constant(config), options.thread_count),
         true,
     );
-    let mut transaction =
-        Forgetter::new(state.as_ref().new_transaction(default_require, None), true);
+    let mut transaction = Forgetter::new(
+        state.as_ref().new_one_shot_transaction(default_require),
+        true,
+    );
 
     if let Some(pysa_directory) = options.report_pysa {
         let reporter = report::pysa::PysaReporter::new(
