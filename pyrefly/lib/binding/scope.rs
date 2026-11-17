@@ -116,6 +116,9 @@ pub enum NameReadInfo {
         key: Key,
         initialized: InitializationStatus,
         is_module_scope: bool,
+        /// Whether the name is a member of an enclosing class. Only a postponed read finds a
+        /// class member this way.
+        is_class_scope: bool,
         implicit_builtin_module: Option<ModuleName>,
     },
     /// No such name is defined in the current scope stack, but it resolves to an implicit
@@ -4328,6 +4331,7 @@ impl Scopes {
                             InitializationStatus::Uninitialized
                         },
                         is_module_scope: matches!(scope.kind, ScopeKind::Module),
+                        is_class_scope: is_class,
                         implicit_builtin_module: static_info.implicit_builtin_module(),
                     });
                 }

@@ -2094,19 +2094,21 @@ testcase!(
     r#"
 from __future__ import annotations
 class A:
-    x: int
+    x: type[int]
 class B:
     @property
-    def A(self) -> A.x: ...  # E: Object of class `property` has no attribute `x`
+    def A(self) -> A.x: ...  # E: Expected a type form, got class attribute `A`
     "#,
 );
 
 testcase!(
     test_forward_reference_to_shadowing_method,
     r#"
+from typing import assert_type
 class A:
-    x: "int"  # E: Expected a type form, got instance of `(self: Self@A) -> None`
+    x: "int"  # E: Expected a type form, got class attribute `int` of type `(self: Self@A) -> None`\n  Note: falling back to `builtins.int` from an enclosing scope
     def int(self) -> None: ...
+assert_type(A().x, int)
     "#,
 );
 
@@ -2116,7 +2118,7 @@ testcase!(
     r#"
 from __future__ import annotations
 class C:
-    def list(self) -> list[str]:  # E: `(self: Self@C) -> Unknown` is not subscriptable
+    def list(self) -> list[str]:  # E: falling back to `builtins.list` from an enclosing scope
         return list({"a": 1}.keys())
     "#,
 );
@@ -2127,11 +2129,50 @@ testcase!(
 from __future__ import annotations
 from typing import assert_type
 class C:
-    def f(self, x: str, y: object) -> None:  # E: Expected a type form, got instance of `Literal[1]`
+    def f(self, x: str, y: object) -> None:  # E: falling back to `builtins.str` from an enclosing scope
         if isinstance(y, str):
             assert_type(y, str)
         assert_type(str(1), str)
     str = 1
+    "#,
+);
+
+testcase!(
+    test_class_scope_non_type_without_fallback,
+    r#"
+from __future__ import annotations
+class C:
+    def f(self) -> g: ...  # E: Expected a type form, got instance of `(self: Self@C) -> None`
+    def g(self) -> None: ...
+    "#,
+);
+
+testcase!(
+    test_class_scope_module_is_not_replaced_by_fallback,
+    r#"
+from __future__ import annotations
+import collections.abc as abc
+class C:
+    def f(self) -> abc.Any: ...
+    import typing as abc
+    "#,
+);
+
+testcase!(
+    bug = "`ns.T` should resolve to `C.ns.T`, which is `str`, without an error",
+    test_class_scope_fallback_for_attribute_base,
+    r#"
+from __future__ import annotations
+from typing import assert_type, TypeAlias
+class Namespace1:
+    T: TypeAlias = int
+ns = Namespace1()
+class Namespace2:
+    T: TypeAlias = str
+class C:
+    x: ns.T  # E: Expected a type form, got class attribute `ns` of type `Namespace2`
+    ns = Namespace2()
+assert_type(C.x, str)  # E: assert_type(int, str) failed
     "#,
 );
 

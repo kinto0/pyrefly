@@ -1779,8 +1779,8 @@
     {
       "code": -2,
       "column": 9,
-      "concise_description": "Expected a type form, got instance of `(self: Self@ClassD) -> None`",
-      "description": "Expected a type form, got instance of `(self: Self@ClassD) -> None`",
+      "concise_description": "Expected a type form, got class attribute `int` of type `(self: Self@ClassD) -> None`",
+      "description": "Expected a type form, got class attribute `int` of type `(self: Self@ClassD) -> None`\n  Note: falling back to `builtins.int` from an enclosing scope",
       "line": 96,
       "name": "not-a-type",
       "severity": "error",
@@ -1836,8 +1836,8 @@
     {
       "code": -2,
       "column": 8,
-      "concise_description": "Expected a type form, got instance of `(self: Self@ClassB) -> None`",
-      "description": "Expected a type form, got instance of `(self: Self@ClassB) -> None`",
+      "concise_description": "Expected a type form, got class attribute `int` of type `(self: Self@ClassB) -> None`",
+      "description": "Expected a type form, got class attribute `int` of type `(self: Self@ClassB) -> None`\n  Note: falling back to `builtins.int` from an enclosing scope",
       "line": 39,
       "name": "not-a-type",
       "severity": "error",

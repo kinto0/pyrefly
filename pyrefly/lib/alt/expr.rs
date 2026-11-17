@@ -60,6 +60,7 @@ use ruff_python_ast::ExprBinOp;
 use ruff_python_ast::ExprCall;
 use ruff_python_ast::ExprGenerator;
 use ruff_python_ast::ExprList;
+use ruff_python_ast::ExprName;
 use ruff_python_ast::ExprNumberLiteral;
 use ruff_python_ast::ExprSlice;
 use ruff_python_ast::ExprStarred;
@@ -989,21 +990,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // Assignment values and branches of conditional and boolean expressions are checked separately.
         let mut check_deprecation = !matches!(x, Expr::Named(..) | Expr::If(..) | Expr::BoolOp(..));
         let res = match x {
-            Expr::Name(x) => {
-                if Ast::is_synthesized_empty_name(x) {
-                    TypeInfo::of_ty(self.heap.mk_any_error())
-                } else {
-                    let result = self
-                        .get(&Key::BoundName(ShortIdentifier::expr_name(x)))
-                        .clone();
-                    // Complements PromoteForward for seeded captures.
-                    if self.bindings().should_promote_at_range(x.range) {
-                        result.map_ty(|ty| ty.promote_shallow(self.stdlib))
-                    } else {
-                        result
-                    }
-                }
-            }
+            Expr::Name(x) => self.expr_infer_name(x, errors, type_form_context),
             Expr::Attribute(x) => {
                 let base = self.expr_infer_impl(&x.value, None, errors, type_form_context);
                 self.attr_access_infer(x, &base, errors)
@@ -1073,6 +1060,62 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         self.record_type_trace(x.range(), res.ty());
         res
+    }
+
+    fn expr_infer_name(
+        &self,
+        x: &ExprName,
+        errors: &ErrorCollector,
+        type_form_context: Option<TypeFormContext<'_>>,
+    ) -> TypeInfo {
+        if Ast::is_synthesized_empty_name(x) {
+            TypeInfo::of_ty(self.heap.mk_any_error())
+        } else {
+            let mut result = self
+                .get(&Key::BoundName(ShortIdentifier::expr_name(x)))
+                .clone();
+            // See `Bindings::class_scope_fallback`. A module is not a type form, but a
+            // type expression may access its attributes, so it needs no fallback.
+            if type_form_context.is_some()
+                && let Some(fallback) = self.bindings().class_scope_fallback(x.range)
+                && !matches!(result.ty(), Type::Module(_))
+                && self
+                    .untype_opt(result.ty().clone(), x.range, &self.error_swallower())
+                    .is_none()
+            {
+                let fallback = self.get_idx(fallback);
+                errors
+                    .error_builder(
+                        x.range,
+                        ErrorKind::NotAType,
+                        format!(
+                            "Expected a type form, got class attribute `{}` of type `{}`",
+                            x.id,
+                            self.display(result.ty().clone()),
+                        ),
+                    )
+                    .with_detail_from(|| {
+                        // The fallback shares the member's name but not its scope, so display it
+                        // with its module for disambiguation.
+                        let fallback_name = if let Type::ClassDef(cls) = fallback.ty() {
+                            cls.qname(self).module_qualified_name()
+                        } else {
+                            x.id.to_string()
+                        };
+                        Some(format!(
+                            "Note: falling back to `{fallback_name}` from an enclosing scope"
+                        ))
+                    })
+                    .emit();
+                result = fallback.clone();
+            }
+            // Complements PromoteForward for seeded captures.
+            if self.bindings().should_promote_at_range(x.range) {
+                result.map_ty(|ty| ty.promote_shallow(self.stdlib))
+            } else {
+                result
+            }
+        }
     }
 
     /// This function should not be used directly: we want every expression to record a type trace,

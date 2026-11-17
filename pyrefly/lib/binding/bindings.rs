@@ -180,6 +180,9 @@ pub enum NameLookupResult {
         is_module_scope: bool,
         /// Does this name resolve to a type parameter outside the current class's scope?
         is_outer_class_type_parameter: bool,
+        /// When this name resolves to a member of an enclosing class, the binding that an eager
+        /// read finds instead. See `Bindings::class_scope_fallback`.
+        class_scope_fallback: Option<Idx<Key>>,
     },
     /// This name is not defined in the current scope stack.
     NotFound,
@@ -481,6 +484,8 @@ pub struct Bindings {
     /// these declarations, since the following assignment counts as the
     /// initializer.
     subsequently_initialized: SmallSet<Idx<KeyAnnotation>>,
+    /// See `Bindings::class_scope_fallback`.
+    class_scope_fallbacks: SmallMap<TextRange, Idx<Key>>,
 }
 
 impl Display for Bindings {
@@ -586,6 +591,8 @@ pub struct BindingsBuilder<'a> {
     pub(super) shape_string_annotation: Option<TextRange>,
     /// See `Bindings::subsequently_initialized`.
     subsequently_initialized: SmallSet<Idx<KeyAnnotation>>,
+    /// See `Bindings::class_scope_fallback`.
+    pub(super) class_scope_fallbacks: SmallMap<TextRange, Idx<Key>>,
     /// Defaults extracted from an adjacent `__new__.__defaults__` assignment,
     /// set by `stmts()` and consumed by namedtuple synthesis in `stmt()`.
     pub adjacent_namedtuple_defaults: Option<Vec<Expr>>,
@@ -711,6 +718,7 @@ impl Bindings {
             class_field_definitions: SmallMap::new(),
             shape_declarations: ShapeDeclarations::default(),
             subsequently_initialized: SmallSet::new(),
+            class_scope_fallbacks: SmallMap::new(),
             promote_ranges: SmallSet::new(),
             functools_wrapper_mutation,
         }
@@ -905,6 +913,14 @@ impl Bindings {
     /// initialized by a non-annotated assignment (tuple unpacking, walrus, `with … as`).
     pub fn subsequently_initialized(&self, ann: Idx<KeyAnnotation>) -> bool {
         self.subsequently_initialized.contains(&ann)
+    }
+
+    /// For a name read at `range` that resolves to a member of an enclosing class, returns the
+    /// binding that an eager read finds instead. A postponed annotation runs after the class body,
+    /// so it sees class members that shadow names in enclosing scopes. When such a member is not a
+    /// type, the solver reports it and uses this binding, which is usually the intended type.
+    pub fn class_scope_fallback(&self, range: TextRange) -> Option<Idx<Key>> {
+        self.class_scope_fallbacks.get(&range).copied()
     }
 
     /// Names `del`eted at module scope.
@@ -1158,6 +1174,7 @@ impl Bindings {
             shape_comments,
             shape_string_annotation: None,
             subsequently_initialized: SmallSet::new(),
+            class_scope_fallbacks: SmallMap::new(),
             adjacent_namedtuple_defaults: None,
             promote_ranges: SmallSet::new(),
             has_functools_wrapper_mutation: false,
@@ -1319,6 +1336,7 @@ impl Bindings {
             class_field_definitions: builder.class_field_definitions,
             shape_declarations: builder.shape_declarations.finish(),
             subsequently_initialized: builder.subsequently_initialized,
+            class_scope_fallbacks: builder.class_scope_fallbacks,
             promote_ranges: builder.promote_ranges,
             functools_wrapper_mutation,
         }
@@ -2508,12 +2526,14 @@ impl<'a> BindingsBuilder<'a> {
                     initialized,
                     is_module_scope: false,
                     is_outer_class_type_parameter: false,
+                    class_scope_fallback: None,
                 }
             }
             NameReadInfo::Anywhere {
                 key,
                 initialized,
                 is_module_scope,
+                is_class_scope,
                 implicit_builtin_module,
             } => {
                 self.scopes.mark_parameter_used(name.key());
@@ -2533,12 +2553,32 @@ impl<'a> BindingsBuilder<'a> {
                     self.scopes
                         .define_in_current_flow(name, idx, FlowStyle::Other);
                 }
+                // An eager read does not see class members, so it finds the name in an enclosing
+                // scope. An outer class's type parameter is never a fallback, because it needs the
+                // check that `ensure_name` wraps around it.
+                let class_scope_fallback = if is_class_scope {
+                    match self.lookup_name(name, &mut usage.as_eager()) {
+                        NameLookupResult::Found {
+                            idx,
+                            is_outer_class_type_parameter: false,
+                            ..
+                        } => Some(idx),
+                        NameLookupResult::Found {
+                            is_outer_class_type_parameter: true,
+                            ..
+                        }
+                        | NameLookupResult::NotFound => None,
+                    }
+                } else {
+                    None
+                };
                 NameLookupResult::Found {
                     idx,
                     value_idx: None,
                     initialized,
                     is_module_scope,
                     is_outer_class_type_parameter: false,
+                    class_scope_fallback,
                 }
             }
             NameReadInfo::ImplicitBuiltin { module } => {
@@ -2549,6 +2589,7 @@ impl<'a> BindingsBuilder<'a> {
                     initialized: InitializationStatus::Initialized,
                     is_module_scope: true,
                     is_outer_class_type_parameter: false,
+                    class_scope_fallback: None,
                 }
             }
             NameReadInfo::OuterClassTypeParameter { key } => NameLookupResult::Found {
@@ -2557,6 +2598,7 @@ impl<'a> BindingsBuilder<'a> {
                 initialized: InitializationStatus::Initialized,
                 is_module_scope: false,
                 is_outer_class_type_parameter: true,
+                class_scope_fallback: None,
             },
             NameReadInfo::NotFound => NameLookupResult::NotFound,
         }
@@ -3423,6 +3465,7 @@ struct PossibleTParam {
     idx: Idx<Key>,
     tparam_idx: Idx<KeyLegacyTypeParam>,
     initialized: InitializationStatus,
+    class_scope_fallback: Option<Idx<Key>>,
 }
 
 enum TParamLookupResult {
@@ -3431,6 +3474,7 @@ enum TParamLookupResult {
         idx: Idx<Key>,
         initialized: InitializationStatus,
         is_outer_class_type_parameter: bool,
+        class_scope_fallback: Option<Idx<Key>>,
     },
     NotFound,
 }
@@ -3444,17 +3488,20 @@ impl TParamLookupResult {
                 initialized: possible_tparam.initialized.clone(),
                 is_module_scope: false,
                 is_outer_class_type_parameter: false,
+                class_scope_fallback: possible_tparam.class_scope_fallback,
             },
             Self::NotTParam {
                 idx,
                 initialized,
                 is_outer_class_type_parameter,
+                class_scope_fallback,
             } => NameLookupResult::Found {
                 idx: *idx,
                 value_idx: None,
                 initialized: initialized.clone(),
                 is_module_scope: false,
                 is_outer_class_type_parameter: *is_outer_class_type_parameter,
+                class_scope_fallback: *class_scope_fallback,
             },
             Self::NotFound => NameLookupResult::NotFound,
         }
@@ -3565,6 +3612,7 @@ impl<'a> BindingsBuilder<'a> {
                 idx: original_idx,
                 initialized,
                 is_outer_class_type_parameter,
+                class_scope_fallback,
                 ..
             } => {
                 self.mark_does_not_pin_if_first_use(original_idx);
@@ -3578,6 +3626,7 @@ impl<'a> BindingsBuilder<'a> {
                         idx: original_idx,
                         initialized,
                         is_outer_class_type_parameter,
+                        class_scope_fallback,
                     };
                 }
                 let shadows_enclosing_annotation_scope = self
@@ -3588,12 +3637,14 @@ impl<'a> BindingsBuilder<'a> {
                     original_idx,
                     has_scoped_type_params,
                     shadows_enclosing_annotation_scope,
+                    class_scope_fallback,
                 ) {
                     Some(possible_tparam) => TParamLookupResult::MaybeTParam(possible_tparam),
                     None => TParamLookupResult::NotTParam {
                         idx: original_idx,
                         initialized,
                         is_outer_class_type_parameter,
+                        class_scope_fallback,
                     },
                 }
             }
@@ -3637,6 +3688,7 @@ impl<'a> BindingsBuilder<'a> {
         original_idx: Idx<Key>,
         has_scoped_type_params: bool,
         shadows_enclosing_annotation_scope: bool,
+        class_scope_fallback: Option<Idx<Key>>,
     ) -> Option<PossibleTParam> {
         let (mut original_idx, mut original_binding) = self.get_original_binding(original_idx)?;
         if shadows_enclosing_annotation_scope {
@@ -3666,6 +3718,7 @@ impl<'a> BindingsBuilder<'a> {
             idx,
             tparam_idx,
             initialized: InitializationStatus::Initialized,
+            class_scope_fallback,
         })
     }
 

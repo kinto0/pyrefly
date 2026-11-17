@@ -786,7 +786,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         errors: &ErrorCollector,
     ) -> Option<Qualifier> {
         let ty = match x {
-            Expr::Name(_) | Expr::Attribute(_) => Some(self.expr_infer(x, errors)),
+            Expr::Name(_) | Expr::Attribute(_) => Some(
+                self.expr_infer_without_shape_comment(x, None, errors, Some(type_form_context))
+                    .into_ty(),
+            ),
             _ => None,
         };
         if let Some(Type::Type(ref f)) = ty

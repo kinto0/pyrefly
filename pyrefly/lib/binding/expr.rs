@@ -183,6 +183,14 @@ impl Usage {
         }
     }
 
+    /// The usage for the same read evaluated where it appears.
+    pub fn as_eager(&self) -> Self {
+        match self {
+            Self::Static(kind, _) => Self::Static(*kind, Evaluation::Eager),
+            _ => self.clone(),
+        }
+    }
+
     fn evaluation(&self) -> Evaluation {
         match self {
             Self::Static(_, evaluation) => *evaluation,
@@ -458,7 +466,11 @@ impl<'a> BindingsBuilder<'a> {
                 initialized: is_initialized,
                 is_module_scope,
                 is_outer_class_type_parameter,
+                class_scope_fallback,
             } => {
+                if let Some(fallback) = class_scope_fallback {
+                    self.class_scope_fallbacks.insert(name.range, fallback);
+                }
                 if self.track_classmethod_uses {
                     self.record_classmethod_use(value_idx.unwrap_or(lookup_result_idx));
                 }
