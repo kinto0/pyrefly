@@ -3957,13 +3957,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     pub fn solve_class(&self, cls: &BindingClass) -> NoneIfRecursive<Class> {
-        let cls = match cls {
-            BindingClass::ClassDef(x) => self.class_definition(x),
-            BindingClass::FunctionalClassDef(def_index, x, parent) => {
-                self.functional_class_definition(*def_index, x, parent)
-            }
+        let def_index = match cls {
+            BindingClass::ClassDef(x) => x.def_index,
+            BindingClass::FunctionalClassDef(def_index, _) => *def_index,
         };
-        NoneIfRecursive(Some(cls))
+        NoneIfRecursive(Some(self.class_definition(def_index)))
     }
 
     pub fn solve_tparams(&self, binding: &BindingTParams, errors: &ErrorCollector) -> TParams {
@@ -4008,7 +4006,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> ClassField {
         let functional_class_def = matches!(
             self.bindings().get(field.class_idx),
-            BindingClass::FunctionalClassDef(_, _, _)
+            BindingClass::FunctionalClassDef(_, _)
         );
 
         match &self.get_idx(field.class_idx).0 {

@@ -690,13 +690,14 @@ impl Bindings {
         let mut table = BindingTable::default();
         let functools_wrapper_mutation =
             bind_functools_wrapper_mutation(&mut table, TextRange::default(), false);
+        let metadata = Arc::new(BindingsMetadata::new(&module_info));
         Self {
             module_info,
             parse_errors: ModuleDiagnostics::default(),
             binding_errors: ModuleDiagnostics::default(),
             sys_info: SysInfo::default(),
             table,
-            metadata: Arc::new(BindingsMetadata::new()),
+            metadata,
             module_ranges: None,
             annotated_metadata_ranges: Vec::new(),
             docstring_type_ranges: Vec::new(),
@@ -1140,7 +1141,7 @@ impl Bindings {
             sys_info,
             errors,
             solver,
-            metadata: BindingsMetadata::new(),
+            metadata: BindingsMetadata::new(&module_info),
             func_count: 0,
             type_alias_count: 0,
             await_context: AwaitContext::General,

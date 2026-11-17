@@ -8,15 +8,24 @@
 //! Metadata collected during the binding phase that can be queried
 //! without going through the solve/calculation code paths.
 //!
-//! This module stores per-class metadata (starting with field information)
+//! This module stores per-class metadata (the class definition and its fields)
 //! in a `Vec` indexed by `ClassDefIndex`, enabling efficient lookups.
 
+use dupe::Dupe;
+use pyrefly_python::module::Module;
+use pyrefly_python::nesting_context::NestingContext;
+use pyrefly_types::class::ClassDef;
 use pyrefly_types::class::ClassDefIndex;
 use pyrefly_types::class::ClassFields;
+use ruff_python_ast::Identifier;
+use ruff_python_ast::name::Name;
+use ruff_text_size::TextRange;
 
 /// Metadata for a single class definition, populated during binding.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ClassMetadata {
+    /// The definition data of the class. Each `Class` of this module carries a copy of it.
+    pub def: ClassDef,
     /// The fields are all the names declared on the class that we were able to detect
     /// from an AST traversal, which includes:
     /// - any name defined in the class body (e.g. by assignment or a def statement)
@@ -29,6 +38,22 @@ pub struct ClassMetadata {
     pub fields: ClassFields,
 }
 
+impl ClassMetadata {
+    fn placeholder(module: &Module) -> Self {
+        Self {
+            def: ClassDef::new(
+                Identifier::new(Name::new_static("<placeholder>"), TextRange::default()),
+                NestingContext::toplevel(),
+                module.dupe(),
+                false,
+                false,
+                None,
+            ),
+            fields: ClassFields::empty(),
+        }
+    }
+}
+
 /// Metadata collected during the binding phase for all classes in a module.
 ///
 /// Stored in an `Arc` so it can be shared between `Answers` and `Solutions`
@@ -38,19 +63,25 @@ pub struct ClassMetadata {
 #[derive(Debug, Clone)]
 pub struct BindingsMetadata {
     classes: Vec<ClassMetadata>,
+    /// The row of a class that has an index but whose definition is not bound yet. The binding
+    /// of every class definition replaces its row, so no row is a placeholder once the module is
+    /// bound.
+    placeholder: ClassMetadata,
 }
 
 impl BindingsMetadata {
-    pub fn new() -> Self {
+    pub fn new(module: &Module) -> Self {
         Self {
             classes: Vec::new(),
+            placeholder: ClassMetadata::placeholder(module),
         }
     }
 
-    /// Allocate a new `ClassDefIndex` by pushing a default `ClassMetadata`.
+    /// Allocate a new `ClassDefIndex`, with a placeholder row that the binding of the class
+    /// definition replaces.
     pub fn push_class(&mut self) -> ClassDefIndex {
         let idx = ClassDefIndex(self.classes.len() as u32);
-        self.classes.push(ClassMetadata::default());
+        self.classes.push(self.placeholder.clone());
         idx
     }
 

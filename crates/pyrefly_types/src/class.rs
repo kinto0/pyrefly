@@ -48,7 +48,40 @@ use crate::types::Type;
 
 /// The name of a nominal type, e.g. `str`
 #[derive(Debug, Clone, Dupe)]
-pub struct Class(Arc<ClassDef>);
+pub struct Class(Arc<ClassInner>);
+
+/// The identity of a class and a copy of its definition data.
+///
+/// Align to a cache line to prevent false sharing. `ClassInner` is stored
+/// behind `Arc` and accessed concurrently from multiple threads during
+/// type checking. Without alignment, multiple `Arc<ClassInner>` allocations
+/// can land on the same cache line, causing cross-thread invalidation
+/// traffic when any of them are accessed (even read-only, due to the Arc
+/// refcount on adjacent allocations).
+#[repr(align(64))]
+struct ClassInner {
+    index: ClassDefIndex,
+    def: ClassDef,
+}
+
+impl Debug for ClassInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ClassDef")
+            .field("index", &self.index)
+            .field("qname", &self.def.qname)
+            .field("is_protocol", &self.def.is_protocol)
+            .field("deprecation", &self.def.deprecation)
+            .field("has_tparams", &self.def.has_tparams)
+            // We don't print `fields` because it's way too long.
+            .finish_non_exhaustive()
+    }
+}
+
+impl Display for ClassInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.def, f)
+    }
+}
 
 impl Hash for Class {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -76,23 +109,23 @@ impl TypeEq for Class {
         if Arc::ptr_eq(&self.0, &other.0) {
             return true;
         }
-        let same_name = self.0.qname.id() == other.0.qname.id()
+        let (x, y) = (&self.0.def, &other.0.def);
+        let same_name = x.qname.id() == y.qname.id()
             && match (
-                self.0.qname.parent().is_toplevel(),
-                other.0.qname.parent().is_toplevel(),
+                x.qname.parent().is_toplevel(),
+                y.qname.parent().is_toplevel(),
             ) {
                 (true, true) => true,
                 (false, false) => {
-                    self.0.qname.name_relative_to_module()
-                        == other.0.qname.name_relative_to_module()
+                    x.qname.name_relative_to_module() == y.qname.name_relative_to_module()
                 }
                 _ => false,
             };
         self == other
             && same_name
-            && self.0.deprecation == other.0.deprecation
-            && self.0.is_protocol == other.0.is_protocol
-            && self.0.has_tparams == other.0.has_tparams
+            && x.deprecation == y.deprecation
+            && x.is_protocol == y.is_protocol
+            && x.has_tparams == y.has_tparams
     }
 }
 
@@ -387,36 +420,52 @@ impl ClassFields {
     }
 }
 
-/// The data of a class definition.
-///
-/// Align to a cache line to prevent false sharing. `ClassDef` is stored
-/// behind `Arc` and accessed concurrently from multiple threads during
-/// type checking. Without alignment, multiple `Arc<ClassDef>` allocations
-/// can land on the same cache line, causing cross-thread invalidation
-/// traffic when any of them are accessed (even read-only, due to the Arc
-/// refcount on adjacent allocations).
-#[repr(align(64))]
+/// The definition data of a class, which the binding phase records in a row of its module's
+/// metadata. The class's index is not part of it: a `Class` pairs the index with a copy of its
+/// row.
+#[derive(Clone)]
 pub struct ClassDef {
-    def_index: ClassDefIndex,
+    qname: QName,
     /// Only set for top-level classes.
     known: Option<KnownClass>,
-    qname: QName,
     is_protocol: bool,
-    deprecation: Option<Deprecation>,
+    deprecation: Option<Box<Deprecation>>,
     /// Whether the class declares any type parameters. This is decided from syntax alone; the
     /// type parameters themselves come from the class's `KeyTParams`.
     has_tparams: bool,
 }
 
+impl ClassDef {
+    pub fn new(
+        name: Identifier,
+        parent: NestingContext,
+        module: Module,
+        has_tparams: bool,
+        is_protocol: bool,
+        deprecation: Option<Box<Deprecation>>,
+    ) -> Self {
+        let known = if parent.is_toplevel() {
+            KnownClass::lookup(module.name(), name.id.as_str())
+        } else {
+            None
+        };
+        Self {
+            known,
+            qname: QName::new(name, parent, module),
+            is_protocol,
+            deprecation,
+            has_tparams,
+        }
+    }
+}
+
 impl Debug for ClassDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ClassDef")
-            .field("index", &self.def_index)
             .field("qname", &self.qname)
             .field("is_protocol", &self.is_protocol)
             .field("deprecation", &self.deprecation)
             .field("has_tparams", &self.has_tparams)
-            // We don't print `fields` because it's way too long.
             .finish_non_exhaustive()
     }
 }
@@ -477,6 +526,7 @@ impl Display for ClassDef {
 //   which involves substituting type arguments for the class type parameters as
 //   well as descriptor handling (including method binding).
 impl Class {
+    /// A class that no module's metadata holds, such as a class made up by a test.
     pub fn new(
         def_index: ClassDefIndex,
         name: Identifier,
@@ -484,55 +534,52 @@ impl Class {
         module: Module,
         has_tparams: bool,
         is_protocol: bool,
-        deprecation: Option<Deprecation>,
+        deprecation: Option<Box<Deprecation>>,
     ) -> Self {
-        let known = if parent.is_toplevel() {
-            KnownClass::lookup(module.name(), name.id.as_str())
-        } else {
-            None
-        };
-        Self(Arc::new(ClassDef {
+        Self::from_def(
             def_index,
-            known,
-            qname: QName::new(name, parent, module),
-            is_protocol,
-            deprecation,
-            has_tparams,
-        }))
+            ClassDef::new(name, parent, module, has_tparams, is_protocol, deprecation),
+        )
+    }
+
+    /// The class at `index` in its module, whose definition data is `def`, a copy of the row at
+    /// `index` in the module's metadata.
+    pub fn from_def(index: ClassDefIndex, def: ClassDef) -> Self {
+        Self(Arc::new(ClassInner { index, def }))
     }
 
     pub fn has_tparams(&self) -> bool {
-        self.0.has_tparams
+        self.0.def.has_tparams
     }
 
     pub fn index(&self) -> ClassDefIndex {
-        self.0.def_index
+        self.0.index
     }
 
     pub fn module_name(&self) -> ModuleName {
-        self.0.qname.module_name()
+        self.0.def.qname.module_name()
     }
 
     pub fn module_path(&self) -> &ModulePath {
-        self.0.qname.module_path()
+        self.0.def.qname.module_path()
     }
 
     pub fn module_key(&self) -> ModuleKey {
-        self.0.qname.module().key()
+        self.0.def.qname.module().key()
     }
 
     /// The known class this is, if it is one. Only top-level classes can be known classes.
     pub fn known(&self) -> Option<KnownClass> {
-        self.0.known
+        self.0.def.known
     }
 
     pub fn is(&self, known: KnownClass) -> bool {
-        self.0.known == Some(known)
+        self.0.def.known == Some(known)
     }
 
     /// The definition data stored in this `Class`, which `TypeEnv::class_def` returns by default.
     pub(crate) fn inline_def(&self) -> &ClassDef {
-        &self.0
+        &self.0.def
     }
 
     pub fn def<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
@@ -561,7 +608,7 @@ impl Class {
     }
 
     pub fn deprecation<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> Option<&'a Deprecation> {
-        self.def(env).deprecation.as_ref()
+        self.def(env).deprecation.as_deref()
     }
 
     pub fn kind<E: TypeEnv + ?Sized>(&self, env: &E) -> ClassKind {
@@ -577,13 +624,13 @@ impl Class {
     /// we must point at the same class underneath. `ModuleKey` equality treats a
     /// file open in memory and the same file on disk as one module.
     fn key_eq(&self) -> (ClassDefIndex, ModuleKey) {
-        (self.0.def_index, self.module_key())
+        (self.0.index, self.module_key())
     }
 
     /// Key to use for comparison purposes. Main used to sort identifiers in union,
     /// and then alphabetically sorting by the name gives a predictable answer.
     fn key_ord(&self) -> (&QName, ClassDefIndex) {
-        (&self.0.qname, self.0.def_index)
+        (&self.0.def.qname, self.0.index)
     }
 }
 

@@ -23,7 +23,6 @@ use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::short_identifier::ShortIdentifier;
 use pyrefly_python::symbol_kind::SymbolKind;
 use pyrefly_types::function::BodyKind;
-use pyrefly_types::function::Deprecation;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::special_form::SpecialForm;
 use pyrefly_types::type_alias::TypeAlias;
@@ -135,7 +134,7 @@ assert_words!(Binding, 4);
 assert_words!(BindingExpect, 8);
 assert_words!(BindingTypeAlias, 6);
 assert_words!(BindingAnnotation, 11);
-assert_words!(BindingClass, 10);
+assert_words!(BindingClass, 9);
 assert_words!(BindingTParams, 10);
 assert_words!(BindingClassBaseType, 3);
 assert_words!(BindingClassMetadata, 11);
@@ -2205,8 +2204,6 @@ pub struct ClassBinding {
     pub def: ClassDefData,
     pub def_index: ClassDefIndex,
     pub parent: NestingContext,
-    pub is_protocol: bool,
-    pub deprecation: Option<Box<Deprecation>>,
     /// Whether the class declares any type parameters, decided from syntax alone. A class that
     /// does has a `KeyTParams` / `BindingTParams` pair, which computes them.
     pub has_tparams: bool,
@@ -3552,14 +3549,14 @@ impl DisplayWith<Bindings> for BindingAnnotation {
 #[derive(Clone, Debug)]
 pub enum BindingClass {
     ClassDef(ClassBinding),
-    FunctionalClassDef(ClassDefIndex, Identifier, NestingContext),
+    FunctionalClassDef(ClassDefIndex, Identifier),
 }
 
 impl DisplayWith<Bindings> for BindingClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, _ctx: &Bindings) -> fmt::Result {
         match self {
             Self::ClassDef(c) => write!(f, "ClassDef({})", c.def.name),
-            Self::FunctionalClassDef(_, id, _) => write!(f, "FunctionalClassDef({id})"),
+            Self::FunctionalClassDef(_, id) => write!(f, "FunctionalClassDef({id})"),
         }
     }
 }

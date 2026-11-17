@@ -82,6 +82,7 @@ use crate::binding::django::collect_django_queryset_only;
 use crate::binding::expr::Evaluation;
 use crate::binding::expr::StaticUsage;
 use crate::binding::expr::Usage;
+use crate::binding::metadata::ClassMetadata;
 use crate::binding::pydantic::PydanticConfigDict;
 use crate::binding::scope::ClassIndices;
 use crate::binding::scope::FlowStyle;
@@ -92,6 +93,7 @@ use crate::export::deprecation::parse_deprecation;
 use crate::export::doc_ranges::class_doc_ranges;
 use crate::export::doc_ranges::function_doc_ranges;
 use crate::export::special::SpecialExport;
+use crate::types::class::ClassDef;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFieldProperties;
 use crate::types::class::ClassFields;
@@ -656,16 +658,23 @@ impl<'a> BindingsBuilder<'a> {
         }
 
         fields.reserve(0); // Attempt to shrink to capacity
-        let metadata = self.metadata.get_class_mut(class_indices.def_index);
-        metadata.fields = ClassFields::new(fields);
+        *self.metadata.get_class_mut(class_indices.def_index) = ClassMetadata {
+            def: ClassDef::new(
+                x.name.clone(),
+                parent.dupe(),
+                self.module_info.dupe(),
+                has_tparams,
+                has_protocol_base,
+                deprecation,
+            ),
+            fields: ClassFields::new(fields),
+        };
         self.insert_binding_idx(
             class_indices.class_idx,
             BindingClass::ClassDef(ClassBinding {
                 def_index: class_indices.def_index,
                 def: ClassDefData::new(x),
                 parent: parent.dupe(),
-                is_protocol: has_protocol_base,
-                deprecation,
                 has_tparams,
                 doc_ranges,
             }),
@@ -1237,7 +1246,17 @@ impl<'a> BindingsBuilder<'a> {
             force_class_initialization,
             class_kind,
         );
-        self.metadata.get_class_mut(class_indices.def_index).fields = ClassFields::new(fields);
+        *self.metadata.get_class_mut(class_indices.def_index) = ClassMetadata {
+            def: ClassDef::new(
+                class_name.clone(),
+                parent.dupe(),
+                self.module_info.dupe(),
+                false,
+                false,
+                None,
+            ),
+            fields: ClassFields::new(fields),
+        };
         if bind_to_name {
             self.bind_current_as(
                 &class_name,
@@ -1256,7 +1275,7 @@ impl<'a> BindingsBuilder<'a> {
         }
         self.insert_binding_idx(
             class_indices.class_idx,
-            BindingClass::FunctionalClassDef(class_indices.def_index, class_name, parent.dupe()),
+            BindingClass::FunctionalClassDef(class_indices.def_index, class_name),
         );
 
         self.insert_binding_idx(

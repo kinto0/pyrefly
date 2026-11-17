@@ -605,7 +605,7 @@ pub fn export_all_classes(context: &ModuleContext) -> HashMap<ClassId, ClassDefi
             .unwrap();
 
         let is_synthesized = match context.answers_context.bindings().get(class_idx) {
-            BindingClass::FunctionalClassDef(_, _, _) => true,
+            BindingClass::FunctionalClassDef(_, _) => true,
             BindingClass::ClassDef(_) => false,
         };
 

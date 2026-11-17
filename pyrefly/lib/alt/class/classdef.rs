@@ -5,13 +5,10 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use dupe::Dupe;
-use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_types::callable::Callable;
 use pyrefly_types::class::DjangoClassMetadata;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::special_form::SpecialForm;
-use ruff_python_ast::Identifier;
 use ruff_python_ast::name::Name;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
@@ -26,7 +23,6 @@ use crate::alt::types::class_metadata::ClassDisjointBase;
 use crate::alt::types::class_metadata::ClassMetadata;
 use crate::alt::types::class_metadata::ClassMro;
 use crate::alt::types::class_metadata::EnumMetadata;
-use crate::binding::binding::ClassBinding;
 use crate::binding::binding::KeyAbstractClassCheck;
 use crate::binding::binding::KeyClassBaseType;
 use crate::binding::binding::KeyClassDisjointBase;
@@ -62,32 +58,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    pub fn class_definition(&self, binding: &ClassBinding) -> Class {
-        Class::new(
-            binding.def_index,
-            binding.def.name.clone(),
-            binding.parent.dupe(),
-            self.module().dupe(),
-            binding.has_tparams,
-            binding.is_protocol,
-            binding.deprecation.as_deref().cloned(),
-        )
-    }
-
-    pub fn functional_class_definition(
-        &self,
-        def_index: ClassDefIndex,
-        name: &Identifier,
-        parent: &NestingContext,
-    ) -> Class {
-        Class::new(
+    /// The class defined at `def_index` in this module, which carries a copy of its row.
+    pub fn class_definition(&self, def_index: ClassDefIndex) -> Class {
+        Class::from_def(
             def_index,
-            name.clone(),
-            parent.dupe(),
-            self.module().dupe(),
-            false,
-            false,
-            None,
+            self.bindings().metadata().get_class(def_index).def.clone(),
         )
     }
 
