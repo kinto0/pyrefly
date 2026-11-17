@@ -55,6 +55,7 @@ mod open_file_benchmark;
 mod progress;
 mod provide_type;
 mod references;
+mod references_cancellation;
 mod rename;
 mod safe_delete_file;
 mod selection_range;

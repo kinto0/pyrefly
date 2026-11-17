@@ -71,6 +71,7 @@ use pretty_assertions::assert_eq;
 use pyrefly::commands::lsp::IndexingMode;
 use pyrefly::commands::lsp::LspArgs;
 use pyrefly::commands::lsp::run_lsp;
+pub use pyrefly::lsp::non_wasm::external_provider::ExternalProvider;
 use pyrefly::lsp::non_wasm::external_provider::NoExternalProvider;
 use pyrefly::lsp::non_wasm::module_helpers::ThriftRemapper;
 use pyrefly::lsp::non_wasm::protocol::JsonRpcMessage;
@@ -1465,6 +1466,14 @@ impl LspInteraction {
     /// [`Telemetry`] implementation. The telemetry value is moved into the
     /// spawned server thread.
     pub fn new_with_args(args: LspInteractionArgs) -> Self {
+        Self::new_with_external_references(args, Arc::new(NoExternalProvider))
+    }
+
+    /// Create a server with a custom external reference provider.
+    pub fn new_with_external_references(
+        args: LspInteractionArgs,
+        external_references: Arc<dyn ExternalProvider>,
+    ) -> Self {
         init_test();
 
         let LspInteractionArgs {
@@ -1489,7 +1498,7 @@ impl LspInteraction {
                 None,
                 thrift_remapper,
                 &*telemetry,
-                Arc::new(NoExternalProvider),
+                external_references,
                 None,
                 thread_count,
             );

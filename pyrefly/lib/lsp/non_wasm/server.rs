@@ -2433,10 +2433,10 @@ impl Server {
                 // Store cancellation handle so the recheck thread can cancel this
                 // request if it needs to commit.
                 let request_id_for_cancel = x.id.clone();
-                self.cancellation_handles.lock().insert(
-                    request_id_for_cancel.clone(),
-                    transaction.get_cancellation_handle(),
-                );
+                let request_cancellation = transaction.get_cancellation_handle();
+                self.cancellation_handles
+                    .lock()
+                    .insert(request_id_for_cancel.clone(), request_cancellation.dupe());
 
                 // Set up immediate per-call telemetry for ad-hoc solves. Each solve event is
                 // logged the instant it completes rather than batched.
@@ -2457,7 +2457,6 @@ impl Server {
                     Some(&self.lsp_thread_pool),
                 );
                 info!("Handling non-canceled request {} ({})", x.method, &x.id);
-                let mut queued_override_code_lens = false;
                 if let Some(params) = as_request::<DefinitionRequest>(&x) {
                     if let Some(params) = self
                         .extract_request_params_or_send_err_response::<DefinitionRequest>(
@@ -2711,7 +2710,7 @@ impl Server {
                             params,
                             telemetry_event.activity_key.clone(),
                         ) {
-                            Ok(()) => queued_override_code_lens = true,
+                            Ok(()) => {}
                             Err(reason) => {
                                 telemetry_event.set_empty_response_reason(reason);
                                 self.send_response(new_response(
@@ -3017,10 +3016,15 @@ impl Server {
                     ));
                     info!("Unhandled request: {x:?}");
                 }
-                if !queued_override_code_lens {
-                    self.cancellation_handles
-                        .lock()
-                        .remove(&request_id_for_cancel);
+                {
+                    let mut handles = self.cancellation_handles.lock();
+                    // Background tasks replace the dispatch token before they are queued.
+                    if handles
+                        .get(&request_id_for_cancel)
+                        .is_some_and(|handle| handle.ptr_eq(&request_cancellation))
+                    {
+                        handles.remove(&request_id_for_cancel);
+                    }
                 }
                 ide_transaction_manager.save(transaction, telemetry_event);
             }
@@ -5639,6 +5643,11 @@ impl Server {
                 return Err(reason);
             }
         };
+        // The queued token remains registered until the worker installs its transaction token.
+        let queued_cancellation = CancellationHandle::default();
+        self.cancellation_handles
+            .lock()
+            .insert(request_id.clone(), queued_cancellation.dupe());
         let uri_for_telemetry = uri.clone();
         self.find_reference_queue.queue_task(
             TelemetryEventKind::FindFromDefinition,
@@ -5646,30 +5655,41 @@ impl Server {
                 server.set_file_stats(uri_for_telemetry, telemetry_event);
                 telemetry_event.set_activity_key(activity_key);
                 let mut transaction = server.state.cancellable_transaction();
-                server
-                    .cancellation_handles
-                    .lock()
-                    .insert(request_id.clone(), transaction.get_cancellation_handle());
-                server.validate_in_memory_for_transaction(
-                    transaction.as_mut(),
-                    telemetry_event,
-                    None,
-                );
-                match find_fn(
-                    &mut transaction,
-                    &handle,
-                    definition,
-                    telemetry,
-                    telemetry_event,
-                ) {
+                let result = (|| {
+                    {
+                        let mut handles = server.cancellation_handles.lock();
+                        if queued_cancellation.is_cancelled() {
+                            return Err(RequestError::Cancelled);
+                        }
+                        handles.insert(request_id.clone(), transaction.get_cancellation_handle());
+                    }
+                    server.validate_in_memory_for_transaction(
+                        transaction.as_mut(),
+                        telemetry_event,
+                        None,
+                    );
+                    let result = find_fn(
+                        &mut transaction,
+                        &handle,
+                        definition,
+                        telemetry,
+                        telemetry_event,
+                    )?;
+                    if transaction.get_cancellation_handle().is_cancelled() {
+                        return Err(RequestError::Cancelled);
+                    }
+                    Ok(result)
+                })();
+                server.cancellation_handles.lock().remove(&request_id);
+                match result {
                     Ok(results) => {
-                        server.cancellation_handles.lock().remove(&request_id);
                         server.connection.send(Message::Response(new_response(
                             request_id,
                             Ok(Some(transform_result(results))),
                         )));
                     }
                     Err(RequestError::Cancelled) => {
+                        telemetry_event.canceled = true;
                         let message = format!("Request {request_id} is canceled");
                         info!("{message}");
                         server.connection.send(Message::Response(Response::new_err(

@@ -27,6 +27,11 @@ pub struct Cancelled;
 pub struct CancellationHandle(Arc<AtomicBool>);
 
 impl CancellationHandle {
+    /// Return whether both handles cancel the same task.
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     fn new() -> Self {
         Self(Arc::new(AtomicBool::new(false)))
     }
