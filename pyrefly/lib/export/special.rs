@@ -7,6 +7,8 @@
 
 use dupe::Dupe;
 use pyrefly_python::module_name::ModuleName;
+use ruff_python_ast::Expr;
+use ruff_python_ast::ExprAttribute;
 use ruff_python_ast::name::Name;
 
 /// These are names that are exported from the stdlib, but which take on
@@ -193,6 +195,22 @@ impl SpecialExport {
             "NOTHING" => Some(Self::AttrsNothing),
             "wraps" => Some(Self::FunctoolsWraps),
             "update_wrapper" => Some(Self::FunctoolsUpdateWrapper),
+            _ => None,
+        }
+    }
+
+    /// The special export that `e` names without resolving imports: a bare name such as `Final`,
+    /// or an attribute of a module that defines it, such as `typing.Final`. For code that runs
+    /// before bindings exist, such as computing exports.
+    pub fn from_syntax(e: &Expr) -> Option<Self> {
+        match e {
+            Expr::Name(x) => Self::new(&x.id),
+            Expr::Attribute(ExprAttribute { value, attr, .. })
+                if let Expr::Name(base) = &**value =>
+            {
+                Self::new(&attr.id)
+                    .filter(|special| special.defined_in(ModuleName::from_name(&base.id)))
+            }
             _ => None,
         }
     }
