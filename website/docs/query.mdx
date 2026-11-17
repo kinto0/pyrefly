@@ -1,5 +1,5 @@
 ---
-title: Semantic Queries
+title: LSP Queries
 description: Query Python types, references, and calls from the command line.
 ---
 
@@ -10,7 +10,7 @@ description: Query Python types, references, and calls from the command line.
  * LICENSE file in the root directory of this source tree.
  */}
 
-# Semantic Queries
+# LSP Queries
 
 :::warning Experimental
 
@@ -18,7 +18,7 @@ The `query` command is experimental. Its arguments and JSON format can change.
 
 :::
 
-Use semantic queries to inspect Python code without an editor or an LSP client.
+Use LSP queries to inspect Python code without an editor or an LSP client.
 Each successful command writes one JSON value to stdout. Logs and errors go to stderr.
 
 ```shell
@@ -76,7 +76,7 @@ Configure project includes to cover potential callers. A source database alone d
 A missing or unreadable target, an invalid position, or an invalid configuration causes a nonzero exit status.
 The command writes an error to stderr and does not write a JSON result.
 An unresolved symbol causes a reference or call hierarchy query to fail.
-Ordinary type errors do not prevent useful semantic queries.
+Ordinary type errors do not prevent useful LSP queries.
 
 Queries read files from disk. They do not include unsaved editor changes.
 Use Python source files or stub files as targets. Notebook cell positions are not supported.

@@ -1,4 +1,4 @@
-# Semantic query CLI tests
+# LSP query CLI tests
 
 ## Queries select the target project, not the current directory
 

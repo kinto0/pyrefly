@@ -56,7 +56,7 @@ pub enum Command {
     /// Start an LSP server
     Lsp(LspArgs),
 
-    /// Query semantic information and print the result as JSON
+    /// Run an LSP query and print the result as JSON
     Query(QueryArgs),
 
     /// Start a TSP server

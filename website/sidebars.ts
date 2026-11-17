@@ -197,7 +197,7 @@ let docsSidebar = [
             {
                 type: 'doc' as const,
                 id: 'query',
-                label: 'Semantic Queries',
+                label: 'LSP Queries',
             },
         ],
     },

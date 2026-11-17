@@ -54,14 +54,14 @@ use crate::state::lsp::ReferenceOptions;
 use crate::state::require::Require;
 use crate::state::state::State;
 
-/// Query semantic information about a source position.
+/// Run an LSP query at a source position.
 #[derive(Clone, Debug, Parser)]
 #[command(
     mut_args = |arg| arg.global(true),
     after_help = "Experimental interface. Inputs use one-based lines and UTF-16 columns. JSON results use file URIs and zero-based LSP ranges. To query a returned location, convert its URI to a path and add 1 to its line and character."
 )]
 pub struct QueryArgs {
-    /// Semantic query to run.
+    /// LSP query to run.
     #[command(subcommand)]
     query: Query,
 
@@ -74,7 +74,7 @@ pub struct QueryArgs {
     config_override: ConfigOverrideArgs,
 }
 
-/// Semantic queries supported by the command-line interface.
+/// LSP queries supported by the command-line interface.
 #[derive(Clone, Debug, Subcommand)]
 enum Query {
     /// Show hover information at a source position.
@@ -160,7 +160,7 @@ impl QueryArgs {
         Ok(CommandExitStatus::Success)
     }
 
-    /// Load the project and execute a semantic query.
+    /// Load the project and execute an LSP query.
     fn query(
         self,
         wrapper: Option<ConfigConfigurerWrapper>,
