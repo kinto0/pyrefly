@@ -149,4 +149,24 @@ class C:
             vec![("a".to_owned(), "from init".to_owned())]
         );
     }
+
+    // Bug: `Annotated` and `Doc` are matched by name, so an attribute of any module matches.
+    #[test]
+    fn test_doc_ranges_parameters_from_other_modules() {
+        let source = r#"
+def f(
+    a: other.Annotated[int, Doc("other Annotated")],
+    b: Annotated[int, other.Doc("other Doc")],
+    c: typing_extensions.Annotated[int, typing_extensions.Doc("typing_extensions")],
+): ...
+"#;
+        assert_eq!(
+            annotated_docs(source),
+            vec![
+                ("a".to_owned(), "other Annotated".to_owned()),
+                ("b".to_owned(), "other Doc".to_owned()),
+                ("c".to_owned(), "typing_extensions".to_owned()),
+            ]
+        );
+    }
 }
