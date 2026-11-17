@@ -85,35 +85,26 @@ bad-return = false
 
 ## Type Checking Modes
 
-Pyrefly has two different modes it can run in when type checking your project, which
-correspond to different but useful ways we expect most people to interact with Pyrefly:
+Pyrefly checks files in one of two modes:
 
-- **Project** mode: attempt to load a config, falling back to Pyrefly's default config when
-  none can be found, and type check using that one config. This involves getting the
-  [`project-includes`](#project-includes) and [`project-excludes`](#project-excludes) from the file, expanding the patterns,
-  and type checking on those files.
-    - Project mode is used whenever no paths to a file are provided with the CLI invocation.
-    - A directory given in the CLI invocation, such as `pyrefly check packages/a`, also runs
-      project mode, limited to that directory: Pyrefly finds the config from the directory
-      instead of the current working directory, and checks only the files in that project,
-      filtered to that directory. Directories with different configs are different projects,
-      and one run checks all of them: each file belongs to the given project whose config root
-      is its nearest ancestor, and is checked once, with that config.
-      A given directory is checked even if `project-excludes` excludes it: an exclude that
-      matches the directory, or one of its parents, does not apply. The other excludes still
-      apply to the files under it, such as `**/generated`. Pass `--force-exclude` to skip a
-      given directory that the excludes match instead.
-- **Per-file** or **Single-file** mode: when given files (and optionally [`--project-excludes`](#project-excludes))
-  during a CLI invocation, find the relevant config file for each file listed.
-  `project-includes` and `project-excludes` are ignored from the config file, but it is used
-  for all remaining config options. Files given with a directory also run single-file mode.
-    - A directory with no config, or whose config uses a [build system](#build-system), is
-      checked in single-file mode.
+- **Project** mode checks the files that a config includes: the files that match
+  [`project-includes`](#project-includes) and do not match [`project-excludes`](#project-excludes).
+  Pyrefly uses project mode when `pyrefly check` has no file or directory arguments. It
+  finds the config from the current directory, or uses the default config if it finds none.
+    - When a directory is an argument, such as in `pyrefly check packages/a`, Pyrefly finds
+      the config from that directory and checks only the project files under it. When there
+      are multiple directory arguments with different configs, Pyrefly checks each file once,
+      with the config of the directory argument whose config root is its nearest ancestor.
+- **Single-file** mode checks each file argument with its nearest config, but ignores the
+  config's `project-includes` and `project-excludes`. Pyrefly uses single-file mode for file
+  arguments, and for directory arguments that have no config or whose config uses a
+  [build system](#build-system).
+
+See [`project-excludes`](#project-excludes) for how excludes apply to file and directory
+arguments.
 
 Pyrefly expands a glob, such as `pyrefly check 'packages/*'`, to the directories and Python
-files that it matches, the same as a shell does. Each directory and file is then checked as if
-it was given on its own, so quotes around a glob do not change the result, except that a glob
-matches no files that are not Python files, and a shell passes them to Pyrefly.
+files that it matches, and checks each of them as a separate argument.
 
 ## Configuration Finding
 
