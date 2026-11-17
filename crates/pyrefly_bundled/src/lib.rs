@@ -462,4 +462,24 @@ mod tests {
             "Every third-party typeshed stub should have a package"
         );
     }
+
+    #[test]
+    fn test_archives_are_in_sorted_path_order() {
+        for bytes in [
+            BUNDLED_TYPESHED_BYTES,
+            BUNDLED_TYPESHED_THIRD_PARTY_BYTES,
+            BUNDLED_THIRD_PARTY_BYTES,
+        ] {
+            let mut archive = Archive::new(Decoder::new(bytes).unwrap());
+            let paths = archive
+                .entries()
+                .unwrap()
+                .map(|entry| entry.unwrap().path().unwrap().into_owned())
+                .collect::<Vec<_>>();
+            assert!(
+                paths.is_sorted(),
+                "Archive files should be in sorted path order, independent of the file system"
+            );
+        }
+    }
 }

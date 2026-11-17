@@ -6,6 +6,7 @@
  */
 
 use std::env;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -49,6 +50,30 @@ fn get_output_path() -> Result<PathBuf, std::env::VarError> {
     }
 }
 
+/// Appends every file under `dir` to `tar`, as `archive_dir/<relative path>`, in sorted path
+/// order: paths compare component by component, as `Path` does, so `foo/bar.pyi` comes before
+/// `foo.pyi`. The order is part of the output: it decides which of two equally good names
+/// Pyrefly suggests for a misspelled import, so it must not depend on the order in which the
+/// file system lists directories.
+fn append_files_sorted<W: Write>(
+    tar: &mut tar::Builder<W>,
+    dir: &Path,
+    archive_dir: &Path,
+) -> Result<(), std::io::Error> {
+    let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        let archive_path = archive_dir.join(entry.file_name());
+        if std::fs::metadata(&path)?.is_dir() {
+            append_files_sorted(tar, &path, &archive_path)?;
+        } else {
+            tar.append_path_with_name(&path, &archive_path)?;
+        }
+    }
+    Ok(())
+}
+
 /// Creates a compressed tar archive from the given input path and writes it to the output path.
 /// Also computes and writes a SHA256 digest of the archive, and an index listing the path of
 /// every file in the archive, one per line and in archive order, so that a runtime lookup can
@@ -77,7 +102,7 @@ fn create_archive(
                 format!("Input path does not exist: {}", input_path.display()),
             ));
         }
-        tar.append_dir_all(archive_root, input_path)?;
+        append_files_sorted(&mut tar, input_path, Path::new(archive_root))?;
     }
 
     let encoder = tar.into_inner()?;
