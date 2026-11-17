@@ -2227,7 +2227,6 @@ issubclass(Impl, P15)  # E: Runtime checkable protocol `P15` has an unsafe overl
 );
 
 testcase!(
-    bug = "A missing member is reported as an incompatible type",
     test_isinstance_unsafe_overlap_missing_runtime_excluded_member,
     TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
@@ -2241,7 +2240,7 @@ class P(Protocol):
 class Missing:
     def m(self) -> None: ...
 
-isinstance(Missing(), P)  # E: Attribute `_abc_marker` has incompatible types: Protocol `P` requires attribute `_abc_marker`
+isinstance(Missing(), P)  # E: Attribute `_abc_marker` is missing
 
 # `__getattr__` does not provide dunder methods, so `__annotate__` is missing.
 @runtime_checkable
@@ -2253,7 +2252,7 @@ class GetAttr:
     def __getattr__(self, name: str) -> object: ...
     def m(self) -> None: ...
 
-isinstance(GetAttr(), PA)  # E: Attribute `__annotate__` has incompatible types: Protocol `PA` requires attribute `__annotate__`
+isinstance(GetAttr(), PA)  # E: Attribute `__annotate__` is missing
 "#,
 );
 

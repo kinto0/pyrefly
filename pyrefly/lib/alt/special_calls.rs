@@ -43,6 +43,7 @@ use crate::config::error_kind::ErrorKind;
 use crate::error::collector::ErrorCollector;
 use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
+use crate::solver::solver::SubsetError;
 use crate::types::callable::Param;
 use crate::types::callable::Params;
 use crate::types::callable::unexpected_keyword;
@@ -686,9 +687,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                         // Check for unsafe overlap:
                         // https://typing.python.org/en/latest/spec/protocol.html#runtime-checkable-decorator-and-narrowing-types-by-isinstance
-                        // Presence decides whether an overlap is reported, but every static
-                        // member is type-checked, including runtime-excluded ones the
-                        // implementation does not provide.
+                        // Presence of the runtime members decides whether an overlap is reported.
+                        // Every required static member is then checked, including runtime-excluded
+                        // ones the implementation lacks.
                         //
                         // Type arguments for the protocol are not provided, so we'll use
                         // fresh vars and solve them during the member checks below.
@@ -708,20 +709,28 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     if !ProtocolMetadata::is_required_member(field_name) {
                                         continue;
                                     }
-                                    if let Err(subset_err) = self.is_protocol_subset_at_attr(
+                                    match self.is_protocol_subset_at_attr(
                                         object_type,
                                         &protocol_class_type,
                                         field_name,
                                         &mut |x, y| self.is_subset_eq_with_reason(x, y),
                                     ) {
-                                        let error_msg = subset_err
-                                            .to_error_msg(self)
-                                            .map(|msg| format!(": {msg}"))
-                                            .unwrap_or_default();
-                                        unsafe_overlap_errors.push(format!(
-                                            "Attribute `{}` has incompatible types{}",
-                                            field_name, error_msg,
-                                        ));
+                                        Ok(()) => {}
+                                        Err(SubsetError::MissingAttribute(..)) => {
+                                            unsafe_overlap_errors.push(format!(
+                                                "Attribute `{field_name}` is missing"
+                                            ));
+                                        }
+                                        Err(subset_err) => {
+                                            let error_msg = subset_err
+                                                .to_error_msg(self)
+                                                .map(|msg| format!(": {msg}"))
+                                                .unwrap_or_default();
+                                            unsafe_overlap_errors.push(format!(
+                                                "Attribute `{}` has incompatible types{}",
+                                                field_name, error_msg,
+                                            ));
+                                        }
                                     }
                                 }
                             }
