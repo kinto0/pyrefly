@@ -91,7 +91,7 @@ pub struct HoverValue {
     pub type_: Type,
     pub range: Option<Range>,
     pub docstring: Option<Docstring>,
-    pub parameter_doc: Option<(String, String)>,
+    pub parameter_docs: Vec<(String, String)>,
     pub type_sources: Vec<String>,
     pub display: Option<String>,
     pub show_go_to_links: bool,
@@ -262,18 +262,27 @@ impl HoverValue {
             }
             None => String::new(),
         };
-        let parameter_doc_formatted =
-            self.parameter_doc
-                .as_ref()
-                .map_or(String::new(), |(name, doc)| {
-                    let prefix = if self.docstring.is_some() {
-                        "\n\n---\n"
-                    } else {
-                        "\n---\n"
-                    };
-                    let cleaned = doc.trim().replace('\n', "  \n");
-                    format!("{prefix}**Parameter `{}`**\n{}", name, cleaned)
-                });
+        let parameter_docs_formatted = if self.parameter_docs.is_empty() {
+            String::new()
+        } else {
+            let prefix = if self.docstring.is_some() {
+                "\n\n---\n"
+            } else {
+                "\n---\n"
+            };
+            let docs = self
+                .parameter_docs
+                .iter()
+                .map(|(name, doc)| {
+                    format!(
+                        "**Parameter `{name}`**\n{}",
+                        doc.trim().replace('\n', "  \n")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            format!("{prefix}{docs}")
+        };
         let kind_formatted = self
             .resolve_symbol_kind()
             .map(|kind| format!("{} ", kind.display_for_hover()))
@@ -326,7 +335,7 @@ impl HoverValue {
                     type_display,
                     type_source_formatted,
                     docstring_formatted,
-                    parameter_doc_formatted,
+                    parameter_docs_formatted,
                     symbol_def_formatted
                 ),
             }),
@@ -1651,25 +1660,27 @@ pub fn get_hover_with_verbosity(
     let hover_constructor_dunder = definition
         .as_ref()
         .is_some_and(|item| is_constructor_dunder(item.display_name.as_deref()));
-    let (kind, name, fallback_docstring) = if let Some(FindDefinitionItemWithDocstring {
-        metadata,
-        definition_range: definition_location,
-        module,
-        doc_ranges,
-        display_name,
-    }) = definition
-    {
-        let kind = metadata.symbol_kind();
-        let name = hover_name_from_definition_snippet(
-            module.code_at(definition_location),
-            display_name.as_deref(),
-            fallback_name_from_type,
-        );
-        let docstring = doc_ranges.docstring().map(|range| Docstring(range, module));
-        (kind, name, docstring)
-    } else {
-        (None, fallback_name_from_type, None)
-    };
+    let (kind, name, fallback_docstring, definition_parameter_docs) =
+        if let Some(FindDefinitionItemWithDocstring {
+            metadata,
+            definition_range: definition_location,
+            module,
+            doc_ranges,
+            display_name,
+        }) = definition
+        {
+            let kind = metadata.symbol_kind();
+            let name = hover_name_from_definition_snippet(
+                module.code_at(definition_location),
+                display_name.as_deref(),
+                fallback_name_from_type,
+            );
+            let parameter_docs = doc_ranges.parameter_docs(&module).collect::<Vec<_>>();
+            let docstring = doc_ranges.docstring().map(|range| Docstring(range, module));
+            (kind, name, docstring, parameter_docs)
+        } else {
+            (None, fallback_name_from_type, None, Vec::new())
+        };
     let docstring = interface_definition
         .and_then(|item| {
             item.doc_ranges
@@ -1745,7 +1756,12 @@ pub fn get_hover_with_verbosity(
             None => (None, false),
         };
 
-    let parameter_doc = resolve_hover_parameter_doc(transaction, handle, position);
+    // A function's own `Doc` texts, or the docs of the parameter under the cursor. At most one
+    // is nonempty, because a parameter's definition documents no parameters of its own.
+    let parameter_docs = resolve_hover_parameter_doc(transaction, handle, position)
+        .into_iter()
+        .chain(definition_parameter_docs)
+        .collect();
 
     let mut hover = HoverValue {
         kind,
@@ -1753,7 +1769,7 @@ pub fn get_hover_with_verbosity(
         type_,
         range,
         docstring,
-        parameter_doc,
+        parameter_docs,
         type_sources: type_sources_for_hover(transaction, handle, position),
         display: type_display,
         show_go_to_links: options.show_go_to_links,
