@@ -778,6 +778,19 @@ pub struct ProtocolMetadata {
     pub is_runtime_checkable: bool,
 }
 
+impl ProtocolMetadata {
+    /// Whether an implementation must provide the protocol member `name`. `__init__` and
+    /// `__new__` are exempt because protocols cannot be instantiated, `__slots__` because it
+    /// describes the protocol's own layout, and `__class_getitem__` because it is a
+    /// class-subscription hook rather than an instance member.
+    pub fn is_required_member(name: &Name) -> bool {
+        name != &dunder::INIT
+            && name != &dunder::NEW
+            && name != &dunder::SLOTS
+            && name != &dunder::CLASS_GETITEM
+    }
+}
+
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq)]
 pub struct TotalOrderingMetadata {
     /// The position of the `@total_ordering` decorator in the class's decorator list.

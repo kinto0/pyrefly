@@ -36,6 +36,7 @@ use crate::alt::callable::CallValue;
 use crate::alt::expr::ExprOptions;
 use crate::alt::shape_extension::is_int_tuple_bound;
 use crate::alt::solve::TypeFormContext;
+use crate::alt::types::class_metadata::ProtocolMetadata;
 use crate::alt::types::decorated_function::Decorator;
 use crate::alt::unwrap::HintRef;
 use crate::config::error_kind::ErrorKind;
@@ -704,13 +705,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                             let mut unsafe_overlap_errors = vec![];
                             if all_runtime_members_present {
                                 for field_name in &class_info_protocol.members {
-                                    // Protocol machinery, not instance members; `subset.rs`'s
-                                    // `is_subset_protocol_inner` skips the same four names.
-                                    if field_name == &dunder::INIT
-                                        || field_name == &dunder::NEW
-                                        || field_name == &dunder::SLOTS
-                                        || field_name == &dunder::CLASS_GETITEM
-                                    {
+                                    if !ProtocolMetadata::is_required_member(field_name) {
                                         continue;
                                     }
                                     if let Err(subset_err) = self.is_protocol_subset_at_attr(
@@ -805,7 +800,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Check if a protocol is a data protocol (has non-method members)
     ///
-    /// Mirrors CPython's runtime check `callable(getattr(cls, name))`:
+    /// Approximates CPython's runtime check `callable(getattr(cls, name))`:
     /// - `property` objects and `__slots__` descriptors are never callable (data members).
     /// - Other members fall back to checking if their declared read type is callable.
     fn is_data_protocol(&self, cls: &Class, range: TextRange) -> bool {
@@ -813,16 +808,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             return false;
         };
         let class_type = self.heap.mk_class_type(self.as_class_type_unchecked(cls));
-        // Skips `Protocol`, `Generic`, and `object`, matching CPython.
+        // `Protocol` and `Generic` never appear in a Pyrefly MRO, so together with skipping
+        // `object` this visits the same classes as CPython.
         let ancestors = self.get_mro_for_class(cls).ancestors_no_object();
         for field_name in &protocol_metadata.runtime_members {
             for ancestor in
                 iter::once(cls).chain(ancestors.iter().map(|ancestor| ancestor.class_object()))
             {
-                if self.get_class_fields(ancestor).is_some_and(|fields| {
-                    fields.class_body_fields().any(|name| name == field_name)
-                        && fields.is_field_initialized_on_class(field_name)
-                }) {
+                // Only class-body assignments and definitions are initialized on the class;
+                // annotation-only and method-defined fields are not.
+                if self
+                    .get_class_fields(ancestor)
+                    .is_some_and(|fields| fields.is_field_initialized_on_class(field_name))
+                {
                     // `property`s cannot be `callable` -> data member
                     if self
                         .get_field_from_current_class_only(ancestor, field_name)

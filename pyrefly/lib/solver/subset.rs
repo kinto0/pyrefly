@@ -50,6 +50,7 @@ use crate::alt::answers::LookupAnswer;
 use crate::alt::callable::CallArg;
 use crate::alt::callable::CallValue;
 use crate::alt::expr::TypeOrExpr;
+use crate::alt::types::class_metadata::ProtocolMetadata;
 use crate::solver::shape::has_int_tuple_bound;
 use crate::solver::shape::type_as_intvar_solution;
 use crate::solver::solver::ArgumentSide;
@@ -790,16 +791,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             .type_order
             .get_protocol_member_names(protocol.class_object());
         for name in protocol_members {
-            if name == dunder::INIT || name == dunder::NEW {
-                // Protocols can't be instantiated
-                continue;
-            }
-            if name == dunder::SLOTS {
-                // Skip `__slots__` check
-                continue;
-            }
-            if name == dunder::CLASS_GETITEM {
-                // Class-subscription hook, not an instance member
+            if !ProtocolMetadata::is_required_member(&name) {
                 continue;
             }
             if matches!(
