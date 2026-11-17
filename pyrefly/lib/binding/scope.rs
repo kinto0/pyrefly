@@ -5550,7 +5550,10 @@ impl<'a> BindingsBuilder<'a> {
 
     /// When annotations in this module are evaluated.
     pub fn annotation_evaluation(&self) -> Evaluation {
-        if self.scopes.has_future_annotations() || self.sys_info.version().at_least(3, 14) {
+        if self.scopes.has_future_annotations()
+            || self.sys_info.version().at_least(3, 14)
+            || self.module_info.path().is_interface()
+        {
             Evaluation::Postponed
         } else {
             Evaluation::Eager

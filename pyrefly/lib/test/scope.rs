@@ -2187,3 +2187,22 @@ class C:
     Y = int
     "#,
 );
+
+fn class_scope_in_stub_file_env() -> TestEnv {
+    TestEnv::one_with_path(
+        "foo",
+        "foo.pyi",
+        r#"
+class A:
+    x: type[int]  # E: Expected a type form, got class attribute `type`
+    def type(self) -> int: ...
+    "#,
+    )
+}
+
+// See `class_scope_in_stub_file_env` - test checks `foo.pyi` for expected error
+testcase!(
+    test_class_scope_in_stub_file,
+    class_scope_in_stub_file_env(),
+    "import foo",
+);
