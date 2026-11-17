@@ -94,50 +94,44 @@ use crate::types::literal::Lit;
 use crate::types::types::CalleeKind;
 use crate::types::types::Type;
 
-const RUNTIME_EXCLUDED_ATTRIBUTES: &[&str] = &[
-    "_is_protocol",
-    "_is_runtime_protocol",
-    "__abstractmethods__",
-    "__annotations__",
-    "__dict__",
-    "__doc__",
-    "__init__",
-    "__module__",
-    "__new__",
-    "__orig_bases__",
-    "__orig_class__",
-    "__parameters__",
-    "__slots__",
-    "__subclasshook__",
-    "__weakref__",
-];
-
+/// Whether CPython's `typing._get_protocol_attrs` skips `name` when it collects the members a
+/// runtime protocol check inspects. This mirrors `typing.EXCLUDED_ATTRIBUTES` in
+/// https://github.com/python/cpython/blob/main/Lib/typing.py, gated by the minor version that
+/// first excludes each name. CPython 3.11.5 and later 3.11 releases also exclude `__final__`;
+/// it is not listed because no other minor version excludes it.
 fn is_excluded_runtime_attribute(name: &Name, version: PythonVersion) -> bool {
-    let name = name.as_str();
-    if RUNTIME_EXCLUDED_ATTRIBUTES.contains(&name) {
-        return true;
-    }
-    // Ignore internal `_abc_*` attributes injected into class dictionaries by `ABCMeta`.
-    if name.starts_with("_abc_") {
-        return true;
-    }
-    match name {
-        // Users assign `= classmethod(types.GenericAlias)` for PEP 585-style generic
-        // subscription, or `= None` to disable it.
-        "__class_getitem__" => version.at_least(3, 9),
-
-        // CPython 3.13 stops treating a declared `__match_args__` as a runtime protocol
-        // member (gh-110682).
-        "__match_args__" => version.at_least(3, 13),
-
-        // PEP 749 exposes `__annotate__` as a public attribute of types and functions,
-        // making it part of the typing surface.
-        "__annotate__" => version.at_least(3, 14),
-
-        // Falling through here means either there is no realistic use case or the name
-        // should not be excluded. If you insist it should be, please open an issue.
-        _ => false,
-    }
+    let first_minor = match name.as_str() {
+        "_is_protocol"
+        | "_is_runtime_protocol"
+        | "_MutableMapping__marker"
+        | "__abstractmethods__"
+        | "__annotations__"
+        | "__dict__"
+        | "__doc__"
+        | "__init__"
+        | "__module__"
+        | "__new__"
+        | "__orig_bases__"
+        | "__orig_class__"
+        | "__parameters__"
+        | "__slots__"
+        | "__subclasshook__"
+        | "__weakref__" => 0,
+        "__class_getitem__" => 9,
+        // CPython 3.12.0 and 3.12.1 exclude `__callable_proto_members_only__` where later
+        // releases exclude `__non_callable_proto_members__`. Both are excluded from 3.12 on so
+        // that the gates need not distinguish patch releases.
+        "__protocol_attrs__"
+        | "__type_params__"
+        | "__non_callable_proto_members__"
+        | "__callable_proto_members_only__" => 12,
+        "__match_args__" | "__static_attributes__" | "__firstlineno__" => 13,
+        "__annotate__" | "__annotate_func__" | "__annotations_cache__" => 14,
+        "__typing_is_deprecated_inherited_runtime_protocol__" => 15,
+        // `ABCMeta` injects `_abc_*` attributes into class dictionaries.
+        name => return name.starts_with("_abc_"),
+    };
+    version.at_least(3, first_minor)
 }
 
 #[derive(Debug, Clone)]

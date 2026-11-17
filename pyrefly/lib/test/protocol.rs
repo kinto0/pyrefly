@@ -2080,7 +2080,6 @@ isinstance(WorkableImpl(), P)
 );
 
 testcase!(
-    bug = "CPython excludes these names from runtime protocol members",
     test_issubclass_excludes_mutable_mapping_marker,
     r#"
 # `_MutableMapping__marker` is excluded on every version
@@ -2095,7 +2094,7 @@ class P(Protocol):
 class Impl:
     def m(self) -> None: ...
 
-issubclass(Impl, P)  # E: Protocol `P` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P)  # E: Runtime checkable protocol `P` has an unsafe overlap with type `Impl`
 "#,
 );
 
@@ -2123,7 +2122,6 @@ issubclass(Impl, P12)  # E: Protocol `P12` has non-method members and cannot be 
 );
 
 testcase!(
-    bug = "CPython excludes these names from runtime protocol members",
     test_issubclass_excludes_typing_internals_3_12,
     TestEnv::new_with_version(PythonVersion::new(3, 12, 0)),
     r#"
@@ -2148,13 +2146,12 @@ class P13(Protocol):
 class Impl:
     def m(self) -> None: ...
 
-issubclass(Impl, P12)  # E: Protocol `P12` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P12)  # E: Runtime checkable protocol `P12` has an unsafe overlap with type `Impl`
 issubclass(Impl, P13)  # E: Protocol `P13` has non-method members and cannot be used with issubclass()
 "#,
 );
 
 testcase!(
-    bug = "CPython excludes these names from runtime protocol members",
     test_issubclass_excludes_compiler_attributes_3_13,
     TestEnv::new_with_version(PythonVersion::new(3, 13, 0)),
     r#"
@@ -2177,13 +2174,12 @@ class P14(Protocol):
 class Impl:
     def m(self) -> None: ...
 
-issubclass(Impl, P13)  # E: Protocol `P13` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P13)  # E: Runtime checkable protocol `P13` has an unsafe overlap with type `Impl`
 issubclass(Impl, P14)  # E: Protocol `P14` has non-method members and cannot be used with issubclass()
 "#,
 );
 
 testcase!(
-    bug = "CPython excludes these names from runtime protocol members",
     test_issubclass_excludes_annotation_attributes_3_14,
     TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
     r#"
@@ -2205,13 +2201,12 @@ class P15(Protocol):
 class Impl:
     def m(self) -> None: ...
 
-issubclass(Impl, P14)  # E: Protocol `P14` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P14)  # E: Runtime checkable protocol `P14` has an unsafe overlap with type `Impl`
 issubclass(Impl, P15)  # E: Protocol `P15` has non-method members and cannot be used with issubclass()
 "#,
 );
 
 testcase!(
-    bug = "CPython excludes these names from runtime protocol members",
     test_issubclass_excludes_deprecated_protocol_marker_3_15,
     TestEnv::new_with_version(PythonVersion::new(3, 15, 0)),
     r#"
@@ -2227,7 +2222,7 @@ class P15(Protocol):
 class Impl:
     def m(self) -> None: ...
 
-issubclass(Impl, P15)  # E: Protocol `P15` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P15)  # E: Runtime checkable protocol `P15` has an unsafe overlap with type `Impl`
 "#,
 );
 
