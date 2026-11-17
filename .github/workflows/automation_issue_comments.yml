@@ -52,9 +52,9 @@ jobs:
 
             const user = dryRun ? context.payload.inputs.contributor.trim() : context.payload.comment.user.login;
             const issue_number = dryRun ? Number(context.payload.inputs.issue_number) : context.payload.issue.number;
-            // Dry runs read facebook/pyrefly even when dispatched from a fork, so changes
+            // Dry runs read pyrefly-org/pyrefly even when dispatched from a fork, so changes
             // to this script can be tested on a fork branch against real issues.
-            const { owner, repo } = dryRun ? { owner: 'facebook', repo: 'pyrefly' } : context.repo;
+            const { owner, repo } = dryRun ? { owner: 'pyrefly-org', repo: 'pyrefly' } : context.repo;
             const { data: targetIssue } = await github.rest.issues.get({ owner, repo, issue_number });
             const assignees = (targetIssue.assignees || []).map(a => a.login);
 

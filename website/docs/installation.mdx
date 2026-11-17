@@ -152,7 +152,7 @@ After your project passes type checks without errors, you can prevent new bugs f
 The simplest way to add Pyrefly to GitHub Actions is with the official composite action. It handles Python setup, installation, and running the type checker with inline PR annotations enabled by default.
 
 ```yaml
-- uses: facebook/pyrefly@main
+- uses: pyrefly-org/pyrefly@main
 ```
 
 Here is a complete workflow example:
@@ -169,13 +169,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: facebook/pyrefly@main
+      - uses: pyrefly-org/pyrefly@main
 ```
 
 You can pin a specific Pyrefly version, set the Python version, or pass extra arguments:
 
 ```yaml
-      - uses: facebook/pyrefly@main
+      - uses: pyrefly-org/pyrefly@main
         with:
           version: "0.60.0"
           python-version: "3.12"
@@ -270,7 +270,7 @@ The GitHub Action enables this by default. For manual setups, add the flag to yo
 
 Pyrefly provides a [pre-commit hook](https://pre-commit.com/) so you can automatically type check files before they are committed.
 
-We maintain a dedicated repository for this integration here: [facebook/pyrefly-pre-commit](https://github.com/facebook/pyrefly-pre-commit)
+We maintain a dedicated repository for this integration here: [pyrefly-org/pyrefly-pre-commit](https://github.com/pyrefly-org/pyrefly-pre-commit)
 
 That repository contains:
 
@@ -278,4 +278,4 @@ That repository contains:
 - Installation instructions
 - Example configuration snippets for your project and CI
 
-To get started, follow the setup steps in the repo’s [README](https://github.com/facebook/pyrefly-pre-commit#readme).
+To get started, follow the setup steps in the repo’s [README](https://github.com/pyrefly-org/pyrefly-pre-commit#readme).

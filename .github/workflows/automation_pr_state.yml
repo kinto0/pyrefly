@@ -91,9 +91,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const dryRun = process.env.DRY_RUN === 'true';
-            // Dry runs - even from a fork - always run against facebook/pyrefly, so we can test
+            // Dry runs - even from a fork - always run against pyrefly-org/pyrefly, so we can test
             // the workflow from a fork.
-            const { owner, repo } = dryRun ? { owner: 'facebook', repo: 'pyrefly' } : context.repo;
+            const { owner, repo } = dryRun ? { owner: 'pyrefly-org', repo: 'pyrefly' } : context.repo;
             const ownersFile = await github.rest.repos.getContent({
               owner, repo, path: '.github/owners.json',
             });
@@ -195,7 +195,7 @@ jobs:
           result-encoding: string
           script: |
             const dryRun = process.env.DRY_RUN === 'true';
-            const { owner, repo } = dryRun ? { owner: 'facebook', repo: 'pyrefly' } : context.repo;
+            const { owner, repo } = dryRun ? { owner: 'pyrefly-org', repo: 'pyrefly' } : context.repo;
             const pull_number = Number(process.env.PR_NUMBER);
             const issue_number = pull_number;
             const MARKER = '<!-- pr-check -->';
@@ -333,7 +333,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const dryRun = process.env.DRY_RUN === 'true';
-            const { owner, repo } = dryRun ? { owner: 'facebook', repo: 'pyrefly' } : context.repo;
+            const { owner, repo } = dryRun ? { owner: 'pyrefly-org', repo: 'pyrefly' } : context.repo;
             const pull_number = Number(process.env.PR_NUMBER);
             const issue_number = pull_number;
             const STATE_LABELS = ['waiting-for-author', 'waiting-for-reviewer', 'waiting-for-merge'];
