@@ -2080,6 +2080,189 @@ isinstance(WorkableImpl(), P)
 );
 
 testcase!(
+    bug = "CPython excludes these names from runtime protocol members",
+    test_issubclass_excludes_mutable_mapping_marker,
+    r#"
+# `_MutableMapping__marker` is excluded on every version
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P(Protocol):
+    _MutableMapping__marker: object
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P)  # E: Protocol `P` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    test_issubclass_with_typing_internals_3_11,
+    TestEnv::new_with_version(PythonVersion::new(3, 11, 0)),
+    r#"
+# The 3.12 typing internals are real protocol members on 3.11
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P12(Protocol):
+    __type_params__: tuple[object, ...]
+    __protocol_attrs__: set[str]
+    __non_callable_proto_members__: set[str]
+    __callable_proto_members_only__: bool
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P12)  # E: Protocol `P12` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    bug = "CPython excludes these names from runtime protocol members",
+    test_issubclass_excludes_typing_internals_3_12,
+    TestEnv::new_with_version(PythonVersion::new(3, 12, 0)),
+    r#"
+# The typing internals are excluded on 3.12+; the 3.13 names are not yet
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P12(Protocol):
+    __type_params__: tuple[object, ...]
+    __protocol_attrs__: set[str]
+    __non_callable_proto_members__: set[str]
+    __callable_proto_members_only__: bool
+    def m(self) -> None: ...
+
+@runtime_checkable
+class P13(Protocol):
+    __static_attributes__: tuple[str, ...]
+    __firstlineno__: int
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P12)  # E: Protocol `P12` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P13)  # E: Protocol `P13` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    bug = "CPython excludes these names from runtime protocol members",
+    test_issubclass_excludes_compiler_attributes_3_13,
+    TestEnv::new_with_version(PythonVersion::new(3, 13, 0)),
+    r#"
+# The compiler-set class attributes are excluded on 3.13+; the 3.14 names are not yet
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P13(Protocol):
+    __static_attributes__: tuple[str, ...]
+    __firstlineno__: int
+    def m(self) -> None: ...
+
+@runtime_checkable
+class P14(Protocol):
+    __annotate_func__: object
+    __annotations_cache__: dict[str, object]
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P13)  # E: Protocol `P13` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P14)  # E: Protocol `P14` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    bug = "CPython excludes these names from runtime protocol members",
+    test_issubclass_excludes_annotation_attributes_3_14,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
+    r#"
+# The PEP 749 annotation attributes are excluded on 3.14+; the 3.15 name is not yet
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P14(Protocol):
+    __annotate_func__: object
+    __annotations_cache__: dict[str, object]
+    def m(self) -> None: ...
+
+@runtime_checkable
+class P15(Protocol):
+    __typing_is_deprecated_inherited_runtime_protocol__: bool
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P14)  # E: Protocol `P14` has non-method members and cannot be used with issubclass()
+issubclass(Impl, P15)  # E: Protocol `P15` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    bug = "CPython excludes these names from runtime protocol members",
+    test_issubclass_excludes_deprecated_protocol_marker_3_15,
+    TestEnv::new_with_version(PythonVersion::new(3, 15, 0)),
+    r#"
+# The deprecated-protocol marker is excluded on 3.15+
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P15(Protocol):
+    __typing_is_deprecated_inherited_runtime_protocol__: bool
+    def m(self) -> None: ...
+
+class Impl:
+    def m(self) -> None: ...
+
+issubclass(Impl, P15)  # E: Protocol `P15` has non-method members and cannot be used with issubclass()
+"#,
+);
+
+testcase!(
+    bug = "A missing member is reported as an incompatible type",
+    test_isinstance_unsafe_overlap_missing_runtime_excluded_member,
+    TestEnv::new_with_version(PythonVersion::new(3, 14, 0)),
+    r#"
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class P(Protocol):
+    _abc_marker: int
+    def m(self) -> None: ...
+
+class Missing:
+    def m(self) -> None: ...
+
+isinstance(Missing(), P)  # E: Attribute `_abc_marker` has incompatible types: Protocol `P` requires attribute `_abc_marker`
+
+# `__getattr__` does not provide dunder methods, so `__annotate__` is missing.
+@runtime_checkable
+class PA(Protocol):
+    def __annotate__(self, format: int) -> dict[str, object]: ...
+    def m(self) -> None: ...
+
+class GetAttr:
+    def __getattr__(self, name: str) -> object: ...
+    def m(self) -> None: ...
+
+isinstance(GetAttr(), PA)  # E: Attribute `__annotate__` has incompatible types: Protocol `PA` requires attribute `__annotate__`
+"#,
+);
+
+testcase!(
     test_runtime_checkable_non_protocol,
     r#"
 from typing import runtime_checkable
