@@ -14,6 +14,7 @@ use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
 use pyrefly_python::dunder;
 use pyrefly_python::short_identifier::ShortIdentifier;
+use pyrefly_python::sys_info::PythonVersion;
 use pyrefly_types::annotation::Annotation;
 use pyrefly_types::callable::Params;
 use pyrefly_types::known_class::KnownClass;
@@ -92,6 +93,52 @@ use crate::types::keywords::TypeMap;
 use crate::types::literal::Lit;
 use crate::types::types::CalleeKind;
 use crate::types::types::Type;
+
+const RUNTIME_EXCLUDED_ATTRIBUTES: &[&str] = &[
+    "_is_protocol",
+    "_is_runtime_protocol",
+    "__abstractmethods__",
+    "__annotations__",
+    "__dict__",
+    "__doc__",
+    "__init__",
+    "__module__",
+    "__new__",
+    "__orig_bases__",
+    "__orig_class__",
+    "__parameters__",
+    "__slots__",
+    "__subclasshook__",
+    "__weakref__",
+];
+
+fn is_excluded_runtime_attribute(name: &Name, version: PythonVersion) -> bool {
+    let name = name.as_str();
+    if RUNTIME_EXCLUDED_ATTRIBUTES.contains(&name) {
+        return true;
+    }
+    // Ignore internal `_abc_*` attributes injected into class dictionaries by `ABCMeta`.
+    if name.starts_with("_abc_") {
+        return true;
+    }
+    match name {
+        // Users assign `= classmethod(types.GenericAlias)` for PEP 585-style generic
+        // subscription, or `= None` to disable it.
+        "__class_getitem__" => version.at_least(3, 9),
+
+        // CPython 3.13 stops treating a declared `__match_args__` as a runtime protocol
+        // member (gh-110682).
+        "__match_args__" => version.at_least(3, 13),
+
+        // PEP 749 exposes `__annotate__` as a public attribute of types and functions,
+        // making it part of the typing surface.
+        "__annotate__" => version.at_least(3, 14),
+
+        // Falling through here means either there is no realistic use case or the name
+        // should not be excluded. If you insist it should be, please open an issue.
+        _ => false,
+    }
+}
 
 #[derive(Debug, Clone)]
 struct ParsedBaseClass<'a> {
@@ -209,7 +256,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         });
 
         // Compute data that depends on the `BaseClass` representation of base classes.
-        let initial_protocol_metadata = self.initial_protocol_metadata(cls, bases);
         let has_generic_base_class = bases.iter().any(|x| x.is_generic());
         let has_typed_dict_base_class = bases.iter().any(|x| x.is_typed_dict());
 
@@ -220,12 +266,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .map(|x| self.parse_base_class(x, is_new_type))
             .collect::<Vec<_>>();
         let contains_base_class_any = parsed_results.iter().any(|x| x.is_any());
-        let protocol_metadata = self.final_protocol_metadata(
-            initial_protocol_metadata,
-            &decorators,
-            &parsed_results,
-            errors,
-        );
 
         let protocol_base_name = Name::new_static("Protocol");
         let base_metaclasses = bases
@@ -307,6 +347,16 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
         }
         let metaclass = calculated_metaclass.as_ref().map(|m| m.get());
+
+        let explicit_slots = self.explicit_slots(cls, metaclass, errors);
+        let initial_protocol_metadata = self.initial_protocol_metadata(cls, bases, &explicit_slots);
+        let protocol_metadata = self.final_protocol_metadata(
+            initial_protocol_metadata,
+            &decorators,
+            &parsed_results,
+            errors,
+        );
+
         // Compute base classes with metadata.
         let bases_with_metadata = self.bases_with_metadata(parsed_results, is_new_type, errors);
         self.check_init_subclass_keywords(
@@ -465,7 +515,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .iter()
             .find_map(|(decorator, _)| decorator.deprecation.clone());
 
-        let explicit_slots = self.explicit_slots(cls, metaclass, errors);
         let has_nonempty_explicit_slots = explicit_slots
             .slots_info()
             .is_some_and(|slots| !slots.names.is_empty());
@@ -808,6 +857,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         &self,
         cls: &Class,
         bases: &[BaseClass],
+        explicit_slots: &ExplicitSlots,
     ) -> Option<ProtocolMetadata> {
         if bases.iter().any(|x| {
             matches!(
@@ -818,11 +868,33 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 })
             )
         }) {
+            // CPython excludes the literal `__slots__` but exposes non-excluded slot
+            // names as runtime attributes. An unresolvable declaration cannot prove
+            // data slots, so no error is reported for it.
+            let version = self.bindings().sys_info().version();
+            let mut members = SmallSet::new();
+            let mut runtime_members: SmallSet<Name> = explicit_slots
+                .slots_info()
+                .map(|slots| {
+                    slots
+                        .names
+                        .iter()
+                        .filter(|name| !is_excluded_runtime_attribute(name, version))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            if let Some(fields) = self.get_class_fields(cls) {
+                for name in fields.class_body_fields() {
+                    members.insert(name.clone());
+                    if !is_excluded_runtime_attribute(name, version) {
+                        runtime_members.insert(name.clone());
+                    }
+                }
+            }
             Some(ProtocolMetadata {
-                members: self
-                    .get_class_fields(cls)
-                    .map(|f| f.class_body_fields().cloned().collect())
-                    .unwrap_or_default(),
+                members,
+                runtime_members,
                 is_runtime_checkable: false,
             })
         } else {
@@ -848,6 +920,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 {
                     if let Some(base_proto) = metadata.protocol_metadata() {
                         proto.members.extend(base_proto.members.iter().cloned());
+                        proto
+                            .runtime_members
+                            .extend(base_proto.runtime_members.iter().cloned());
                         if base_proto.is_runtime_checkable {
                             proto.is_runtime_checkable = true;
                         }

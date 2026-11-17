@@ -11,6 +11,8 @@
  * file contains the implementations of a few special calls that need to be hard-coded.
  */
 
+use std::iter;
+
 use pyrefly_python::dunder;
 use pyrefly_types::display::TypeDisplayContext;
 use pyrefly_types::known_class::KnownClass;
@@ -683,38 +685,49 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                         // Check for unsafe overlap:
                         // https://typing.python.org/en/latest/spec/protocol.html#runtime-checkable-decorator-and-narrowing-types-by-isinstance
-                        // We need to check if there is any field with unassignable types, since the `isinstance` check only
-                        // checks for the presence of the fields, not their types.
+                        // Presence decides whether an overlap is reported, but every static
+                        // member is type-checked, including runtime-excluded ones the
+                        // implementation does not provide.
                         //
                         // Type arguments for the protocol are not provided, so we'll use
-                        // fresh vars and solve them during the `is_subset_eq` check below.
+                        // fresh vars and solve them during the member checks below.
                         let class_info_protocol = class_info_metadata.protocol_metadata().unwrap();
                         if let Some(object_type) = &object_or_class
                             && !object_type.is_never()
                             && let (vs, Type::ClassType(protocol_class_type)) =
                                 self.instantiate_fresh_class(class_info_cls)
                         {
-                            let mut all_members_present = true;
+                            let all_runtime_members_present = class_info_protocol
+                                .runtime_members
+                                .iter()
+                                .all(|field_name| self.has_attr(object_type, field_name));
                             let mut unsafe_overlap_errors = vec![];
-                            for field_name in &class_info_protocol.members {
-                                if !self.has_attr(object_type, field_name) {
-                                    all_members_present = false;
-                                    break;
-                                }
-                                if let Err(subset_err) = self.is_protocol_subset_at_attr(
-                                    object_type,
-                                    &protocol_class_type,
-                                    field_name,
-                                    &mut |x, y| self.is_subset_eq_with_reason(x, y),
-                                ) {
-                                    let error_msg = subset_err
-                                        .to_error_msg(self)
-                                        .map(|msg| format!(": {msg}"))
-                                        .unwrap_or_default();
-                                    unsafe_overlap_errors.push(format!(
-                                        "Attribute `{}` has incompatible types{}",
-                                        field_name, error_msg,
-                                    ));
+                            if all_runtime_members_present {
+                                for field_name in &class_info_protocol.members {
+                                    // Protocol machinery, not instance members; `subset.rs`'s
+                                    // `is_subset_protocol_inner` skips the same four names.
+                                    if field_name == &dunder::INIT
+                                        || field_name == &dunder::NEW
+                                        || field_name == &dunder::SLOTS
+                                        || field_name == &dunder::CLASS_GETITEM
+                                    {
+                                        continue;
+                                    }
+                                    if let Err(subset_err) = self.is_protocol_subset_at_attr(
+                                        object_type,
+                                        &protocol_class_type,
+                                        field_name,
+                                        &mut |x, y| self.is_subset_eq_with_reason(x, y),
+                                    ) {
+                                        let error_msg = subset_err
+                                            .to_error_msg(self)
+                                            .map(|msg| format!(": {msg}"))
+                                            .unwrap_or_default();
+                                        unsafe_overlap_errors.push(format!(
+                                            "Attribute `{}` has incompatible types{}",
+                                            field_name, error_msg,
+                                        ));
+                                    }
                                 }
                             }
                             if let Err(specialization_errors) = self.finish_quantified(vs, false) {
@@ -722,7 +735,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                                     unsafe_overlap_errors.push(e.to_error_msg(self))
                                 }
                             }
-                            if all_members_present && !unsafe_overlap_errors.is_empty() {
+                            if all_runtime_members_present && !unsafe_overlap_errors.is_empty() {
                                 errors.error_builder(
                                     range,
                                     ErrorKind::UnsafeOverlap,
@@ -791,28 +804,57 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     /// Check if a protocol is a data protocol (has non-method members)
+    ///
+    /// Mirrors CPython's runtime check `callable(getattr(cls, name))`:
+    /// - `property` objects and `__slots__` descriptors are never callable (data members).
+    /// - Other members fall back to checking if their declared read type is callable.
     fn is_data_protocol(&self, cls: &Class, range: TextRange) -> bool {
-        // A data protocol has at least one non-method member
-        // Use protocol metadata to get the member names
-        let metadata = self.get_metadata_for_class(cls);
-        if let Some(protocol_metadata) = metadata.protocol_metadata() {
-            for field_name in &protocol_metadata.members {
-                // Use the class type to access the field
-                let class_type = self.as_class_type_unchecked(cls);
-                let ty = self.type_of_attr_get(
-                    &self.heap.mk_class_type(class_type),
-                    field_name,
-                    range,
-                    &self.error_swallower(),
-                    ErrorKind::MissingAttribute,
-                    None,
-                    "is_data_protocol",
-                );
-
-                // If it's not a callable type, it's a data member
-                if !ty.is_toplevel_callable() {
+        let Some(protocol_metadata) = self.get_metadata_for_class(cls).protocol_metadata() else {
+            return false;
+        };
+        let class_type = self.heap.mk_class_type(self.as_class_type_unchecked(cls));
+        // Skips `Protocol`, `Generic`, and `object`, matching CPython.
+        let ancestors = self.get_mro_for_class(cls).ancestors_no_object();
+        for field_name in &protocol_metadata.runtime_members {
+            for ancestor in
+                iter::once(cls).chain(ancestors.iter().map(|ancestor| ancestor.class_object()))
+            {
+                if self.get_class_fields(ancestor).is_some_and(|fields| {
+                    fields.class_body_fields().any(|name| name == field_name)
+                        && fields.is_field_initialized_on_class(field_name)
+                }) {
+                    // `property`s cannot be `callable` -> data member
+                    if self
+                        .get_field_from_current_class_only(ancestor, field_name)
+                        .is_some_and(|field| field.is_property())
+                    {
+                        return true;
+                    }
+                    // Otherwise the declared read type decides.
+                    break;
+                }
+                if self
+                    .get_metadata_for_class(ancestor)
+                    .slots_info()
+                    .is_some_and(|slots| slots.names.contains(field_name))
+                {
+                    // Slot descriptors cannot be `callable` -> data member
                     return true;
                 }
+            }
+            let ty = self.type_of_attr_get(
+                &class_type,
+                field_name,
+                range,
+                &self.error_swallower(),
+                ErrorKind::MissingAttribute,
+                None,
+                "is_data_protocol",
+            );
+
+            // If it's not a callable type, it's a data member
+            if !ty.is_toplevel_callable() {
+                return true;
             }
         }
         false

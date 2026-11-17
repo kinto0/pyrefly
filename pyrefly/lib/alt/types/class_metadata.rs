@@ -770,8 +770,10 @@ impl VisitTrait<Type> for DjangoReverseRelationIndex {
 
 #[derive(Clone, Debug, TypeEq, PartialEq, Eq)]
 pub struct ProtocolMetadata {
-    /// All members of the protocol, excluding ones defined on `object` and not overridden in a subclass.
+    /// All static members of the protocol, excluding ones defined on `object` and not overridden in a subclass.
     pub members: SmallSet<Name>,
+    /// Attribute names CPython inspects when it checks this protocol at runtime.
+    pub runtime_members: SmallSet<Name>,
     /// Whether this protocol is decorated with @runtime_checkable
     pub is_runtime_checkable: bool,
 }
