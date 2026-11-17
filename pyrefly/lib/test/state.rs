@@ -2110,7 +2110,7 @@ fn import_handle(transaction: &Transaction, handle: &Handle, module: &str) -> Ha
 /// checked in the app's environment. The app's copy of the library resolves `dep` to the same
 /// module as the app, so passing the app's `dep.C` to it is not an error. Each app gets its own
 /// copy, and the library checked on its own still resolves `dep` in its own environment. See
-/// https://github.com/meta/pyrefly/issues/3556.
+/// https://github.com/pyrefly-org/pyrefly/issues/3556.
 #[test]
 fn test_library_imported_from_another_environment() {
     let temp_dir = TempDir::new().unwrap();

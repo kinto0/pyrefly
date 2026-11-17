@@ -1195,7 +1195,7 @@ reduce(max, [1,2])
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3265
+// https://github.com/pyrefly-org/pyrefly/issues/3265
 // All of these iterators should have element type int without diagnostics.
 testcase!(
     test_iter_container_literal,
@@ -1433,7 +1433,7 @@ def f(condition: bool):
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2914
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2914
 testcase!(
     test_non_callable_bool_attribute,
     r#"
@@ -1444,7 +1444,7 @@ assert BadBool()  # E: `__bool__` attribute of `BadBool` has type `int`, which i
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3060
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3060
 testcase!(
     test_setdefault_then_index,
     r#"
@@ -1467,7 +1467,7 @@ obj()  # E: Expected a callable, got `Uncallable`
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4590
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4590
 testcase!(
     test_call_instance_with_self_recursive_dunder_call,
     r#"

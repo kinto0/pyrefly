@@ -32,7 +32,7 @@ We closed **3** bug issues this release 👏
 - **#4936:** Fixed shifted parameter-name inlay hints for bound methods whose receiver is named `__self`, such as methods on `loguru.Logger`.
 - **#1610:** SQLAlchemy dataclass fields now reject mutable `dict`, `list`, and `set` literals passed to `mapped_column(default=...)` and recommend `default_factory` instead.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

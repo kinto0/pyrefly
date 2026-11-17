@@ -103,7 +103,7 @@ assert_type(z, int | str)
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/683
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/683
 testcase!(
     test_loop_with_sized_in_inner_iteration,
     r#"
@@ -114,7 +114,7 @@ def f(xs: list[list]):
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/812
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/812
 testcase!(
     test_loop_with_set_and_len,
     r#"
@@ -153,7 +153,7 @@ def f(condition) -> None:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1701
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1701
 testcase!(
     test_while_condition_is_in_loop,
     r#"
@@ -492,7 +492,7 @@ def literal() -> int:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5566
+// https://github.com/pyrefly-org/pyrefly/issues/5566
 testcase!(
     test_possibly_unbound_after_loop_with_conditional_break,
     r#"
@@ -693,7 +693,7 @@ assert_type(f(True, True, True, True), int)
 testcase!(
     test_loop_defaulting,
     r#"
-# From https://github.com/facebook/pyrefly/issues/104
+# From https://github.com/pyrefly-org/pyrefly/issues/104
 from typing import assert_type
 class Foo:
     pass
@@ -710,7 +710,7 @@ def test(b: bool, x: Foo) -> None:
 testcase!(
     test_loop_enumerate,
     r#"
-# From https://github.com/facebook/pyrefly/issues/267
+# From https://github.com/pyrefly-org/pyrefly/issues/267
 def foo() -> list[int]:
     results: list[int] = [1, 2, 3]
     for i, x in enumerate(results):
@@ -769,7 +769,7 @@ else:
 "#,
 );
 
-// Test for https://github.com/facebook/pyrefly/issues/726
+// Test for https://github.com/pyrefly-org/pyrefly/issues/726
 testcase!(
     test_reassign_literal_str_to_str_in_loop,
     r#"
@@ -781,7 +781,7 @@ for x in ['home', 'other']:
     "#,
 );
 
-// Test for https://github.com/facebook/pyrefly/issues/747
+// Test for https://github.com/pyrefly-org/pyrefly/issues/747
 testcase!(
     test_benign_reassign_and_narrow_in_loop,
     r#"
@@ -815,7 +815,7 @@ while condition():
 "#,
 );
 
-// Test for https://github.com/facebook/pyrefly/issues/1505
+// Test for https://github.com/pyrefly-org/pyrefly/issues/1505
 testcase!(
     test_dict_get_self_assignment,
     r#"
@@ -826,7 +826,7 @@ for i in range(10):
     "#,
 );
 
-// Test for https://github.com/facebook/pyrefly/issues/1453
+// Test for https://github.com/pyrefly-org/pyrefly/issues/1453
 testcase!(
     test_against_regression_on_1453,
     r#"
@@ -843,7 +843,7 @@ def remove_common(x: int, g: int) -> int:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1565
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1565
 testcase!(
     test_nested_while_int_assignment,
     r#"
@@ -1009,7 +1009,7 @@ def foo(cond: bool):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/714
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/714
 testcase!(
     test_loop_variable_type_with_cross_branch_reassignment,
     r#"
@@ -1031,7 +1031,7 @@ for part in ['a', 'b', 'c', 'd']:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1561
+// https://github.com/pyrefly-org/pyrefly/issues/1561
 testcase!(
     test_divmod_loop_inference,
     r#"

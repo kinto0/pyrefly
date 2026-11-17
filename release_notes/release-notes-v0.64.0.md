@@ -41,7 +41,7 @@ We closed **15** bug issues this release 👏
 - #3230: Numeric parameter defaults now preserve their original spelling (e.g. `0o777`) in hover and signature display rather than being normalized to a decimal value.
 - #3302: Added a `path` field to the `pyrefly report` JSON `ModuleReport`, restoring compatibility with typestats.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

@@ -450,7 +450,7 @@ ok: IncEx = {"a": {"__all__": [B()]}}
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4324: a
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4324: a
 // self-referential alias reached *through* another alias used to leave a live
 // reference into the cycle, so attribute lookup recursed until the stack
 // overflowed. Contrast with `type T2 = T2` alone, which was already detected.

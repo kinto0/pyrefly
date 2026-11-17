@@ -28,7 +28,7 @@ We ask that contributors please look at our open GitHub issues for tasks to work
 
 When looking for an issue to pick up, consider the following things:
 
-1. it has a [good first issue](https://github.com/facebook/pyrefly/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) or [help wanted](https://github.com/facebook/pyrefly/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) label
+1. it has a [good first issue](https://github.com/pyrefly-org/pyrefly/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22good%20first%20issue%22) or [help wanted](https://github.com/pyrefly-org/pyrefly/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) label
 2. it's not already assigned to anyone, or is assigned to someone but appears abandoned
 3. there aren't any open PRs for it (or there are open PRs but they look stale/abandoned)
 4. the issue still reproduces in the sandbox, or locally on a build from the main branch
@@ -73,7 +73,7 @@ Development docs are WIP. Please reach out if you are working on an issue and
 have questions or want a code pointer.
 
 As described in the
-[architecture overview](https://github.com/facebook/pyrefly/blob/main/ARCHITECTURE.md),
+[architecture overview](https://github.com/pyrefly-org/pyrefly/blob/main/ARCHITECTURE.md),
 our architecture follows 3 phases:
 
 1. figuring out exports
@@ -211,7 +211,7 @@ Contributing a pull request (PR) is the main way to propose changes to Pyrefly. 
 - [ ] Write a clear PR description following the [template](.github/pull_request_template.md), including checking the "I am a human" box to attest that you've followed our [AI policy](AI_POLICY.md).
 - [ ] Make sure all continuous integration (CI) checks pass. Fix any errors or warnings, or ask us about any CI results you don't understand. If the contributor license agreement (CLA) check fails, look for a comment from the meta-cla bot with instructions on how to sign the CLA.
 
-We aim to respond to all PRs in a timely manner, but please note we prioritise reviews for work that is highest priority (e.g. critical bug fixes, upcoming milestones). If you're waiting on a review for more than a week, feel free to `@` one of the [maintainers](https://github.com/facebook/pyrefly/blob/main/.github/owners.json) in a comment on your PR or ask for a review in the `#dev` channel of our Discord server.
+We aim to respond to all PRs in a timely manner, but please note we prioritise reviews for work that is highest priority (e.g. critical bug fixes, upcoming milestones). If you're waiting on a review for more than a week, feel free to `@` one of the [maintainers](https://github.com/pyrefly-org/pyrefly/blob/main/.github/owners.json) in a comment on your PR or ask for a review in the `#dev` channel of our Discord server.
 
 ## Responding to Review Feedback
 

@@ -1013,7 +1013,7 @@ assert_type(C(False), C[B])
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4192
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4192
 testcase!(
     test_overloaded_init_missing_self,
     r#"
@@ -1113,7 +1113,7 @@ class C[T]:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4701
+// https://github.com/pyrefly-org/pyrefly/issues/4701
 testcase!(
     test_new_overload_subclass_receiver,
     r#"
@@ -1323,7 +1323,7 @@ C("5")  # E: Argument `Literal['5']` is not assignable to parameter `x` with typ
     "#,
 );
 
-// Regression test for a problem in networkx: https://github.com/facebook/pyrefly/issues/3121
+// Regression test for a problem in networkx: https://github.com/pyrefly-org/pyrefly/issues/3121
 testcase!(
     test_return_type_inference_for_constructors,
     r#"
@@ -1443,7 +1443,7 @@ assert_type(d2, D)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3236
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3236
 testcase!(
     test_construct_with_hint_and_overloads,
     r#"
@@ -1501,7 +1501,7 @@ assert_type(x, D)
 );
 
 // The `dict` stubs declare `__new__` alongside `__init__`, so subclasses
-// inherit both https://github.com/facebook/pyrefly/issues/4276.
+// inherit both https://github.com/pyrefly-org/pyrefly/issues/4276.
 testcase!(
     test_deeply_nested_dict_subclass_ctor_calls,
     r#"
@@ -1615,7 +1615,7 @@ ok: Callable[[int], list[C[int]]] = C
     "#,
 );
 
-// https://github.com/meta/pyrefly/issues/5591
+// https://github.com/pyrefly-org/pyrefly/issues/5591
 testcase!(
     test_type_of_self_as_callable,
     r#"
@@ -1769,7 +1769,7 @@ Foo(untyped(1), "bad")  # E: Argument `Literal['bad']` is not assignable to para
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5053
+// https://github.com/pyrefly-org/pyrefly/issues/5053
 testcase!(
     test_overloaded_new_cls_annotation_as_callable,
     r#"

@@ -1314,7 +1314,7 @@ def f(x: None) -> None:
         assert_eq!(&*annotations[1].label, "has type `Literal[2]`");
     }
 
-    // https://github.com/facebook/pyrefly/issues/5113
+    // https://github.com/pyrefly-org/pyrefly/issues/5113
     #[test]
     fn test_hint_severity_in_lsp() {
         let module_info = Module::new(
@@ -1366,7 +1366,7 @@ def f(x: None) -> None:
         );
     }
 
-    // https://github.com/facebook/pyrefly/issues/5113
+    // https://github.com/pyrefly-org/pyrefly/issues/5113
     #[test]
     fn test_deprecated_and_unreachable_in_lsp() {
         let module_info = Module::new(

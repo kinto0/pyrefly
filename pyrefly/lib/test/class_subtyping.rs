@@ -263,7 +263,7 @@ x: PyO3Enum = PyO3Enum.Variant0()
     "#,
 );
 
-// See https://github.com/facebook/pyrefly/issues/622 for an example
+// See https://github.com/pyrefly-org/pyrefly/issues/622 for an example
 // of when it matters to have reasonable analysis of `type(...)` in
 // base classes; sometimes the runtime semantics require this, particularly
 // dealing with C extensions.

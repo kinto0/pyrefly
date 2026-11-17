@@ -39,7 +39,7 @@ exports[`Sandbox Component render sandbox correctly 1`] = `
         Parameter hints
       </label>
       <a
-        href="https://github.com/facebook/pyrefly/commit/123456789abcdef"
+        href="https://github.com/pyrefly-org/pyrefly/commit/123456789abcdef"
         id="pyrefly-build"
         rel="noopener noreferrer"
         target="_blank"

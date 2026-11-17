@@ -99,7 +99,7 @@ We closed **28** bug issues this release 👏
 - **#4410:** Fixed a forward reference to a nested class failing to resolve when used by an earlier annotation in the same enclosing class.
 - And more! #4246, #4066, #4507, #4519, #4473, #3810, #438, #4576, #756, #4560, #4108, #3933, #4517, #4564, #3958, #3375, #1269, #1517
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

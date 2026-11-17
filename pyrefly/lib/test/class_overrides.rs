@@ -179,7 +179,7 @@ class B(A):
  "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1493
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1493
 testcase!(
     test_override_with_differently_named_parent_overloads,
     r#"
@@ -771,7 +771,7 @@ class B(A):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3141
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3141
 testcase!(
     test_property_constructor_override,
     r#"
@@ -783,7 +783,7 @@ class B(A):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3062
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3062
 testcase!(
     test_cached_property_overrides_unannotated_class_variable,
     r#"
@@ -1296,7 +1296,7 @@ class C:
 
 // Checking `__call__` against every parent reports a missing `@override`, and often a
 // signature mismatch, on the many classes that simply implement a callable interface, so
-// it is checked only against a Protocol parent. See https://github.com/facebook/pyrefly/issues/4220.
+// it is checked only against a Protocol parent. See https://github.com/pyrefly-org/pyrefly/issues/4220.
 testcase!(
     bug = "`__call__` inherited from a non-Protocol parent is not checked",
     test_override_dunder_call,
@@ -1312,7 +1312,7 @@ class UseDerived(UseBase):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4220
+// https://github.com/pyrefly-org/pyrefly/issues/4220
 testcase!(
     test_override_dunder_call_protocol,
     r#"
@@ -1470,7 +1470,7 @@ class Bar(Foo):
     "#,
 );
 
-// Test for https://github.com/facebook/pyrefly/issues/1372
+// Test for https://github.com/pyrefly-org/pyrefly/issues/1372
 testcase!(
     test_property_setter_inheritance,
     r#"
@@ -2736,7 +2736,7 @@ class ChildNarrowedSuppressed(Base):
 );
 
 // Overriding with a mutually incompatible type is not a mutability failure,
-// so it reports plain bad-override. https://github.com/facebook/pyrefly/issues/4720
+// so it reports plain bad-override. https://github.com/pyrefly-org/pyrefly/issues/4720
 testcase!(
     test_override_incompatible_attribute_is_plain_bad_override,
     r#"

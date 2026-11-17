@@ -96,7 +96,7 @@ We closed **14** bug issues this release 👏
 
 And more! #4430, #4417, #4387, #4315, #3678, #3334, #4380, #2313, #1130, #4388, #4386, #4390, #4399, #4443, #4455, #4457, #4464, #4447, #4436, #4441, #4442, #4451, #4452, #4456, #4458, #4460, #317, #1576, #4331, #4304, #4393, #4361
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

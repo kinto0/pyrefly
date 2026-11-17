@@ -191,7 +191,7 @@ def g(arg: B) -> None:
 "#,
 );
 
-// Regression: https://github.com/facebook/pyrefly/issues/1006
+// Regression: https://github.com/pyrefly-org/pyrefly/issues/1006
 functools_testcase!(
     test_singledispatch_dispatcher_with_default_arg,
     r#"

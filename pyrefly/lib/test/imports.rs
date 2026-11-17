@@ -239,7 +239,7 @@ import foo.baz
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5193
+// https://github.com/pyrefly-org/pyrefly/issues/5193
 testcase!(
     test_import_submodule_after_parent_alias,
     env_import_different_submodules(),
@@ -251,7 +251,7 @@ assert_type(f.bar.x, int)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5193
+// https://github.com/pyrefly-org/pyrefly/issues/5193
 testcase!(
     test_import_submodule_before_parent_alias,
     env_import_different_submodules(),
@@ -436,7 +436,7 @@ def outer():
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5193
+// https://github.com/pyrefly-org/pyrefly/issues/5193
 testcase!(
     bug = "Each submodule below is available on the alias at runtime",
     test_import_submodule_parent_alias_unsupported,
@@ -510,7 +510,7 @@ import distutils
 "#,
 );
 
-// `tomllib` is `3.11-` in typeshed's VERSIONS. https://github.com/facebook/pyrefly/issues/5162
+// `tomllib` is `3.11-` in typeshed's VERSIONS. https://github.com/pyrefly-org/pyrefly/issues/5162
 testcase!(
     test_optional_import_with_fallback,
     TestEnv::one("tomli", "").with_version(PythonVersion::new(3, 10, 0)),
@@ -1123,7 +1123,7 @@ assert_type(x, LiteralString)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2517
+// https://github.com/pyrefly-org/pyrefly/issues/2517
 testcase!(
     test_import_string_ascii_uppercase_dict_keys,
     r#"
@@ -1664,7 +1664,7 @@ testcase!(
 # re-exported by the package (as `unittest` does with
 # `from .main import main as main`, where `main = TestProgram`), that binding wins
 # at runtime even if the submodule is imported directly, so the call below is valid.
-# See https://github.com/facebook/pyrefly/issues/322
+# See https://github.com/pyrefly-org/pyrefly/issues/322
 import unittest.main
 unittest.main()
     "#,
@@ -1687,7 +1687,7 @@ testcase!(
     r#"
 # `pkg.__init__` re-exports `name` from the same-named submodule `pkg.name`, so at runtime
 # the re-exported callable wins over the submodule binding even after `import pkg.name`, and
-# the call below is valid. See https://github.com/facebook/pyrefly/issues/322
+# the call below is valid. See https://github.com/pyrefly-org/pyrefly/issues/322
 import pkg.name
 pkg.name()
     "#,
@@ -1712,7 +1712,7 @@ testcase!(
 # `pkg.__init__` re-exports `name` from `pkg.other` (a *different* module than the
 # same-named submodule `pkg.name`), so at runtime the direct `import pkg.name`
 # below binds the submodule onto `pkg` after `__init__` and the submodule wins.
-# See https://github.com/facebook/pyrefly/issues/322
+# See https://github.com/pyrefly-org/pyrefly/issues/322
 import pkg.name
 pkg.name()  # E: Expected a callable, got `Module[pkg.name]`
     "#,
@@ -1725,7 +1725,7 @@ fn env_reexport_from_other_submodule_with_implicit_import() -> TestEnv {
     // `pkg.name`, so at runtime the submodule binding still wins even though `pkg.name` is
     // implicitly imported by `__init__`. The two facts "`name` is re-exported" and "`pkg.name`
     // is implicitly imported" must not be combined: only a re-export *sourced from* the
-    // same-named submodule shadows it. See https://github.com/facebook/pyrefly/issues/322
+    // same-named submodule shadows it. See https://github.com/pyrefly-org/pyrefly/issues/322
     t.add_with_path(
         "pkg",
         "pkg/__init__.py",
@@ -1744,7 +1744,7 @@ testcase!(
 # submodule `pkg.name`, so the submodule wins at runtime and the call below is invalid.
 # The re-export (`name`) and the implicit submodule import (`pkg.name`) come from unrelated
 # statements, so they must not be combined to suppress the error.
-# See https://github.com/facebook/pyrefly/issues/322
+# See https://github.com/pyrefly-org/pyrefly/issues/322
 import pkg.name
 pkg.name()  # E: Expected a callable, got `Module[pkg.name]`
     "#,
@@ -2348,7 +2348,7 @@ assert_type(c.name, str)
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2983
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2983
 testcase!(
     test_malformed_def_from_star,
     r#"
@@ -2357,7 +2357,7 @@ from *a # E: Parse error: Expected `)`, found `from` # E: Parse error: Expected 
 "#,
 );
 
-// Additional regression test for https://github.com/facebook/pyrefly/issues/2983
+// Additional regression test for https://github.com/pyrefly-org/pyrefly/issues/2983
 testcase!(
     test_malformed_class_from_star,
     r#"
@@ -2558,7 +2558,7 @@ if TYPE_CHECKING:
 // the visible result chose. See `assign.rs` for the same-module regressions.
 // ----------------------------------------------------------------------------
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1378
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1378
 fn env_singleton() -> TestEnv {
     TestEnv::one(
         "singleton",
@@ -3306,7 +3306,7 @@ from .b import b
     t
 }
 
-// https://github.com/facebook/pyrefly/issues/5134
+// https://github.com/pyrefly-org/pyrefly/issues/5134
 testcase!(
     test_implicit_reexport_submodule,
     env_implicit_reexport_submodule().enable_implicit_reexport_error(),
@@ -3405,7 +3405,7 @@ fn test_empty_dunder_all_name_has_no_synthetic_binding() {
 
 // A runtime `typing_extensions.py` defines most special forms depending on the Python version, so
 // its definition of `Self` is a union of `typing.Self` and a decorated function. The export is
-// still the special form. See https://github.com/facebook/pyrefly/issues/698.
+// still the special form. See https://github.com/pyrefly-org/pyrefly/issues/698.
 testcase!(
     test_runtime_typing_extensions_special_form,
     TestEnv::one_with_path(

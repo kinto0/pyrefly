@@ -39,7 +39,7 @@ would have a 50% type-completeness score, because:
 
 By changing the `foo` signature to be `def foo(a: int) -> None:`, the type-completeness score would jump to 100%. The more type-complete a library is, the more helpful the suggestions an IDE can show to the user.
 
-Note that type-completeness only measures how much of the public API (at least, the part known to Pyright) is covered by types. If you want to verify that those types are correct and self-consistent, you'll also need to run a type checker. The most used type checkers currently are [mypy](https://github.com/python/mypy) and Pyright, but [Pyrefly](https://github.com/facebook/pyrefly) and [ty](https://github.com/astral-sh/ty) are also attracting a lot of attention due to their impressive performance characteristics (note however that neither yet describes itself as production-ready, so temper your expectations accordingly if you try them out!).
+Note that type-completeness only measures how much of the public API (at least, the part known to Pyright) is covered by types. If you want to verify that those types are correct and self-consistent, you'll also need to run a type checker. The most used type checkers currently are [mypy](https://github.com/python/mypy) and Pyright, but [Pyrefly](https://github.com/pyrefly-org/pyrefly) and [ty](https://github.com/astral-sh/ty) are also attracting a lot of attention due to their impressive performance characteristics (note however that neither yet describes itself as production-ready, so temper your expectations accordingly if you try them out!).
 
 ## How type-complete is NumPy?
 

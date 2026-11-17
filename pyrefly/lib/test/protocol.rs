@@ -1281,7 +1281,7 @@ f(C())
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4656
+// https://github.com/pyrefly-org/pyrefly/issues/4656
 testcase!(
     test_self_type_explicit_protocol_subclass,
     r#"
@@ -2550,7 +2550,7 @@ def g(b: B, c: C):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1905
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1905
 testcase!(
     test_functor_protocol_and_impl,
     r#"
@@ -2574,7 +2574,7 @@ def test():
 "#,
 );
 
-// Regression test for a case an early implementation of https://github.com/facebook/pyrefly/issues/1905 got wrong
+// Regression test for a case an early implementation of https://github.com/pyrefly-org/pyrefly/issues/1905 got wrong
 testcase!(
     test_second_order_protocol_subset_failure,
     r#"
@@ -2717,7 +2717,7 @@ def to_foo() -> Foo[MySeries]:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1202
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1202
 testcase!(
     test_assert_type_structurally_identical_protocols,
     r#"
@@ -2734,7 +2734,7 @@ def f(f2: F2):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2925
+// https://github.com/pyrefly-org/pyrefly/issues/2925
 testcase!(
     test_protocol_ambiguous_member,
     r#"

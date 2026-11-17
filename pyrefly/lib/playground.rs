@@ -1288,7 +1288,7 @@ mod tests {
         assert!(kinds.is_empty(), "unexpected diagnostics: {kinds:?}");
     }
 
-    // https://github.com/facebook/pyrefly/issues/5113
+    // https://github.com/pyrefly-org/pyrefly/issues/5113
     #[test]
     fn test_kind_set_to_hint_in_config() {
         let mut state = Playground::new(None).unwrap();

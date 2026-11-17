@@ -406,7 +406,7 @@ def f(x):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3374
+// https://github.com/pyrefly-org/pyrefly/issues/3374
 testcase!(
     test_narrow_after_terminating_conjunction,
     r#"
@@ -2001,7 +2001,7 @@ while foo:  # E: Function object `foo` used as condition
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5151
+// https://github.com/pyrefly-org/pyrefly/issues/5151
 testcase!(
     test_unused_coroutine_condition,
     r#"
@@ -2599,7 +2599,7 @@ def f(a: A):
 testcase!(
     crash_no_try_type,
     r#"
-# Used to crash, https://github.com/facebook/pyrefly/issues/766
+# Used to crash, https://github.com/pyrefly-org/pyrefly/issues/766
 try:
     pass
 except as r: # E: Parse error: Expected one or more exception types
@@ -2628,7 +2628,7 @@ def f():
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/77
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/77
 testcase!(
     loop_with_sized_operation,
     r#"
@@ -2684,7 +2684,7 @@ def f():
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/528
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/528
 testcase!(
     test_narrow_in_branch_contained_in_loop,
     r#"
@@ -2790,7 +2790,7 @@ def f(v):
     "#,
 );
 
-// Regression tests for https://github.com/facebook/pyrefly/issues/2382
+// Regression tests for https://github.com/pyrefly-org/pyrefly/issues/2382
 // Walrus operator in ternary test expression
 
 testcase!(
@@ -2868,7 +2868,7 @@ def f() -> int:
     "#,
 );
 
-// Regression tests for https://github.com/facebook/pyrefly/issues/2382
+// Regression tests for https://github.com/pyrefly-org/pyrefly/issues/2382
 // Walrus operator in if-statement test conditions
 
 // The first `if` test always evaluates, so walrus bindings should be in base flow.
@@ -3171,7 +3171,7 @@ f(C())
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1246
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1246
 testcase!(
     test_boolean_op_narrowing_example,
     r#"
@@ -3789,7 +3789,7 @@ def f(x: Color, y: int | str) -> str:
 "#,
 );
 
-// Regression test for the first example bug reported in https://github.com/facebook/pyrefly/issues/1286
+// Regression test for the first example bug reported in https://github.com/pyrefly-org/pyrefly/issues/1286
 testcase!(
     test_match_can_narrow_union_to_never_in_wildcard,
     r#"
@@ -3852,7 +3852,7 @@ class C:
     "#,
 );
 
-// Regression test for the third example bug reported in https://github.com/facebook/pyrefly/issues/1286
+// Regression test for the third example bug reported in https://github.com/pyrefly-org/pyrefly/issues/1286
 testcase!(
     test_enum_exhaustive_match_and_uninitialized_local,
     r#"
@@ -3877,7 +3877,7 @@ print(y)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5186.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5186.
 testcase!(
     test_noreturn_try_except_narrowing,
     r#"
@@ -4016,7 +4016,7 @@ def main(resolve: bool) -> None:
 "#,
 );
 
-// for https://github.com/facebook/pyrefly/issues/1840
+// for https://github.com/pyrefly-org/pyrefly/issues/1840
 testcase!(
     test_exhaustive_flow_no_fall_through,
     r#"
@@ -4061,7 +4061,7 @@ def test_is_instance_union_aware():
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1896
+// https://github.com/pyrefly-org/pyrefly/issues/1896
 testcase!(
     test_exhaustive_flow_no_early_return_narrow,
     r#"
@@ -4098,7 +4098,7 @@ def demo_pyre_narrowing_failure() -> int:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2261
+// https://github.com/pyrefly-org/pyrefly/issues/2261
 testcase!(
     test_walrus_in_if_with_is_none,
     r#"
@@ -4109,7 +4109,7 @@ def fun(**kwargs):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1397
+// https://github.com/pyrefly-org/pyrefly/issues/1397
 testcase!(
     test_walrus_in_chained_if_re_match,
     r#"
@@ -4127,7 +4127,7 @@ if line and (match := ipv4_re.search(line)):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1397
+// https://github.com/pyrefly-org/pyrefly/issues/1397
 testcase!(
     test_walrus_in_negated_if_with_isinstance,
     r#"
@@ -4143,7 +4143,7 @@ def test(thing: Any) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1397
+// https://github.com/pyrefly-org/pyrefly/issues/1397
 testcase!(
     test_walrus_bool_in_if,
     r#"
@@ -4154,7 +4154,7 @@ def f() -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_in_method_call_chain,
     r#"
@@ -4168,7 +4168,7 @@ def f(mod: str, stubs_path: pathlib.Path):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_in_comparison,
     r#"
@@ -4179,7 +4179,7 @@ def check():
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_with_and_condition,
     r#"
@@ -4190,7 +4190,7 @@ def f(v):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_in_compound_and_condition,
     r#"
@@ -4200,7 +4200,7 @@ def hello(x: int, y: int) -> int | None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_with_none_reassignment,
     r#"
@@ -4213,7 +4213,7 @@ def func(key: str) -> str:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/913
+// https://github.com/pyrefly-org/pyrefly/issues/913
 testcase!(
     test_walrus_in_loop_with_narrowing,
     r#"
@@ -4694,7 +4694,7 @@ def impossible_isinstance(x: int) -> None:
 );
 
 // A suite that declarations settle as dead never runs, so it should not contribute to the types
-// after the chain. See https://github.com/facebook/pyrefly/issues/3537.
+// after the chain. See https://github.com/pyrefly-org/pyrefly/issues/3537.
 testcase!(
     test_suite_settled_dead_by_declarations_is_pruned,
     r#"

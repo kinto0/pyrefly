@@ -282,7 +282,7 @@ with patch.multiple("other.missing", attribute=DEFAULT):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3913
+// https://github.com/pyrefly-org/pyrefly/issues/3913
 testcase!(
     bug = "Mock assertions do not check the target signature",
     test_assert_called_with_checks_target_signature,
@@ -309,7 +309,7 @@ with patch("typing.assert_type") as mock_assert_type:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3913
+// https://github.com/pyrefly-org/pyrefly/issues/3913
 testcase!(
     bug = "Mock assertions do not check the target signature",
     test_patch_start_checks_target_signature,
@@ -324,7 +324,7 @@ patcher.stop()
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3913
+// https://github.com/pyrefly-org/pyrefly/issues/3913
 testcase!(
     bug = "Mock assertions do not check the target signature",
     test_async_patch_checks_await_assertion,
@@ -338,7 +338,7 @@ with patch("other.foo") as mock_foo:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3913
+// https://github.com/pyrefly-org/pyrefly/issues/3913
 testcase!(
     bug = "Mock assertions do not check the target signature",
     test_patch_bound_method_checks_bound_signature,

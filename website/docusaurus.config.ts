@@ -74,7 +74,7 @@ function getNavBarItems() {
         {to: 'talks/', label: 'Talks', position: 'left'},
         // Please keep GitHub link to the right for consistency.
         {
-            href: 'https://github.com/facebook/pyrefly',
+            href: 'https://github.com/pyrefly-org/pyrefly',
             'aria-label': 'GitHub',
             position: 'right' as const,
             className: 'navbar__icon github__link',
@@ -527,7 +527,7 @@ const config: Config = {
                         },
                         {
                             label: 'Open a Github issue',
-                            href: 'https://github.com/facebook/pyrefly',
+                            href: 'https://github.com/pyrefly-org/pyrefly',
                         },
                         {
                             label: 'Attend Office Hours',
@@ -596,7 +596,7 @@ const config: Config = {
                     editUrl: fbContent({
                         internal:
                             'https://www.internalfb.com/code/fbsource/fbcode/pyrefly/website/',
-                        external: 'https://github.com/facebook/pyrefly/edit/main/website/',
+                        external: 'https://github.com/pyrefly-org/pyrefly/edit/main/website/',
                     }),
                     beforeDefaultRemarkPlugins: [
                         [remarkSandboxPlugin, {

@@ -8,7 +8,7 @@ Pyrefly v1.1.1 is a patch release with a single bug fix.
 
 - **#3867:** Fixed a regression introduced in 1.1.0 where `isinstance()` narrowing of a union variable silently stopped working when an earlier sibling branch in the same `if`/`elif`/`else` chain narrowed a different variable with `isinstance()` and returned. The later narrowing left the union untouched, producing false `missing-attribute` errors on code that checked correctly in 1.0.0.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

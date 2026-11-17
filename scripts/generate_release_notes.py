@@ -17,9 +17,9 @@ uses the latest commit on that branch, allowing you to prepare release notes bef
 the release tag is created.
 
 Usage:
-    python generate_release_notes.py facebook/pyrefly v0.1.0 v0.2.0
-    python generate_release_notes.py facebook/pyrefly v0.1.0 main --version v0.2.0
-    python generate_release_notes.py facebook/pyrefly v0.1.0 v0.2.0 -o notes.md
+    python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 v0.2.0
+    python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 main --version v0.2.0
+    python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 v0.2.0 -o notes.md
 """
 
 from __future__ import annotations
@@ -575,13 +575,13 @@ def _parse_args() -> argparse.Namespace:
         epilog="""
 Examples:
   # Between two tags
-  python generate_release_notes.py facebook/pyrefly v0.1.0 v0.2.0
+  python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 v0.2.0
 
   # Pre-release: from a tag to a branch (draft notes before tagging)
-  python generate_release_notes.py facebook/pyrefly v0.1.0 main --version v0.2.0
+  python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 main --version v0.2.0
 
   # Custom output path
-  python generate_release_notes.py facebook/pyrefly v0.1.0 v0.2.0 -o notes.md
+  python generate_release_notes.py pyrefly-org/pyrefly v0.1.0 v0.2.0 -o notes.md
 
 Environment variables:
   GITHUB_TOKEN        GitHub personal access token (or set in .env)
@@ -591,7 +591,7 @@ Environment variables:
 
     parser.add_argument(
         "repo",
-        help="Repository in 'owner/repo' format (e.g. facebook/pyrefly)",
+        help="Repository in 'owner/repo' format (e.g. pyrefly-org/pyrefly)",
     )
     parser.add_argument("from_tag", help="Starting tag (exclusive)")
     parser.add_argument(

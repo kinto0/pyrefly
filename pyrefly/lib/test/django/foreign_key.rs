@@ -40,7 +40,7 @@ def update(book: Book) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5157
+// https://github.com/pyrefly-org/pyrefly/issues/5157
 django_testcase!(
     test_foreign_key_keyword_target,
     r#"

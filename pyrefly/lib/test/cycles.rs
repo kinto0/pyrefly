@@ -724,7 +724,7 @@ reveal_type(g(1))  # E: revealed type: Literal['done']
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/804.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/804.
 testcase!(
     mutual_recursion_infers_all_concrete_returns,
     r#"

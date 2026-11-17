@@ -118,4 +118,4 @@ This checks whether `user` is *the same object* as the `Admin` class, not whethe
 
 You might wonder: shouldn't a linter catch these, rather than a type checker? Without an understanding of the types flowing through your program, a linter can see that you wrote `if f:`, but it might not be able to tell that `f` is a function, especially if `f` is imported. Pyrefly's type analysis allows it to report diagnostics that non-type-aware linters cannot detect with confidence.
 
-To see the full list of error kinds Pyrefly supports and their severity levels, check out our [error kinds documentation](https://pyrefly.org/en/docs/error-kinds/). And if there's a bug pattern you wish we'd catch, let us know on [GitHub](https://github.com/facebook/pyrefly/issues) or [Discord](https://discord.gg/Cf7mFQtW7W).
+To see the full list of error kinds Pyrefly supports and their severity levels, check out our [error kinds documentation](https://pyrefly.org/en/docs/error-kinds/). And if there's a bug pattern you wish we'd catch, let us know on [GitHub](https://github.com/pyrefly-org/pyrefly/issues) or [Discord](https://discord.gg/Cf7mFQtW7W).

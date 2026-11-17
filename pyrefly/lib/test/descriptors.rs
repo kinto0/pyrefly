@@ -961,7 +961,7 @@ C.d = "wrong"  # E: `Literal['wrong']` is not assignable to attribute `d` with t
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1792
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1792
 testcase!(
     test_descriptor_in_dataclass_transform,
     r#"
@@ -1063,7 +1063,7 @@ class Unsafe(Model):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1803
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1803
 testcase!(
     test_set_instance_attribute,
     r#"
@@ -1184,7 +1184,7 @@ def main(cat: Cat[Literal["pyarrow"]]) -> None:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4826: an implicit `__get__` call
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4826: an implicit `__get__` call
 // should go through overload step 5 (materialization) just like an explicit call does.
 testcase!(
     test_overloaded_descriptor_get_any_instance_is_ambiguous,
@@ -1398,7 +1398,7 @@ def f(foo: Foo) -> None:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4844.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4844.
 testcase!(
     test_descriptor_concatenate_infers_remaining_paramspec,
     r#"
@@ -1432,7 +1432,7 @@ assert Example().field(1) == 1
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4844.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4844.
 // This simulates the descriptor typing used by `weave.op`.
 testcase!(
     test_descriptor_concatenate_consumes_named_receiver,
@@ -1478,7 +1478,7 @@ assert Example().call() == 1
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4592
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4592
 testcase!(
     test_callable_descriptor_self_concatenate_with_sibling_type_var,
     r#"

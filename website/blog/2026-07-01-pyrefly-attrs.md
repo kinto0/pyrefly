@@ -160,7 +160,7 @@ and try out.
 ## **Conclusion**
 
 Try *attrs* support in your own projects and let us know what works and what
-doesn't. You can [open an issue on GitHub](https://github.com/facebook/pyrefly/issues)
+doesn't. You can [open an issue on GitHub](https://github.com/pyrefly-org/pyrefly/issues)
 or [connect with us on Discord](https://discord.gg/Cf7mFQtW7W).
 
 *attrs* joins Pydantic and Django in the set of libraries Pyrefly supports without

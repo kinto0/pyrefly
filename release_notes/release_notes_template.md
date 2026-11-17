@@ -43,7 +43,7 @@ We closed **{{NUMBER_OF_ISSUES}}** bug issues this release 👏
 - **#{{GITHUB_ISSUE_NUMBER}}:** {{DESCRIBE_BUG_FIX_3}}
 - And more! #{{GITHUB_ISSUE_NUMBER}}, #{{GITHUB_ISSUE_NUMBER}}, #{{GITHUB_ISSUE_NUMBER}}
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

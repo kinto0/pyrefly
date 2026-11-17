@@ -6,7 +6,7 @@
  */
 
 //! Experimental LSP method that shows the type of something using fully-qualified names
-//! See https://github.com/facebook/pyrefly/issues/1181
+//! See https://github.com/pyrefly-org/pyrefly/issues/1181
 
 use dupe::Dupe;
 use lsp_types::MarkupContent;

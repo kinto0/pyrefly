@@ -304,7 +304,7 @@ Pyrefly v0.33.0 bundles **117 commits** from **21 contributors**
 | Area | What's new |
 | :---- | :---- |
 | **Type Checker Behavior** | Pyrefly now distinguishes between `Any` as a value and as a type, preventing incorrect attribute access and constructor calls on `Any` values. For example, when `Any` (the value) is used as an attribute base or call target pyrefly will now error if you try to access attributes that are not defined on `type`. Basic support added for `TypeAliasType`. Experimental support for Pydantic now available! Type error messages by default now print paths relative to working directory (as opposed to absolute path). |
-| **IDE improvements** | Kwarg completion now supports literals and unions of literals ([requested feature](https://github.com/facebook/pyrefly/issues/1064)). A new "typeServer/getSupportedProtocol" request handler included to fetch TSP version information. |
+| **IDE improvements** | Kwarg completion now supports literals and unions of literals ([requested feature](https://github.com/pyrefly-org/pyrefly/issues/1064)). A new "typeServer/getSupportedProtocol" request handler included to fetch TSP version information. |
 | **Website and Documentation** | The sandbox feature on the website has been upgraded! It can now deal with multiple files, allowing users to try out Pyrefly with cross-file imports. Give it a go [here](https://pyrefly.org/sandbox/)! New documentation guide on experimental Pydantic support, read it [here](https://pyrefly.org/en/docs/pydantic/). New editable installs section in documentation, detailing the nuances of working with editable dependencies. Read it [here](https://pyrefly.org/en/docs/import-resolution/#editable-installs). |
 
 ## Bug Fixes
@@ -411,10 +411,10 @@ Pyrefly v0.35.0 bundles **226 commits** from **18 contributors**.
 
 We closed 11 bug issues this release.
 
-- [#1167](https://github.com/facebook/pyrefly/issues/1167), [#1166](https://github.com/facebook/pyrefly/issues/1166) - inaccuracies with `type(x)` returning the wrong thing
-- [#954](https://github.com/facebook/pyrefly/issues/954) - fixed an issue with Pyrefly not recognising `Session` context manager from SQL Alchemy. Fixing this issue brings us one step closer to Pyrefly being fully usable with SQL Alchemy (follow progress [here](https://github.com/facebook/pyrefly/issues/920))
-- [#260](https://github.com/facebook/pyrefly/issues/260) - unions of dunder methods weren't being recognised correctly
-- And more - [#1165](https://github.com/facebook/pyrefly/issues/1165), [#1148](https://github.com/facebook/pyrefly/issues/1148), [#1146](https://github.com/facebook/pyrefly/issues/1146), [#1030](https://github.com/facebook/pyrefly/issues/1030), [#614](https://github.com/facebook/pyrefly/issues/614), [#527](https://github.com/facebook/pyrefly/issues/527), [#300](https://github.com/facebook/pyrefly/issues/300)
+- [#1167](https://github.com/pyrefly-org/pyrefly/issues/1167), [#1166](https://github.com/pyrefly-org/pyrefly/issues/1166) - inaccuracies with `type(x)` returning the wrong thing
+- [#954](https://github.com/pyrefly-org/pyrefly/issues/954) - fixed an issue with Pyrefly not recognising `Session` context manager from SQL Alchemy. Fixing this issue brings us one step closer to Pyrefly being fully usable with SQL Alchemy (follow progress [here](https://github.com/pyrefly-org/pyrefly/issues/920))
+- [#260](https://github.com/pyrefly-org/pyrefly/issues/260) - unions of dunder methods weren't being recognised correctly
+- And more - [#1165](https://github.com/pyrefly-org/pyrefly/issues/1165), [#1148](https://github.com/pyrefly-org/pyrefly/issues/1148), [#1146](https://github.com/pyrefly-org/pyrefly/issues/1146), [#1030](https://github.com/pyrefly-org/pyrefly/issues/1030), [#614](https://github.com/pyrefly-org/pyrefly/issues/614), [#527](https://github.com/pyrefly-org/pyrefly/issues/527), [#300](https://github.com/pyrefly-org/pyrefly/issues/300)
 
 ## Upgrade
 
@@ -527,7 +527,7 @@ Read more about error suppressions in the [Pyrefly documentation](https://pyrefl
 
 [@stroxler](https://github.com/stroxler), [@yangdanny97](https://github.com/yangdanny97), [@arthaud](https://github.com/arthaud), [@connernilsen](https://github.com/connernilsen), [@rchen152](https://github.com/rchen152), [@migeed-z](https://github.com/migeed-z), [@grievejia](https://github.com/grievejia), [@fangyi-zhou](https://github.com/fangyi-zhou), [@kinto0](https://github.com/kinto0), [@fatelei](https://github.com/fatelei), [@ndmitchell](https://github.com/ndmitchell), [@brosenfeld](https://github.com/brosenfeld), [@dtolnay](https://github.com/dtolnay), [@john](https://github.com/john) Van Schultz
 
-**Full changelog:** [Comparing 0.36.0...0.37.0](https://github.com/facebook/pyrefly/compare/0.36.0...0.37.0)
+**Full changelog:** [Comparing 0.36.0...0.37.0](https://github.com/pyrefly-org/pyrefly/compare/0.36.0...0.37.0)
 
 ---
 
@@ -563,12 +563,12 @@ Basic type checking support (`pyrefly check path/to/file.ipynb`) now available f
 
 We closed 15 bug issues this release.
 
-- [#1414](https://github.com/facebook/pyrefly/issues/1414) - Ensured `typing_extensions.dataclass_transform` works correctly.
-- [#1351](https://github.com/facebook/pyrefly/issues/1351) - Correctly accept `TypedDict` as `Partial` when unpacking one `TypedDict` into another and detect more open-unpacking errors.
-- [#1257](https://github.com/facebook/pyrefly/issues/1257) - Addressed a crash related to `Var::ZERO` during autocomplete by using `deep_force` to replace unsolved variables with `Unknown`.
-- [#1104](https://github.com/facebook/pyrefly/issues/1104) - Resolved an issue where the VSCode extension did not highlight problems in files with symlinked paths under Linux.
-- [#1045](https://github.com/facebook/pyrefly/issues/1045) - Addressed a false-positive in `raise..from` statements by correctly handling `None` when it appears in a union.
-- And more: [#1412](https://github.com/facebook/pyrefly/issues/1412), [#1409](https://github.com/facebook/pyrefly/issues/1409), [#1405](https://github.com/facebook/pyrefly/issues/1405), [#1396](https://github.com/facebook/pyrefly/issues/1396), [#1356](https://github.com/facebook/pyrefly/issues/1356), [#1294](https://github.com/facebook/pyrefly/issues/1294), [#1288](https://github.com/facebook/pyrefly/issues/1288), [#1234](https://github.com/facebook/pyrefly/issues/1234), [#1145](https://github.com/facebook/pyrefly/issues/1145), [#1119](https://github.com/facebook/pyrefly/issues/1119)
+- [#1414](https://github.com/pyrefly-org/pyrefly/issues/1414) - Ensured `typing_extensions.dataclass_transform` works correctly.
+- [#1351](https://github.com/pyrefly-org/pyrefly/issues/1351) - Correctly accept `TypedDict` as `Partial` when unpacking one `TypedDict` into another and detect more open-unpacking errors.
+- [#1257](https://github.com/pyrefly-org/pyrefly/issues/1257) - Addressed a crash related to `Var::ZERO` during autocomplete by using `deep_force` to replace unsolved variables with `Unknown`.
+- [#1104](https://github.com/pyrefly-org/pyrefly/issues/1104) - Resolved an issue where the VSCode extension did not highlight problems in files with symlinked paths under Linux.
+- [#1045](https://github.com/pyrefly-org/pyrefly/issues/1045) - Addressed a false-positive in `raise..from` statements by correctly handling `None` when it appears in a union.
+- And more: [#1412](https://github.com/pyrefly-org/pyrefly/issues/1412), [#1409](https://github.com/pyrefly-org/pyrefly/issues/1409), [#1405](https://github.com/pyrefly-org/pyrefly/issues/1405), [#1396](https://github.com/pyrefly-org/pyrefly/issues/1396), [#1356](https://github.com/pyrefly-org/pyrefly/issues/1356), [#1294](https://github.com/pyrefly-org/pyrefly/issues/1294), [#1288](https://github.com/pyrefly-org/pyrefly/issues/1288), [#1234](https://github.com/pyrefly-org/pyrefly/issues/1234), [#1145](https://github.com/pyrefly-org/pyrefly/issues/1145), [#1119](https://github.com/pyrefly-org/pyrefly/issues/1119)
 
 ## Upgrade
 
@@ -609,13 +609,13 @@ Pyrefly v0.41.0 bundles **166 commits** from **22 contributors**.
 
 We closed 15 bug issues this release.
 
-- [#1505](https://github.com/facebook/pyrefly/issues/1505) - fixed incorrect `bad-assignment` error inside loop with `dict.get`
-- [#1411](https://github.com/facebook/pyrefly/issues/1411) - Fixed `bad-argument-type` false positive when a parameter type was inferred as `Never`
-- [#1327](https://github.com/facebook/pyrefly/issues/1327) - Fixed issue where Hover did not show docstring for nested classes
-- [#1184](https://github.com/facebook/pyrefly/issues/1184) - Fixed a bug where `NewType` was not treated as a type
-- [#1301](https://github.com/facebook/pyrefly/issues/1301) - Fix for nested folder imports in the Pyrefly website sandbox
-- [#1173](https://github.com/facebook/pyrefly/issues/1173) - Fixed issue where VSCode extension import autocomplete included hidden directories
-- And more: [#1092](https://github.com/facebook/pyrefly/issues/1092), [#747](https://github.com/facebook/pyrefly/issues/747), [#726](https://github.com/facebook/pyrefly/issues/726), [#1407](https://github.com/facebook/pyrefly/issues/1407), [#1487](https://github.com/facebook/pyrefly/issues/1487), [#1420](https://github.com/facebook/pyrefly/issues/1420), [#1417](https://github.com/facebook/pyrefly/issues/1417), [#1536](https://github.com/facebook/pyrefly/issues/1536), [#1508](https://github.com/facebook/pyrefly/issues/1508)
+- [#1505](https://github.com/pyrefly-org/pyrefly/issues/1505) - fixed incorrect `bad-assignment` error inside loop with `dict.get`
+- [#1411](https://github.com/pyrefly-org/pyrefly/issues/1411) - Fixed `bad-argument-type` false positive when a parameter type was inferred as `Never`
+- [#1327](https://github.com/pyrefly-org/pyrefly/issues/1327) - Fixed issue where Hover did not show docstring for nested classes
+- [#1184](https://github.com/pyrefly-org/pyrefly/issues/1184) - Fixed a bug where `NewType` was not treated as a type
+- [#1301](https://github.com/pyrefly-org/pyrefly/issues/1301) - Fix for nested folder imports in the Pyrefly website sandbox
+- [#1173](https://github.com/pyrefly-org/pyrefly/issues/1173) - Fixed issue where VSCode extension import autocomplete included hidden directories
+- And more: [#1092](https://github.com/pyrefly-org/pyrefly/issues/1092), [#747](https://github.com/pyrefly-org/pyrefly/issues/747), [#726](https://github.com/pyrefly-org/pyrefly/issues/726), [#1407](https://github.com/pyrefly-org/pyrefly/issues/1407), [#1487](https://github.com/pyrefly-org/pyrefly/issues/1487), [#1420](https://github.com/pyrefly-org/pyrefly/issues/1420), [#1417](https://github.com/pyrefly-org/pyrefly/issues/1417), [#1536](https://github.com/pyrefly-org/pyrefly/issues/1536), [#1508](https://github.com/pyrefly-org/pyrefly/issues/1508)
 
 ## Upgrade
 
@@ -647,7 +647,7 @@ Read more about error suppressions in the [Pyrefly documentation](https://pyrefl
 
 ## Pyrefly is now in Beta!
 
-We're thrilled to announce with this release that Pyrefly has transitioned from Alpha to Beta status! This marks a new chapter for the project, with increased stability, feature maturity, and readiness for broader adoption. When using a version of Pyrefly with Beta status you can feel confident that the IDE extension is ready for production use, while core type-checking features can be used, but be aware some edge cases are still being addressed as we make progress towards a later stable v1 release ([bug reports welcome](https://github.com/facebook/pyrefly/issues)!).
+We're thrilled to announce with this release that Pyrefly has transitioned from Alpha to Beta status! This marks a new chapter for the project, with increased stability, feature maturity, and readiness for broader adoption. When using a version of Pyrefly with Beta status you can feel confident that the IDE extension is ready for production use, while core type-checking features can be used, but be aware some edge cases are still being addressed as we make progress towards a later stable v1 release ([bug reports welcome](https://github.com/pyrefly-org/pyrefly/issues)!).
 
 These release notes will use a slightly different format than usual, covering the major highlights of the last 6 months that have contributed to this milestone.
 
@@ -660,7 +660,7 @@ These release notes will use a slightly different format than usual, covering th
 - Hover Cards & Docstrings: Richer information in tooltips, including docstrings for built-in types and links to error documentation.
 - Configurable LSP Features: Greater control over enabling/disabling IDE features like autocomplete, go-to-definition, and hover.
 - Extensions released for a range of popular IDEs, including [VSCode](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly), [PyCharm](https://www.jetbrains.com/help/pycharm/2025.3/lsp-tools.html#pyrefly) and [more](https://pyrefly.org/en/docs/IDE/#other-editors)!
-- Some relevant issues: [#853](https://github.com/facebook/pyrefly/issues/853), [#1403](https://github.com/facebook/pyrefly/issues/1403), [#1335](https://github.com/facebook/pyrefly/issues/1335), [#873](https://github.com/facebook/pyrefly/issues/873), [#802](https://github.com/facebook/pyrefly/issues/802), [#716](https://github.com/facebook/pyrefly/issues/716)
+- Some relevant issues: [#853](https://github.com/pyrefly-org/pyrefly/issues/853), [#1403](https://github.com/pyrefly-org/pyrefly/issues/1403), [#1335](https://github.com/pyrefly-org/pyrefly/issues/1335), [#873](https://github.com/pyrefly-org/pyrefly/issues/873), [#802](https://github.com/pyrefly-org/pyrefly/issues/802), [#716](https://github.com/pyrefly-org/pyrefly/issues/716)
 
 ### 2. Type Checking Enhancements
 
@@ -669,34 +669,34 @@ These release notes will use a slightly different format than usual, covering th
 - `TypedDict` & Protocol Improvements: More accurate type checking for structural types, including handling for union keys and improved inheritance checks.
 - Additional Python typing features: `LiteralString` & `TypeAliasType` support, abstract class instantiation checks, unused awaitable checks, multiple inheritance consistency checks, and more!
 - Configurable Type Inference: Advanced features like empty container inference and return type inference can be toggled via config.
-- Some relevant issues: [#684](https://github.com/facebook/pyrefly/issues/684), [#872](https://github.com/facebook/pyrefly/issues/872), [#1058](https://github.com/facebook/pyrefly/issues/1058), [#940](https://github.com/facebook/pyrefly/issues/940), [#815](https://github.com/facebook/pyrefly/issues/815), [#1461](https://github.com/facebook/pyrefly/issues/1461), [#44](https://github.com/facebook/pyrefly/issues/44)
+- Some relevant issues: [#684](https://github.com/pyrefly-org/pyrefly/issues/684), [#872](https://github.com/pyrefly-org/pyrefly/issues/872), [#1058](https://github.com/pyrefly-org/pyrefly/issues/1058), [#940](https://github.com/pyrefly-org/pyrefly/issues/940), [#815](https://github.com/pyrefly-org/pyrefly/issues/815), [#1461](https://github.com/pyrefly-org/pyrefly/issues/1461), [#44](https://github.com/pyrefly-org/pyrefly/issues/44)
 
 ### 3. Error Reporting & Suppression
 
 - Granular Error Filtering: Filter summarized errors by code, set error severity, and get clickable links to docs.
 - Suppression Workflow: Scripts and commands to silence new errors after upgrades, making large codebase migrations manageable.
 - Improved Error Messages: Clearer, more actionable diagnostics for overloads, missing imports, and more.
-- Some relevant issues: [#1276](https://github.com/facebook/pyrefly/issues/1276), [#1302](https://github.com/facebook/pyrefly/issues/1302), [#890](https://github.com/facebook/pyrefly/issues/890), [#1401](https://github.com/facebook/pyrefly/issues/1401)
+- Some relevant issues: [#1276](https://github.com/pyrefly-org/pyrefly/issues/1276), [#1302](https://github.com/pyrefly-org/pyrefly/issues/1302), [#890](https://github.com/pyrefly-org/pyrefly/issues/890), [#1401](https://github.com/pyrefly-org/pyrefly/issues/1401)
 
 ### 4. Framework Integrations
 
 - Django: Partial support, with ongoing improvements for model field inference, enum support, and lazy label handling.
 - Pydantic: Experimental support, with growing documentation and bug fixes.
-- Some relevant issues: [#316](https://github.com/facebook/pyrefly/issues/316), [#334](https://github.com/facebook/pyrefly/issues/334), [#1276](https://github.com/facebook/pyrefly/issues/1276), [#839](https://github.com/facebook/pyrefly/issues/839)
+- Some relevant issues: [#316](https://github.com/pyrefly-org/pyrefly/issues/316), [#334](https://github.com/pyrefly-org/pyrefly/issues/334), [#1276](https://github.com/pyrefly-org/pyrefly/issues/1276), [#839](https://github.com/pyrefly-org/pyrefly/issues/839)
 
 ### 5. Jupyter Notebook Support (Experimental)
 
 - Full Language Server Integration: Diagnostics, inlay hints, go-to-definition, hover, semantic tokens, signature help, and completions now work out-of-the-box for .ipynb files.
 - CLI Type Checking for Notebooks
 - Jupyter Lab Integration
-- Some relevant issues: [#381](https://github.com/facebook/pyrefly/issues/381), [#591](https://github.com/facebook/pyrefly/issues/591), [#1045](https://github.com/facebook/pyrefly/issues/1045), [#1529](https://github.com/facebook/pyrefly/issues/1529), [#925](https://github.com/facebook/pyrefly/issues/925)
+- Some relevant issues: [#381](https://github.com/pyrefly-org/pyrefly/issues/381), [#591](https://github.com/pyrefly-org/pyrefly/issues/591), [#1045](https://github.com/pyrefly-org/pyrefly/issues/1045), [#1529](https://github.com/pyrefly-org/pyrefly/issues/1529), [#925](https://github.com/pyrefly-org/pyrefly/issues/925)
 
 ### 6. Build Systems, Dependencies & Configuration
 
 - Initial Build System Support: Foundational work for Buck and other build systems to support generated file materialization and source file remapping
 - Editable Installs: Documentation and support for working with editable dependencies.
 - Improved dependency handling: performance improvements and automatic recognition of third party libraries with typeshed stubs
-- Some relevant issues: [#573](https://github.com/facebook/pyrefly/issues/573), [#1](https://github.com/facebook/pyrefly/issues/1), [#2](https://github.com/facebook/pyrefly/issues/2), [#1239](https://github.com/facebook/pyrefly/issues/1239), [#360](https://github.com/facebook/pyrefly/issues/360)
+- Some relevant issues: [#573](https://github.com/pyrefly-org/pyrefly/issues/573), [#1](https://github.com/pyrefly-org/pyrefly/issues/1), [#2](https://github.com/pyrefly-org/pyrefly/issues/2), [#1239](https://github.com/pyrefly-org/pyrefly/issues/1239), [#360](https://github.com/pyrefly-org/pyrefly/issues/360)
 
 Check out the [Pyrefly documentation](https://pyrefly.org/en/docs/) for more details on how to use each of these features.
 
@@ -704,7 +704,7 @@ Check out the [Pyrefly documentation](https://pyrefly.org/en/docs/) for more det
 
 The Beta release is your invitation to start using Pyrefly in real-world projects, provide feedback, and continue helping shape its future. You do not need to change how you install and upgrade Pyrefly now that we are in Beta status, the same semantic versioning format will remain in place.
 
-You can continue providing feedback as usual by [opening a GitHub issue](https://github.com/facebook/pyrefly/issues) or [joining our Discord server](https://discord.gg/Cf7mFQtW7W). In this new phase of development as we push towards our next milestone (a stable v1.0 release) we are particularly interested in hearing about how you are using Pyrefly in real production environments, including any edge cases you may encounter.
+You can continue providing feedback as usual by [opening a GitHub issue](https://github.com/pyrefly-org/pyrefly/issues) or [joining our Discord server](https://discord.gg/Cf7mFQtW7W). In this new phase of development as we push towards our next milestone (a stable v1.0 release) we are particularly interested in hearing about how you are using Pyrefly in real production environments, including any edge cases you may encounter.
 
 ## Upgrade
 
@@ -725,7 +725,7 @@ Read more about error suppressions in the [Pyrefly documentation](https://pyrefl
 
 ## What's next?
 
-Going forward we'll be continuing development work the same as usual with weekly releases of new features and bug fixes. However we will be closing out our [Beta milestone](https://github.com/facebook/pyrefly/milestone/4?closed=1) and moving on to the next, [a stable V1 Release](https://github.com/facebook/pyrefly/milestone/2). We'll be continuing to listen to your feedback and address open issues, so if there are specific things you want to see in a stable release, or blockers for adopting Pyrefly in your project, let us know!
+Going forward we'll be continuing development work the same as usual with weekly releases of new features and bug fixes. However we will be closing out our [Beta milestone](https://github.com/pyrefly-org/pyrefly/milestone/4?closed=1) and moving on to the next, [a stable V1 Release](https://github.com/pyrefly-org/pyrefly/milestone/2). We'll be continuing to listen to your feedback and address open issues, so if there are specific things you want to see in a stable release, or blockers for adopting Pyrefly in your project, let us know!
 
 ---
 
@@ -757,14 +757,14 @@ Improved handling of `RootModel` types, including nested and union scenarios. Ba
 
 We closed 17 bug issues this release.
 
-- [#1642](https://github.com/facebook/pyrefly/issues/1642) - `TypedDicts` with any required keys are now correctly treated as always truthy, allowing for proper type narrowing in boolean expressions
-- [#1611](https://github.com/facebook/pyrefly/issues/1611) - Correctly detects `await` in nested generator expressions, preventing them from being incorrectly typed as `Generator` instead of `AsyncGenerator`
-- [#1609](https://github.com/facebook/pyrefly/issues/1609) - Fixed a bug where positional argument inlay hints for callables with `*args` would show incorrect positions or duplicates
-- [#1598](https://github.com/facebook/pyrefly/issues/1598) - Literal strings now correctly participate in protocol subset checks (e.g., against `typing.Container`), fixing an issue with type signature mismatch
-- [#1462](https://github.com/facebook/pyrefly/issues/1462) - Allow referencing inherited attributes from a class body's top level
-- [#1256](https://github.com/facebook/pyrefly/issues/1256) - Fixes crash when the walrus operator (`:=`) appears in annotation positions
-- [#273](https://github.com/facebook/pyrefly/issues/273) - Correctly handles `tuple[()] | tuple[int, *tuple[int, ...]]` to simplify to `tuple[int, ...]`
-- And more: [#1644](https://github.com/facebook/pyrefly/issues/1644), [#1635](https://github.com/facebook/pyrefly/issues/1635), [#1633](https://github.com/facebook/pyrefly/issues/1633), [#1631](https://github.com/facebook/pyrefly/issues/1631), [#1625](https://github.com/facebook/pyrefly/issues/1625), [#1604](https://github.com/facebook/pyrefly/issues/1604), [#1268](https://github.com/facebook/pyrefly/issues/1268), [#1230](https://github.com/facebook/pyrefly/issues/1230), [#1016](https://github.com/facebook/pyrefly/issues/1016), [#981](https://github.com/facebook/pyrefly/issues/981)
+- [#1642](https://github.com/pyrefly-org/pyrefly/issues/1642) - `TypedDicts` with any required keys are now correctly treated as always truthy, allowing for proper type narrowing in boolean expressions
+- [#1611](https://github.com/pyrefly-org/pyrefly/issues/1611) - Correctly detects `await` in nested generator expressions, preventing them from being incorrectly typed as `Generator` instead of `AsyncGenerator`
+- [#1609](https://github.com/pyrefly-org/pyrefly/issues/1609) - Fixed a bug where positional argument inlay hints for callables with `*args` would show incorrect positions or duplicates
+- [#1598](https://github.com/pyrefly-org/pyrefly/issues/1598) - Literal strings now correctly participate in protocol subset checks (e.g., against `typing.Container`), fixing an issue with type signature mismatch
+- [#1462](https://github.com/pyrefly-org/pyrefly/issues/1462) - Allow referencing inherited attributes from a class body's top level
+- [#1256](https://github.com/pyrefly-org/pyrefly/issues/1256) - Fixes crash when the walrus operator (`:=`) appears in annotation positions
+- [#273](https://github.com/pyrefly-org/pyrefly/issues/273) - Correctly handles `tuple[()] | tuple[int, *tuple[int, ...]]` to simplify to `tuple[int, ...]`
+- And more: [#1644](https://github.com/pyrefly-org/pyrefly/issues/1644), [#1635](https://github.com/pyrefly-org/pyrefly/issues/1635), [#1633](https://github.com/pyrefly-org/pyrefly/issues/1633), [#1631](https://github.com/pyrefly-org/pyrefly/issues/1631), [#1625](https://github.com/pyrefly-org/pyrefly/issues/1625), [#1604](https://github.com/pyrefly-org/pyrefly/issues/1604), [#1268](https://github.com/pyrefly-org/pyrefly/issues/1268), [#1230](https://github.com/pyrefly-org/pyrefly/issues/1230), [#1016](https://github.com/pyrefly-org/pyrefly/issues/1016), [#981](https://github.com/pyrefly-org/pyrefly/issues/981)
 
 ## Upgrade
 
@@ -1207,10 +1207,10 @@ A critical bug causing exponential memory usage with unions of dictionary types 
 
 13 bug issues were closed:
 
-- [#713](https://github.com/facebook/pyrefly/issues/713) - Fixed unsound narrowing for `isinstance` and `type[T]`
-- [#289](https://github.com/facebook/pyrefly/issues/289) - Expanded key-existence narrowing to dict-like types so `mapping.get("key")` returns the value type (not `None`)
-- [#2248](https://github.com/facebook/pyrefly/issues/2248) - Fixed augmented assignment (`+=`) when `__iadd__` is missing to correctly fall back to `__add__`
-- [And more!](https://github.com/facebook/pyrefly/issues?q=is%3Aissue%20state%3Aclosed%20closed%3A2026-02-02..2026-02-09%20type%3ABug)
+- [#713](https://github.com/pyrefly-org/pyrefly/issues/713) - Fixed unsound narrowing for `isinstance` and `type[T]`
+- [#289](https://github.com/pyrefly-org/pyrefly/issues/289) - Expanded key-existence narrowing to dict-like types so `mapping.get("key")` returns the value type (not `None`)
+- [#2248](https://github.com/pyrefly-org/pyrefly/issues/2248) - Fixed augmented assignment (`+=`) when `__iadd__` is missing to correctly fall back to `__add__`
+- [And more!](https://github.com/pyrefly-org/pyrefly/issues?q=is%3Aissue%20state%3Aclosed%20closed%3A2026-02-02..2026-02-09%20type%3ABug)
 
 ## Upgrade
 
@@ -1443,16 +1443,16 @@ pip install --upgrade pyrefly==0.56.0
 
 We closed 24 bug issues this release:
 
-- [#2696](https://github.com/facebook/pyrefly/issues/2696): Fixed an issue where Pyrefly's LSP incorrectly flagged `from typing import NewType` as unused, even when `NewType(...)` was referenced.
-- [#2743](https://github.com/facebook/pyrefly/issues/2743): Fixed an issue where `TypedDict` fields named items/values prevented access to the corresponding `dict.items()` / `dict.values()` methods via attribute lookup.
-- [#2745](https://github.com/facebook/pyrefly/issues/2745): Fixed an issue where chained/nested narrowing expressions (e.g. multi-clause and conditions) failed to narrow correctly when using negative subscript indices.
-- [#2737](https://github.com/facebook/pyrefly/issues/2737): Fixed an issue where `functools.partial(...)` results couldn't be assigned back to a Callable typed with a `ParamSpec`, causing a false-positive type error.
-- [#2650](https://github.com/facebook/pyrefly/issues/2650): Fixed an issue where a `Protocol` parameterised by `ParamSpec[...]` wasn't considered compatible with an equivalent "gradual" protocol using `*args: Any, **kwargs: Any`.
-- [#2334](https://github.com/facebook/pyrefly/issues/2334): Fixed an issue where calling `__init__` on parametrised bound methods could trigger a false-positive type error due to incorrect attribute lookup behaviour.
-- [#2731](https://github.com/facebook/pyrefly/issues/2731): Fixed an issue where `super()` calls to abstract methods that do have a concrete runtime body were incorrectly reported as missing-attribute / abstract-call errors.
-- [#828](https://github.com/facebook/pyrefly/issues/828): Fixed an issue where reading a conditionally-initialised variable didn't "commit" the initialisation, leading to redundant follow-on "may be uninitialised" errors.
-- [#835](https://github.com/facebook/pyrefly/issues/835): Fixed an issue where type information for subclasses wasn't handled correctly, leading to failures when type-checking subclass relationships.
-- And more! [#2522](https://github.com/facebook/pyrefly/issues/2522), [#1800](https://github.com/facebook/pyrefly/issues/1800), [#2736](https://github.com/facebook/pyrefly/issues/2736), [#2382](https://github.com/facebook/pyrefly/issues/2382), [#913](https://github.com/facebook/pyrefly/issues/913), [#1397](https://github.com/facebook/pyrefly/issues/1397), [#2261](https://github.com/facebook/pyrefly/issues/2261), [#2669](https://github.com/facebook/pyrefly/issues/2669), [#2744](https://github.com/facebook/pyrefly/issues/2744), [#2739](https://github.com/facebook/pyrefly/issues/2739), [#1575](https://github.com/facebook/pyrefly/issues/1575), [#903](https://github.com/facebook/pyrefly/issues/903), [#1043](https://github.com/facebook/pyrefly/issues/1043), [#1429](https://github.com/facebook/pyrefly/issues/1429), [#2607](https://github.com/facebook/pyrefly/issues/2607)
+- [#2696](https://github.com/pyrefly-org/pyrefly/issues/2696): Fixed an issue where Pyrefly's LSP incorrectly flagged `from typing import NewType` as unused, even when `NewType(...)` was referenced.
+- [#2743](https://github.com/pyrefly-org/pyrefly/issues/2743): Fixed an issue where `TypedDict` fields named items/values prevented access to the corresponding `dict.items()` / `dict.values()` methods via attribute lookup.
+- [#2745](https://github.com/pyrefly-org/pyrefly/issues/2745): Fixed an issue where chained/nested narrowing expressions (e.g. multi-clause and conditions) failed to narrow correctly when using negative subscript indices.
+- [#2737](https://github.com/pyrefly-org/pyrefly/issues/2737): Fixed an issue where `functools.partial(...)` results couldn't be assigned back to a Callable typed with a `ParamSpec`, causing a false-positive type error.
+- [#2650](https://github.com/pyrefly-org/pyrefly/issues/2650): Fixed an issue where a `Protocol` parameterised by `ParamSpec[...]` wasn't considered compatible with an equivalent "gradual" protocol using `*args: Any, **kwargs: Any`.
+- [#2334](https://github.com/pyrefly-org/pyrefly/issues/2334): Fixed an issue where calling `__init__` on parametrised bound methods could trigger a false-positive type error due to incorrect attribute lookup behaviour.
+- [#2731](https://github.com/pyrefly-org/pyrefly/issues/2731): Fixed an issue where `super()` calls to abstract methods that do have a concrete runtime body were incorrectly reported as missing-attribute / abstract-call errors.
+- [#828](https://github.com/pyrefly-org/pyrefly/issues/828): Fixed an issue where reading a conditionally-initialised variable didn't "commit" the initialisation, leading to redundant follow-on "may be uninitialised" errors.
+- [#835](https://github.com/pyrefly-org/pyrefly/issues/835): Fixed an issue where type information for subclasses wasn't handled correctly, leading to failures when type-checking subclass relationships.
+- And more! [#2522](https://github.com/pyrefly-org/pyrefly/issues/2522), [#1800](https://github.com/pyrefly-org/pyrefly/issues/1800), [#2736](https://github.com/pyrefly-org/pyrefly/issues/2736), [#2382](https://github.com/pyrefly-org/pyrefly/issues/2382), [#913](https://github.com/pyrefly-org/pyrefly/issues/913), [#1397](https://github.com/pyrefly-org/pyrefly/issues/1397), [#2261](https://github.com/pyrefly-org/pyrefly/issues/2261), [#2669](https://github.com/pyrefly-org/pyrefly/issues/2669), [#2744](https://github.com/pyrefly-org/pyrefly/issues/2744), [#2739](https://github.com/pyrefly-org/pyrefly/issues/2739), [#1575](https://github.com/pyrefly-org/pyrefly/issues/1575), [#903](https://github.com/pyrefly-org/pyrefly/issues/903), [#1043](https://github.com/pyrefly-org/pyrefly/issues/1043), [#1429](https://github.com/pyrefly-org/pyrefly/issues/1429), [#2607](https://github.com/pyrefly-org/pyrefly/issues/2607)
 
 ## Upgrade
 

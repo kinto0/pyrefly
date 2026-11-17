@@ -238,7 +238,7 @@ class User(Base):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1610
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1610
 testcase!(
     test_sqlalchemy_mapped_dataclass_mutable_default,
     sqlalchemy_env(),
@@ -313,7 +313,7 @@ sa.update(AdminUser).where(AdminUser.id == 1).values(deleted=False)  # E: Unexpe
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1072
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1072
 testcase!(
     test_sqlalchemy_select_filter_by_checks_mapped_fields,
     sqlalchemy_env(),

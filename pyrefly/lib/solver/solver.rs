@@ -123,7 +123,7 @@ fn normalize_answer_for_kind(kind: QuantifiedKind, ty: Cow<Type>) -> Type {
 /// Accumulated bounds for a solver variable.
 #[derive(Clone, Debug, Default)]
 struct Bounds {
-    // TODO(https://github.com/facebook/pyrefly/issues/105): use `SmallSet<Type>`; bounds should
+    // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): use `SmallSet<Type>`; bounds should
     // not be order-dependent.
     lower: Vec<Type>,
     upper: Vec<Type>,
@@ -1628,7 +1628,7 @@ impl Solver {
         }
         // Check if the new bound can absorb or be absorbed into the existing bound.
         // Examples (lower bound): `float` absorbs `int`, `list[Any]` absorbs `list[int]`.
-        // TODO(https://github.com/facebook/pyrefly/issues/105): there are a few fishy things:
+        // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): there are a few fishy things:
         // * We're only checking against the first bound.
         // * We're keeping `Any` separate so it can be filtered out in `solve_one_bounds`.
         // * We're relying on `is_subset` to pin vars.
@@ -1768,7 +1768,7 @@ impl Solver {
         let new_bound = if res.is_ok() {
             self.get_new_bound(first_bound, bound, quantified_kind, is_upper, is_subset)
         } else {
-            // TODO(https://github.com/facebook/pyrefly/issues/105): don't throw away the bound.
+            // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): don't throw away the bound.
             NewBound::AddBound(Type::any_error())
         };
         let lock = self.variables.lock();
@@ -1812,7 +1812,7 @@ impl Solver {
     }
 
     /// Get current bound from a set of bounds of an unfinished variable.
-    /// TODO(https://github.com/facebook/pyrefly/issues/105): the current solver design requires us
+    /// TODO(https://github.com/pyrefly-org/pyrefly/issues/105): the current solver design requires us
     /// to repeatedly clone and union together intermediate bounds to validate every new bound we
     /// add. Consider a less wasteful strategy, such as validating when we finish the variable.
     fn get_current_bound(&self, bounds: Vec<Type>, env: &dyn TypeEnv) -> Option<Type> {
@@ -1859,7 +1859,7 @@ impl Solver {
             bounds.upper.retain(|bound| !bound.is_placeholder());
         }
         // Prefer non-Any lower bound > upper bound > Any lower bound.
-        // TODO(https://github.com/facebook/pyrefly/issues/105): consider using polarity to
+        // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): consider using polarity to
         // determine whether we use the lower or upper bound.
         let lower_bound = self.solve_one_bounds(bounds.lower, env);
         if lower_bound.as_ref().is_none_or(|b| b.is_any()) {
@@ -4012,7 +4012,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 if root1 == root2 {
                     // same variable after unification, nothing to do
                 } else {
-                    // TODO(https://github.com/facebook/pyrefly/issues/105): unifying vars in this
+                    // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): unifying vars in this
                     // scenario is probably wrong. v1 <: v2 should mean that v2 gains v1 as a lower
                     // bound and v1 gains v2 as an upper bound, not that the two are now equal.
                     let mut v1_mut = variables.get_mut(*v1);
@@ -4182,7 +4182,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                     Variable::Quantified { quantified: q, .. }
                         if q.kind() == QuantifiedKind::ParamSpec =>
                     {
-                        // TODO(https://github.com/facebook/pyrefly/issues/105): figure out what to
+                        // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): figure out what to
                         // do with ParamSpec.
                         drop(v1_ref);
                         variables.update(*v1, Variable::answer(t2.clone()));
@@ -4401,7 +4401,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                             // If the TypeVar has constraints, we write the answer immediately to
                             // enforce that we always match the same constraint.
                             //
-                            // TODO(https://github.com/facebook/pyrefly/issues/105): figure out
+                            // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): figure out
                             // what to do with ParamSpec.
                             let answer = normalize_answer_for_kind(q.kind(), Cow::Owned(answer));
                             self.solver

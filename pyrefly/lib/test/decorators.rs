@@ -706,7 +706,7 @@ assert_type(C.g(), int)
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5294
+// https://github.com/pyrefly-org/pyrefly/issues/5294
 testcase!(
     test_classmethod_missing_receiver,
     r#"
@@ -1174,7 +1174,7 @@ def f0(arg: Callable[..., int]) -> Callable[..., int]: ...
 );
 
 // This reproduces return inference without annotating the decorator or its wrapper.
-// https://github.com/facebook/pyrefly/issues/1115
+// https://github.com/pyrefly-org/pyrefly/issues/1115
 testcase!(
     test_inferred_decorator_union_alias_display,
     r#"
@@ -1204,7 +1204,7 @@ setup_required(decorated)
     "#,
 );
 
-// Reported in https://github.com/facebook/pyrefly/issues/491
+// Reported in https://github.com/pyrefly-org/pyrefly/issues/491
 testcase!(
     test_total_ordering,
     r#"
@@ -1436,7 +1436,7 @@ class C(ABC):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3362.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3362.
 // These assignments should behave like @classmethod: cls should be type[Self],
 // calls should preserve subclass types, and initialized attributes should exist on the class.
 testcase!(
@@ -1947,7 +1947,7 @@ value: int = A().g()
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/793 - we don't
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/793 - we don't
 // want the `contextmanager` decorator to lose the "forall-ness" of the decorated
 // function.
 testcase!(

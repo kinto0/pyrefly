@@ -20,7 +20,7 @@ use tempfile::TempDir;
 use crate::test::lsp::lsp_interaction::util::get_test_files_root;
 use crate::test::lsp::lsp_interaction::util::wait_for_disk_invalidation;
 
-// https://github.com/meta/pyrefly/issues/5485
+// https://github.com/pyrefly-org/pyrefly/issues/5485
 #[test]
 fn test_references_to_class_member_after_defining_file_shifts() {
     let root = TempDir::with_prefix("pyrefly_references_class_member_shift").unwrap();
@@ -99,7 +99,7 @@ class C:
     interaction.shutdown().unwrap();
 }
 
-// https://github.com/meta/pyrefly/issues/5485
+// https://github.com/pyrefly-org/pyrefly/issues/5485
 #[test]
 fn test_references_to_parent_method_after_defining_file_shifts() {
     let root = TempDir::with_prefix("pyrefly_references_parent_method_shift").unwrap();
@@ -1297,7 +1297,7 @@ fn test_references_for_metaclass_call_priority() {
     interaction.shutdown().unwrap();
 }
 
-/// Regression test for https://github.com/facebook/pyrefly/issues/3237:
+/// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3237:
 /// `textDocument/references` should find cross-file references even when the
 /// target module starts with a docstring and the on-disk files use CRLF line
 /// endings while the editor sends LF-normalized content via `did_open`.

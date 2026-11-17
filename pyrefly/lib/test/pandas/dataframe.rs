@@ -372,7 +372,7 @@ df = pd.DataFrame([[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3891
+// https://github.com/pyrefly-org/pyrefly/issues/3891
 testcase!(
     test_sequence_not_str_element_type_overload_old_stubs,
     env_with_broken_pandas_stubs(),
@@ -394,7 +394,7 @@ assert_type(Categorical(["a", 1, "b"]), Categorical)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3891
+// https://github.com/pyrefly-org/pyrefly/issues/3891
 testcase!(
     test_sequence_not_str_element_type_overload_new_stubs,
     env_with_fixed_pandas_stubs(),

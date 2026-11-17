@@ -291,7 +291,7 @@ assert_type(x[i], int)
 testcase!(
     test_bad_literal,
     r#"
-# This used to crash, see https://github.com/facebook/pyrefly/issues/453
+# This used to crash, see https://github.com/pyrefly-org/pyrefly/issues/453
 0x_fffffffffffffffff
 1_23
 "#,
@@ -412,7 +412,7 @@ c: Sequence[str] = ""
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2068
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2068
 testcase!(
     test_literal_string_join_loop_inference,
     r#"
@@ -614,7 +614,7 @@ assert_type(x, Literal["a", "b"])
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2633
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2633
 testcase!(
     test_literal_union_annotated,
     r#"

@@ -516,7 +516,7 @@ fn test_will_rename_files_rewrites_relative_import_as_absolute_on_move() {
 // that binding, which willRenameFiles does not do. A rename therefore updates the
 // sibling `from .a import foo` but leaves `from . import a` untouched (an
 // incomplete rename the user must finish by hand). See
-// https://github.com/facebook/pyrefly/issues/4055.
+// https://github.com/pyrefly-org/pyrefly/issues/4055.
 #[test]
 fn test_will_rename_files_leaves_from_dot_import_name_unchanged() {
     let root = get_test_files_root();

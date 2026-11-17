@@ -122,7 +122,7 @@ These may change your editor setup or surface new errors in code that checked cl
 
 ### Configuration & CLI
 
-- uv workspace members (editable installs inside the project) are now checked instead of being excluded as site packages ([#2667](https://github.com/facebook/pyrefly/issues/2667)).
+- uv workspace members (editable installs inside the project) are now checked instead of being excluded as site packages ([#2667](https://github.com/pyrefly-org/pyrefly/issues/2667)).
 - Added `pyrefly completion` command to generate shell completion scripts for fish, bash, and zsh.
 - Added `baseline-auto-update` project setting that automatically prunes baseline files when saving files in the IDE.
 - Added configuration `extends` support for layered configurations.
@@ -201,7 +201,7 @@ Many of the changes above came from user reports: we closed **87** GitHub bug is
 - **#5072:** Fixed errors when using conditionally imported Pydantic metaclasses. When a Pydantic metaclass was imported through a compatibility `try`/`except`, inference would degrade and report spurious errors.
 - And more! #3525, #4901, #4525, #2667, #4813, #4989, #4995, #4991, #4844, #4592, #4694, #4986, #4846, #4858, #3828, #3970, #3722, #4606, #4725, #2260, #3704, #4848, #4879, #4885, #4640, #4919, #4741, #4368, #4129, #4605, #4688, #4730, #5021, #5037, #5080, #3407, #4494, #5058, #4618, #4400, #4888, #4478, #5073, #4935, #5070, #4881, #5071, #3380, #4264, #2911, #3323, #4876, #4703, #3977, #4977, #5204, #5169, #3689, #4987, #3361, #1211, #3466, #4792, #3822, #5188, #5210, #5016, #3465, #4118, #5082, #5084, #4332, #5233, #5236, #5213
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

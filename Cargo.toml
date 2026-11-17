@@ -40,7 +40,7 @@ resolver = "2"
 
 [workspace.package]
 license = "MIT"
-repository = "https://github.com/facebook/pyrefly"
+repository = "https://github.com/pyrefly-org/pyrefly"
 
 [workspace.lints.clippy]
 dbg_macro = { level = "deny" }

@@ -1727,7 +1727,7 @@ assert_type(A() + B(), A)  # E: `A.__add__` is deprecated
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/396
+// https://github.com/pyrefly-org/pyrefly/issues/396
 testcase!(
     test_bind_dunder_callable_simple,
     r#"
@@ -1743,7 +1743,7 @@ def test(foo: Foo) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/396
+// https://github.com/pyrefly-org/pyrefly/issues/396
 testcase!(
     test_bind_dunder_callable_2,
     r#"
@@ -1791,7 +1791,7 @@ True & ThisClassDoesNotWork(False)
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3876
+// https://github.com/pyrefly-org/pyrefly/issues/3876
 testcase!(
     test_reflected_dunder_subclass_priority,
     r#"
@@ -1852,7 +1852,7 @@ def test(a: A, b: B, c: C) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4342
+// https://github.com/pyrefly-org/pyrefly/issues/4342
 testcase!(
     test_date_datetime_comparison,
     r#"
@@ -1893,7 +1893,7 @@ def test(x, y):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/972
+// https://github.com/pyrefly-org/pyrefly/issues/972
 testcase!(
     test_int_pow_inference,
     r#"
@@ -2014,7 +2014,7 @@ p += 1  # E: `+=` is not supported
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2914
+// https://github.com/pyrefly-org/pyrefly/issues/2914
 testcase!(
     test_bool_conversion_non_callable,
     r#"
@@ -2025,7 +2025,7 @@ assert BadBool()  # E: The `__bool__` attribute of `BadBool` has type `int`, whi
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2913
+// https://github.com/pyrefly-org/pyrefly/issues/2913
 testcase!(
     test_bool_conversion_in_contains,
     r#"

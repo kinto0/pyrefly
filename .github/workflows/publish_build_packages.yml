@@ -366,7 +366,7 @@ jobs:
           working-directory: pyrefly
         env:
           # aarch64-linux builds need JEMALLOC_SYS_WITH_LG_PAGE=16, or they segfault.
-          # See https://github.com/facebook/pyrefly/issues/380
+          # See https://github.com/pyrefly-org/pyrefly/issues/380
           JEMALLOC_SYS_WITH_LG_PAGE: 16
       - name: Build wheels ppc64le
         if: ${{ startsWith(matrix.platform.target, 'powerpc64le') }}
@@ -468,7 +468,7 @@ jobs:
       - name: Set jemalloc page size for ARM64 Linux
         if: ${{ startsWith(matrix.platform.target, 'aarch64') }}
         # aarch64-linux builds need JEMALLOC_SYS_WITH_LG_PAGE=16, or they segfault.
-        # See https://github.com/facebook/pyrefly/issues/380
+        # See https://github.com/pyrefly-org/pyrefly/issues/380
         run: echo "JEMALLOC_SYS_WITH_LG_PAGE=16" >> "$GITHUB_ENV"
       # A revision from before PGO, such as an old tag that the upload workflow
       # rebuilds, has no scripts/pgo.py and builds without it. `inputs.pgo` is

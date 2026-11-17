@@ -286,7 +286,7 @@ fn test_get_computed_type_string_is_class() {
 
 #[test]
 fn test_get_computed_type_none_is_class() {
-    // Regression test for https://github.com/facebook/pyrefly/issues/4035:
+    // Regression test for https://github.com/pyrefly-org/pyrefly/issues/4035:
     // `None` must be a `NoneType` `ClassType`, not an off-spec `none`
     // `BuiltInType`, so consumers can reconstruct unions like `str | None`.
     // The declaration is sourced from the stdlib's `NoneType` class, so it
@@ -408,7 +408,7 @@ fn test_get_computed_type_function_is_function_type() {
 
 #[test]
 fn test_get_computed_type_in_unopened_file() {
-    // Regression test for https://github.com/facebook/pyrefly/issues/4228:
+    // Regression test for https://github.com/pyrefly-org/pyrefly/issues/4228:
     // `getComputedType` is keyed by `(uri, range)` and must resolve nodes in any
     // analyzable file, not only open documents. Here `lib.py` is on disk and
     // imported by the open `main.py`, but is itself never `didOpen`ed; querying a

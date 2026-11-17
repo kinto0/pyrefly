@@ -4193,7 +4193,7 @@ Definition Result:
     );
 }
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5229.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5229.
 #[test]
 fn goto_def_nn_module_call_goes_to_forward() {
     let module_code = r#"

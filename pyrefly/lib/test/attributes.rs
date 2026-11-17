@@ -1594,8 +1594,8 @@ assert_type(Bar.y, list[A])
     "#,
 );
 
-// Ref https://github.com/facebook/pyrefly/issues/370
-// Ref https://github.com/facebook/pyrefly/issues/522
+// Ref https://github.com/pyrefly-org/pyrefly/issues/370
+// Ref https://github.com/pyrefly-org/pyrefly/issues/522
 testcase!(
     test_cls_attribute_in_constructor,
     r#"
@@ -1990,7 +1990,7 @@ C().f()  # E: Expected 0 positional arguments, got 1 (including implicit `self`)
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5295
+// https://github.com/pyrefly-org/pyrefly/issues/5295
 testcase!(
     test_instance_method_missing_receiver,
     r#"
@@ -2143,7 +2143,7 @@ C().f = lambda _, x: x
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3465
+// https://github.com/pyrefly-org/pyrefly/issues/3465
 testcase!(
     test_callable_with_containing_class_first_param_is_method,
     r#"
@@ -2716,7 +2716,7 @@ testcase!(
 # Implicit dunders like `__bool__` are looked up on the type and are not
 # resolved through `__getattr__`, so a `__getattr__` returning a non-callable
 # type must not make an instance look like it has a non-callable `__bool__`.
-# Regression test for https://github.com/facebook/pyrefly/issues/4467
+# Regression test for https://github.com/pyrefly-org/pyrefly/issues/4467
 class Tensor: ...
 class M:
     def __getattr__(self, name: str) -> "Tensor | M": ...
@@ -2953,7 +2953,7 @@ class MyTest(Any):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2204
+// https://github.com/pyrefly-org/pyrefly/issues/2204
 testcase!(
     test_generic_function_assigned_to_attribute,
     r#"
@@ -2980,7 +2980,7 @@ def test(o: D):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2812
+// https://github.com/pyrefly-org/pyrefly/issues/2812
 testcase!(
     test_bound_overload_assigned_to_attribute,
     r#"
@@ -2997,7 +2997,7 @@ def test(stack: ThemeStack) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3958
+// https://github.com/pyrefly-org/pyrefly/issues/3958
 testcase!(
     test_property_returning_bound_method_preserves_signature,
     r#"
@@ -4106,7 +4106,7 @@ class C(A):
 testcase!(
     test_method_sets_inherited_generic_field,
     r#"
-# Regression test for a bug tracked in https://github.com/facebook/pyrefly/issues/774
+# Regression test for a bug tracked in https://github.com/pyrefly-org/pyrefly/issues/774
 from typing import assert_type, Any
 class A[T]:
     x: T
@@ -4299,7 +4299,7 @@ assert_type(C.foo, str)
     "#,
 );
 
-// See https://github.com/facebook/pyrefly/issues/1448 for what this tests
+// See https://github.com/pyrefly-org/pyrefly/issues/1448 for what this tests
 // and discussion of approaches to handling `@functools.wraps` with return
 // type inference.
 testcase!(
@@ -4603,7 +4603,7 @@ def f() -> list[dict[str, Any]]:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1341
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1341
 testcase!(
     test_optional_type_truthiness,
     r#"
@@ -4619,7 +4619,7 @@ class B(A[None]):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/417
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/417
 testcase!(
     test_classmethod_inherited_no_missing_attribute,
     r#"

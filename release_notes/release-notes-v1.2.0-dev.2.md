@@ -60,7 +60,7 @@ We closed **26** bug reports this release 👏
 - **#4073:** Fixed unpacked `TypeVarTuple` arguments like `tuple[int, *Ts]` not being assignable to varargs type `tuple[int, *Ts]` due to an internal mismatch in how Pyrefly represented the tuple types.
 - And more! #4025, #4019, #4020, #4021, #3730, #3732, #3997, #4018, #4023, #3949, #4022, #3920, #4092, #3078, #3960, #4064
 
-Thank you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly, we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly, we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

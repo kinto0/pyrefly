@@ -1352,7 +1352,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // TODO: simplify some tuple forms
         // - unbounded tuples can be narrowed to empty tuple if len==1
         // - unpacked tuples can be narrowed to concrete prefix+suffix if len==prefix.len()+suffix.len()+1
-        // this needs to be done in conjunction with https://github.com/facebook/pyrefly/issues/273
+        // this needs to be done in conjunction with https://github.com/pyrefly-org/pyrefly/issues/273
         // otherwise the narrowed forms make weird unions when used with control flow
         self.distribute_over_union(ty, |ty| match ty {
             Type::Tuple(Tuple::Concrete(elts)) if elts.len() >= len => self.heap.mk_never(),
@@ -2085,7 +2085,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         let target = if is_builtin_callable {
                             // `callable` is annotated as `TypeIs[Callable[..., object]]` which is
                             // too conservative and prone to false positives, see
-                            // https://github.com/facebook/pyrefly/issues/911
+                            // https://github.com/pyrefly-org/pyrefly/issues/911
                             self.heap.mk_callable_ellipsis(self.heap.mk_any_implicit())
                         } else {
                             *t

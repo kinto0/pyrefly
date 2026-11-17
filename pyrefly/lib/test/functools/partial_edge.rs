@@ -13,7 +13,7 @@ use crate::functools_testcase;
 use crate::test::util::TestEnv;
 use crate::testcase;
 
-// Regression: https://github.com/facebook/pyrefly/issues/149 (closed — pyrefly already passes)
+// Regression: https://github.com/pyrefly-org/pyrefly/issues/149 (closed — pyrefly already passes)
 functools_testcase!(
     test_partial_keyword_bind_callable_arg,
     r#"

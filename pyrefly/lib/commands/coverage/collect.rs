@@ -2812,7 +2812,7 @@ mod tests {
 
     /// @overload merging with a fallback returning `Any`.
     /// Best-wins semantics mean the merged return is `Typed`, not `Any`.
-    /// Regression test for https://github.com/facebook/pyrefly/issues/3257.
+    /// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3257.
     #[test]
     fn test_report_overloads_any_fallback() {
         let report = build_module_report_for_test("overloads_any_fallback.py");
@@ -3340,7 +3340,7 @@ def g(x: int) -> int:
         assert!(!fqns.contains("pkg.baz"));
 
         // A re-export of a name its origin module doesn't define keeps the
-        // local FQN but traces to no origin (github.com/facebook/pyrefly/issues/4025)
+        // local FQN but traces to no origin (github.com/pyrefly-org/pyrefly/issues/4025)
         let (fqns, origins) = compute(
             &[
                 (

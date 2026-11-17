@@ -1650,9 +1650,9 @@ impl Type {
             // * If we were to blindly visit the entire ClassType, we would find Quantifieds in
             //   the definition of the class, which is almost never what we want: we want to
             //   know if `X` contains any references to Quantifieds, not whether `A` is generic.
-            //   See https://github.com/facebook/pyrefly/issues/1962.
+            //   See https://github.com/pyrefly-org/pyrefly/issues/1962.
             // * Not checking the rest of the ClassType is a critical performance optimization
-            //   when visiting Vars. See https://github.com/facebook/pyrefly/issues/2016.
+            //   when visiting Vars. See https://github.com/pyrefly-org/pyrefly/issues/2016.
             Type::ClassType(cls) => recurse_targs(cls.targs()),
             // `Self` is a keyword, not a user-written type variable reference, so we don't
             // recurse into it when looking for type variable references.

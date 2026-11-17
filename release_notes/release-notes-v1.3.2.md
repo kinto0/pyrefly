@@ -11,7 +11,7 @@ Pyrefly v1.3.2 is a patch release that fixes regressions in how Pyrefly infers t
   - When a variable annotated as `Optional[T]` or `T | None` is narrowed to `None` and then reassigned inside that branch, Pyrefly no longer adds the annotation's `None` back after the branch. For example, `x: Any | None` followed by `if x is None: x = get_any()` now gives `Any` instead of `Any | None`.
   - When a variable's annotation is a union that contains `Any`, assigning `Any` to it now narrows the variable to `Any`. For example, `x: Any | None` followed by `x = x or get_any()` now gives `Any` instead of `Any | None`, so later attribute access no longer reports a false `missing-attribute` error on `None`.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

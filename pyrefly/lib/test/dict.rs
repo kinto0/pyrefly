@@ -94,7 +94,7 @@ x: C | dict[str, int] = {"y": 0}
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4913
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4913
 testcase!(
     test_dict_literal_union_hint_with_generic_dict_member,
     r#"
@@ -116,7 +116,7 @@ assert_type(first({k: 1 for k in ["a"]}), dict[str, int])
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4937
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4937
 testcase!(
     test_dict_literal_generic_hint_checks_typevar_bound,
     r#"
@@ -135,7 +135,7 @@ key_in_union({"a": 1})  # E: `Literal[1]` is not assignable to dict value type `
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4937
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4937
 testcase!(
     test_dict_literal_overload_falls_through_on_typevar_bound,
     r#"

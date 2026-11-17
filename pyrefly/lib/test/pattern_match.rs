@@ -53,14 +53,14 @@ def test(x: int | bytes | str):
 testcase!(
     test_pattern_crash,
     r#"
-# Used to crash, see https://github.com/facebook/pyrefly/issues/490
+# Used to crash, see https://github.com/pyrefly-org/pyrefly/issues/490
 match None: # E: Missing cases: None
     case {a: 1}: # E: # E: # E:
         pass
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4631.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4631.
 testcase!(
     test_recursive_alias_mapping_pattern_does_not_overflow,
     r#"
@@ -360,7 +360,7 @@ def attribute_any(h: Holder) -> None:
 "#,
 );
 
-// Regression test for https://github.com/meta/pyrefly/issues/5549.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5549.
 testcase!(
     test_match_case_gradual_base,
     r#"
@@ -1191,7 +1191,7 @@ def describe(flag: bool):
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3294
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3294
 testcase!(
     test_open_domain_match_not_checked_by_default,
     r#"
@@ -1489,7 +1489,7 @@ def test_dict_first(dict_or_none: dict[str, Any] | None):
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1708
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1708
 testcase!(
     test_match_exhaustive_literal_no_unbound,
     r#"
@@ -1508,7 +1508,7 @@ def func(x: Literal[1, 2]) -> None:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1369
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1369
 testcase!(
     test_match_object_with_tuple_pattern,
     r#"
@@ -1521,7 +1521,7 @@ def handle(o: object) -> int:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2826
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2826
 testcase!(
     test_match_sequence_pattern_on_attribute,
     r#"
@@ -1763,7 +1763,7 @@ def test(w: A | B, x: A | B, y: A | B, z: A | B):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3731
+// https://github.com/pyrefly-org/pyrefly/issues/3731
 testcase!(
     test_nested_class_pattern_exhaustive,
     r#"
@@ -1926,7 +1926,7 @@ def f(h: Holder) -> int:  # E: one or more paths are missing an explicit
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3805
+// https://github.com/pyrefly-org/pyrefly/issues/3805
 testcase!(
     test_match_tuple_union_narrowing,
     r#"
@@ -2002,7 +2002,7 @@ def f(t: tuple[int, str] | tuple[str, int]) -> int:  # E: one or more paths are 
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4066
+// https://github.com/pyrefly-org/pyrefly/issues/4066
 testcase!(
     test_match_tuple_subject_exhaustive_rows,
     r#"
@@ -2070,7 +2070,7 @@ def f(t: tuple[object, int] | tuple[object, str]) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3883
+// https://github.com/pyrefly-org/pyrefly/issues/3883
 testcase!(
     test_match_sequence_literal_element,
     r#"
@@ -2088,7 +2088,7 @@ def exhaustive(value: MyUnion) -> str:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2474
+// https://github.com/pyrefly-org/pyrefly/issues/2474
 testcase!(
     test_match_mapping_pattern_else_narrow,
     r#"
@@ -2110,7 +2110,7 @@ def keyed_pattern_does_not_narrow_else(x: dict | int) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4972
+// https://github.com/pyrefly-org/pyrefly/issues/4972
 testcase!(
     test_match_tuple_optional_captures,
     r#"
@@ -2182,7 +2182,7 @@ def three_elements(a: int | None, b: str | None, c: bytes | None) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3213
+// https://github.com/pyrefly-org/pyrefly/issues/3213
 testcase!(
     test_match_tuple_none_cases_narrow,
     r#"
@@ -2382,7 +2382,7 @@ def constant(a: int | None) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2932
+// https://github.com/pyrefly-org/pyrefly/issues/2932
 testcase!(
     test_match_false_positive_unbound_name,
     r#"
@@ -2485,7 +2485,7 @@ def f(c: C) -> None:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4888.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4888.
 testcase!(
     test_match_class_pattern_with_replaced_import,
     TestEnv::new().with_replace_imports_with_any(&["pandas"]),
@@ -2513,7 +2513,7 @@ def f(x: object) -> None:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5340.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5340.
 testcase!(
     test_negated_sequence_pattern_narrows_element,
     r#"
@@ -2668,7 +2668,7 @@ def partial_before_subclass(b: B) -> None:
 
 // A repeated partial class pattern is still not reported: its negation cannot
 // subtract the class, because `ClassCoverageGate` only subtracts when every
-// sub-pattern exhausts its slot. Tracked in https://github.com/facebook/pyrefly/issues/5516.
+// sub-pattern exhausts its slot. Tracked in https://github.com/pyrefly-org/pyrefly/issues/5516.
 testcase!(
     bug = "duplicate partial class pattern is not reported",
     test_match_case_reachable_duplicate_partial_class_pattern,

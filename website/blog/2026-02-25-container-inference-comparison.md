@@ -193,7 +193,7 @@ Ultimately, the choice of strategy depends on the priorities of your project and
 
 The Pyrefly team believes that type safety is not the only goal of building a type checker – type errors also need to be actionable and easily-understood by users. As a result, we adopt the first-use inference by default which we believe gives the best balance of actionable error messages and type safety. We also recognize the need for greater flexibility from some users, so we've provided the ability to [disable first-use inference](https://pyrefly.org/en/docs/configuration/#infer-with-first-use), which would make Pyrefly behave more like Pyright.
 
-What’s your take on empty container inference? Share your thoughts or questions with us on [Discord](https://discord.gg/Cf7mFQtW7W) or in a [GitHub Discussion](https://github.com/facebook/pyrefly/discussions)\!
+What’s your take on empty container inference? Share your thoughts or questions with us on [Discord](https://discord.gg/Cf7mFQtW7W) or in a [GitHub Discussion](https://github.com/pyrefly-org/pyrefly/discussions)\!
 
 ---
 

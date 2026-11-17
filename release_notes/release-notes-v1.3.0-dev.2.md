@@ -56,7 +56,7 @@ We closed **16** bug issues this release 👏
 - **#4378:** Variadic positional parameter hints now preserve the `*` marker, so `args=` becomes `*args=` in signature help.
 - And more! #3987, #4401, #3706, #3447, #4521, #3183
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

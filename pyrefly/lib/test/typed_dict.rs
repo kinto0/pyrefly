@@ -2033,7 +2033,7 @@ test2: TestBadUnpackingError = {"bar": True, "foo": True}
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5184
+// https://github.com/pyrefly-org/pyrefly/issues/5184
 testcase!(
     test_unpack_inherited_typeddict_with_union_hint,
     r#"

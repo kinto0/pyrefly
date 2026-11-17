@@ -20,6 +20,6 @@
 #   * For a minor or patch release, the publish workflows kick off when the commit has been
 #     cherry-picked onto a release branch.
 # * The publish workflows are:
-#   * https://github.com/facebook/pyrefly/actions/workflows/publish_to_pypi.yml
-#   * https://github.com/facebook/pyrefly/actions/workflows/publish_extension.yml
+#   * https://github.com/pyrefly-org/pyrefly/actions/workflows/publish_to_pypi.yml
+#   * https://github.com/pyrefly-org/pyrefly/actions/workflows/publish_extension.yml
 VERSION = "1.5.0-dev.1"

@@ -47,7 +47,7 @@ describe('Sandbox Component', () => {
         );
         expect(buildLink).toHaveAttribute(
             'href',
-            `https://github.com/facebook/pyrefly/commit/${pyreflyCommit}`
+            `https://github.com/pyrefly-org/pyrefly/commit/${pyreflyCommit}`
         );
 
         // Run test with --update-snapshot to update the snapshot if the test is failing after

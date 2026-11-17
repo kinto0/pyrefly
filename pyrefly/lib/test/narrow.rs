@@ -1305,7 +1305,7 @@ from typing import Any, Iterable, assert_type
 # `Iterable[Any]` overlaps with both `str` and `bytes` (both are iterable).
 # In the negative branch of `isinstance(a, (str, bytes))` we should still
 # remove the `str` and `bytes` alternatives from the remaining union.
-# Regression test for facebook/pyrefly#3412.
+# Regression test for pyrefly-org/pyrefly#3412.
 def f(a: float | str | bytes | Iterable[Any]) -> None:
     if isinstance(a, (str, bytes)):
         pass
@@ -2479,7 +2479,7 @@ def test_literal_string(x: str | None, values: set[LiteralString]) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5178
+// https://github.com/pyrefly-org/pyrefly/issues/5178
 testcase!(
     test_positive_equality_non_literal,
     r#"
@@ -3048,7 +3048,7 @@ def test(x: tuple[int, int], y: tuple[int, *tuple[int, ...], int], z: tuple[int,
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1616
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1616
 testcase!(
     test_dict_literal_key_isinstance_narrowing,
     r#"
@@ -3736,7 +3736,7 @@ def f(x: int):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1592
+// https://github.com/pyrefly-org/pyrefly/issues/1592
 testcase!(
     test_disjoint_bases_subclasses,
     r#"
@@ -4148,7 +4148,7 @@ def f(x: A):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1642
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1642
 testcase!(
     test_typed_dict_truthiness_narrowing,
     r#"
@@ -4369,7 +4369,7 @@ def f(inputs: Sequence[int]):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1570
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1570
 testcase!(
     test_narrow_not_in_dict,
     r#"
@@ -4383,7 +4383,7 @@ def example(variable: str | None) -> str:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1575
+// https://github.com/pyrefly-org/pyrefly/issues/1575
 testcase!(
     test_typevar_isinstance_narrow_else,
     r#"
@@ -4424,7 +4424,7 @@ def test3(x: V) -> V:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2607
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2607
 testcase!(
     test_narrow_sequence_to_tuple_return,
     r#"
@@ -4437,7 +4437,7 @@ def f(x: Sequence[int]) -> tuple[int, ...]:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2607
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2607
 testcase!(
     test_narrow_sequence_to_tuple_assert_type,
     r#"
@@ -5029,7 +5029,7 @@ def test_dict(x: dict[str, object] | dict[Never, object]):
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5159
+// https://github.com/pyrefly-org/pyrefly/issues/5159
 testcase!(
     test_truthiness_narrow_typevar,
     r#"
@@ -5121,7 +5121,7 @@ def custom[T: Falsy](value: T) -> T:
 "#,
 );
 
-// https://github.com/meta/pyrefly/issues/5544
+// https://github.com/pyrefly-org/pyrefly/issues/5544
 testcase!(
     test_narrow_error_any_join,
     r#"
@@ -5208,7 +5208,7 @@ def terminated() -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5255
+// https://github.com/pyrefly-org/pyrefly/issues/5255
 testcase!(
     test_narrow_or_placeholder_gradual,
     r#"
@@ -5272,7 +5272,7 @@ def preserve_facets_and_subtypes(x: A, flag: bool) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5147
+// https://github.com/pyrefly-org/pyrefly/issues/5147
 testcase!(
     test_isinstance_union_with_typevar_classinfo,
     r#"

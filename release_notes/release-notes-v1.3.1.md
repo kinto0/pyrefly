@@ -8,7 +8,7 @@ Pyrefly v1.3.1 is a patch release with a single bug fix.
 
 - **#4909:** Fixed a critical issue where Pyrefly would immediately crash on startup with a thread panic when empty or relative base paths were encountered during configuration. The server now safely resolves these paths against the working directory, preventing the crash and allowing normal operation.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

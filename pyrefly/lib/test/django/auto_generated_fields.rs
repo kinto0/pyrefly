@@ -83,7 +83,7 @@ assert_type(child.pk, str)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4995
+// https://github.com/pyrefly-org/pyrefly/issues/4995
 django_testcase!(
     test_foreign_key_primary_key,
     r#"
@@ -168,7 +168,7 @@ assert_type(obj.pk, str)
 
 // Abstract bases without their own pk get a synthesized `id: int`. A child that
 // declares its own `id` primary key should not be flagged as overriding it.
-// https://github.com/meta/pyrefly/issues/4596
+// https://github.com/pyrefly-org/pyrefly/issues/4596
 django_testcase!(
     test_custom_id_pk_overrides_synthesized_id,
     r#"

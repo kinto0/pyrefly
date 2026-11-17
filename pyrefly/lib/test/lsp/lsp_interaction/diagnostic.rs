@@ -850,7 +850,7 @@ fn test_stream_diagnostics_no_flicker_after_undo_edit() {
 /// Test opening a file while a recheck for another file is happening.
 /// Start with only b open, then open file d while a recheck for b is happening.
 // TODO: Flaky on GitHub CI — disabled until stabilized.
-// https://github.com/facebook/pyrefly/actions/runs/26119243466/job/76816531108
+// https://github.com/pyrefly-org/pyrefly/actions/runs/26119243466/job/76816531108
 #[cfg(not(fbcode_build))]
 #[test]
 #[ignore]
@@ -1007,7 +1007,7 @@ fn test_cycle_class() {
     interaction.shutdown().unwrap();
 }
 
-/// Regression test for <https://github.com/facebook/pyrefly/issues/3789>.
+/// Regression test for <https://github.com/pyrefly-org/pyrefly/issues/3789>.
 ///
 /// Opening `expr.py` — part of a 3-module import cycle
 /// (`expr` -> `add` -> `operations` -> `expr`) whose `expr` module contains a

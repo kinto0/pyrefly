@@ -1273,7 +1273,7 @@ normalized_union_class: type[SingletonE] | type[SingletonF]
         ("mixed_str_enum_class.title", "class", "property"),
         ("Holder.title", "class", "property"),
         // BUG: A should be enumMember, but normalization loses the enum literal types.
-        // https://github.com/meta/pyrefly/issues/5645
+        // https://github.com/pyrefly-org/pyrefly/issues/5645
         ("normalized_union_class.A", "class", "property"),
     ] {
         let (receiver, attribute) = expression.split_once('.').unwrap();

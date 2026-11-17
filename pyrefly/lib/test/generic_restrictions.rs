@@ -168,7 +168,7 @@ def valid(x: int) -> Container[Any]:
  "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5269
+// https://github.com/pyrefly-org/pyrefly/issues/5269
 testcase!(
     test_bound_with_nested_optional_argument,
     r#"
@@ -689,7 +689,7 @@ class Foo[T: (A, B)]:
 testcase!(
     test_union_bounded_typevar_with_property_get,
     r#"
-# https://github.com/facebook/pyrefly/issues/869
+# https://github.com/pyrefly-org/pyrefly/issues/869
 from collections import defaultdict
 from typing import assert_type
 
@@ -835,7 +835,7 @@ def not_subscriptable[S: int](x: S) -> None:
 testcase!(
     test_constrained_typevar_method_arguments,
     r#"
-# https://github.com/facebook/pyrefly/issues/3621
+# https://github.com/pyrefly-org/pyrefly/issues/3621
 from typing import TypeVar, assert_type
 
 class DataFrame:
@@ -923,7 +923,7 @@ def merge[T: (A, B)](x: T, y: T) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5452
+// https://github.com/pyrefly-org/pyrefly/issues/5452
 // `f1` uses final classes, so its constraints are provably disjoint, and checks that a generic
 // method called with an argument of type `T` returns `T`. `h` shows the parameter types printed
 // when an argument is rejected.
@@ -1713,7 +1713,7 @@ f(0, "wrong")  # E: `Literal['wrong']` is not assignable to parameter `y` with t
 );
 
 testcase!(
-    bug = "TODO(https://github.com/facebook/pyrefly/issues/105): error message should also flag `Literal['oops']`",
+    bug = "TODO(https://github.com/pyrefly-org/pyrefly/issues/105): error message should also flag `Literal['oops']`",
     test_multiple_bad_specialization,
     r#"
 def f[T: int](x: T, y: T): ...

@@ -173,7 +173,7 @@ class Model(BaseModel):
 "#,
 );
 
-// See https://github.com/facebook/pyrefly/issues/4569. Not pydantic-specific — `Field`
+// See https://github.com/pyrefly-org/pyrefly/issues/4569. Not pydantic-specific — `Field`
 // just happens to be a TypeVar-returning generic function, the shape that triggers the
 // underlying bug (see test_call_hint_with_wide_literal_union in test::contextual for the
 // general-purpose reproduction and fix).

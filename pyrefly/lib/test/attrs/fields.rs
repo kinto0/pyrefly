@@ -543,7 +543,7 @@ class C:
 "#,
 );
 
-// attrs treats `converter=None` as no converter: https://github.com/facebook/pyrefly/issues/5283
+// attrs treats `converter=None` as no converter: https://github.com/pyrefly-org/pyrefly/issues/5283
 attrs_testcase!(
     test_attrs_field_converter_none_init_param,
     r#"
@@ -568,7 +568,7 @@ reveal_type(C.__init__)  # E: revealed type: (self: C, a: int, b: int, c: int, d
 "#,
 );
 
-// attrs treats `converter=None` as no converter: https://github.com/facebook/pyrefly/issues/5283
+// attrs treats `converter=None` as no converter: https://github.com/pyrefly-org/pyrefly/issues/5283
 attrs_testcase!(
     test_attrs_field_converter_none_default_type_check,
     r#"
@@ -608,7 +608,7 @@ reveal_type(C.__init__)  # E: revealed type: (self: C, x: str | Unknown) -> None
 "#,
 );
 
-// attrs treats `converter=None` as no converter: https://github.com/facebook/pyrefly/issues/5283
+// attrs treats `converter=None` as no converter: https://github.com/pyrefly-org/pyrefly/issues/5283
 attrs_testcase!(
     test_attrs_field_converter_none_decorators,
     r#"
@@ -632,7 +632,7 @@ reveal_type(C.__init__)  # E: revealed type: (self: C, a: str, b: int = ...) -> 
 "#,
 );
 
-// attrs treats `converter=None` as no converter: https://github.com/facebook/pyrefly/issues/5283
+// attrs treats `converter=None` as no converter: https://github.com/pyrefly-org/pyrefly/issues/5283
 attrs_testcase!(
     test_attrs_field_converter_none_attribute_assignment,
     r#"

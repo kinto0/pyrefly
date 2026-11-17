@@ -166,7 +166,7 @@ assert_type(Contact.address.field.max_length, int | None)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5322
+// https://github.com/pyrefly-org/pyrefly/issues/5322
 django_testcase!(
     test_field_expression_assignment,
     r#"

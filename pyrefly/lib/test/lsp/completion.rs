@@ -179,7 +179,7 @@ fn completion_sort_text(code: &str, label: &str) -> Option<String> {
     item.sort_text
 }
 
-// https://github.com/facebook/pyrefly/issues/1211
+// https://github.com/pyrefly-org/pyrefly/issues/1211
 #[test]
 fn completion_dunder_attribute_inherited_from_object() {
     let code = r#"
@@ -3353,7 +3353,7 @@ fn subscript_rewrite_labels(code: &str) -> Vec<String> {
         .collect()
 }
 
-// https://github.com/meta/pyrefly/issues/5478
+// https://github.com/pyrefly-org/pyrefly/issues/5478
 #[test]
 fn typed_dict_attribute_completion_rewrites_to_subscript() {
     let code = r#"
@@ -5099,7 +5099,7 @@ Completion Results:
     );
 }
 
-// https://github.com/facebook/pyrefly/issues/5223
+// https://github.com/pyrefly-org/pyrefly/issues/5223
 #[test]
 fn autoimport_skips_module_name_with_non_identifier() {
     let code = r#"
@@ -5802,7 +5802,7 @@ This has documentation.
     );
 }
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1257.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1257.
 // Completion takes its base type from the type trace, and hover rendering of a bound method
 // shows the `self` parameter that ordinary display strips. Both the detail string and the
 // property's type therefore expose whatever the trace holds, so this pins that no solver
@@ -6037,7 +6037,7 @@ needs_base(val)
 #[test]
 fn bound_method_completions_include_descriptor_attributes() {
     // Make sure completions work for bound methods from custom descriptors.
-    // See: https://github.com/facebook/pyrefly/issues/821
+    // See: https://github.com/pyrefly-org/pyrefly/issues/821
     let code = r#"
 from __future__ import annotations
 from typing import Callable

@@ -435,7 +435,7 @@ impl ErrorCollector {
                 if cfg!(fbcode_build) {
                     "Please report the bug at https://fb.workplace.com/groups/pyreqa"
                 } else {
-                    "Please report the bug at https://github.com/facebook/pyrefly/issues/new"
+                    "Please report the bug at https://github.com/pyrefly-org/pyrefly/issues/new"
                 }
                 .to_owned(),
             )

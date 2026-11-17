@@ -2079,7 +2079,7 @@ reveal_type(df.drop("*"))  # E: revealed type: DataFrame
 "#,
 );
 
-// See https://github.com/facebook/pyrefly/issues/4565.
+// See https://github.com/pyrefly-org/pyrefly/issues/4565.
 polars_testcase!(
     test_select_method_keyword_tracks_schema,
     r#"
@@ -2907,7 +2907,7 @@ reveal_type(df.with_columns(pl.Series()))  # E: revealed type: DataFrame
 "#,
 );
 
-// See https://github.com/facebook/pyrefly/issues/4565.
+// See https://github.com/pyrefly-org/pyrefly/issues/4565.
 polars_testcase!(
     test_with_columns_positional_alias_tracks_schema,
     r#"
@@ -2918,7 +2918,7 @@ reveal_type(df.with_columns(pl.col("a").alias("c")))  # E: revealed type: DataFr
 "#,
 );
 
-// The exact reproduction from https://github.com/facebook/pyrefly/issues/4565: a positional
+// The exact reproduction from https://github.com/pyrefly-org/pyrefly/issues/4565: a positional
 // conditional expression. Depends on both the positional/keyword fix above and the
 // when/then/otherwise recognition in `polars_expr_has_single_output`.
 polars_testcase!(

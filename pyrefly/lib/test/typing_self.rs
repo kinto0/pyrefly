@@ -256,7 +256,7 @@ tupleSelf = tuple[Self] # E: `Self` must appear within a class
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3008
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3008
 testcase!(
     test_self_outside_class_no_internal_error_via_classmethod_trampoline,
     r#"
@@ -377,7 +377,7 @@ child2: Child = Child.create_annotated()  # OK with explicit Self annotation
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2526
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2526
 testcase!(
     test_self_no_invalid_typevar,
     r#"
@@ -816,7 +816,7 @@ class D:
 testcase!(
     test_classmethod_subclass_cls_diagnostic_wording,
     r#"
-# Regression for https://github.com/facebook/pyrefly/issues/4703:
+# Regression for https://github.com/pyrefly-org/pyrefly/issues/4703:
 # the diagnostic names the class `Child` that the superclass check compares with `Base`.
 class Base:
     @classmethod

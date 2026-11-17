@@ -2737,7 +2737,7 @@ C(42)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2923
+// https://github.com/pyrefly-org/pyrefly/issues/2923
 testcase!(
     test_dataclass_on_named_tuple,
     r#"
@@ -2752,7 +2752,7 @@ dataclass(Coord)  # E: Cannot apply `@dataclass` to NamedTuple `Coord`
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2921
+// https://github.com/pyrefly-org/pyrefly/issues/2921
 testcase!(
     test_dataclass_on_protocol,
     r#"
@@ -2780,7 +2780,7 @@ dataclass(Color)  # E: Cannot apply `@dataclass` to Enum `Color`
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2921
+// https://github.com/pyrefly-org/pyrefly/issues/2921
 testcase!(
     test_dataclass_decorator_on_protocol,
     r#"
@@ -2801,7 +2801,7 @@ class DC2(Protocol, DC):  # E: If `Protocol` is included as a base class, all ot
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2921
+// https://github.com/pyrefly-org/pyrefly/issues/2921
 testcase!(
     test_dataclass_protocol_fields_in_subclass,
     r#"
@@ -2823,7 +2823,7 @@ Child("bad", "ok")  # E: Argument `Literal['bad']` is not assignable to paramete
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3751
+// https://github.com/pyrefly-org/pyrefly/issues/3751
 testcase!(
     test_dataclass_decorator_on_named_tuple,
     r#"
@@ -2836,7 +2836,7 @@ class Foo(NamedTuple):  # E: Cannot apply `@dataclass` to NamedTuple
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2920
+// https://github.com/pyrefly-org/pyrefly/issues/2920
 testcase!(
     test_frozen_dataclass_override_setattr_delattr,
     r#"

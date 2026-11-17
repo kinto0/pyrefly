@@ -108,7 +108,7 @@ We closed **48** bug issues this release 👏
 - **#4155:** Generic function converters in attrs fields (like `copy.deepcopy`) now solve their type variables against the field's declared type, so the `__init__` parameter is correctly typed instead of leaking a bare `TypeVar`.
 - And more! #4123, #4125, #4127, #4128, #3330, #3638, #3546, #4107, #3329, #2495, #4034, #4082, #3900, #3435, #3701, #3056, #633, #3857, #3814, #3154, #3085, #2817, #1770, #1689, #1510, #964, #1866, #1084, #4164, #3821, #3727, #3669, #3368, #2504, #2235, #1681, #1663, #1373
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

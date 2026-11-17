@@ -435,7 +435,7 @@ fn goto_definition_disk_refresh_survives_source_edits() {
     interaction.shutdown().unwrap();
 }
 
-// https://github.com/meta/pyrefly/issues/5485
+// https://github.com/pyrefly-org/pyrefly/issues/5485
 #[test]
 fn goto_definition_of_class_member_after_defining_file_shifts() {
     let root = TempDir::with_prefix("pyrefly_goto_def_class_member_shift").unwrap();

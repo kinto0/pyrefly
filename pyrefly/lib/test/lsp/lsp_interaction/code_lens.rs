@@ -538,7 +538,7 @@ fn test_override_code_lens_refresh_after_indexed_file_change() {
     interaction.shutdown().unwrap();
 }
 
-// https://github.com/meta/pyrefly/issues/5485
+// https://github.com/pyrefly-org/pyrefly/issues/5485
 #[test]
 fn test_override_code_lens_parent_after_defining_file_shifts() {
     let root = TempDir::with_prefix("pyrefly_override_code_lens_parent_shift").unwrap();

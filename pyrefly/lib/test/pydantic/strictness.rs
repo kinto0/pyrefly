@@ -405,7 +405,7 @@ assert_type(m.custom_model, CustomModel)
     "#,
 );
 
-// https://github.com/meta/pyrefly/issues/5545
+// https://github.com/pyrefly-org/pyrefly/issues/5545
 pydantic_testcase!(
     test_lax_mode_new_type_inputs,
     r#"
@@ -433,7 +433,7 @@ Model(
     "#,
 );
 
-// https://github.com/meta/pyrefly/issues/5543
+// https://github.com/pyrefly-org/pyrefly/issues/5543
 pydantic_testcase!(
     test_lax_mode_nested_model_with_model_validator,
     r#"
@@ -469,7 +469,7 @@ Action(checked="edit")  # E: is not assignable to parameter `checked`
     "#,
 );
 
-// https://github.com/meta/pyrefly/issues/5543
+// https://github.com/pyrefly-org/pyrefly/issues/5543
 pydantic_testcase!(
     test_lax_mode_nested_model_from_attributes,
     r#"

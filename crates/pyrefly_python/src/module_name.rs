@@ -784,7 +784,7 @@ mod tests {
         );
     }
 
-    // https://github.com/facebook/pyrefly/issues/5223
+    // https://github.com/pyrefly-org/pyrefly/issues/5223
     #[test]
     fn test_module_from_path_digit_leading_filename() {
         let includes = [PathBuf::from("/project")];

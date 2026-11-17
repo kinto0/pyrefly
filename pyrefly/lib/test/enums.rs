@@ -69,7 +69,7 @@ def foo(member: MyEnum) -> None:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4792.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4792.
 testcase!(
     test_enum_self_value,
     TestEnv::new().enable_no_any_return_implicit_error(),
@@ -227,7 +227,7 @@ assert_type(z, Literal["X"])
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2874
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2874
 testcase!(
     test_enum_functional_name_mismatch,
     r#"
@@ -266,7 +266,7 @@ for e in E3:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3128
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3128
 testcase!(
     test_str_enum_argument_suggestion,
     r#"
@@ -626,7 +626,7 @@ def foo(f: MyFlag) -> None:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4657
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4657
 testcase!(
     test_flag_union_return_self,
     r#"
@@ -842,7 +842,7 @@ assert_type(takes_float(24.0), float)
 );
 
 // This used to trigger a false positive where we thought the metaclass inheriting
-// Any meant it was an enum metaclass, see https://github.com/facebook/pyrefly/issues/622
+// Any meant it was an enum metaclass, see https://github.com/pyrefly-org/pyrefly/issues/622
 testcase!(
     test_metaclass_subtype_of_any_is_not_enum_metaclass,
     r#"
@@ -1112,7 +1112,7 @@ assert_type(E2.X(), int)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/755
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/755
 testcase!(
     test_access_value_on_mixed_type_enum,
     r#"
@@ -1232,7 +1232,7 @@ Foo.from_dict({})
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2583
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2583
 // StrEnum defines its own `_value_: str`, so the guard on the special-case `_value_` path
 // must include StrEnum (and IntEnum) in addition to `enum.Enum`.
 testcase!(
@@ -1263,7 +1263,7 @@ def test(foo: Foo, bar: Bar) -> None:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3365
+// https://github.com/pyrefly-org/pyrefly/issues/3365
 testcase!(
     test_enum_value_union_of_member_literals,
     r#"
@@ -1553,7 +1553,7 @@ assert_type(x, Literal["q"])
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5279
+// https://github.com/pyrefly-org/pyrefly/issues/5279
 testcase!(
     test_enum_member_keyword_value,
     r#"

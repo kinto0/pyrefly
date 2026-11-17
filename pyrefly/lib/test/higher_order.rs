@@ -12,7 +12,7 @@
 use crate::test::util::TestEnv;
 use crate::testcase;
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5021.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5021.
 testcase!(
     test_factory_callable_erases_return_only_type_parameter,
     r#"
@@ -29,7 +29,7 @@ reveal_type(make(tuple))  # E: revealed type: tuple[Unknown, ...]
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5021.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5021.
 testcase!(
     test_defaultdict_tuple_factory_erases_return_only_type_parameter,
     r#"
@@ -1093,7 +1093,7 @@ async def test(iterator: Iterator[str]) -> None:
 "#,
 );
 
-// Regression tests for https://github.com/facebook/pyrefly/issues/2105
+// Regression tests for https://github.com/pyrefly-org/pyrefly/issues/2105
 // Overloaded callable protocol passed to higher-order function with ParamSpec.
 // The solver commits to one overload branch too early and rejects valid calls.
 
@@ -2047,7 +2047,7 @@ reveal_type(seven(f, f, f, f, f, f, f))  # E: revealed type: tuple[Unknown, Unkn
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5236
+// https://github.com/pyrefly-org/pyrefly/issues/5236
 testcase!(
     test_lone_overloaded_constructor_with_gradual_argument,
     r#"

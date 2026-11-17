@@ -33,7 +33,7 @@ class Example:
     }
 }
 
-// https://github.com/facebook/pyrefly/issues/4688
+// https://github.com/pyrefly-org/pyrefly/issues/4688
 #[test]
 fn test_workspace_symbols_instance_attributes() {
     let code = r#"

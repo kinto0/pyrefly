@@ -9,7 +9,7 @@ hide_table_of_contents: false
 
 # Lessons from Pyre that Shaped Pyrefly
 
-[Pyrefly](https://github.com/facebook/pyrefly) is a next-generation Python type checker and language server, designed to be extremely fast and featuring advanced refactoring and type inference capabilities. This isn’t the Pyrefly team’s first time building a type checker for Python: Pyrefly is a successor to [Pyre](https://pyre-check.org/), the previous type checker our team developed.
+[Pyrefly](https://github.com/pyrefly-org/pyrefly) is a next-generation Python type checker and language server, designed to be extremely fast and featuring advanced refactoring and type inference capabilities. This isn’t the Pyrefly team’s first time building a type checker for Python: Pyrefly is a successor to [Pyre](https://pyre-check.org/), the previous type checker our team developed.
 
 A lot of Pyrefly’s design comes directly from our experience with Pyre. Some things worked well at scale, while other things were harder to live with day-to-day. After running a type checker on massive Python codebases for a long time, we got a clearer sense of which trade-offs actually mattered to users.
 
@@ -159,4 +159,4 @@ Pyrefly is the direct result of those hard-earned lessons. We looked at the pape
 
 But the most important lesson we applied to Pyrefly isn't about code; it’s about how we build. Pyre was born as an internal Meta tool that was later released to the outside world. With Pyrefly, we flipped the script. We’ve been building this in the open, from day one, specifically for the broader Python ecosystem. We want to build a tool that actually makes your day-to-day coding experience better, and we can't do that in a vacuum.
 
-**Come help us build Pyrefly!** We’ve gratefully accepted hundreds of PRs from dozens of open-source contributors on [Github](https://github.com/facebook/pyrefly) so far, and we wouldn’t be where we are without them. Jump into our [Discord](https://discord.gg/Cf7mFQtW7W), tell us what you are interested in, point out the rough edges, and help us figure out what lessons we need to learn next.
+**Come help us build Pyrefly!** We’ve gratefully accepted hundreds of PRs from dozens of open-source contributors on [Github](https://github.com/pyrefly-org/pyrefly) so far, and we wouldn’t be where we are without them. Jump into our [Discord](https://discord.gg/Cf7mFQtW7W), tell us what you are interested in, point out the rough edges, and help us figure out what lessons we need to learn next.

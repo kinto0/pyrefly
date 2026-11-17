@@ -57,7 +57,7 @@ We closed **20** bug issues this release 👏
 - **#3954:** The `typings/` directory under the config root is now auto-discovered on the CLI path (not just in the IDE), fixing a divergence where CLI and IDE had different stub search paths for the same config.
 - And more! #3879, #3891, #3293, #3928, #3688, #3890, #3912, #3945, #3926, #3924
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

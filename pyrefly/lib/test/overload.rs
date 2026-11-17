@@ -411,7 +411,7 @@ def exercise(flag: bool) -> None:
 "#,
 );
 
-// Reproductions from https://github.com/meta/pyrefly/issues/5634.
+// Reproductions from https://github.com/pyrefly-org/pyrefly/issues/5634.
 testcase!(
     test_missing_import_overload_fallback,
     r#"
@@ -749,7 +749,7 @@ def body_docstring_then_pass(x: int | str) -> int | str:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2867
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2867
 testcase!(
     test_urlunparse_prefers_string_overload_for_parse_result,
     r#"
@@ -2480,7 +2480,7 @@ g(x=1, y="hello")  # E: No matching overload found for function `g` called with 
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5074
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5074
 testcase!(
     test_overload_error_shows_lambda_argument_types,
     r#"
@@ -2731,7 +2731,7 @@ def demo_variadic(s: tuple[int, ...]):
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2600.
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2600.
 testcase!(
     test_materialization_does_not_leak_into_partial_contained,
     r#"
@@ -2772,7 +2772,7 @@ def test(x: A[None], y: A[Any]) -> None:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2043
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2043
 testcase!(
     test_overload_paramspec_unify_with_ellipsis_callable,
     r#"
@@ -3008,7 +3008,7 @@ assert_type(f(x), Any)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3161
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3161
 testcase!(
     test_overload_unpacked_tuple_varargs,
     r#"
@@ -3614,7 +3614,7 @@ def f(box: Box[Any]) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5396
+// https://github.com/pyrefly-org/pyrefly/issues/5396
 testcase!(
     test_overload_lambda_parameter_after_boolop,
     TestEnv::new().enable_unknown_attribute_access_error(),

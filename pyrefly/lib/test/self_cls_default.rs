@@ -7,7 +7,7 @@
 
 use crate::testcase;
 
-// https://github.com/facebook/pyrefly/issues/3729: the implicit `self`/`cls` receiver of a
+// https://github.com/pyrefly-org/pyrefly/issues/3729: the implicit `self`/`cls` receiver of a
 // method is supplied at call time, so a default value on it is unreachable and almost always a bug.
 
 testcase!(

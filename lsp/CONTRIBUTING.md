@@ -43,7 +43,7 @@ contributing. This file shows how to develop the extension locally.
 ## Building for all Platforms
 
 - Run
-  [CI: Extension build](https://github.com/facebook/pyrefly/actions/workflows/ci_extension_build.yml)
+  [CI: Extension build](https://github.com/pyrefly-org/pyrefly/actions/workflows/ci_extension_build.yml)
   github workflow on your branch.
 
 ## Updating

@@ -129,7 +129,7 @@ We closed **137** bug issues this release 👏
 - **#3900:** Dataclass and Pydantic `BaseModel` fields named `"self"` are no longer incorrectly flagged on construction.
 - And more! #3445, #3596, #3552, #2945, #3879, #3887, #3891, #2858, #3787, #3293, #3928, #3688, #3890, #3912, #3945, #3926, #3924, #3429, #3873, #3976, #3882, #897, #3585, #3584, #2689, #2346, #4024, #4025, #4019, #4020, #3345, #3321, #3989, #3998, #4021, #3730, #3732, #3997, #4062, #4083, #4018, #4023, #3949, #4022, #4093, #3974, #4073, #4094, #4035, #4109, #3619, #3240, #3305, #3638, #3546, #4107, #3329, #2495, #4034, #3435, #3701, #3154, #3085, #2817, #1510, #964, #1866, #3821, #3669, #3368, #1663, #907, #2257, #3595, #4155, #3742, #3888, #2132, #4170, #3731, #1621, #2851, #4247, #4228, #4163, #3365, #4255, #3238, #2942, #1583, #4060, #3805, #3883, #4177, #4193, #1819, #3422, #4165, #2474, #2932, #3745, #4072, #3668, #4305, #2517, #4192, #3658, #2574, #3911, #3897, #4319, #2287, #2965, #2503, #4307, #4325, #632, #3903, #4334, #4225, #3876, #4168, #4262, #3065, #2064, #4324, #4070
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

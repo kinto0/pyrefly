@@ -59,7 +59,7 @@ We closed **24** bug issues this release 👏
 - **#3671:** Fixed stack overflow when a descriptor's `__get__` is itself a descriptor. Self-referential descriptor patterns now terminate gracefully instead of crashing.
 - And more! #3235, #3673, #3541, #3684, #3647, #3632, #3626, #3640, #3641, #3639, #3645, #3701, #3664, #3598
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

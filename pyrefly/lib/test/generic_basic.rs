@@ -162,7 +162,7 @@ assert_type(C.m(), int)
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5303
+// https://github.com/pyrefly-org/pyrefly/issues/5303
 testcase!(
     test_descriptor_with_type_of_type_var_in_base_class,
     r#"
@@ -518,7 +518,7 @@ def test(s: str, b: bytes, a: Any):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/245
+// https://github.com/pyrefly-org/pyrefly/issues/245
 testcase!(
     test_dict_update,
     r#"
@@ -709,7 +709,7 @@ assert_type(f([None], [0]), int)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1675
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1675
 testcase!(
     test_generic_should_equal_itself,
     r#"
@@ -754,7 +754,7 @@ def to_type[T](value: Any, kind: TypeForm[T]) -> T: ...
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/1970
+// https://github.com/pyrefly-org/pyrefly/issues/1970
 testcase!(
     test_implicit_any_for_special_forms,
     TestEnv::new().enable_implicit_any_error(),
@@ -812,7 +812,7 @@ class I(G, H): ...  # E: Class `I` has inconsistent type arguments for base clas
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4876
+// https://github.com/pyrefly-org/pyrefly/issues/4876
 testcase!(
     test_indirect_diamond_union_member_order,
     r#"
@@ -974,7 +974,7 @@ assert_type(bad(Sub), Sub)
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/4187
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/4187
 testcase!(
     test_generic_keyword_inference_is_order_independent,
     r#"
@@ -1058,7 +1058,7 @@ class Bar(Generic[_L]):
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1137
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1137
 testcase!(
     test_unresolved_typevar_in_union_resolves_to_never,
     r#"
@@ -1078,7 +1078,7 @@ assert_type(b, A[int])
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3387
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3387
 testcase!(
     test_future_annotations_forward_ref_in_generic_constructor,
     r#"
@@ -1118,7 +1118,7 @@ assert_type(g(0, [""]), int | str)
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2130
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2130
 testcase!(
     test_generic_return_type_with_union_of_scoped_type_params,
     r#"

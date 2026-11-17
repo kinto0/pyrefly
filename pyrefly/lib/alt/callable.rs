@@ -2688,7 +2688,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
         let (mut self_qs, remaining_callable_qs) = if self_obj.is_some()
             && let Some(first_param) = callable.get_first_param()
-            // TODO(https://github.com/facebook/pyrefly/issues/105): handle nested vars
+            // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): handle nested vars
             && matches!(first_param, Type::Var(_))
         {
             // Quantifieds in `self` need to be finished as soon as `self_arg` is matched, unlike

@@ -112,7 +112,7 @@ fn test_shutdown() {
 
 #[test]
 fn test_shutdown_with_messages_in_between() {
-    // This is a regression test for https://github.com/facebook/pyrefly/issues/1016
+    // This is a regression test for https://github.com/pyrefly-org/pyrefly/issues/1016
     // nvim sometimes sends messages in between shutdown and exit. The server should
     // handle this gracefully and not hang.
     // Per LSP spec, requests after shutdown should be rejected with InvalidRequest.

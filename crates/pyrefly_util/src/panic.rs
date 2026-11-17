@@ -52,7 +52,7 @@ pub fn print_panic(info: &PanicHookInfo<'_>) {
         if cfg!(fbcode_build) {
             out("Please report the bug at https://fb.workplace.com/groups/pyreqa");
         } else {
-            out("Please report the bug at https://github.com/facebook/pyrefly/issues/new")
+            out("Please report the bug at https://github.com/pyrefly-org/pyrefly/issues/new")
         }
     });
 }

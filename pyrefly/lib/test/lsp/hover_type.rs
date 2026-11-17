@@ -28,7 +28,7 @@ fn get_test_report(state: &State, handle: &Handle, position: TextSize) -> String
 
 #[test]
 fn quoted_class_in_type_subscript_hover() {
-    // Regression for https://github.com/facebook/pyrefly/issues/4703:
+    // Regression for https://github.com/pyrefly-org/pyrefly/issues/4703:
     // a quoted class inside `type[...]` must not hover as `type[type[Child]]`.
     let code = r#"
 class Child: ...

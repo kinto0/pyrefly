@@ -68,7 +68,7 @@ We closed **34** bug issues this release 👏
 - **#3299:** Fixed incorrect type inference after `__setitem__` / `__getitem__`. When a class's `__setitem__` and `__getitem__` signatures were asymmetric, Pyrefly incorrectly narrowed the assigned value. Subscript-assignment narrowing is now gated by symmetry checks, preventing false positives with custom container types.
 - And more! #3446, #3448, #3396, #1492, #2451, #3431, #3210, #3381, #2547, #3147, #3524, #3506, #3519, #3343, #3505, #3369, #3344, #3400, #3394, #3221, #3514, #3520, #3544, #3458
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

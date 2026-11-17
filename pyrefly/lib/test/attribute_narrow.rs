@@ -635,7 +635,7 @@ def f(c: C):
 
 // This test is adapted from a Pytorch example.
 testcase!(
-    bug = "The behavior of this was changed by the fix for https://github.com/facebook/pyrefly/issues/1999",
+    bug = "The behavior of this was changed by the fix for https://github.com/pyrefly-org/pyrefly/issues/1999",
     test_isinstance_getitem,
     r#"
 from typing import Any, Optional, assert_type, Never

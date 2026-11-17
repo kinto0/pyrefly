@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Regression test for https://github.com/facebook/pyrefly/issues/3257:
+# Regression test for https://github.com/pyrefly-org/pyrefly/issues/3257:
 # A single @overload returning `Any` must not take precedence over the concrete return
 # types of other overloads in the merged return type
 

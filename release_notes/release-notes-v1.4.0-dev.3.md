@@ -36,7 +36,7 @@ This is a short snapshot — three days after v1.4.0-dev.2 — so it is a small 
 - An assignment to a field inherited from a frozen Pydantic model is now checked. The assigned value was skipped, so a type mismatch went unreported and the attribute narrowed to `Never`.
 - The right-hand side of an attribute assignment is now always inferred. It was sometimes skipped, which hid errors in the assigned expression.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

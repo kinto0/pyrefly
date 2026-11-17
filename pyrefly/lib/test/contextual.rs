@@ -299,7 +299,7 @@ reveal_type(keep([{}]))  # E: revealed type: list[dict[@_, @_]]
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3265
+// https://github.com/pyrefly-org/pyrefly/issues/3265
 // Any in a bound should preserve the concrete element types asserted below.
 testcase!(
     test_any_bounded_typevar_container_hints,

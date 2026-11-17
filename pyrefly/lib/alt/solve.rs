@@ -4286,7 +4286,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         // A zero-arg `super()` in a method of a class that directly subclasses
                         // `NamedTuple` makes the class fail to define at runtime: the `__class__`
                         // cell the compiler creates for `super()` is not propagated by the
-                        // NamedTuple machinery. See https://github.com/facebook/pyrefly/issues/3763.
+                        // NamedTuple machinery. See https://github.com/pyrefly-org/pyrefly/issues/3763.
                         if self
                             .get_metadata_for_class(obj_cls)
                             .named_tuple_metadata()
@@ -4705,7 +4705,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // `bool`. A class attribute that merely shares the name is not the sentinel, so restrict to
         // module scope. Stub files have no runtime and conventionally initialize typing constants to
         // placeholder values (e.g. `TYPE_CHECKING = 1`), so skip them.
-        // See https://github.com/facebook/pyrefly/issues/3756.
+        // See https://github.com/pyrefly-org/pyrefly/issues/3756.
         if !is_in_function_scope
             && class_key.is_none()
             && SysInfo::is_type_checking_constant_name(name.as_str())

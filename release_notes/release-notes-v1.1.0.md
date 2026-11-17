@@ -70,7 +70,7 @@ We closed **89** bug issues this release 👏
 - **#3387:** `Foo[Bar]` under `from __future__ import annotations` now binds `Bar` as static type information when `Foo` is a known class, avoiding false "uninitialized" diagnostics.
 - And more! #2798, #3188, #3385, #3208, #3237, #3378, #3413, #3455, #3392, #3299, #3446, #3448, #3396, #1492, #2451, #3431, #3210, #3381, #2547, #3147, #3524, #3506, #3519, #3343, #3505, #3369, #3344, #3400, #3394, #3221, #3514, #3520, #3544, #3458, #3593, #3548, #3576, #3292, #3526, #2869, #3228, #3578, #3568, #3410, #3602, #3300, #3356, #3607, #3612, #1496, #3623, #3059, #3598, #3536, #3066, #3418, #3235, #3673, #3541, #3169, #3075, #1838, #3550, #955, #2711, #498, #3113, #3197, #3215, #1592, #2002, #2082, #2199, #2553, #2693, #3220, #2751, #3743, #3790, #3708, #3703
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

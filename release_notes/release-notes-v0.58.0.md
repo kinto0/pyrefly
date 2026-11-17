@@ -34,7 +34,7 @@ We closed **20** bug issues this release 👏
 - #2007: Fixed false positive unused variable warnings when reassigning parameters in loops or when assigning to global/nonlocal variables. The unused variable analysis now correctly tracks these assignment patterns.
 - And more! #2419, #1252, #2043, #2218, #650, #2164, #1635, #2168, #1005, #2655
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

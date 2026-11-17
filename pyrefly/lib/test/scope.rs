@@ -716,7 +716,7 @@ C().x  # E: `C` has no attribute `x`
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1210
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1210
 testcase!(
     test_mutable_capture_with_annotation_class_body,
     r#"
@@ -754,7 +754,7 @@ def f():
 );
 
 // Regression test against a panic in the presence of parser error recovery:
-// https://github.com/facebook/pyrefly/issues/1203
+// https://github.com/pyrefly-org/pyrefly/issues/1203
 testcase!(
     test_mutable_capture_syntax_error,
     r#"
@@ -785,7 +785,7 @@ z = str(z)  # E: `z` is uninitialized  # E: `str` is not assignable to variable 
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5177
+// https://github.com/pyrefly-org/pyrefly/issues/5177
 // Inside a function, deleting a name from a target list must make the name local
 // to that function, the way `del e` does.
 testcase!(
@@ -1192,7 +1192,7 @@ y = 42
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/246
+// https://github.com/pyrefly-org/pyrefly/issues/246
 testcase!(
     test_declare_after_write_no_error,
     r#"
@@ -1283,7 +1283,7 @@ def try_except_else_finally():
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/959
+// https://github.com/pyrefly-org/pyrefly/issues/959
 testcase!(
     test_lambda_captures_narrowed_variable,
     r#"
@@ -1370,7 +1370,7 @@ assert_type(A, type[A])
     "#,
 );
 
-// This does come up in practice - see https://github.com/facebook/pyrefly/issues/1146
+// This does come up in practice - see https://github.com/pyrefly-org/pyrefly/issues/1146
 testcase!(
     test_class_scope_annotation_shadows_global,
     r#"
@@ -1401,7 +1401,7 @@ class D:
 
 // Nested scopes - except for parameter scopes - cannot see a containing class
 // body. This applies not only to methods but also other scopes like lambda, inner
-// class bodies, and comprehensions. See https://github.com/facebook/pyrefly/issues/264
+// class bodies, and comprehensions. See https://github.com/pyrefly-org/pyrefly/issues/264
 testcase!(
     test_class_scope_lookups_when_skip,
     r#"
@@ -1418,8 +1418,8 @@ class A:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1073 and
-// https://github.com/facebook/pyrefly/issues/1074
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1073 and
+// https://github.com/pyrefly-org/pyrefly/issues/1074
 testcase!(
     test_class_scope_lookups_when_permitted,
     r#"
@@ -1864,7 +1864,7 @@ def test_2(cond: bool):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2930
+// https://github.com/pyrefly-org/pyrefly/issues/2930
 testcase!(
     bug = "del in dead code should still make the variable local, hiding the outer binding",
     test_del_in_dead_code_makes_local,
@@ -1880,7 +1880,7 @@ def f():
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/4318
+// https://github.com/pyrefly-org/pyrefly/issues/4318
 testcase!(
     test_conditionally_defined_class_member,
     TestEnv::new().enable_possibly_uninitialized_attribute_error(),
@@ -1965,7 +1965,7 @@ CompleteWithNever().value
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3398
+// https://github.com/pyrefly-org/pyrefly/issues/3398
 testcase!(
     test_walrus_in_comprehension_reads_enclosing_scope_param,
     r#"
@@ -1974,7 +1974,7 @@ def demo(text: str) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3670
+// https://github.com/pyrefly-org/pyrefly/issues/3670
 testcase!(
     test_walrus_in_comprehension_read_before_write_multiple_defs,
     r#"

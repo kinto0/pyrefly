@@ -30,7 +30,7 @@ source.
 ## Build from source
 
 The crate lives in
-[`pyrefly_wasm/`](https://github.com/facebook/pyrefly/tree/main/pyrefly_wasm).
+[`pyrefly_wasm/`](https://github.com/pyrefly-org/pyrefly/tree/main/pyrefly_wasm).
 The website wires it into the sandbox under `website/src/sandbox/`.
 
 ### Prerequisites
@@ -64,7 +64,7 @@ website README describes when you need a local rebuild.
 
 ### Test changes in the sandbox
 
-See [`website/README.md`](https://github.com/facebook/pyrefly/blob/main/website/README.md).
+See [`website/README.md`](https://github.com/pyrefly-org/pyrefly/blob/main/website/README.md).
 In short:
 
 ```bash
@@ -83,7 +83,7 @@ affected sandbox behavior after changing its implementation or API.
 class (`new State(version)`) wrapping the in-tree playground. `source` is a URL,
 a `Response`, the module bytes, or a compiled `WebAssembly.Module`; the default
 is `pyrefly_wasm_bg.wasm` next to `pyrefly_wasm.js`. The exports in
-[`pyrefly_wasm/lib.rs`](https://github.com/facebook/pyrefly/blob/main/pyrefly_wasm/lib.rs)
+[`pyrefly_wasm/lib.rs`](https://github.com/pyrefly-org/pyrefly/blob/main/pyrefly_wasm/lib.rs)
 are the authoritative API reference. The current JavaScript names are:
 
 | Method | Role |
@@ -103,13 +103,13 @@ are the authoritative API reference. The current JavaScript names are:
 Positions match the playground (`line` / `column` as `i32`). Each call passes a
 JSON request to the module and returns its JSON response; there is no
 TypeScript `.d.ts`. The sandbox keeps a local
-[`PyreflyState`](https://github.com/facebook/pyrefly/blob/main/website/src/sandbox/Sandbox.tsx)
+[`PyreflyState`](https://github.com/pyrefly-org/pyrefly/blob/main/website/src/sandbox/Sandbox.tsx)
 interface.
 
 Some native features are compiled out with
 `#[cfg(not(target_arch = "wasm32"))]`. If a WASM build fails with `could not
 find … in the crate root`, that crate is likely excluded from the WASM
-target. See [`pyrefly_wasm/README.md`](https://github.com/facebook/pyrefly/blob/main/pyrefly_wasm/README.md).
+target. See [`pyrefly_wasm/README.md`](https://github.com/pyrefly-org/pyrefly/blob/main/pyrefly_wasm/README.md).
 
 ## Configuration
 
@@ -121,6 +121,6 @@ when creating the instance (`version` is the Python version string passed to
 
 ## Related source
 
-- [`pyrefly_wasm/README.md`](https://github.com/facebook/pyrefly/blob/main/pyrefly_wasm/README.md) — crate build notes
-- [`website/README.md`](https://github.com/facebook/pyrefly/blob/main/website/README.md) — sandbox and docs site
+- [`pyrefly_wasm/README.md`](https://github.com/pyrefly-org/pyrefly/blob/main/pyrefly_wasm/README.md) — crate build notes
+- [`website/README.md`](https://github.com/pyrefly-org/pyrefly/blob/main/website/README.md) — sandbox and docs site
 - [Sandbox](/sandbox)

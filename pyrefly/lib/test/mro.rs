@@ -369,7 +369,7 @@ f(A[int])
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2919
+// https://github.com/pyrefly-org/pyrefly/issues/2919
 testcase!(
     test_duplicate_protocol_base,
     r#"
@@ -379,7 +379,7 @@ class P(Protocol, Protocol): ...  # E: Duplicate base class `Protocol`
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5219
+// https://github.com/pyrefly-org/pyrefly/issues/5219
 testcase!(
     test_explicit_object_base_constructor,
     r#"

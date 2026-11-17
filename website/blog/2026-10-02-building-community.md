@@ -46,14 +46,14 @@ The Pyrefly devs are enthusiastic AI users, and we don't think the answer is to 
 
 ### AI Policy
 
-We've adopted a new [AI policy](https://github.com/facebook/pyrefly/blob/main/AI_POLICY.md) with one central tenet: we want to interact with you, not your AI. We no longer allow LLM-generated communications, autonomous agent contributions, or PRs that haven't been thoroughly reviewed by their human author. We also ask that AI not be used to one-shot issues labeled as "good first issue", since the purpose of these issues is to provide learning opportunities.
+We've adopted a new [AI policy](https://github.com/pyrefly-org/pyrefly/blob/main/AI_POLICY.md) with one central tenet: we want to interact with you, not your AI. We no longer allow LLM-generated communications, autonomous agent contributions, or PRs that haven't been thoroughly reviewed by their human author. We also ask that AI not be used to one-shot issues labeled as "good first issue", since the purpose of these issues is to provide learning opportunities.
 
 We still allow and encourage using AI to learn about Pyrefly, investigate issues, write code, validate changes, and any other task that can benefit from AI, as long as you understand and own your AI-assisted contributions.
 
 ### Guidance
 
-We've expanded our contributing guidelines with sections on [contributor etiquette](https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md#contributor-etiquette), [getting started with your first contribution](https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md#getting-started), and [creating and managing PRs](https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md#making-a-pull-request). We've also fleshed out our PR template to make these guidelines easier to find. We're aiming for these to be helpful, common-sense tips rather than onerous rules.
+We've expanded our contributing guidelines with sections on [contributor etiquette](https://github.com/pyrefly-org/pyrefly/blob/main/CONTRIBUTING.md#contributor-etiquette), [getting started with your first contribution](https://github.com/pyrefly-org/pyrefly/blob/main/CONTRIBUTING.md#getting-started), and [creating and managing PRs](https://github.com/pyrefly-org/pyrefly/blob/main/CONTRIBUTING.md#making-a-pull-request). We've also fleshed out our PR template to make these guidelines easier to find. We're aiming for these to be helpful, common-sense tips rather than onerous rules.
 
-Finally, none of these changes are meant to keep people out. By spending less time on slop, we hope to spend more time building a space where contributors learn, grow, and stick around. We're still figuring out the best way to do that, and we expect to keep adjusting as the ways people use AI evolve. If you'd like to contribute, share ideas, or just say hi, you can find us on [Discord](https://discord.com/invite/Cf7mFQtW7W) or [GitHub](https://github.com/facebook/pyrefly).
+Finally, none of these changes are meant to keep people out. By spending less time on slop, we hope to spend more time building a space where contributors learn, grow, and stick around. We're still figuring out the best way to do that, and we expect to keep adjusting as the ways people use AI evolve. If you'd like to contribute, share ideas, or just say hi, you can find us on [Discord](https://discord.com/invite/Cf7mFQtW7W) or [GitHub](https://github.com/pyrefly-org/pyrefly).
 
 *Any slop in this post is 100% human-generated.*

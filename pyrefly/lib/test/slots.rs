@@ -60,7 +60,7 @@ class Child(Base):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5300
+// https://github.com/pyrefly-org/pyrefly/issues/5300
 testcase!(
     test_slots_attribute_written_through_cls,
     r#"
@@ -399,7 +399,7 @@ c.x = 2  # OK: descriptor __set__ handles this, not instance storage
 );
 
 // Both list-literal and single-string-literal extractor shapes promote.
-// https://github.com/facebook/pyrefly/issues/2917
+// https://github.com/pyrefly-org/pyrefly/issues/2917
 testcase!(
     test_slots_multiple_inheritance_layout_conflict,
     r#"
@@ -426,7 +426,7 @@ class Combined(Left, Right): ...  # E: inherits from incompatible disjoint bases
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2916
+// https://github.com/pyrefly-org/pyrefly/issues/2916
 testcase!(
     test_slots_layout_conflict_same_names,
     r#"

@@ -952,7 +952,7 @@ def foo(x: A[int]) -> A[int | str]:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1343
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1343
 testcase!(
     test_covariant_typevar_in_contravariant_position,
     r#"

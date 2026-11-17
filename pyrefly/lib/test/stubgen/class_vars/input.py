@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# https://github.com/facebook/pyrefly/issues/3890
+# https://github.com/pyrefly-org/pyrefly/issues/3890
 
 from enum import Enum
 

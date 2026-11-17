@@ -32,7 +32,7 @@ We closed **9** bug issues this release 👏
 - #3064: Fixed false positive when using `issubclass()` after `isinstance()` narrowing with custom metaclasses (e.g., Django's `ModelBase`). Metaclass instances are now correctly accepted as valid class objects.
 - #3030: Fixed false positive `LiteralString` type error in `map(str.strip, ...)`. Overloads with narrower `self`-type annotations are now filtered out during unbound method resolution.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

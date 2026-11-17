@@ -3,7 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# Regression fixture for https://github.com/facebook/pyrefly/issues/3789.
+# Regression fixture for https://github.com/pyrefly-org/pyrefly/issues/3789.
 # `expr` -> `add` -> `operations` -> `expr` form an import cycle, and `expr`
 # contains a lambda. Opening this file in the IDE used to panic with "a variable
 # has leaked from one module to another".

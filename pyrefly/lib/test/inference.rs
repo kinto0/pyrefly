@@ -82,7 +82,7 @@ class C:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2327
+// https://github.com/pyrefly-org/pyrefly/issues/2327
 testcase!(
     test_unannotated_parameter_first_param_by_position,
     TestEnv::new().enable_implicit_any_parameter_error(),
@@ -126,7 +126,7 @@ def h(cls) -> None: ...  # E: `h` is missing an annotation for parameter `cls`
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3542
+// https://github.com/pyrefly-org/pyrefly/issues/3542
 testcase!(
     test_underscore_params_suppress_implicit_any,
     TestEnv::new().enable_implicit_any_parameter_error(),
@@ -840,7 +840,7 @@ class A:
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1774
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1774
 testcase!(
     test_nested_list_set_item,
     r#"

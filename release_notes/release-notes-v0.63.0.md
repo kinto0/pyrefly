@@ -34,7 +34,7 @@ We closed **9** bug issues this release 👏
 - #3090: Improved the unused-coroutine error message when an `await` expression already has `await` but produces a coroutine due to an incorrect return type annotation on the function definition.
 
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

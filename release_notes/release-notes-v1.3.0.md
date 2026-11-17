@@ -98,7 +98,7 @@ We closed **88** bug issues this release 👏
 - **#4459:** Fixed a panic when a `NamedTuple` was defined inline inside a `match` statement. A dedicated `MatchSubject` binding key now prevents collisions.
 - **#4130:** Star imports from `py.typed` packages installed in `site-packages` now recognize the package's public names as re-exports.
 
-Thank you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

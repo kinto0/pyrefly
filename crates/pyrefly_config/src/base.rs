@@ -849,7 +849,7 @@ mod tests {
         }
     }
 
-    // https://github.com/facebook/pyrefly/issues/5113
+    // https://github.com/pyrefly-org/pyrefly/issues/5113
     #[test]
     fn test_deprecated_and_unreachable_severity() {
         let severity = |preset: Preset, kind| match preset.apply().errors {

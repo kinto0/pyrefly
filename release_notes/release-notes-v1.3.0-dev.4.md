@@ -11,7 +11,7 @@ Pyrefly v1.3.0-dev.4 bundles **198 commits** from **23 contributors**.
 
 ### Type Checking
 
-- New composable type system primitives have been introduced for tensor shape types. See https://github.com/facebook/pyrefly/discussions/4807 for details.
+- New composable type system primitives have been introduced for tensor shape types. See https://github.com/pyrefly-org/pyrefly/discussions/4807 for details.
 - Overload selection now infers the most general return type assignable to all candidate return types when argument types are gradual.
 
 ### Language Server
@@ -49,7 +49,7 @@ We closed **15** bug issues this release 👏
 - **#4686:** Fixed `type(protocol_value)` to produce `type[Protocol]` representing the unknown concrete runtime implementation, preventing false `invalid-argument` errors when used with `isinstance`.
 - And more! #4676, #4684, #263, #3812, #3993
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

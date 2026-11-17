@@ -1,6 +1,6 @@
 # Pyrefly: A fast type checker and language server for Python with powerful IDE features
 
-[![pyrefly](https://img.shields.io/endpoint?url=https://pyrefly.org/badge.json)](https://github.com/facebook/pyrefly)
+[![pyrefly](https://img.shields.io/endpoint?url=https://pyrefly.org/badge.json)](https://github.com/pyrefly-org/pyrefly)
 [![PyPI](https://img.shields.io/pypi/v/pyrefly?color=blue&label=pypi)](https://pypi.python.org/pypi/pyrefly)
 [![VS Code](https://img.shields.io/badge/VS%20Code-Marketplace-blue)](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly)
 [![Open VSX](https://img.shields.io/open-vsx/dt/meta/pyrefly?color=blue&label=Open%20VSX)](https://open-vsx.org/extension/meta/pyrefly)
@@ -31,7 +31,7 @@ semantic highlighting, and code completion.
 - **[Dify](https://github.com/langgenius/dify)**: Pyrefly reports type coverage in CI ([case study](https://pyrefly.org/blog/dify-pyrefly-coverage-ci/)).
 - **[Positron](https://positron.posit.co/blog/posts/2026-03-31-python-type-checkers/)**: Pyrefly is the default Python language server.
 
-If your project uses Pyrefly, [create an issue](https://github.com/facebook/pyrefly/issues) to add it to this list.
+If your project uses Pyrefly, [create an issue](https://github.com/pyrefly-org/pyrefly/issues) to add it to this list.
 
 ## Key Features
 
@@ -42,7 +42,7 @@ If your project uses Pyrefly, [create an issue](https://github.com/facebook/pyre
 - **Tensor shape checking.** Experimental [tensor shape checking](https://pyrefly.org/en/docs/tensor-shapes/) finds shape mismatches in PyTorch code.
 - **Adoption-ready.** Migrate from Mypy or Pyright with `pyrefly init`, silence existing errors with `pyrefly suppress`, and add annotations with `pyrefly infer`. Start with one file and grow at your own pace.
 
-Pyrefly is [stable](https://github.com/facebook/pyrefly/releases/tag/1.0.0).
+Pyrefly is [stable](https://github.com/pyrefly-org/pyrefly/releases/tag/1.0.0).
 See the [Pyrefly website](https://pyrefly.org) for full documentation.
 
 ## Getting Started
@@ -63,12 +63,12 @@ to easily silence errors when upgrading to a new version.
 ## Getting Involved
 
 If you have questions or would like to report a bug, please
-[create an issue](https://github.com/facebook/pyrefly/issues).
+[create an issue](https://github.com/pyrefly-org/pyrefly/issues).
 
 See our
-[contributing guide](https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md)
+[contributing guide](https://github.com/pyrefly-org/pyrefly/blob/main/CONTRIBUTING.md)
 and
-[architecture overview](https://github.com/facebook/pyrefly/blob/main/ARCHITECTURE.md)
+[architecture overview](https://github.com/pyrefly-org/pyrefly/blob/main/ARCHITECTURE.md)
 for information on how to contribute to Pyrefly.
 
 Join our [Discord](https://discord.com/invite/Cf7mFQtW7W) to chat about Pyrefly

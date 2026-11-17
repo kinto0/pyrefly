@@ -667,7 +667,7 @@ with async_context():  # E: Cannot use `_AsyncGeneratorContextManager[None]` as 
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5548
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5548
 testcase!(
     test_exit_error_reported_for_unparameterized_generic,
     r#"
@@ -881,7 +881,7 @@ def f() -> int:  # E: missing an explicit `return`
 testcase!(
     test_with_return_false,
     r#"
-# From https://github.com/facebook/pyrefly/issues/24
+# From https://github.com/pyrefly-org/pyrefly/issues/24
 
 from typing import Literal
 
@@ -901,7 +901,7 @@ def f() -> int:
 testcase!(
     test_with_return_any,
     r#"
-# From https://github.com/facebook/pyrefly/issues/24
+# From https://github.com/pyrefly-org/pyrefly/issues/24
 
 from typing import Any
 

@@ -87,4 +87,4 @@ Pyrefly coverage is a new-ish feature, yet it's already being used by a few majo
 - [Narwhals](https://github.com/narwhals-dev/narwhals).
 - [sh](https://github.com/amoffat/sh).
 
-If you would like to use it in your project and would like any assistance, [feel free to reach out](https://discord.gg/Cf7mFQtW7W), and if you encounter any issues, [please do report them](https://github.com/facebook/pyrefly/issues)!
+If you would like to use it in your project and would like any assistance, [feel free to reach out](https://discord.gg/Cf7mFQtW7W), and if you encounter any issues, [please do report them](https://github.com/pyrefly-org/pyrefly/issues)!

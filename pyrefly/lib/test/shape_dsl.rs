@@ -197,7 +197,7 @@ def invalid_body(shape: IntTuple) -> IntTuple:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5172
+// https://github.com/pyrefly-org/pyrefly/issues/5172
 // A partial Torch overlay can inherit an Any base when runtime Torch is absent.
 testcase!(
     test_any_base_tensor_argument_dimensions,

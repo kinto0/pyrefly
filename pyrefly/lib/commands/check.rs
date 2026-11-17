@@ -2837,7 +2837,7 @@ mod tests {
     }
 
     /// Asking for two reports in one run must produce both of them in full.
-    /// See https://github.com/facebook/pyrefly/issues/4683: the CinderX report
+    /// See https://github.com/pyrefly-org/pyrefly/issues/4683: the CinderX report
     /// dropped the ASTs that the Glean report reads once the check is done, so
     /// the run died partway through writing its output.
     /// A module that a build system imports under a name its path doesn't give is found through

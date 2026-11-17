@@ -1,6 +1,6 @@
 *Release date: November 4, 2026*
 
-Pyrefly v1.4.1 is a patch release that fixes bugs in `pyrefly coverage`. With these fixes, you can use `pyrefly coverage check` as a pre-commit hook (`pyrefly-coverage-check` in [pyrefly-pre-commit](https://github.com/meta/pyrefly-pre-commit)).
+Pyrefly v1.4.1 is a patch release that fixes bugs in `pyrefly coverage`. With these fixes, you can use `pyrefly coverage check` as a pre-commit hook (`pyrefly-coverage-check` in [pyrefly-pre-commit](https://github.com/pyrefly-org/pyrefly-pre-commit)).
 
 ---
 
@@ -16,7 +16,7 @@ Pyrefly v1.4.1 is a patch release that fixes bugs in `pyrefly coverage`. With th
 - **#5329:** `pyrefly coverage` understands Cython [pure Python mode](https://cython.readthedocs.io/en/latest/src/tutorial/pure.html) declarations in `.py` files.
 - `pyrefly coverage` skips the solver for annotations that are absent or already solved, which makes it faster on large projects.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

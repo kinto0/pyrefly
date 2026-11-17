@@ -11,7 +11,7 @@ Pyrefly v1.4.0-dev.2 bundles **493 commits** from **20 contributors**.
 
 Pyrefly now decides whether `|` builds a type union from the type-form context of the expression, instead of from the types of its operands. Before this change, an annotation such as `UnresolvedType | None` (for example, when `UnresolvedType` comes from a missing import) was evaluated as plain `Unknown`, and the `| None` was silently dropped. Pyrefly now evaluates it as `Unknown | None`.
 
-This is more correct, but it can surface new errors, such as `missing-attribute` on `None`, in code that uses unresolved types in `Optional`-style annotations. Please try this dev release and [report](https://github.com/facebook/pyrefly/issues) any false positives. (#4846)
+This is more correct, but it can surface new errors, such as `missing-attribute` on `None`, in code that uses unresolved types in `Optional`-style annotations. Please try this dev release and [report](https://github.com/pyrefly-org/pyrefly/issues) any false positives. (#4846)
 
 ---
 
@@ -53,7 +53,7 @@ This is more correct, but it can surface new errors, such as `missing-attribute`
 - **#4650:** `stubgen` no longer keeps the full analysis of the whole import closure in memory.
 - **#4592:** A `__get__` overload with a self type of `Concatenate[ObjT, P1]` and a sibling `TypeVar` now matches correctly.
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues).
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues).
 
 ---
 

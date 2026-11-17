@@ -891,7 +891,7 @@ testcase!(
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/273
+// https://github.com/pyrefly-org/pyrefly/issues/273
 // https://discuss.python.org/t/unbounded-tuple-unions/92472
 testcase!(
     test_union_empty_tuple_and_variadic_tuple,
@@ -1174,7 +1174,7 @@ def g(a: Literal[True], rest: tuple[Literal[False], ...]) -> None:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5286
+// https://github.com/pyrefly-org/pyrefly/issues/5286
 testcase!(
     test_unpack_tuple_subclass_with_unbounded_part,
     r#"

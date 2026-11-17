@@ -33,7 +33,7 @@ We closed 12 bug issues this release 👏
 - #3047: Fixed false positive `bad-specialization` when matching a type variable against a union like `N | Iterable[N]`. Pyrefly now uses snapshot-based rollback when trying each union member, ensuring specialization errors from one branch don't leak into the final result if another branch succeeds without errors.
 - And more! #3122, #3080, #3074
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

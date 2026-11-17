@@ -17,7 +17,7 @@ $ mkdir $TMPDIR/typing_extensions_project && \
 ## A runtime typing_extensions on the search path still exports special forms
 
 <!-- The runtime package defines `Self` depending on the Python version, so its definition is not
-     itself a valid type form. See https://github.com/facebook/pyrefly/issues/698.
+     itself a valid type form. See https://github.com/pyrefly-org/pyrefly/issues/698.
 -->
 
 ```scrut {output_stream: stdout}

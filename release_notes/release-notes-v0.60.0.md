@@ -33,7 +33,7 @@ We closed **27** bug issues this release 👏
 - #2982: Fixed a stack overflow crash when checking fuzzed code with mutually recursive type aliases like `type T = U; type U = T` — when a cycle is detected, `wrap_type_alias` now returns an error type instead of the cyclic body.
 - And more! #2987, #2610, #2874, #2857, #1950, #2741, #2983, #2919, #2979, #2973, #1982, #2910, #2950, #2978, #2875, #2986, #2972, #2852
 
-Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/facebook/pyrefly/issues)
+Thank-you to all our contributors who found these bugs and reported them! Did you know this is one of the most helpful contributions you can make to an open-source project? If you find any bugs in Pyrefly we want to know about them! Please open a bug report issue [here](https://github.com/pyrefly-org/pyrefly/issues)
 
 ---
 

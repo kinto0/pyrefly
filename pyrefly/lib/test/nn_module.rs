@@ -46,7 +46,7 @@ Model.values  # E: Instance-only attribute `values` of class `Model` is not visi
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5208
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5208
 // The registration signature acts like an attribute declaration when the value is rejected.
 testcase!(
     test_nn_module_registration_rejected_value_falls_back_to_parameter_type,

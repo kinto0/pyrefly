@@ -54,7 +54,7 @@ fn test_did_change_configuration() {
     interaction.shutdown().expect("Failed to shutdown");
 }
 
-// https://github.com/facebook/pyrefly/issues/5084
+// https://github.com/pyrefly-org/pyrefly/issues/5084
 #[test]
 fn test_did_change_configuration_dynamic_registration() {
     let root = get_test_files_root();

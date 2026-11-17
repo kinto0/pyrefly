@@ -12,7 +12,7 @@ from shape_extensions import assert_shape, IntTuple
 
 
 def test_pairwise_distance_comparison() -> None:
-    """Regression for https://github.com/facebook/pyrefly/issues/4917."""
+    """Regression for https://github.com/pyrefly-org/pyrefly/issues/4917."""
     rng = np.random.default_rng(7)
     count = 300
     size = 20.0

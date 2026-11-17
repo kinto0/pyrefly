@@ -1470,7 +1470,7 @@ mod tests {
     }
 
     // Pyright and gitignore treat a `**` that is not a whole path component as `*`.
-    // https://github.com/facebook/pyrefly/issues/1471
+    // https://github.com/pyrefly-org/pyrefly/issues/1471
     #[test]
     fn test_recursive_wildcard_within_component() {
         let normalized = |pattern: &str| Glob::new(pattern.to_owned()).unwrap().to_string();
@@ -2634,7 +2634,7 @@ mod tests {
     /// A lone non-existent concrete path now reports a clear "does not exist"
     /// error instead of the generic "no files matched". A non-existent path
     /// alongside a real one is still silently skipped, so tools that pass a mix
-    /// of paths keep working. https://github.com/facebook/pyrefly/issues/3647
+    /// of paths keep working. https://github.com/pyrefly-org/pyrefly/issues/3647
     #[test]
     fn test_explicit_nonexistent_path() {
         let tempdir = tempfile::tempdir().unwrap();

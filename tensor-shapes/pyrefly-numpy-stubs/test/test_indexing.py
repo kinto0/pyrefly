@@ -14,7 +14,7 @@ from shape_extensions import assert_shape, Int, IntTuple, IntVar
 
 # Pandas Series implements this protocol, so it can act as a NumPy integer or
 # boolean index without being a Sequence.
-# https://github.com/facebook/pyrefly/issues/5232
+# https://github.com/pyrefly-org/pyrefly/issues/5232
 class _BooleanArrayLike:
     def __array__(self, dtype: object = None, copy: bool | None = None) -> np.ndarray:
         return np.array([True, False, True])

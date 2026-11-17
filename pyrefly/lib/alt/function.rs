@@ -703,7 +703,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // staticmethod that still takes `cls`). Skip `@no_type_check` for ordinary
         // instance methods, properties/staticmethods other than `__new__`, and
         // unresolved custom decorators that may reshape the signature.
-        // See https://github.com/facebook/pyrefly/issues/5295 and #5294.
+        // See https://github.com/pyrefly-org/pyrefly/issues/5295 and #5294.
         let missing_receiver_param = defining_cls.is_some()
             && decorators.is_empty()
             && def.parameters.posonlyargs.is_empty()
@@ -743,7 +743,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // classmethods including `__init_subclass__`/`__class_getitem__`, properties, and
         // `__new__`); it is `None` for staticmethods and top-level functions. A variadic-only
         // receiver lands in `vararg`, so `.first()` here correctly yields `None`.
-        // See https://github.com/facebook/pyrefly/issues/3729.
+        // See https://github.com/pyrefly-org/pyrefly/issues/3729.
         if self_type.is_some()
             && let Some(first) = def
                 .parameters
@@ -767,7 +767,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // and the assigned value, so any further required parameter is unreachable at
         // runtime. The decorator path attaches property metadata without checking the
         // signature against `property.__init__`, so validate it here.
-        // See https://github.com/facebook/pyrefly/issues/4918.
+        // See https://github.com/pyrefly-org/pyrefly/issues/4918.
         // Skip when custom (non-special) decorators remain between `@property` and
         // the function, since they may reshape the signature before `@property`
         // sees it (e.g. homeassistant Spotify's `@ensure_item` turns

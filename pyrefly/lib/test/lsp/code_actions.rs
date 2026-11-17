@@ -854,7 +854,7 @@ BytesIO
     );
 }
 
-// https://github.com/facebook/pyrefly/issues/5223
+// https://github.com/pyrefly-org/pyrefly/issues/5223
 #[test]
 fn insert_import_skips_module_name_with_non_identifier() {
     let (handles, state) = mk_multi_file_state(

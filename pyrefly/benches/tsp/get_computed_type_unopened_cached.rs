@@ -311,7 +311,7 @@ fn assert_resolves_to_base(response: &Response) {
 }
 
 /// Regression test for the solve-reuse fix in
-/// https://github.com/facebook/pyrefly/pull/4698: one `getComputedType`
+/// https://github.com/pyrefly-org/pyrefly/pull/4698: one `getComputedType`
 /// request, on a stable snapshot, repeated against one never-opened,
 /// unreferenced, inference-heavy module. Server spawn, fixture generation,
 /// and the one necessarily-cold request that solves and commits `heavy.py`

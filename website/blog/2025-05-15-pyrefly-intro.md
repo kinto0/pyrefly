@@ -27,7 +27,7 @@ Ready to dive in? The [official Pyrefly website](https://pyrefly.org/) has all t
 - [Install](https://pyrefly.org/en/docs/installation/) Pyrefly on the command-line: pip install pyrefly.
 - [Migrate your existing type checker configuration to Pyrefly](https://pyrefly.org/en/docs/migrating-to-pyrefly/).
 - Enhance Your IDE: Download the [Pyrefly extension for VSCode](https://marketplace.visualstudio.com/items?itemName=meta.pyrefly) and enjoy a lightning fast IDE experience from starter projects to monorepos.
-- Leave feedback for us on [GitHub](https://github.com/facebook/pyrefly/issues).
+- Leave feedback for us on [GitHub](https://github.com/pyrefly-org/pyrefly/issues).
 
 ## Why we built Pyrefly
 
@@ -37,7 +37,7 @@ Over the years, Pyre served us well, but as the type system evolved and the need
 
 ## The principles behind Pyrefly
 
-Today, we’re excited to unveil Pyrefly, a project [we’ve been developing openly on GitHub](https://github.com/facebook/pyrefly). We invite you to explore our work and try it out on your own project. While a project like Pyrefly is the sum of thousands of technical choices, a few notable principles we’ve followed are:
+Today, we’re excited to unveil Pyrefly, a project [we’ve been developing openly on GitHub](https://github.com/pyrefly-org/pyrefly). We invite you to explore our work and try it out on your own project. While a project like Pyrefly is the sum of thousands of technical choices, a few notable principles we’ve followed are:
 
 ### Performance
 
@@ -55,7 +55,7 @@ Some [Python programs are typed](https://engineering.fb.com/2024/12/09/developer
 
 Python is open source, and hugely popular. The [Python typing specification](https://typing.python.org/en/latest/spec/) is open source, which made Pyrefly vastly easier to develop. Many of the libraries Meta contributes to are open source,( e.g., [PyTorch](https://pytorch.org/)).
 
-Pyrefly is also open source, [available on GitHub](https://github.com/facebook/pyrefly/) under the [MIT license](https://github.com/facebook/pyrefly/blob/main/LICENSE), and we encourage [pull requests](https://github.com/facebook/pyrefly/pulls) and [issue reports](https://github.com/facebook/pyrefly/issues). We also have a [Discord channel](https://discord.gg/Cf7mFQtW7W) for more free flowing discussions. We would love to build a community around Pyrefly.
+Pyrefly is also open source, [available on GitHub](https://github.com/pyrefly-org/pyrefly/) under the [MIT license](https://github.com/pyrefly-org/pyrefly/blob/main/LICENSE), and we encourage [pull requests](https://github.com/pyrefly-org/pyrefly/pulls) and [issue reports](https://github.com/pyrefly-org/pyrefly/issues). We also have a [Discord channel](https://discord.gg/Cf7mFQtW7W) for more free flowing discussions. We would love to build a community around Pyrefly.
 
 ## The future of Pyrefly
 
@@ -63,7 +63,7 @@ We will work with the Python community to drive the language forward and improve
 
 Meta has leveraged types in dynamic languages from the beginning and knows the significant benefits it brings to developer productivity and security. We plan to share more of our learnings and tooling with [blogs](https://engineering.fb.com/2024/12/09/developer-tools/typed-python-2024-survey-meta/), better types in the ecosystem and language enhancements.
 
-Today we’re releasing Pyrefly as an alpha. At the same time, we’re busy burning down the long-tail of bugs and features aiming to remove the alpha label this Summer. Your feedback is invaluable to get there, so please give it a try and [report your bugs](https://github.com/facebook/pyrefly/issues) or things you think can be improved. Even if Pyrefly isn’t right for your project, we would love to hear how you use types and what you would like to see improved in your editor.
+Today we’re releasing Pyrefly as an alpha. At the same time, we’re busy burning down the long-tail of bugs and features aiming to remove the alpha label this Summer. Your feedback is invaluable to get there, so please give it a try and [report your bugs](https://github.com/pyrefly-org/pyrefly/issues) or things you think can be improved. Even if Pyrefly isn’t right for your project, we would love to hear how you use types and what you would like to see improved in your editor.
 
 Join us on the journey as we help illuminate your bugs with Pyrefly. Happy coding! 🐍✨
 

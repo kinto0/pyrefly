@@ -3,11 +3,11 @@
 
 ## Pyrefly v1.0.0 is here\!
 
-We're thrilled to announce that Pyrefly has reached its stable 1.0.0 release\! Since our [beta release](https://github.com/facebook/pyrefly/releases/tag/0.42.0) in November 2025, we've fixed hundreds of bugs, improved performance, and added lots of new functionality. Pyrefly is already the default type checker for Instagram at Meta and has been adopted by other large production codebases like PyTorch and JAX. Today, we're making it official: Pyrefly is production ready.
+We're thrilled to announce that Pyrefly has reached its stable 1.0.0 release\! Since our [beta release](https://github.com/pyrefly-org/pyrefly/releases/tag/0.42.0) in November 2025, we've fixed hundreds of bugs, improved performance, and added lots of new functionality. Pyrefly is already the default type checker for Instagram at Meta and has been adopted by other large production codebases like PyTorch and JAX. Today, we're making it official: Pyrefly is production ready.
 
 This would not have been possible without our amazing open-source community. To everyone who filed GitHub issues, submitted pull requests, gave us feedback at conferences, or joined us on Discord: thank you. Your contributions shaped this release.
 
-These release notes cover the major highlights since our beta release. For the full history, see our [past weekly release notes](https://github.com/facebook/pyrefly/releases).
+These release notes cover the major highlights since our beta release. For the full history, see our [past weekly release notes](https://github.com/pyrefly-org/pyrefly/releases).
 
 ---
 
@@ -93,7 +93,7 @@ Pyrefly ships with tools to aid with adopting type checking in an existing codeb
 
 ## Updated Version Policy
 
-Going forward, we’ll switch from a weekly to monthly cadence for minor (`1.x.0`) releases, with patch releases in between as-needed for critical fixes. We’ll continue providing [release notes](https://github.com/facebook/pyrefly/releases) for minor versions, so you can see what’s new in each release.
+Going forward, we’ll switch from a weekly to monthly cadence for minor (`1.x.0`) releases, with patch releases in between as-needed for critical fixes. We’ll continue providing [release notes](https://github.com/pyrefly-org/pyrefly/releases) for minor versions, so you can see what’s new in each release.
 
 ---
 
@@ -101,7 +101,7 @@ Going forward, we’ll switch from a weekly to monthly cadence for minor (`1.x.0
 
 - **Tensor shape checking** — Experimental support for tracking tensor dimensions through PyTorch models and catching shape mismatches statically. [Learn more](https://pyrefly.org/en/docs/tensor-shapes/).
 - **Pyrefly \+ AI agents** — Pyrefly's speed makes it a natural verification step in agentic workflows. See our guide on [adding Pyrefly to your agentic loop](https://pyrefly.org/blog/pyrefly-agentic-loop/).
-- **Continued improvements** — We'll keep expanding library support, reducing false positives, and iterating on your feedback. Let us know what you need on [GitHub](https://github.com/facebook/pyrefly/issues) or [Discord](https://discord.gg/Cf7mFQtW7W).
+- **Continued improvements** — We'll keep expanding library support, reducing false positives, and iterating on your feedback. Let us know what you need on [GitHub](https://github.com/pyrefly-org/pyrefly/issues) or [Discord](https://discord.gg/Cf7mFQtW7W).
 
 ---
 

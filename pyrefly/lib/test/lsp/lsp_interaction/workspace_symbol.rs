@@ -358,7 +358,7 @@ fn test_workspace_symbol_includes_methods_of_indexed_files() {
     interaction.shutdown().unwrap();
 }
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3041
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3041
 #[test]
 fn test_workspace_symbol_multibyte_no_panic() {
     let root = get_test_files_root();

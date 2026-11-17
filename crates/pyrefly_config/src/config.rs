@@ -5562,7 +5562,7 @@ output-format = "omit-errors"
         );
     }
 
-    /// Regression test for facebook/pyrefly#3607. With
+    /// Regression test for pyrefly-org/pyrefly#3607. With
     /// `enable-fallback-search-path = true` in the config, `configure()` must
     /// populate `fallback_search_path` with a `DirectoryRelative` walk bounded
     /// by the config root, matching what build-system configs already do.
@@ -5594,7 +5594,7 @@ output-format = "omit-errors"
         }
     }
 
-    /// Regression test for facebook/pyrefly#3005. Mirrors the polars repro:
+    /// Regression test for pyrefly-org/pyrefly#3005. Mirrors the polars repro:
     /// a src-layout project where the import root is `src/` but a test file
     /// imports from `tests.conftest`. With `enable-fallback-search-path =
     /// true`, the file's parent directory walks up to the config root, which

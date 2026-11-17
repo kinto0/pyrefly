@@ -981,7 +981,7 @@ assert_type(y, str)
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2928
+// https://github.com/pyrefly-org/pyrefly/issues/2928
 testcase!(
     test_unpack_string_too_many,
     r#"
@@ -989,7 +989,7 @@ a, b = "abc"  # E: Cannot unpack Literal['abc'] (of size 3) into 2 values
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/2927
+// https://github.com/pyrefly-org/pyrefly/issues/2927
 testcase!(
     test_unpack_string_too_few,
     r#"

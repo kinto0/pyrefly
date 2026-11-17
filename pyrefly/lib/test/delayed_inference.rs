@@ -651,7 +651,7 @@ def h(x: ThisIsANameError):  # E: Could not find name
     "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3088
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3088
 testcase!(
     test_dict_with_initial_none_values,
     r#"

@@ -253,7 +253,7 @@ from typing import dataclass_transform
 class ModelMeta(type): ...
 class ModelBase(metaclass=ModelMeta): ...
 
-# `kw_only=True` on the base configures the whole subtree (facebook/pyrefly#3881), so a field
+# `kw_only=True` on the base configures the whole subtree (pyrefly-org/pyrefly#3881), so a field
 # without a default may follow one with a default.
 class Base(ModelBase, kw_only=True): ...
 
@@ -671,7 +671,7 @@ Data(x=NotConvertibleToInt())  # E: `NotConvertibleToInt` is not assignable to p
     "#,
 );
 
-// `converter=None` means no converter, as in attrs: https://github.com/facebook/pyrefly/issues/5283
+// `converter=None` means no converter, as in attrs: https://github.com/pyrefly-org/pyrefly/issues/5283
 testcase!(
     test_converter_none_init_param,
     r#"
@@ -898,7 +898,7 @@ class C:
     "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5169: `Annotated` metadata is not type-checked, so
+// https://github.com/pyrefly-org/pyrefly/issues/5169: `Annotated` metadata is not type-checked, so
 // the lambda in it must not report errors regardless of which module is solved first. With a
 // single thread, `main` is always solved first, so these tests pin down both orders.
 testcase!(

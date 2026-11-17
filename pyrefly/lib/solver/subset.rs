@@ -1935,7 +1935,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (Type::Any(_), _) => {
                 all(want.collect_maybe_placeholder_vars().iter(), |var| {
                     // Variables in `want` now have `Any` as a lower bound.
-                    // TODO(https://github.com/facebook/pyrefly/issues/105): whether to add a lower
+                    // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): whether to add a lower
                     // or upper bound should depend on variance.
                     let type_order = self.type_order;
                     self.solver.add_lower_bound(
@@ -1949,7 +1949,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
             (_, Type::Any(_)) => {
                 all(got.collect_maybe_placeholder_vars().iter(), |var| {
                     // Variables in `got` now have `Any` as an upper bound.
-                    // TODO(https://github.com/facebook/pyrefly/issues/105): whether to add a lower
+                    // TODO(https://github.com/pyrefly-org/pyrefly/issues/105): whether to add a lower
                     // or upper bound should depend on variance.
                     let type_order = self.type_order;
                     self.solver.add_upper_bound(
@@ -2013,7 +2013,7 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
                 if let Restriction::Bound(bound) = q.restriction()
                     // A bare inference variable can preserve the quantified type itself. Expanding
                     // it to its bound here would make inference depend on which argument is checked
-                    // first (https://github.com/facebook/pyrefly/issues/4187).
+                    // first (https://github.com/pyrefly-org/pyrefly/issues/4187).
                     && !matches!(u, Type::Union(union) if union.members.iter().any(|t| matches!(t, Type::Var(_))))
                     && self
                         .with_snapshot(&u.collect_maybe_placeholder_vars(), |me| {

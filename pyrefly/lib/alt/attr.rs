@@ -2468,7 +2468,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// sourced from a *different* module (`from .other import main as main`) does not trigger
     /// that side-effect load, so the directly-imported submodule still shadows it — even when
     /// `__init__` also happens to import the submodule via an unrelated statement.
-    /// See https://github.com/facebook/pyrefly/issues/322
+    /// See https://github.com/pyrefly-org/pyrefly/issues/322
     fn direct_submodule_shadows_export(
         &self,
         submodule: &ModuleType,

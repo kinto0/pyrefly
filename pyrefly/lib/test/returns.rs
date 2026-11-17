@@ -35,7 +35,7 @@ assert_type(f(), None)
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1491
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1491
 testcase!(
     test_infer_return_in_for_loop,
     r#"
@@ -194,7 +194,7 @@ def f() -> int:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/5409
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/5409
 // A NoReturn/Never call in `finally` ends the function; `bad-return` must not fire.
 testcase!(
     test_noreturn_in_finally_no_bad_return,
@@ -279,7 +279,7 @@ def f(b: bool) -> None:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2868
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2868
 testcase!(
     test_return_while_else,
     r#"
@@ -325,7 +325,7 @@ def f() -> int:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1132
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1132
 testcase!(
     test_return_infinite_loop_without_return,
     r#"
@@ -1003,7 +1003,7 @@ class OverloadC:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2141
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2141
 // List concatenation with contextual return type hint should work
 testcase!(
     test_return_list_concat_contextual_hint,
@@ -1052,7 +1052,7 @@ assert_type(foo(), None)
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1518
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1518
 testcase!(
     test_exhaustive_enum_logic,
     r#"
@@ -1079,7 +1079,7 @@ def confuses(which: Foo) -> str:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/1518
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/1518
 testcase!(
     test_nested_branches_if_elif_return_type,
     r#"
@@ -1142,7 +1142,7 @@ def f(value: int | str | float) -> str:
 "#,
 );
 
-// Regression test for https://github.com/facebook/pyrefly/issues/2894
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/2894
 testcase!(
     test_exhaustive_isinstance_no_bad_return,
     r#"

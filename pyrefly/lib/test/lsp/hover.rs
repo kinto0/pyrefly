@@ -1647,7 +1647,7 @@ del c [0]
 
 #[test]
 fn hover_over_getitem_without_space_shows_signature() {
-    // Regression test for https://github.com/facebook/pyrefly/issues/1838
+    // Regression test for https://github.com/pyrefly-org/pyrefly/issues/1838
     let code = r#"
 class Container:
     def __getitem__(self, idx: int) -> int: ...
@@ -4053,7 +4053,7 @@ result: Receiver[str] | Receiver[int] = Receiver(1, Box(identity(Child())))
     );
 }
 
-// Regression test for https://github.com/facebook/pyrefly/issues/3240
+// Regression test for https://github.com/pyrefly-org/pyrefly/issues/3240
 #[test]
 fn hover_on_generic_metaclass_constructor_does_not_show_inference_var() {
     let code = r#"

@@ -12,7 +12,7 @@ from shape_extensions import assert_shape, IntTuple, IntVar
 
 
 def test_interp_scalar() -> None:
-    """Regression for https://github.com/facebook/pyrefly/issues/5231."""
+    """Regression for https://github.com/pyrefly-org/pyrefly/issues/5231."""
     weighted_quantiles = np.array([0.0, 0.5, 1.0])
     filtered_values = np.array([10.0, 20.0, 30.0])
     sorter = np.array([0, 1, 2])

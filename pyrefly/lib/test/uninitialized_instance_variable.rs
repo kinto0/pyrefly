@@ -108,7 +108,7 @@ class C:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5280
+// https://github.com/pyrefly-org/pyrefly/issues/5280
 testcase!(
     test_uninitialized_instance_variable_set_in_new,
     TestEnv::new().enable_uninitialized_instance_variable_error(),
@@ -150,7 +150,7 @@ class SetOnOtherObject:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5554
+// https://github.com/pyrefly-org/pyrefly/issues/5554
 testcase!(
     test_uninitialized_instance_variable_argparse_namespace,
     TestEnv::new().enable_uninitialized_instance_variable_error(),
@@ -165,7 +165,7 @@ class SubArgs(Args):
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5278
+// https://github.com/pyrefly-org/pyrefly/issues/5278
 // Metaclass annotations describe attributes supplied by classes that use the
 // metaclass (via type.__new__), not fields that must be set in metaclass __init__.
 testcase!(
@@ -183,7 +183,7 @@ def read_label(cls: Metadata) -> str:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5277
+// https://github.com/pyrefly-org/pyrefly/issues/5277
 testcase!(
     test_uninitialized_instance_variable_enum_value,
     TestEnv::new().enable_uninitialized_instance_variable_error(),
@@ -204,7 +204,7 @@ class NotAnEnum:
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5326
+// https://github.com/pyrefly-org/pyrefly/issues/5326
 testcase!(
     test_uninitialized_instance_variable_frozen_dataclass_setattr,
     TestEnv::new().enable_uninitialized_instance_variable_error(),

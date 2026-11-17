@@ -1,6 +1,6 @@
 # Summary
 
-<!-- Thank you for contributing to Pyrefly! Please follow our guidance on making a pull request and responding to review feedback at https://github.com/facebook/pyrefly/blob/main/CONTRIBUTING.md#making-a-pull-request -->
+<!-- Thank you for contributing to Pyrefly! Please follow our guidance on making a pull request and responding to review feedback at https://github.com/pyrefly-org/pyrefly/blob/main/CONTRIBUTING.md#making-a-pull-request -->
 
 <!-- Provide a concise summary of what your PR does. Explain the motivation, the approach, and any important details. -->
 

@@ -1602,7 +1602,7 @@ mod tests {
     /// only be applied to a config that hasn't already picked an interpreter. This
     /// pins the workspace side of the `skip-interpreter-query` contract: a config
     /// that opts out should never pay for — or even perform — an interpreter query.
-    /// Regression test for facebook/pyrefly#4445.
+    /// Regression test for pyrefly-org/pyrefly#4445.
     #[test]
     fn test_skip_interpreter_query_blocks_client_pythonpath() {
         let workspaces = Workspaces::new(Workspace::new(), &[]);

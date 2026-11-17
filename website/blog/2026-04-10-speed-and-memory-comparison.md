@@ -106,7 +106,7 @@ The benchmark runs on GitHub Actions with standard runners. Your local machine, 
 
 ```bash
 # Clone the repo
-git clone https://github.com/facebook/pyrefly.git
+git clone https://github.com/pyrefly-org/pyrefly.git
 cd pyrefly/scripts/benchmark
 
 # Create a venv and install type checkers
@@ -130,4 +130,4 @@ There are a number of factors to consider when choosing a type checker. The good
 
 Whether you are new to type checking or have been here since day one of PEP-484, we hope you can get the benefits of types in your Python. If you try Pyrefly, we would love a ping in Discord or a new issue on GitHub with feedback.
 
-*Source code and methodology at [https://github.com/facebook/pyrefly/blob/main/scripts/benchmark/README.md](https://github.com/facebook/pyrefly/blob/main/scripts/benchmark/README.md). Raw benchmark data for this post is available at [scripts/benchmark/results/2026-04-08-benchmark-macbook-m4.json](https://github.com/facebook/pyrefly/blob/main/scripts/benchmark/results/2026-04-08-benchmark-macbook-m4.json).*
+*Source code and methodology at [https://github.com/pyrefly-org/pyrefly/blob/main/scripts/benchmark/README.md](https://github.com/pyrefly-org/pyrefly/blob/main/scripts/benchmark/README.md). Raw benchmark data for this post is available at [scripts/benchmark/results/2026-04-08-benchmark-macbook-m4.json](https://github.com/pyrefly-org/pyrefly/blob/main/scripts/benchmark/results/2026-04-08-benchmark-macbook-m4.json).*

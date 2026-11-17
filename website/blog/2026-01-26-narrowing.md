@@ -116,4 +116,4 @@ def f(x: int | str, y: int, z: int | str):
 
 These are just a few of the ways Pyrefly automatically narrows types, reducing the need for explicit casts in your programs. Not all of these features are unique to Pyrefly, but no other type checker as of writing supports the full set of narrowing patterns listed here. Given the lack of standardization of this feature, there’s a lot of room for innovation in the space. We’re currently working on expanding the narrowing patterns we support - so stay tuned for more updates!
 
-Do you have a pattern for narrowing types that you wish type checkers could understand, or that you want us to support in Pyrefly? Please file an issue on our [Github](https://github.com/facebook/pyrefly)!
+Do you have a pattern for narrowing types that you wish type checkers could understand, or that you want us to support in Pyrefly? Please file an issue on our [Github](https://github.com/pyrefly-org/pyrefly)!

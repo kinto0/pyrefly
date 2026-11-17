@@ -556,7 +556,7 @@ assert_type(C.__new__(D), D)
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3561
+// https://github.com/pyrefly-org/pyrefly/issues/3561
 testcase!(
     test_no_type_check_suppresses_unannotated_return,
     TestEnv::new().enable_unannotated_return_error(),
@@ -576,7 +576,7 @@ def h():  # E: `h` is missing a return annotation
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/3561 — typing_extensions alias
+// https://github.com/pyrefly-org/pyrefly/issues/3561 — typing_extensions alias
 testcase!(
     test_no_type_check_typing_extensions_suppresses_unannotated_return,
     TestEnv::new().enable_unannotated_return_error(),
@@ -592,7 +592,7 @@ def g():  # E: `g` is missing a return annotation
 "#,
 );
 
-// https://github.com/facebook/pyrefly/issues/5133
+// https://github.com/pyrefly-org/pyrefly/issues/5133
 testcase!(
     test_init_method_unannotated_return,
     TestEnv::new().enable_unannotated_return_error(),
