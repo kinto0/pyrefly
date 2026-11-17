@@ -229,17 +229,16 @@ or remove `project-excludes`.
 - Default: `["**/node_modules", "**/__pycache__", "**/venv/**", "**/.[!/.]*/**"]` +
   anything in your `site-packages-path` (even from the interpreter) unless it would
   exclude items in your [`search-path`](#search-path).
-- Flag equivalent: `--project-excludes`, which replaces `project-excludes`.
-  `--extend-project-excludes` adds patterns to `project-excludes` instead.
-  `--force-exclude` applies the excludes to the paths given in the CLI invocation too.
-  How the flags apply to each kind of check:
-
-  | Flag | `pyrefly check` | `pyrefly check dir` | `pyrefly check file.py` |
-  |---|---|---|---|
-  | None | The config's `project-excludes` | The config's `project-excludes`, except the ones that match `dir` | The default excludes. The config's `project-excludes` are not used |
-  | `--project-excludes X` | `X` replaces the config's `project-excludes` | `X` replaces the config's `project-excludes`. An `X` that matches `dir` does not apply | `X` replaces the default excludes. A file that `X` matches is not checked |
-  | `--extend-project-excludes X` | `X` is added to the config's `project-excludes` | `X` is added to the config's `project-excludes`. An `X` that matches `dir` does not apply | `X` is added to the default excludes. A file that `X` matches is not checked |
-  | `--force-exclude` | No effect | `dir` is skipped if the excludes match it | `file.py` is skipped if the `project-excludes` of its config match it |
+- Flag equivalent: `--project-excludes` replaces `project-excludes`, and
+  `--extend-project-excludes` adds patterns to it. When `pyrefly check` has file or directory
+  arguments:
+    - In a directory argument with a config, the config's `project-excludes` apply to the
+      files under the directory, but an exclude that matches the directory itself does not
+      apply.
+    - For a file argument, or a directory argument without a config, the config's
+      `project-excludes` do not apply. Pyrefly uses the default excludes and the excludes
+      from the flags.
+    - `--force-exclude` skips each argument that the `project-excludes` of its config match.
 - Equivalent configs: `exclude` in Pyright and mypy
 - Notes:
     - While not explicitly part of `project-excludes`, there are several patterns that are
@@ -252,10 +251,6 @@ or remove `project-excludes`.
       they are filtered out by `project-excludes` entries. We differentiate between
       an error from a `project-includes` that doesn't match any files, and an error
       from all `project-includes` getting filtered by `project-excludes`.
-    - When overridden by passing in `FILES...`, we do not consult the
-      relevant config file for what to use for `project-excludes`.
-      If `project-excludes` should not use the default value, override it with the flag as
-      well. See reasoning in [`project-includes` notes](#project-includes).
     - Your [`site-packages-path`](#site-packages-path) is added to your `project-excludes`
       automatically. If you are trying to perform type checking on a dependency in your
       `site-packages-path` (i.e. `cd <site-packages-path>/some_dependency && pyrefly check`),
