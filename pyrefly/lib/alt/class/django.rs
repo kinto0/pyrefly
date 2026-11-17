@@ -16,7 +16,7 @@ use pyrefly_types::callable::ParamList;
 use pyrefly_types::callable::Required;
 use pyrefly_types::class::Class;
 use pyrefly_types::class::ClassType;
-use pyrefly_types::class::DjangoClassMetadata;
+use pyrefly_types::class::DjangoSpecialization;
 use pyrefly_types::function::DescriptorSetterMetadata;
 use pyrefly_types::function::FuncMetadata;
 use pyrefly_types::function::Function;
@@ -208,7 +208,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if queryset.is(KnownClass::DjangoQuerySet) {
             queryset = base;
         } else {
-            queryset = queryset.with_django_metadata(DjangoClassMetadata::SpecializedBase { base });
+            queryset = queryset.with_django_base(base);
         }
         self.heap.mk_class_type(queryset)
     }
@@ -364,11 +364,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     infer_arguments,
                 );
                 self.heap
-                    .mk_class_type(field.with_django_metadata(DjangoClassMetadata::Field {
-                        get_type,
-                        set_type,
-                        override_type,
-                    }))
+                    .mk_class_type(field.with_django_field(get_type, set_type, override_type))
             } else {
                 get_type
             }
@@ -379,8 +375,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Resolve constructed fields to their instance read and assignment contracts.
     pub(crate) fn django_field_instance_types(&self, ty: &Type) -> Option<(Type, Type)> {
         match ty {
-            Type::ClassType(cls) => match cls.django_metadata()? {
-                DjangoClassMetadata::Field {
+            Type::ClassType(cls) => match cls.django_specialization()? {
+                DjangoSpecialization::Field {
                     get_type, set_type, ..
                 } => Some((get_type.clone(), set_type.clone())),
                 _ => None,
@@ -638,7 +634,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let queryset = if queryset.is(KnownClass::DjangoQuerySet) {
             base
         } else {
-            queryset.with_django_metadata(DjangoClassMetadata::SpecializedBase { base })
+            queryset.with_django_base(base)
         };
         let Type::ClassDef(manager) = self.try_get_from_export(
             ModuleName::from_str("django.db.models.manager"),
@@ -654,9 +650,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             &self.error_swallower(),
         );
         Some(
-            self.heap.mk_class_type(
-                manager.with_django_metadata(DjangoClassMetadata::Manager { queryset }),
-            ),
+            self.heap
+                .mk_class_type(manager.with_django_queryset(queryset)),
         )
     }
 
@@ -716,14 +711,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             manager
         } else {
             // Bare and concretely bound subclasses cannot express rebinding in their arguments.
-            manager.with_django_metadata(DjangoClassMetadata::SpecializedBase { base })
+            manager.with_django_base(base)
         };
         Some(self.heap.mk_class_type(manager))
     }
 
     /// Return the effective QuerySet base, including a construction-time specialization.
     fn django_queryset_base(&self, cls: &ClassType) -> Option<ClassType> {
-        if let Some(DjangoClassMetadata::SpecializedBase { base }) = cls.django_metadata() {
+        if let Some(DjangoSpecialization::EffectiveBase(base)) = cls.django_specialization() {
             Some(base.clone())
         } else if cls.is(KnownClass::DjangoQuerySet) {
             Some(cls.clone())
@@ -760,8 +755,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         cls: &ClassType,
         name: &Name,
     ) -> Option<ClassAttribute> {
-        match cls.django_metadata()? {
-            DjangoClassMetadata::Field {
+        match cls.django_specialization()? {
+            DjangoSpecialization::Field {
                 get_type,
                 set_type,
                 override_type,
@@ -839,7 +834,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     &Instance::of_class(cls),
                 ))
             }
-            DjangoClassMetadata::Manager { queryset } => {
+            DjangoSpecialization::Queryset(queryset) => {
                 let manager_member =
                     self.get_class_member_with_defining_class(cls.class_object(), name);
                 if let Some(member) = &manager_member
@@ -883,7 +878,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 }
                 self.get_instance_attribute(queryset, name)
             }
-            DjangoClassMetadata::SpecializedBase { base } => {
+            DjangoSpecialization::EffectiveBase(base) => {
                 let member = self.get_class_member_with_defining_class(cls.class_object(), name)?;
                 if !self.has_superclass(base.class_object(), &member.defining_class) {
                     return None;
@@ -895,7 +890,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     &Instance::of_protocol(base, self.heap.mk_class_type(cls.clone())),
                 ))
             }
-            DjangoClassMetadata::ManyRelatedManager { pk_type } => {
+            DjangoSpecialization::TargetPkType(pk_type) => {
                 let [target, _] = cls.targs().as_slice() else {
                     return None;
                 };
@@ -948,9 +943,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             vec![target_model_type, model_instance_type],
         )?;
         match (manager, pk_type) {
-            (Type::ClassType(manager), Some(pk_type)) => Some(self.heap.mk_class_type(
-                manager.with_django_metadata(DjangoClassMetadata::ManyRelatedManager { pk_type }),
-            )),
+            (Type::ClassType(manager), Some(pk_type)) => Some(
+                self.heap
+                    .mk_class_type(manager.with_django_target_pk_type(pk_type)),
+            ),
             (manager, _) => Some(manager),
         }
     }

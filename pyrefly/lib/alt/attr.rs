@@ -12,7 +12,7 @@ use pyrefly_python::docstring::DocRanges;
 use pyrefly_python::dunder;
 use pyrefly_python::keywords::is_valid_identifier;
 use pyrefly_python::module_name::ModuleName;
-use pyrefly_types::class::DjangoClassMetadata;
+use pyrefly_types::class::DjangoSpecialization;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::literal::LitEnum;
@@ -3504,7 +3504,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         res: &mut Vec<AttrInfo>,
     ) {
         self.completions_class(cls.class_object(), expected_attribute_name, res);
-        if let Some(DjangoClassMetadata::Manager { queryset }) = cls.django_metadata() {
+        if let Some(DjangoSpecialization::Queryset(queryset)) = cls.django_specialization() {
             let mut forwarded = Vec::new();
             self.completions_class(
                 queryset.class_object(),

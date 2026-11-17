@@ -6,7 +6,7 @@
  */
 
 use pyrefly_types::callable::Callable;
-use pyrefly_types::class::DjangoClassMetadata;
+use pyrefly_types::class::DjangoSpecialization;
 use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::special_form::SpecialForm;
 use ruff_python_ast::name::Name;
@@ -231,7 +231,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub fn as_superclass(&self, class: &ClassType, want: &Class) -> Option<ClassType> {
         if class.class_object() == want {
             Some(class.clone())
-        } else if let Some(DjangoClassMetadata::SpecializedBase { base }) = class.django_metadata()
+        } else if let Some(DjangoSpecialization::EffectiveBase(base)) =
+            class.django_specialization()
             && self.has_superclass(base.class_object(), want)
         {
             self.as_superclass(base, want)

@@ -638,18 +638,36 @@ impl Class {
 #[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct ClassType(Class, TArgs, Option<Arc<DjangoClassMetadata>>);
 
-/// Construction-time Django specializations on nominal class instances.
+/// A Django specialization of a class instance, made where the instance is constructed.
 ///
-/// The manager resolves generated members against its queryset. A specialized class uses
-/// its effective base for inherited members and nominal upcasts. Type traversal and substitution
-/// include this data, and instance binding preserves it when replacing `Self`. Explicit method
-/// return types stand alone: neither their model nor their row is rebound to the manager's model.
-/// Fields retain construction-specific accessor and override contracts.
-/// A many-to-many manager records the target model's primary key type, which replaces the
-/// `int` that the stubs accept in place of model instances.
+/// A manager bound to a model resolves generated members against its queryset. A many-to-many
+/// manager accepts the target model's primary key type where the stubs accept `int` in place of
+/// model instances. A custom manager or queryset uses its effective base for inherited members
+/// and nominal upcasts. A model field keeps the read, assignment and override types that its
+/// declaration in the model implies. Type traversal and substitution include this data, and
+/// instance binding preserves it when replacing `Self`. Explicit method return types stand
+/// alone: neither their model nor their row is rebound to the manager's model.
+#[derive(Debug, Clone, Copy)]
+pub enum DjangoSpecialization<'a> {
+    /// The queryset of a `django.db.models.manager.Manager` bound to a model.
+    Queryset(&'a ClassType),
+    /// The primary key type of the target model of a many-to-many manager.
+    TargetPkType(&'a Type),
+    /// The effective base of a strict subclass of a Django manager or queryset.
+    EffectiveBase(&'a ClassType),
+    /// The types of a model field: what reading it from a model instance gives, what assigning
+    /// it accepts, and what an override in a subclass must accept.
+    Field {
+        get_type: &'a Type,
+        set_type: &'a Type,
+        override_type: &'a Type,
+    },
+}
+
+/// The storage of a `DjangoSpecialization`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(TypeEq, TypeOrd)]
-pub enum DjangoClassMetadata {
+enum DjangoClassMetadata {
     Manager {
         queryset: ClassType,
     },
@@ -747,15 +765,75 @@ impl ClassType {
         result
     }
 
-    /// Attach a Django specialization to this nominal class instance.
-    pub fn with_django_metadata(mut self, metadata: DjangoClassMetadata) -> Self {
-        self.2 = Some(Arc::new(metadata));
+    /// Attach the queryset of a manager bound to a model. Only `Manager` itself carries one.
+    pub fn with_django_queryset(mut self, queryset: ClassType) -> Self {
+        assert!(
+            self.is(KnownClass::DjangoManager),
+            "only `Manager` carries a Django queryset"
+        );
+        self.2 = Some(Arc::new(DjangoClassMetadata::Manager { queryset }));
         self
     }
 
-    /// Return the construction-time Django specialization, if present.
-    pub fn django_metadata(&self) -> Option<&DjangoClassMetadata> {
-        self.2.as_deref()
+    /// Attach the primary key type of a many-to-many manager's target model. Only
+    /// `ManyRelatedManager` itself carries one.
+    pub fn with_django_target_pk_type(mut self, pk_type: Type) -> Self {
+        assert!(
+            self.is(KnownClass::DjangoManyRelatedManager),
+            "only `ManyRelatedManager` carries a Django target primary key type"
+        );
+        self.2 = Some(Arc::new(DjangoClassMetadata::ManyRelatedManager {
+            pk_type,
+        }));
+        self
+    }
+
+    /// Attach the effective base of a strict subclass of a Django manager or queryset.
+    /// `Manager` and `QuerySet` themselves express their binding in their type arguments.
+    pub fn with_django_base(mut self, base: ClassType) -> Self {
+        assert!(
+            !self.is(KnownClass::DjangoManager) && !self.is(KnownClass::DjangoQuerySet),
+            "`Manager` and `QuerySet` do not carry a Django effective base"
+        );
+        self.2 = Some(Arc::new(DjangoClassMetadata::SpecializedBase { base }));
+        self
+    }
+
+    /// Attach the types of a model field. The caller checks that the class inherits from
+    /// Django's `Field`, which needs the class's MRO.
+    pub fn with_django_field(
+        mut self,
+        get_type: Type,
+        set_type: Type,
+        override_type: Type,
+    ) -> Self {
+        self.2 = Some(Arc::new(DjangoClassMetadata::Field {
+            get_type,
+            set_type,
+            override_type,
+        }));
+        self
+    }
+
+    pub fn django_specialization(&self) -> Option<DjangoSpecialization<'_>> {
+        Some(match self.2.as_deref()? {
+            DjangoClassMetadata::Manager { queryset } => DjangoSpecialization::Queryset(queryset),
+            DjangoClassMetadata::ManyRelatedManager { pk_type } => {
+                DjangoSpecialization::TargetPkType(pk_type)
+            }
+            DjangoClassMetadata::SpecializedBase { base } => {
+                DjangoSpecialization::EffectiveBase(base)
+            }
+            DjangoClassMetadata::Field {
+                get_type,
+                set_type,
+                override_type,
+            } => DjangoSpecialization::Field {
+                get_type,
+                set_type,
+                override_type,
+            },
+        })
     }
 
     pub fn substitution(&self) -> Substitution<'_> {
