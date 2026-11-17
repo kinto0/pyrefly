@@ -54,6 +54,7 @@ from jax._shapes import (
     matmul_shape,
     matvec_shape,
     moveaxis_shape,
+    outer_shape,
     packbits_shape,
     pad_pairs_shape,
     pad_scalar_shape,
@@ -68,6 +69,7 @@ from jax._shapes import (
     polyint_shape,
     ravel_shape,
     reduce_shape,
+    reduceat_shape,
     repeat_shape,
     reshape_scalar_shape,
     reshape_shape,
@@ -909,30 +911,29 @@ def unwrap[Shape: _Shape = []](
 
 # Broadcasting elementwise binary functions. Each takes a scalar in either
 # position as well as an array: rejecting `jnp.add(a, 1)` would flag valid code.
-def add[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+add: BinaryUfunc
+
 def arctan2[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
 def atan2[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def bitwise_and[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+bitwise_and: BinaryUfunc
+
 def bitwise_left_shift[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def bitwise_or[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+bitwise_or: BinaryUfunc
+
 def bitwise_right_shift[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def bitwise_xor[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+bitwise_xor: BinaryUfunc
+
 def copysign[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
@@ -969,12 +970,10 @@ def ldexp[Shape1: _Shape = [], Shape2: _Shape = []](
 def left_shift[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def logaddexp[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
-def logaddexp2[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+logaddexp: BinaryUfunc
+logaddexp2: BinaryUfunc
+
 @overload
 def cross[
     Axis: Flag[int],
@@ -1186,18 +1185,16 @@ def vecmat[LeftShape: _Shape, RightShape: _Shape](
     x2: _ShapedArrayLike[RightShape],
     /,
 ) -> _Array[vecmat_shape(LeftShape, RightShape)]: ...
-def maximum[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
-def minimum[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+maximum: BinaryUfunc
+minimum: BinaryUfunc
+
 def mod[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def multiply[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+multiply: BinaryUfunc
+
 def nextafter[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
@@ -1213,9 +1210,9 @@ def remainder[Shape1: _Shape = [], Shape2: _Shape = []](
 def right_shift[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def subtract[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+subtract: BinaryUfunc
+
 def true_divide[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
@@ -2544,16 +2541,14 @@ def less[Shape1: _Shape = [], Shape2: _Shape = []](
 def less_equal[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
-def logical_and[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+logical_and: BinaryUfunc
+
 def logical_not[Shape: _Shape = []](x: _ArrayLike[Shape], /) -> _Array[Shape]: ...
-def logical_or[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
-def logical_xor[Shape1: _Shape = [], Shape2: _Shape = []](
-    x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
-) -> _Array[broadcast(Shape1, Shape2)]: ...
+
+logical_or: BinaryUfunc
+logical_xor: BinaryUfunc
+
 def not_equal[Shape1: _Shape = [], Shape2: _Shape = []](
     x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
 ) -> _Array[broadcast(Shape1, Shape2)]: ...
@@ -3320,10 +3315,12 @@ class ufunc:
     def reduce(
         self,
         a: Any,
-        axis: int = 0,
+        axis: int | None = 0,
         dtype: Any = None,
         out: Any = None,
         keepdims: bool = False,
+        initial: Any = None,
+        where: Any = None,
     ) -> Any: ...
     def accumulate(
         self,
@@ -3332,15 +3329,104 @@ class ufunc:
         dtype: Any = None,
         out: Any = None,
     ) -> Any: ...
+    def at(
+        self,
+        a: Any,
+        indices: Any,
+        b: Any = None,
+        /,
+        *,
+        inplace: bool = True,
+    ) -> Any: ...
     def reduceat(
         self,
         a: Any,
-        indices: Sequence[int],
+        indices: Any,
         axis: int = 0,
         dtype: Any = None,
         out: Any = None,
     ) -> Any: ...
     def outer(self, A: Any, B: Any, /, **kwargs: Any) -> Any: ...
+
+class BinaryUfunc(Protocol):
+    @property
+    def nin(self) -> int: ...
+    @property
+    def nout(self) -> int: ...
+    @property
+    def nargs(self) -> int: ...
+    @property
+    def identity(self) -> bool | int | float: ...
+    def __call__[Shape1: _Shape = [], Shape2: _Shape = []](
+        self, x1: _ArrayLike[Shape1], x2: _ArrayLike[Shape2], /
+    ) -> _Array[broadcast(Shape1, Shape2)]: ...
+    @overload
+    def reduce[
+        Axis: Flag[_Axis],
+        KeepDims: Flag[bool],
+        Shape: _Shape = [],
+    ](
+        self,
+        a: _ArrayLike[Shape],
+        axis: Axis = 0,
+        dtype: DTypeLike | None = None,
+        out: None = None,
+        keepdims: KeepDims = False,
+        initial: _ArrayLike[Any] | None = None,
+        where: _ArrayLike[Any] | None = None,
+    ) -> _Array[reduce_shape(Shape, Axis, KeepDims)]: ...
+    @overload
+    def reduce(
+        self,
+        a: _ArrayLike[Any],
+        axis: Sequence[int] | int | None = 0,
+        dtype: DTypeLike | None = None,
+        out: None = None,
+        keepdims: bool = False,
+        initial: _ArrayLike[Any] | None = None,
+        where: _ArrayLike[Any] | None = None,
+    ) -> _Array[IntTuple]: ...
+    def accumulate[Shape: _Shape = []](
+        self,
+        a: _ArrayLike[Shape],
+        axis: int = 0,
+        dtype: DTypeLike | None = None,
+        out: None = None,
+    ) -> _Array[Shape]: ...
+    def at[Shape: _Shape = []](
+        self,
+        a: _ArrayLike[Shape],
+        indices: Any,
+        b: _ArrayLike[Any] | None = None,
+        /,
+        *,
+        inplace: bool = True,
+    ) -> _Array[Shape]: ...
+    @overload
+    def reduceat[
+        Shape: _Shape = [],
+        IdxShape: _Shape = [],
+        Axis: Flag[int] = 0,
+    ](
+        self,
+        a: _ArrayLike[Shape],
+        indices: _ArrayLike[IdxShape],
+        axis: Axis = 0,
+        dtype: DTypeLike | None = None,
+        out: None = None,
+    ) -> _Array[reduceat_shape(Shape, IdxShape, Axis)]: ...
+    @overload
+    def reduceat(
+        self,
+        a: _ArrayLike[Any],
+        indices: _ArrayLike[Any],
+        axis: int = 0,
+        dtype: DTypeLike | None = None,
+        out: None = None,
+    ) -> _Array[IntTuple]: ...
+    def outer[Shape1: _Shape = [], Shape2: _Shape = []](
+        self, a: _ArrayLike[Shape1], b: _ArrayLike[Shape2], /
+    ) -> _Array[outer_shape(Shape1, Shape2)]: ...
 
 class ComplexWarning(UserWarning): ...
 

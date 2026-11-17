@@ -296,3 +296,28 @@ def test_arraylike_operands() -> None:
     assert_shape(jnp.add(np.ones((2, 1)), jnp.ones((1, 3))).shape, (2, 3))
     assert_shape(jnp.maximum(np.ones((2, 3)), 0.0).shape, (2, 3))
     assert_shape(jnp.equal(np.ones((2, 3)), 1).shape, (2, 3))
+
+
+def test_binary_ufunc_methods() -> None:
+    x = jnp.ones((3, 4))
+    y = jnp.ones((2, 5))
+    b = jnp.ones((3, 4), dtype=jnp.int32)
+
+    assert_shape(jnp.maximum.accumulate(x, axis=-1).shape, (3, 4))
+    assert_shape(jnp.minimum.accumulate(x, axis=0).shape, (3, 4))
+    assert_shape(jnp.add.accumulate(x, axis=1).shape, (3, 4))
+    assert_shape(jnp.bitwise_or.accumulate(b, axis=0).shape, (3, 4))
+
+    assert_shape(jnp.add.reduce(x).shape, (4,))
+    assert_shape(jnp.maximum.reduce(x, axis=-1).shape, (3,))
+    assert_shape(jnp.multiply.reduce(x, axis=0, keepdims=True).shape, (1, 4))
+    assert_shape(jnp.bitwise_xor.reduce(b, axis=1).shape, (3,))
+    assert_shape(jnp.logical_and.reduce(x > 0, axis=0).shape, (4,))
+    assert_shape(jnp.logical_or.reduce(x > 0, axis=None).shape, ())
+    assert_shape(jnp.logaddexp.reduce(x, axis=-1).shape, (3,))
+
+    assert_shape(jnp.add.outer(x, y).shape, (3, 4, 2, 5))
+    assert_shape(jnp.multiply.outer(jnp.ones(3), jnp.ones(4)).shape, (3, 4))
+
+    assert_shape(jnp.add.at(x, 0, jnp.ones(4), inplace=False).shape, (3, 4))
+    assert_shape(jnp.add.reduceat(x, jnp.array([0, 2]), axis=0).shape, (2, 4))

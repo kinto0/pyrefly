@@ -1897,6 +1897,16 @@ def take_shape(
     return dsl.Invalid("axis must be an integer or None")
 
 @type_shape_dsl_function
+def reduceat_shape(
+    a_shape: IntTuple,
+    idx_shape: IntTuple,
+    axis: int,
+) -> IntTuple:
+    if len(idx_shape) != 1:
+        return dsl.Invalid("reduceat requires 1-D indices")
+    return take_shape(a_shape, idx_shape, axis)
+
+@type_shape_dsl_function
 def take_along_axis_shape(
     arr_shape: IntTuple,
     idx_shape: IntTuple,
@@ -2371,3 +2381,7 @@ def glu_shape(shape: IntTuple, axis: int) -> IntTuple:
     return dsl.IntTuple(
         (halved if index == norm_axis else shape[index] for index in range(rank))
     )
+
+@type_shape_dsl_function
+def outer_shape(left: IntTuple, right: IntTuple) -> IntTuple:
+    return dsl.concat(left, right)
