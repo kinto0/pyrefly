@@ -22,6 +22,7 @@ use pyrefly_derive::Visit;
 use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::qname::QName;
+use pyrefly_util::assert_bytes;
 use pyrefly_util::assert_words;
 use pyrefly_util::display::DisplayWith;
 use pyrefly_util::display::commas_iter;
@@ -42,6 +43,7 @@ use crate::callable::PrefixParam;
 use crate::class::Class;
 use crate::class::ClassKind;
 use crate::class::ClassType;
+use crate::class::DjangoSpecialization;
 use crate::data_frame::DataFrameSchema;
 use crate::dimension;
 use crate::dimension::Int;
@@ -73,6 +75,8 @@ use crate::stdlib::Stdlib;
 use crate::tuple::Tuple;
 use crate::type_alias::TypeAliasData;
 use crate::type_level_dsl::TypeLevelDslCall;
+use crate::type_ord::TypeOrd;
+use crate::type_ord::TypeOrdCtx;
 use crate::type_var::Restriction;
 use crate::type_var::TypeVar;
 use crate::type_var_tuple::TypeVarTuple;
@@ -261,20 +265,117 @@ impl TParams {
     }
 }
 
-/// The type arguments of a class instance, together with the class's type parameters.
+/// The type arguments of a class instance, together with the class's type parameters, and the
+/// instance's Django specialization, if it has one (see `DjangoSpecialization`).
 ///
-/// Invariant: the field is `None` exactly when there are no type arguments. Most class
-/// types are not generic, so they carry no allocation, and cloning or dropping them
-/// touches no reference count shared with other threads.
+/// The types of the Django specialization are stored after the arguments. Its kind is stored in
+/// the same allocation and fixes how many types there are, so every structural operation finds
+/// them without knowing the class. Only `ClassType` reads or writes the specialization; the other
+/// methods cover the arguments alone.
+///
+/// Invariant: the field is `None` exactly when there are no type arguments and no Django
+/// specialization. Most class types are neither generic nor specialized, so they carry no
+/// allocation, and cloning or dropping them touches no reference count shared with other
+/// threads.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[derive(TypeEq, TypeOrd)]
-pub struct TArgs(Option<Arc<(Arc<TParams>, Box<[Type]>)>>);
+pub struct TArgs(Option<Arc<TArgsInner>>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(TypeEq)]
+struct TArgsInner {
+    tparams: Arc<TParams>,
+    /// One argument per type parameter, followed by the types of the Django specialization.
+    types: Box<[Type]>,
+    django: Option<DjangoKind>,
+}
+
+assert_bytes!(TArgsInner, 32);
+
+impl TArgsInner {
+    fn args_len(&self) -> usize {
+        self.types.len() - self.django.map_or(0, DjangoKind::len)
+    }
+
+    /// The type arguments, and the types of the Django specialization.
+    fn split(&self) -> (&[Type], &[Type]) {
+        self.types.split_at(self.args_len())
+    }
+}
+
+/// Instances of one class order by their type arguments, then by the kind of their Django
+/// specialization, with no specialization first, then by its types: the order that a separate field
+/// after the arguments gives. `TypeOrd`, which sorts union members, is the same order.
+impl Ord for TArgsInner {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let (args, django) = self.split();
+        let (other_args, other_django) = other.split();
+        self.tparams
+            .cmp(&other.tparams)
+            .then_with(|| args.cmp(other_args))
+            .then_with(|| self.django.cmp(&other.django))
+            .then_with(|| django.cmp(other_django))
+    }
+}
+
+impl PartialOrd for TArgsInner {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl TypeOrd for TArgsInner {
+    fn type_cmp(&self, other: &Self, ctx: &TypeOrdCtx) -> Ordering {
+        let (args, django) = self.split();
+        let (other_args, other_django) = other.split();
+        self.tparams
+            .type_cmp(&other.tparams, ctx)
+            .then_with(|| args.type_cmp(other_args, ctx))
+            .then_with(|| self.django.cmp(&other.django))
+            .then_with(|| django.type_cmp(other_django, ctx))
+    }
+}
+
+/// The kind of a Django specialization stored in `TArgs`, which fixes how many types it has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(TypeEq)]
+pub(crate) enum DjangoKind {
+    /// A queryset, stored as a `Type::ClassType`.
+    Queryset,
+    /// The primary key type of a target model.
+    TargetPkType,
+    /// An effective base, stored as a `Type::ClassType`.
+    EffectiveBase,
+    /// The read, assignment and override types of a field.
+    Field,
+}
+
+impl DjangoKind {
+    fn len(self) -> usize {
+        match self {
+            Self::Queryset | Self::TargetPkType | Self::EffectiveBase => 1,
+            Self::Field => 3,
+        }
+    }
+}
 
 impl Visit<Type> for TArgs {
     fn recurse<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
-        // TParams describe the declaration; only applied arguments are contained types.
-        for ty in self.as_slice() {
-            ty.visit(f);
+        // TParams describe the declaration; only applied arguments and the types of the Django
+        // specialization are contained types.
+        let Some(inner) = &self.0 else {
+            return;
+        };
+        let (args, django) = inner.split();
+        args.iter().for_each(|ty| ty.visit(f));
+        match inner.django {
+            None => {}
+            // A queryset or effective base must stay a class type, so only its contents are
+            // visited.
+            Some(DjangoKind::Queryset | DjangoKind::EffectiveBase) => django[0].recurse(f),
+            Some(DjangoKind::TargetPkType | DjangoKind::Field) => {
+                django.iter().for_each(|ty| ty.visit(f))
+            }
         }
     }
 }
@@ -282,8 +383,21 @@ impl Visit<Type> for TArgs {
 impl VisitMut<Type> for TArgs {
     fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
         // Arc<TParams> has a no-op VisitMut, so we only need to visit the types.
-        for ty in self.as_mut() {
-            ty.visit_mut(f);
+        let Some(inner) = &mut self.0 else {
+            return;
+        };
+        let inner = Arc::make_mut(inner);
+        let len = inner.args_len();
+        let (args, django) = inner.types.split_at_mut(len);
+        args.iter_mut().for_each(|ty| ty.visit_mut(f));
+        match inner.django {
+            None => {}
+            // A queryset or effective base must stay a class type, so only its contents are
+            // visited.
+            Some(DjangoKind::Queryset | DjangoKind::EffectiveBase) => django[0].recurse_mut(f),
+            Some(DjangoKind::TargetPkType | DjangoKind::Field) => {
+                django.iter_mut().for_each(|ty| ty.visit_mut(f))
+            }
         }
     }
 }
@@ -296,12 +410,16 @@ impl TArgs {
         if targs.is_empty() {
             return Self(None);
         }
-        Self(Some(Arc::new((tparams, targs.into_boxed_slice()))))
+        Self(Some(Arc::new(TArgsInner {
+            tparams,
+            types: targs.into_boxed_slice(),
+            django: None,
+        })))
     }
 
     pub fn tparams(&self) -> &TParams {
         match &self.0 {
-            Some(inner) => &inner.0,
+            Some(inner) => &inner.tparams,
             None => TParams::empty_ref(),
         }
     }
@@ -321,7 +439,7 @@ impl TArgs {
 
     pub fn as_slice(&self) -> &[Type] {
         match &self.0 {
-            Some(inner) => &inner.1,
+            Some(inner) => inner.split().0,
             None => &[],
         }
     }
@@ -334,16 +452,70 @@ impl TArgs {
     /// touches a reference count; with them, a shared allocation is copied first.
     pub fn split_mut(&mut self) -> (&TParams, &mut [Type]) {
         match &mut self.0 {
-            Some(inner) => {
+            Some(inner) if inner.args_len() != 0 => {
                 let inner = Arc::make_mut(inner);
-                (&inner.0, &mut inner.1)
+                let len = inner.args_len();
+                (&inner.tparams, &mut inner.types[..len])
             }
-            None => (TParams::empty_ref(), &mut []),
+            _ => (TParams::empty_ref(), &mut []),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_none()
+        self.as_slice().is_empty()
+    }
+
+    /// The Django specialization stored after the arguments.
+    pub(crate) fn django(&self) -> Option<DjangoSpecialization<'_>> {
+        fn class_type(ty: &Type) -> &ClassType {
+            match ty {
+                Type::ClassType(cls) => cls,
+                _ => unreachable!("a Django queryset or effective base is stored as a class type"),
+            }
+        }
+        let inner = self.0.as_deref()?;
+        Some(match (inner.django?, inner.split().1) {
+            (DjangoKind::Queryset, [queryset]) => {
+                DjangoSpecialization::Queryset(class_type(queryset))
+            }
+            (DjangoKind::TargetPkType, [pk_type]) => DjangoSpecialization::TargetPkType(pk_type),
+            (DjangoKind::EffectiveBase, [base]) => {
+                DjangoSpecialization::EffectiveBase(class_type(base))
+            }
+            (DjangoKind::Field, [get_type, set_type, override_type]) => {
+                DjangoSpecialization::Field {
+                    get_type,
+                    set_type,
+                    override_type,
+                }
+            }
+            _ => unreachable!("a Django specialization has as many types as its kind fixes"),
+        })
+    }
+
+    /// Replace the Django specialization with one of `kind`, which has `types`.
+    pub(crate) fn with_django<const N: usize>(self, kind: DjangoKind, types: [Type; N]) -> Self {
+        assert_eq!(N, kind.len(), "wrong number of Django specialization types");
+        let tparams = match &self.0 {
+            Some(inner) => inner.tparams.dupe(),
+            None => Arc::new(TParams::default()),
+        };
+        let types = self.as_slice().iter().cloned().chain(types).collect();
+        Self(Some(Arc::new(TArgsInner {
+            tparams,
+            types,
+            django: Some(kind),
+        })))
+    }
+
+    /// The arguments without the Django specialization.
+    pub(crate) fn without_django(self) -> Self {
+        match &self.0 {
+            Some(inner) if inner.django.is_some() => {
+                Self::new(inner.tparams.dupe(), self.as_slice().to_vec())
+            }
+            _ => self,
+        }
     }
 
     /// Returns the number of type arguments to display, stripping trailing args
@@ -368,16 +540,18 @@ impl TArgs {
     /// class specialized with type arguments.
     ///
     /// Unions in the substituted arguments are simplified, so type arguments that differ only in
-    /// the order, nesting or duplication of union members compare equal.
+    /// the order, nesting or duplication of union members compare equal. The types of the Django
+    /// specialization are substituted without that simplification.
     pub fn substitute_with(&self, substitution: &Substitution, env: &dyn TypeEnv) -> Self {
-        let Some((tparams, targs)) = self.0.as_deref() else {
+        let Some(inner) = self.0.as_deref() else {
             return Self::default();
         };
         if substitution.0.is_empty() {
             return self.clone();
         }
         let heap = TypeHeap::new();
-        let tys = targs
+        let (args, django) = inner.split();
+        let types = args
             .iter()
             .map(|ty| {
                 let mut ty = substitution.substitute_into(ty.clone());
@@ -392,8 +566,17 @@ impl TArgs {
                 });
                 ty
             })
+            .chain(
+                django
+                    .iter()
+                    .map(|ty| substitution.substitute_into(ty.clone())),
+            )
             .collect();
-        Self::new(tparams.dupe(), tys)
+        Self(Some(Arc::new(TArgsInner {
+            tparams: inner.tparams.dupe(),
+            types,
+            django: inner.django,
+        })))
     }
 
     pub fn substitution_map(&self) -> SmallMap<&Quantified, &Type> {
@@ -414,7 +597,7 @@ impl TArgs {
                 // Repeated match because pattern guards cannot mutably borrow.
                 if let TypeAliasData::Ref(r) = &mut **ta {
                     // Store targs so they can be applied when the value is looked up.
-                    r.args = Some(self.clone())
+                    r.args = Some(self.clone().without_django())
                 } else {
                     unreachable!("guarded by matches! above")
                 }
@@ -2684,6 +2867,7 @@ mod tests {
     use std::cmp::Ordering;
     use std::sync::Arc;
 
+    use dupe::Dupe;
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_util::visit::Visit;
     use ruff_python_ast::name::Name;
@@ -2692,6 +2876,8 @@ mod tests {
 
     use crate::callable::Callable;
     use crate::callable::ParamList;
+    use crate::class::ClassType;
+    use crate::class::DjangoSpecialization;
     use crate::dimension::Int;
     use crate::dimension::ShapeError;
     use crate::equality::TypeEq;
@@ -2779,6 +2965,56 @@ mod tests {
         targs.visit(&mut |ty| visited.push(ty.clone()));
 
         assert_eq!(visited, vec![Type::Ellipsis]);
+    }
+
+    #[test]
+    fn test_django_specialization_is_stored_after_the_arguments() {
+        let env = &TestTypeEnv::new();
+        let t = test_quantified("foo", "T");
+        let tparams = Arc::new(TParams::new(vec![t.clone()]));
+        let class_type = |name, arg: Type| {
+            ClassType::new(
+                env.generic_class("foo", name, TParams::new(vec![t.clone()])),
+                TArgs::new(tparams.dupe(), vec![arg]),
+            )
+        };
+        let t = Type::Quantified(Box::new(t.clone()));
+        let plain = class_type("Bar", t.clone());
+        let specialized = plain.clone().with_django_base(class_type("Baz", t.clone()));
+        assert_eq!(specialized.targs().as_slice(), plain.targs().as_slice());
+        assert!(
+            plain < specialized,
+            "an instance without a specialization orders before one with it"
+        );
+
+        let none = TArgs::new(tparams.dupe(), vec![Type::None]);
+        let substituted = specialized.substitute_with(&none.substitution(), env);
+        let Some(DjangoSpecialization::EffectiveBase(base)) = substituted.django_specialization()
+        else {
+            panic!("substitution should keep the Django specialization");
+        };
+        assert_eq!(substituted.targs().as_slice(), [Type::None]);
+        assert_eq!(base.targs().as_slice(), [Type::None]);
+
+        let rebuilt = ClassType::new(
+            substituted.class_object().dupe(),
+            substituted.targs().clone(),
+        );
+        assert!(rebuilt.django_specialization().is_none());
+        assert_eq!(rebuilt.targs(), &none);
+
+        let field = ClassType::new(env.class("foo", "Qux"), TArgs::default()).with_django_field(
+            Type::None,
+            t.clone(),
+            Type::None,
+        );
+        assert!(field.targs().is_empty());
+        assert!(matches!(
+            field.django_specialization(),
+            Some(DjangoSpecialization::Field { set_type, .. }) if *set_type == t
+        ));
+        let rebuilt = ClassType::new(field.class_object().dupe(), field.targs().clone());
+        assert_eq!(rebuilt.targs(), &TArgs::default());
     }
 
     #[test]

@@ -27,6 +27,7 @@ use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::nesting_context::NestingContext;
 use pyrefly_python::qname::QName;
+use pyrefly_util::assert_bytes;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
 use ruff_python_ast::Identifier;
@@ -41,6 +42,7 @@ use crate::function::Deprecation;
 use crate::known_class::KnownClass;
 use crate::type_ord::TypeOrd;
 use crate::type_ord::TypeOrdCtx;
+use crate::types::DjangoKind;
 use crate::types::Substitution;
 use crate::types::TArgs;
 use crate::types::TParams;
@@ -636,7 +638,9 @@ impl Class {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(Visit, VisitMut, TypeEq, TypeOrd)]
-pub struct ClassType(Class, TArgs, Option<Arc<DjangoClassMetadata>>);
+pub struct ClassType(Class, TArgs);
+
+assert_bytes!(ClassType, 16);
 
 /// A Django specialization of a class instance, made where the instance is constructed.
 ///
@@ -664,69 +668,11 @@ pub enum DjangoSpecialization<'a> {
     },
 }
 
-/// The storage of a `DjangoSpecialization`.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[derive(TypeEq, TypeOrd)]
-enum DjangoClassMetadata {
-    Manager {
-        queryset: ClassType,
-    },
-    ManyRelatedManager {
-        pk_type: Type,
-    },
-    SpecializedBase {
-        base: ClassType,
-    },
-    Field {
-        get_type: Type,
-        set_type: Type,
-        override_type: Type,
-    },
-}
-
-impl Visit<Type> for Arc<DjangoClassMetadata> {
-    fn recurse<'a>(&'a self, f: &mut dyn FnMut(&'a Type)) {
-        match self.as_ref() {
-            DjangoClassMetadata::Manager { queryset } => queryset.visit(f),
-            DjangoClassMetadata::ManyRelatedManager { pk_type } => f(pk_type),
-            DjangoClassMetadata::SpecializedBase { base } => base.visit(f),
-            DjangoClassMetadata::Field {
-                get_type,
-                set_type,
-                override_type,
-            } => {
-                f(get_type);
-                f(set_type);
-                f(override_type);
-            }
-        }
-    }
-}
-
-impl VisitMut<Type> for Arc<DjangoClassMetadata> {
-    fn recurse_mut(&mut self, f: &mut dyn FnMut(&mut Type)) {
-        match Arc::make_mut(self) {
-            DjangoClassMetadata::Manager { queryset } => queryset.visit_mut(f),
-            DjangoClassMetadata::ManyRelatedManager { pk_type } => f(pk_type),
-            DjangoClassMetadata::SpecializedBase { base } => base.visit_mut(f),
-            DjangoClassMetadata::Field {
-                get_type,
-                set_type,
-                override_type,
-            } => {
-                f(get_type);
-                f(set_type);
-                f(override_type);
-            }
-        }
-    }
-}
-
 impl ClassType {
-    /// Create a class type.
+    /// Create a class type without a Django specialization, dropping any that `targs` carries.
     /// The `targs` must match the `tparams`, if this fails we will panic.
     pub fn new(class: Class, targs: TArgs) -> Self {
-        Self(class, targs, None)
+        Self(class, targs.without_django())
     }
 
     pub fn class_object(&self) -> &Class {
@@ -757,83 +703,61 @@ impl ClassType {
     /// This is used to propagate instantiation of base class type parameters when computing
     /// the MRO.
     pub fn substitute_with(&self, substitution: &Substitution, env: &dyn TypeEnv) -> Self {
-        let mut result = self.clone();
-        result.1 = self.1.substitute_with(substitution, env);
-        if let Some(metadata) = &mut result.2 {
-            metadata.recurse_mut(&mut |ty| substitution.substitute_into_mut(ty));
-        }
-        result
+        Self(self.0.dupe(), self.1.substitute_with(substitution, env))
     }
 
     /// Attach the queryset of a manager bound to a model. Only `Manager` itself carries one.
-    pub fn with_django_queryset(mut self, queryset: ClassType) -> Self {
+    pub fn with_django_queryset(self, queryset: ClassType) -> Self {
         assert!(
             self.is(KnownClass::DjangoManager),
             "only `Manager` carries a Django queryset"
         );
-        self.2 = Some(Arc::new(DjangoClassMetadata::Manager { queryset }));
-        self
+        Self(
+            self.0,
+            self.1
+                .with_django(DjangoKind::Queryset, [queryset.to_type()]),
+        )
     }
 
     /// Attach the primary key type of a many-to-many manager's target model. Only
     /// `ManyRelatedManager` itself carries one.
-    pub fn with_django_target_pk_type(mut self, pk_type: Type) -> Self {
+    pub fn with_django_target_pk_type(self, pk_type: Type) -> Self {
         assert!(
             self.is(KnownClass::DjangoManyRelatedManager),
             "only `ManyRelatedManager` carries a Django target primary key type"
         );
-        self.2 = Some(Arc::new(DjangoClassMetadata::ManyRelatedManager {
-            pk_type,
-        }));
-        self
+        Self(
+            self.0,
+            self.1.with_django(DjangoKind::TargetPkType, [pk_type]),
+        )
     }
 
     /// Attach the effective base of a strict subclass of a Django manager or queryset.
     /// `Manager` and `QuerySet` themselves express their binding in their type arguments.
-    pub fn with_django_base(mut self, base: ClassType) -> Self {
+    pub fn with_django_base(self, base: ClassType) -> Self {
         assert!(
             !self.is(KnownClass::DjangoManager) && !self.is(KnownClass::DjangoQuerySet),
             "`Manager` and `QuerySet` do not carry a Django effective base"
         );
-        self.2 = Some(Arc::new(DjangoClassMetadata::SpecializedBase { base }));
-        self
+        Self(
+            self.0,
+            self.1
+                .with_django(DjangoKind::EffectiveBase, [base.to_type()]),
+        )
     }
 
     /// Attach the types of a model field. The caller checks that the class inherits from
     /// Django's `Field`, which needs the class's MRO.
-    pub fn with_django_field(
-        mut self,
-        get_type: Type,
-        set_type: Type,
-        override_type: Type,
-    ) -> Self {
-        self.2 = Some(Arc::new(DjangoClassMetadata::Field {
-            get_type,
-            set_type,
-            override_type,
-        }));
-        self
+    pub fn with_django_field(self, get_type: Type, set_type: Type, override_type: Type) -> Self {
+        Self(
+            self.0,
+            self.1
+                .with_django(DjangoKind::Field, [get_type, set_type, override_type]),
+        )
     }
 
     pub fn django_specialization(&self) -> Option<DjangoSpecialization<'_>> {
-        Some(match self.2.as_deref()? {
-            DjangoClassMetadata::Manager { queryset } => DjangoSpecialization::Queryset(queryset),
-            DjangoClassMetadata::ManyRelatedManager { pk_type } => {
-                DjangoSpecialization::TargetPkType(pk_type)
-            }
-            DjangoClassMetadata::SpecializedBase { base } => {
-                DjangoSpecialization::EffectiveBase(base)
-            }
-            DjangoClassMetadata::Field {
-                get_type,
-                set_type,
-                override_type,
-            } => DjangoSpecialization::Field {
-                get_type,
-                set_type,
-                override_type,
-            },
-        })
+        self.1.django()
     }
 
     pub fn substitution(&self) -> Substitution<'_> {

@@ -7,6 +7,7 @@
 
 //! Tests of the `State` object.
 
+use std::env;
 use std::mem;
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -95,10 +96,23 @@ impl Incremental {
     }
 
     fn with_files_and_threads(files: Vec<String>, threads: ThreadCount) -> Self {
+        Self::with_site_packages(files, threads, Vec::new())
+    }
+
+    /// Like `with_files_and_threads`, but imports that no file provides also resolve against the
+    /// packages in `site_package_path`.
+    fn with_site_packages(
+        files: Vec<String>,
+        threads: ThreadCount,
+        site_package_path: Vec<PathBuf>,
+    ) -> Self {
         init_test();
         let data = IncrementalData::default();
 
         let mut config = ConfigFile::default();
+        if !site_package_path.is_empty() {
+            config.python_environment.site_package_path = Some(site_package_path);
+        }
         config.python_environment.set_empty_to_default();
         let mut sourcedb = MapDatabase::new(config.get_sys_info());
         for file in &files {
@@ -3624,15 +3638,21 @@ impl Rebuild {
 }
 
 /// Check every module of `files`, apply `edits`, recheck every module with `threads` threads, and
-/// check the edited sources from scratch.
+/// check the edited sources from scratch. Imports that no file provides resolve against the
+/// packages in `site_package_path`.
 fn rebuild_against_clean(
     files: &[(&str, &str)],
     edits: &[(&str, &str)],
     threads: ThreadCount,
+    site_package_path: &[PathBuf],
 ) -> Rebuild {
     let modules = files.map(|(m, _)| *m);
     let checked = |sources: &[(&str, &str)]| {
-        let mut i = Incremental::with_files_and_threads(modules.map(|m| (*m).to_owned()), threads);
+        let mut i = Incremental::with_site_packages(
+            modules.map(|m| (*m).to_owned()),
+            threads,
+            site_package_path.to_vec(),
+        );
         for (m, contents) in sources {
             i.set(m, contents);
         }
@@ -3678,6 +3698,7 @@ fn assert_rebuild_matches_clean(files: &[(&str, &str)], edits: &[(&str, &str)], 
             files,
             edits,
             ThreadCount::NumThreads(NonZeroUsize::new(threads).unwrap()),
+            &[],
         );
         let differences = rebuild.stale();
         let mut actual = differences.keys().copied().collect::<Vec<_>>();
@@ -5548,4 +5569,33 @@ fn test_inherited_dataclass_field_edit_matches_clean() {
         )],
         &[],
     );
+}
+
+/// A model in `bar` binds a custom manager from `foo`, which is in an import cycle with `bar`, so
+/// the bound manager carries an effective base, and `foo` reads it back. The edit removes the
+/// manager's `Manager` base. `foo` is rebuilt first and reads the bound manager that `bar` computed
+/// against the old `foo`, whose effective base names a class that is no longer a base of the
+/// manager. The rebuild must not panic, and at every thread count it must match a clean check.
+#[test]
+fn test_django_manager_loses_manager_base_through_cycle() {
+    let foo = |bases: &str| {
+        format!(
+            "from django.db import models\nfrom bar import Article\nclass ArticleManager{bases}:\n    def published(self): ...\nmanager = Article.objects\nrows = manager.all()\npublished = manager.published()\n"
+        )
+    };
+    let bar = "from django.db import models\nfrom foo import ArticleManager\nclass Article(models.Model):\n    objects = ArticleManager()\n";
+    let site_package_path = [PathBuf::from(env::var("DJANGO_TEST_PATH").unwrap())];
+    for threads in [1, 3, 8] {
+        let rebuild = rebuild_against_clean(
+            &[("foo", &foo("(models.Manager)")), ("bar", bar)],
+            &[("foo", &foo(""))],
+            ThreadCount::NumThreads(NonZeroUsize::new(threads).unwrap()),
+            &site_package_path,
+        );
+        assert_eq!(
+            rebuild.stale(),
+            SmallMap::new(),
+            "stale modules after the recheck at {threads} threads"
+        );
+    }
 }
