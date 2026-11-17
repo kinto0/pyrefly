@@ -8,6 +8,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+use std::fmt;
+use std::fmt::Debug;
+use std::fmt::Formatter;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -27,6 +30,7 @@ use pyrefly_util::fs_anyhow;
 use pyrefly_util::lock::Mutex;
 use starlark_map::Hashed;
 use starlark_map::small_map::SmallMap;
+use starlark_map::small_set::SmallSet;
 use tempfile::NamedTempFile;
 
 pub fn set_readonly(path: &Path, value: bool) -> anyhow::Result<()> {
@@ -40,7 +44,6 @@ pub fn set_readonly(path: &Path, value: bool) -> anyhow::Result<()> {
 pub(crate) struct BundleFile {
     pub(crate) import_path: PathBuf,
     pub(crate) storage_path: PathBuf,
-    pub(crate) contents: String,
 }
 
 #[derive(Debug)]
@@ -49,22 +52,45 @@ struct Candidate {
     is_package: bool,
 }
 
-/// An eagerly resolved view of one virtual import root.
+/// The contents of a bundle's files keyed by storage path, read the first time any file is
+/// loaded.
+type BundleContents = LazyLock<
+    SmallMap<PathBuf, Arc<String>>,
+    Box<dyn FnOnce() -> SmallMap<PathBuf, Arc<String>> + Send>,
+>;
+
+/// An eagerly resolved view of one virtual import root, whose file contents are only read
+/// when a file is loaded.
 ///
 /// Package initializers take precedence over same-name modules, and modules block descendants.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Bundle {
     find: SmallMap<ModuleName, usize>,
-    load: SmallMap<PathBuf, Arc<String>>,
+    paths: SmallSet<PathBuf>,
+    contents: Arc<BundleContents>,
+}
+
+impl Debug for Bundle {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bundle")
+            .field("find", &self.find)
+            .field("paths", &self.paths)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Bundle {
-    pub(crate) fn new<Files>(files: Files) -> anyhow::Result<Self>
+    /// Resolve the modules of `files`. `contents` reads the contents of every storage path in
+    /// `files`; it is called the first time a file is loaded.
+    pub(crate) fn new<Files>(
+        files: Files,
+        contents: impl FnOnce() -> anyhow::Result<SmallMap<PathBuf, String>> + Send + 'static,
+    ) -> anyhow::Result<Self>
     where
         Files: IntoIterator<Item = BundleFile>,
     {
         let mut candidates: SmallMap<ModuleName, Candidate> = SmallMap::new();
-        let mut load = SmallMap::new();
+        let mut paths = SmallSet::new();
         for file in files {
             let module = ModuleName::from_relative_path(&file.import_path)?;
             let is_package = file
@@ -72,9 +98,10 @@ impl Bundle {
                 .file_stem()
                 .is_some_and(|stem| stem == "__init__");
             let storage_path = Hashed::new(file.storage_path);
-            let load_index = load
+            let load_index = paths
                 .get_index_of_hashed(storage_path.as_ref())
-                .unwrap_or(load.len());
+                .unwrap_or(paths.len());
+            paths.insert_hashed(storage_path);
             if let Some(candidate) = candidates.get_mut(&module) {
                 if is_package && !candidate.is_package {
                     candidate.load_index = load_index;
@@ -89,7 +116,6 @@ impl Bundle {
                     },
                 );
             }
-            load.insert_hashed(storage_path, Arc::new(file.contents));
         }
 
         let mut find = SmallMap::new();
@@ -106,20 +132,37 @@ impl Bundle {
             }
             find.insert(*module, candidate.load_index);
         }
-        Ok(Self { find, load })
+
+        let contents: Box<dyn FnOnce() -> SmallMap<PathBuf, Arc<String>> + Send> =
+            Box::new(move || {
+                contents()
+                    .expect("bundled files embedded in the binary should be readable")
+                    .into_iter()
+                    .map(|(path, contents)| (path, Arc::new(contents)))
+                    .collect()
+            });
+        Ok(Self {
+            find,
+            paths,
+            contents: Arc::new(LazyLock::new(contents)),
+        })
     }
 
     pub(crate) fn find(&self, module: ModuleName) -> Option<&PathBuf> {
         let index = *self.find.get(&module)?;
-        let (path, _) = self
-            .load
-            .get_index(index)
-            .expect("bundle find indices refer to immutable load entries");
-        Some(path)
+        Some(
+            self.paths
+                .get_index(index)
+                .expect("bundle find indices refer to immutable paths"),
+        )
     }
 
     pub(crate) fn load(&self, path: &Path) -> Option<Arc<String>> {
-        self.load.get(path).cloned()
+        // Checked first so that a path outside the bundle does not read the contents.
+        if !self.paths.contains(path) {
+            return None;
+        }
+        self.contents.get(path).cloned()
     }
 
     pub(crate) fn modules(&self) -> impl Iterator<Item = ModuleName> + '_ {
@@ -127,13 +170,13 @@ impl Bundle {
     }
 
     pub(crate) fn load_map(&self) -> impl Iterator<Item = (&PathBuf, &Arc<String>)> {
-        self.load.iter()
+        self.contents.iter()
     }
 }
 
 #[cfg(test)]
 pub(crate) fn assert_bundle_order_independent(files: impl IntoIterator<Item = BundleFile>) {
-    fn loaded_modules(bundle: &Bundle) -> Vec<(ModuleName, PathBuf, Arc<String>)> {
+    fn found_modules(bundle: &Bundle) -> Vec<(ModuleName, PathBuf)> {
         let mut modules = bundle.modules().collect::<Vec<_>>();
         modules.sort_by(|left, right| left.as_str().cmp(right.as_str()));
         modules
@@ -142,19 +185,17 @@ pub(crate) fn assert_bundle_order_independent(files: impl IntoIterator<Item = Bu
                 let path = bundle
                     .find(module)
                     .expect("bundle modules have selected paths");
-                let contents = bundle
-                    .load(path)
-                    .expect("selected bundle paths have contents");
-                (module, path.clone(), contents)
+                (module, path.clone())
             })
             .collect()
     }
 
     let files = files.into_iter().collect::<Vec<_>>();
-    let forward = Bundle::new(files.clone()).expect("static bundle files should be valid");
-    let reverse =
-        Bundle::new(files.into_iter().rev()).expect("static bundle files should be valid");
-    assert_eq!(loaded_modules(&forward), loaded_modules(&reverse));
+    let forward = Bundle::new(files.clone(), || Ok(SmallMap::new()))
+        .expect("static bundle files should be valid");
+    let reverse = Bundle::new(files.into_iter().rev(), || Ok(SmallMap::new()))
+        .expect("static bundle files should be valid");
+    assert_eq!(found_modules(&forward), found_modules(&reverse));
 }
 
 /// Creates a base config file for bundled stubs with common settings.
@@ -292,14 +333,23 @@ pub trait BundledStub {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
     use super::*;
 
     fn bundle(files: &[(&str, &str)]) -> Bundle {
-        Bundle::new(files.iter().map(|(module_path, path)| BundleFile {
-            import_path: PathBuf::from(module_path),
-            storage_path: PathBuf::from(path),
-            contents: path.to_string(),
-        }))
+        let contents = files
+            .iter()
+            .map(|(_, path)| (PathBuf::from(path), path.to_string()))
+            .collect::<SmallMap<_, _>>();
+        Bundle::new(
+            files.iter().map(|(module_path, path)| BundleFile {
+                import_path: PathBuf::from(module_path),
+                storage_path: PathBuf::from(path),
+            }),
+            move || Ok(contents),
+        )
         .unwrap()
     }
 
@@ -354,18 +404,24 @@ mod tests {
 
     #[test]
     fn test_bundled_duplicate_storage_path_keeps_stable_indices() {
-        let bundle = Bundle::new([
-            BundleFile {
-                import_path: PathBuf::from("first.pyi"),
-                storage_path: PathBuf::from("shared.pyi"),
-                contents: "first".to_owned(),
+        let bundle = Bundle::new(
+            [
+                BundleFile {
+                    import_path: PathBuf::from("first.pyi"),
+                    storage_path: PathBuf::from("shared.pyi"),
+                },
+                BundleFile {
+                    import_path: PathBuf::from("second.pyi"),
+                    storage_path: PathBuf::from("shared.pyi"),
+                },
+            ],
+            || {
+                Ok(SmallMap::from_iter([(
+                    PathBuf::from("shared.pyi"),
+                    "shared".to_owned(),
+                )]))
             },
-            BundleFile {
-                import_path: PathBuf::from("second.pyi"),
-                storage_path: PathBuf::from("shared.pyi"),
-                contents: "second".to_owned(),
-            },
-        ])
+        )
         .unwrap();
         let shared = PathBuf::from("shared.pyi");
         assert_eq!(bundle.find(ModuleName::from_str("first")), Some(&shared));
@@ -375,7 +431,50 @@ mod tests {
                 .load(Path::new("shared.pyi"))
                 .as_deref()
                 .map(String::as_str),
-            Some("second")
+            Some("shared")
+        );
+    }
+
+    #[test]
+    fn test_bundled_contents_are_read_on_first_load() {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let bundle = Bundle::new(
+            [BundleFile {
+                import_path: PathBuf::from("foo.pyi"),
+                storage_path: PathBuf::from("foo.pyi"),
+            }],
+            {
+                let reads = reads.clone();
+                move || {
+                    reads.fetch_add(1, Ordering::Relaxed);
+                    Ok(SmallMap::from_iter([(
+                        PathBuf::from("foo.pyi"),
+                        "x: int".to_owned(),
+                    )]))
+                }
+            },
+        )
+        .unwrap();
+        assert!(bundle.find(ModuleName::from_str("foo")).is_some());
+        assert!(bundle.find(ModuleName::from_str("bar")).is_none());
+        assert!(bundle.load(Path::new("bar.pyi")).is_none());
+        assert_eq!(
+            reads.load(Ordering::Relaxed),
+            0,
+            "finding should not read contents"
+        );
+        assert_eq!(
+            bundle
+                .load(Path::new("foo.pyi"))
+                .as_deref()
+                .map(String::as_str),
+            Some("x: int")
+        );
+        bundle.load(Path::new("foo.pyi"));
+        assert_eq!(
+            reads.load(Ordering::Relaxed),
+            1,
+            "contents should be read once"
         );
     }
 

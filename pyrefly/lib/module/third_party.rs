@@ -14,6 +14,7 @@ use std::sync::LazyLock;
 use anyhow::anyhow;
 use dupe::Dupe;
 use pyrefly_bundled::bundled_third_party;
+use pyrefly_bundled::bundled_third_party_paths;
 use pyrefly_config::config::ConfigFile;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
@@ -52,16 +53,14 @@ fn strip_stubs_suffix_from_path(path: &Path) -> PathBuf {
 
 impl BundledStub for BundledThirdParty {
     fn new() -> anyhow::Result<Self> {
-        let contents = bundled_third_party()?;
-        let files = contents
+        let files = bundled_third_party_paths()
             .into_iter()
-            .map(|(relative_path, contents)| BundleFile {
+            .map(|relative_path| BundleFile {
                 import_path: strip_stubs_suffix_from_path(&relative_path),
                 storage_path: relative_path,
-                contents,
             });
         Ok(Self {
-            bundle: Bundle::new(files)?,
+            bundle: Bundle::new(files, bundled_third_party)?,
         })
     }
 
@@ -176,10 +175,9 @@ mod tests {
     #[test]
     fn test_bundled_third_party_lookup_is_file_order_independent() {
         let stub = get_bundled_third_party().unwrap();
-        assert_bundle_order_independent(stub.load_map().map(|(path, contents)| BundleFile {
+        assert_bundle_order_independent(stub.load_map().map(|(path, _)| BundleFile {
             import_path: strip_stubs_suffix_from_path(path),
             storage_path: path.clone(),
-            contents: contents.as_str().to_owned(),
         }));
     }
 }

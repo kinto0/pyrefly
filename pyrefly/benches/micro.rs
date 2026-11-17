@@ -998,9 +998,10 @@ static REAL_IDENTIFIERS: LazyLock<Vec<Name>> = LazyLock::new(|| {
     {
         push_identifiers(contents, &mut set);
     }
-    let (typeshed_third_party, _) = pyrefly_bundled::bundled_third_party_stubs()
-        .expect("bundled typeshed third-party stubs should extract");
-    for contents in typeshed_third_party.values() {
+    for contents in pyrefly_bundled::bundled_third_party_stubs()
+        .expect("bundled typeshed third-party stubs should extract")
+        .values()
+    {
         push_identifiers(contents, &mut set);
     }
     for contents in pyrefly_bundled::bundled_third_party()

@@ -12,7 +12,9 @@ use std::sync::LazyLock;
 
 use anyhow::anyhow;
 use dupe::Dupe;
+use pyrefly_bundled::BundledPaths;
 use pyrefly_bundled::bundled_third_party_stubs;
+use pyrefly_bundled::bundled_third_party_stubs_paths;
 use pyrefly_config::config::ConfigFile;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
@@ -32,15 +34,15 @@ pub struct BundledTypeshedThirdParty {
 
 impl BundledStub for BundledTypeshedThirdParty {
     fn new() -> anyhow::Result<Self> {
-        let (contents, path_to_package) = bundled_third_party_stubs()?;
-        let files = contents
-            .into_iter()
-            .map(|(relative_path, contents)| BundleFile {
-                import_path: relative_path.clone(),
-                storage_path: relative_path,
-                contents,
-            });
-        let bundle = Bundle::new(files)?;
+        let BundledPaths {
+            paths,
+            path_to_package,
+        } = bundled_third_party_stubs_paths();
+        let files = paths.into_iter().map(|relative_path| BundleFile {
+            import_path: relative_path.clone(),
+            storage_path: relative_path,
+        });
+        let bundle = Bundle::new(files, bundled_third_party_stubs)?;
         let package_names = bundle
             .modules()
             .map(|module| {
@@ -143,10 +145,9 @@ mod tests {
     #[test]
     fn test_typeshed_third_party_lookup_is_file_order_independent() {
         let typeshed = typeshed_third_party().unwrap();
-        assert_bundle_order_independent(typeshed.load_map().map(|(path, contents)| BundleFile {
+        assert_bundle_order_independent(typeshed.load_map().map(|(path, _)| BundleFile {
             import_path: path.clone(),
             storage_path: path.clone(),
-            contents: contents.as_str().to_owned(),
         }));
     }
 }

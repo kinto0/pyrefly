@@ -5,17 +5,20 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-use std::env;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Context as _;
 use starlark_map::small_map::SmallMap;
+use starlark_map::small_set::SmallSet;
 use tar::Archive;
 use zstd::stream::read::Decoder;
 
 static BUNDLED_TYPESHED_BYTES: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/stdlib.tar.zst"));
+
+/// The paths of the files in the stdlib archive, one per line; see this crate's `build.rs`.
+static BUNDLED_TYPESHED_INDEX: &str = include_str!(concat!(env!("OUT_DIR"), "/stdlib.index"));
 
 pub const BUNDLED_TYPESHED_DIGEST: &[u8; 32] =
     include_bytes!(concat!(env!("OUT_DIR"), "/stdlib.sha256"));
@@ -27,6 +30,9 @@ static BUNDLED_TYPESHED_VERSIONS: &str = include_str!(concat!(env!("OUT_DIR"), "
 static BUNDLED_TYPESHED_THIRD_PARTY_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/typeshed_stubs.tar.zst"));
 
+static BUNDLED_TYPESHED_THIRD_PARTY_INDEX: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/typeshed_stubs.index"));
+
 pub const BUNDLED_TYPESHED_THIRD_PARTY_DIGEST: &[u8; 32] =
     include_bytes!(concat!(env!("OUT_DIR"), "/typeshed_stubs.sha256"));
 
@@ -34,10 +40,12 @@ pub const BUNDLED_TYPESHED_THIRD_PARTY_DIGEST: &[u8; 32] =
 static BUNDLED_THIRD_PARTY_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/stubs.tar.zst"));
 
+static BUNDLED_THIRD_PARTY_INDEX: &str = include_str!(concat!(env!("OUT_DIR"), "/stubs.index"));
+
 pub const BUNDLED_THIRD_PARTY_DIGEST: &[u8; 32] =
     include_bytes!(concat!(env!("OUT_DIR"), "/stubs.sha256"));
 
-#[derive(PartialEq)]
+#[derive(Clone, Copy)]
 enum PathFilter {
     /// Filter for stdlib files (typeshed/stdlib/...)
     Stdlib,
@@ -63,12 +71,92 @@ impl PathFilter {
             PathFilter::ThirdPartyStubs => BUNDLED_THIRD_PARTY_BYTES,
         }
     }
+
+    fn archive_index(&self) -> &'static str {
+        match self {
+            PathFilter::Stdlib => BUNDLED_TYPESHED_INDEX,
+            PathFilter::ThirdPartyTypeshedStubs => BUNDLED_TYPESHED_THIRD_PARTY_INDEX,
+            PathFilter::ThirdPartyStubs => BUNDLED_THIRD_PARTY_INDEX,
+        }
+    }
+
+    /// Map the path of a file in the archive to the path it is imported from, and for
+    /// typeshed third-party stubs the package that provides it. Returns `None` for a file
+    /// that is not a `.pyi` file of this archive.
+    fn relative_path(&self, archive_path: &Path) -> Option<(PathBuf, Option<String>)> {
+        let mut components = archive_path.components();
+        let first_component = components.next();
+        if let Some(expected) = self.expected_first_component()
+            && first_component.is_none_or(|component| component.as_os_str() != expected)
+        {
+            return None;
+        }
+
+        // Typeshed stdlib stubs have a different directory structure than third-party stubs.
+        // stdlib example: typeshed/stdlib/builtins.pyi
+        // third-party example: typeshed/stubs/package-name/package-name/other.pyi
+        // An example of this might be the path typeshed/stubs/JACK-Client/jack/other.pyi
+        // In this case we want out path to be jack/other.pyi, so we skip over "stubs" and "JACK-Client".
+        let (relative_path, package) = match self {
+            PathFilter::Stdlib => (components.collect::<PathBuf>(), None),
+            PathFilter::ThirdPartyTypeshedStubs => {
+                // The package is recorded per path (e.g., "google/protobuf/__init__.pyi" →
+                // "protobuf") to handle namespace packages like google/ that span multiple
+                // typeshed packages (protobuf, google-cloud-ndb, etc.).
+                let package = components
+                    .next()
+                    .and_then(|package| package.as_os_str().to_str())
+                    .map(str::to_owned);
+                (components.collect(), package)
+            }
+            PathFilter::ThirdPartyStubs => {
+                // Include first_component (e.g., "conans-stubs") in the path
+                let mut path = PathBuf::from(first_component?.as_os_str());
+                path.extend(components);
+                (path, None)
+            }
+        };
+        relative_path
+            .extension()
+            .is_some_and(|ext| ext == "pyi")
+            .then_some((relative_path, package))
+    }
 }
 
-fn extract_files_from_archive(
-    filter: PathFilter,
-    mut keep: impl FnMut(&Path) -> bool,
-) -> anyhow::Result<(SmallMap<PathBuf, String>, SmallMap<PathBuf, String>)> {
+/// The `.pyi` files of a bundled archive, read from its uncompressed index.
+pub struct BundledPaths {
+    /// The path each file is imported from, in archive order. When several files of the
+    /// archive map to the same path, only the first is listed, matching the contents.
+    pub paths: Vec<PathBuf>,
+    /// For typeshed third-party stubs, the package that first provides each path.
+    pub path_to_package: SmallMap<PathBuf, String>,
+}
+
+fn archive_paths(filter: PathFilter) -> BundledPaths {
+    let mut paths = SmallSet::new();
+    let mut path_to_package = SmallMap::new();
+    for (relative_path, package) in filter
+        .archive_index()
+        .lines()
+        .filter_map(|line| filter.relative_path(Path::new(line)))
+    {
+        if let Some(package) = package {
+            path_to_package
+                .entry(relative_path.clone())
+                .or_insert(package);
+        }
+        paths.insert(relative_path);
+    }
+    BundledPaths {
+        paths: paths.into_iter().collect(),
+        path_to_package,
+    }
+}
+
+/// Decompress an archive and read the contents of its `.pyi` files, keyed by the path they
+/// are imported from. This decompresses the whole archive, so prefer [`archive_paths`] when
+/// the contents are not needed.
+fn extract_files_from_archive(filter: PathFilter) -> anyhow::Result<SmallMap<PathBuf, String>> {
     let decoder = Decoder::new(filter.archive_bytes())?;
     let mut archive = Archive::new(decoder);
     let entries = archive
@@ -76,77 +164,36 @@ fn extract_files_from_archive(
         .context("Cannot query all entries in archive")?;
 
     let mut items = SmallMap::new();
-    let mut path_to_package = SmallMap::new();
-
     for maybe_entry in entries {
         let mut entry = maybe_entry.context("Cannot read individual entry in typeshed archive")?;
-
         if entry.header().entry_type().is_dir() {
             continue;
         }
-
-        let relative_path_context = entry
+        let archive_path = entry
             .path()
             .context("Cannot extract path from archive entry")?;
-
-        let mut relative_path_components = relative_path_context.components();
-
-        let first_component = relative_path_components.next();
-        if let Some(expected) = filter.expected_first_component()
-            && first_component.is_none_or(|component| component.as_os_str() != expected)
-        {
+        let Some((relative_path, _)) = filter.relative_path(&archive_path) else {
             continue;
-        }
-        // For ThirdPartyStubs, we need to put first_component back into the path
-
-        // Typeshed stdlib stubs have a different directory structure than third-party stubs.
-        // stdlib example: typeshed/stdlib/builtins.pyi
-        // third-party example: typeshed/stubs/package-name/package-name/other.pyi
-        // An example of this might be the path typeshed/stubs/JACK-Client/jack/other.pyi
-        // In this case we want out path to be jack/other.pyi, so we skip over "stubs" and "JACK-Client".
-        let relative_path = if filter == PathFilter::ThirdPartyTypeshedStubs {
-            let package_component = relative_path_components.next();
-            let remaining: PathBuf = relative_path_components.collect();
-            // Capture path→package mapping (e.g., "google/protobuf/__init__.pyi" → "protobuf").
-            // Keyed by full path to handle namespace packages like google/ that span
-            // multiple typeshed packages (protobuf, google-cloud-ndb, etc.).
-            if let Some(pkg) = package_component
-                && let Some(pkg_name) = pkg.as_os_str().to_str()
-            {
-                path_to_package
-                    .entry(remaining.clone())
-                    .or_insert(pkg_name.to_string());
-            }
-            remaining
-        } else if filter == PathFilter::ThirdPartyStubs {
-            // Include first_component (e.g., "conans-stubs") in the path
-            let mut path = PathBuf::from(first_component.unwrap().as_os_str());
-            path.extend(relative_path_components);
-            path
-        } else {
-            relative_path_components.collect::<PathBuf>()
         };
-
-        if !keep(&relative_path) {
+        if items.contains_key(&relative_path) {
             continue;
         }
-
-        let size = entry.size();
-        let mut contents = String::with_capacity(size as usize);
+        let mut contents = String::with_capacity(entry.size() as usize);
         entry
             .read_to_string(&mut contents)
             .context("Cannot read content of archive entry")?;
-        items.entry(relative_path).or_insert(contents);
+        items.insert(relative_path, contents);
     }
+    Ok(items)
+}
 
-    Ok((items, path_to_package))
+/// The paths of the bundled typeshed stdlib stubs, without decompressing them.
+pub fn bundled_typeshed_paths() -> Vec<PathBuf> {
+    archive_paths(PathFilter::Stdlib).paths
 }
 
 pub fn bundled_typeshed() -> anyhow::Result<SmallMap<PathBuf, String>> {
-    extract_files_from_archive(PathFilter::Stdlib, |path| {
-        path.extension().is_some_and(|ext| ext == "pyi")
-    })
-    .map(|(files, _)| files)
+    extract_files_from_archive(PathFilter::Stdlib)
 }
 
 /// The contents of typeshed's `stdlib/VERSIONS`, which records the Python versions each
@@ -155,20 +202,24 @@ pub fn bundled_typeshed_versions() -> &'static str {
     BUNDLED_TYPESHED_VERSIONS
 }
 
-pub fn bundled_third_party_stubs()
--> anyhow::Result<(SmallMap<PathBuf, String>, SmallMap<PathBuf, String>)> {
-    extract_files_from_archive(PathFilter::ThirdPartyTypeshedStubs, |path| {
-        path.extension().is_some_and(|ext| ext == "pyi")
-    })
+/// The paths of the bundled typeshed third-party stubs, without decompressing them.
+pub fn bundled_third_party_stubs_paths() -> BundledPaths {
+    archive_paths(PathFilter::ThirdPartyTypeshedStubs)
+}
+
+pub fn bundled_third_party_stubs() -> anyhow::Result<SmallMap<PathBuf, String>> {
+    extract_files_from_archive(PathFilter::ThirdPartyTypeshedStubs)
+}
+
+/// The paths of the bundled non-typeshed third-party stubs, without decompressing them.
+pub fn bundled_third_party_paths() -> Vec<PathBuf> {
+    archive_paths(PathFilter::ThirdPartyStubs).paths
 }
 
 /// Extract third-party stubs from the bundled archive.
 /// These are stubs that are not included in typeshed (e.g., pandas-stubs, boto3-stubs).
 pub fn bundled_third_party() -> anyhow::Result<SmallMap<PathBuf, String>> {
-    extract_files_from_archive(PathFilter::ThirdPartyStubs, |path| {
-        path.extension().is_some_and(|ext| ext == "pyi")
-    })
-    .map(|(files, _)| files)
+    extract_files_from_archive(PathFilter::ThirdPartyStubs)
 }
 
 #[cfg(test)]
@@ -199,7 +250,7 @@ mod tests {
         let result = bundled_third_party_stubs();
         assert!(result.is_ok(), "bundled_typeshed should succeed");
 
-        let (files, _) = result.unwrap();
+        let files = result.unwrap();
         assert!(!files.is_empty(), "Should contain .pyi files");
 
         // Verify all returned paths are .pyi files
@@ -231,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_bundled_typeshed_third_party_resolves_path() {
-        let (result, _) = bundled_third_party_stubs().unwrap();
+        let result = bundled_third_party_stubs().unwrap();
 
         // Verify paths don't start with "stubs" (it should be stripped)
         for (path, _) in result.iter() {
@@ -284,12 +335,10 @@ mod tests {
 
     #[test]
     fn test_extract_pyi_files_from_archive_stdlib_filter() {
-        let result = extract_files_from_archive(PathFilter::Stdlib, |path| {
-            path.extension().is_some_and(|ext| ext == "pyi")
-        });
+        let result = extract_files_from_archive(PathFilter::Stdlib);
         assert!(result.is_ok(), "Should successfully extract stdlib files");
 
-        let (files, _) = result.unwrap();
+        let files = result.unwrap();
         assert!(
             !files.is_empty(),
             "Should extract at least some stdlib files"
@@ -340,7 +389,7 @@ mod tests {
     #[test]
     fn test_no_non_pyi_files_included() {
         let stdlib_files = bundled_typeshed().unwrap();
-        let (third_party_files, _) = bundled_third_party_stubs().unwrap();
+        let third_party_files = bundled_third_party_stubs().unwrap();
 
         for (path, _) in stdlib_files.iter().chain(third_party_files.iter()) {
             let ext = path.extension().and_then(|e| e.to_str());
@@ -381,6 +430,36 @@ mod tests {
         assert!(
             entries.is_ok(),
             "Stubs archive should contain valid tar entries"
+        );
+    }
+
+    #[test]
+    fn test_index_lists_the_extracted_files() {
+        for filter in [
+            PathFilter::Stdlib,
+            PathFilter::ThirdPartyTypeshedStubs,
+            PathFilter::ThirdPartyStubs,
+        ] {
+            let files = extract_files_from_archive(filter).unwrap();
+            let extracted = files.keys().cloned().collect::<Vec<_>>();
+            assert_eq!(
+                archive_paths(filter).paths,
+                extracted,
+                "The index should list exactly the extracted files, in the same order"
+            );
+        }
+    }
+
+    #[test]
+    fn test_index_records_third_party_packages() {
+        let index = bundled_third_party_stubs_paths();
+        assert!(!index.paths.is_empty(), "Should list third-party stubs");
+        assert!(
+            index
+                .paths
+                .iter()
+                .all(|path| index.path_to_package.contains_key(path)),
+            "Every third-party typeshed stub should have a package"
         );
     }
 }

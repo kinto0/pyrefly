@@ -16,6 +16,7 @@ use anyhow::Context as _;
 use anyhow::anyhow;
 use dupe::Dupe;
 use pyrefly_bundled::bundled_typeshed;
+use pyrefly_bundled::bundled_typeshed_paths;
 use pyrefly_bundled::bundled_typeshed_versions;
 use pyrefly_config::error_kind::ErrorKind;
 use pyrefly_config::error_kind::Severity;
@@ -100,14 +101,13 @@ pub struct BundledTypeshedStdlib {
 impl BundledStub for BundledTypeshedStdlib {
     fn new() -> anyhow::Result<Self> {
         let declared = parse_versions(bundled_typeshed_versions())?;
-        let provider = bundled_typeshed()?
+        let files = bundled_typeshed_paths()
             .into_iter()
-            .map(|(relative_path, contents)| BundleFile {
+            .map(|relative_path| BundleFile {
                 import_path: relative_path.clone(),
                 storage_path: relative_path,
-                contents,
             });
-        let bundle = Bundle::new(provider)?;
+        let bundle = Bundle::new(files, bundled_typeshed)?;
         let versions = resolve_versions(bundle.modules(), &declared)?;
         Ok(Self { bundle, versions })
     }
@@ -374,10 +374,9 @@ mod tests {
     #[test]
     fn test_typeshed_lookup_is_file_order_independent() {
         let typeshed = typeshed().unwrap();
-        assert_bundle_order_independent(typeshed.load_map().map(|(path, contents)| BundleFile {
+        assert_bundle_order_independent(typeshed.load_map().map(|(path, _)| BundleFile {
             import_path: path.clone(),
             storage_path: path.clone(),
-            contents: contents.as_str().to_owned(),
         }));
     }
 
