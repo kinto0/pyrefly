@@ -20,6 +20,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -1756,12 +1757,7 @@ async fn run_watch(
     resolve: impl Fn() -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)>,
     thread_count: ThreadCount,
 ) -> anyhow::Result<()> {
-    let start = || -> anyhow::Result<(
-        Watcher,
-        IncrementalCheckCommand,
-        SmallSet<PathBuf>,
-        UpsellDecision,
-    )> {
+    let start = || -> anyhow::Result<(WatchedCheck, UpsellDecision)> {
         let (files_to_check, config_finder, upsell) = resolve()?;
         let roots = files_to_check.roots();
         info!(
@@ -1775,8 +1771,6 @@ async fn run_watch(
             thread_count,
         )?;
         let config_paths = command.checker.config_paths();
-        // A config file can be outside of the roots. Its directory is watched instead of the file,
-        // because an editor can save the file by replacing it, which ends a watch on the file.
         let config_dirs = config_paths
             .iter()
             .filter_map(|path| path.parent())
@@ -1784,14 +1778,20 @@ async fn run_watch(
             .map(Path::to_path_buf)
             .collect::<SmallSet<_>>()
             .into_iter()
-            .collect::<Vec<_>>();
-        let watcher = Watcher::notify(&roots, &config_dirs)?;
-        Ok((watcher, command, config_paths, upsell))
+            .collect();
+        let check = WatchedCheck {
+            command,
+            config_paths,
+            roots,
+            config_dirs,
+        };
+        Ok((check, upsell))
     };
-    let (mut watcher, mut command, mut config_paths, mut upsell) = start()?;
+    let (mut check, mut upsell) = start()?;
+    let mut watcher = check.watch()?;
     let mut events = CategorizedEvents::default();
     loop {
-        if let Err(e) = command.check(version, &events, upsell) {
+        if let Err(e) = check.command.check(version, &events, upsell) {
             eprintln!("{e:#}");
         }
         upsell = UpsellDecision::Skip;
@@ -1800,17 +1800,55 @@ async fn run_watch(
         // of the current configs are matched by path.
         if events
             .iter()
-            .any(|path| ConfigFile::is_watched_metadata(path) || config_paths.contains(path))
+            .any(|path| ConfigFile::is_watched_metadata(path) || check.config_paths.contains(path))
         {
+            // End the old watches first, so that a restart needs no more watches than the first
+            // start.
+            drop(watcher);
             match start() {
-                Ok(started) => {
-                    (watcher, command, config_paths, _) = started;
+                Ok((started, _)) => {
+                    check = started;
                     events = CategorizedEvents::default();
                 }
                 // Keep checking with the previous configs until the metadata is valid again.
                 Err(e) => eprintln!("{e:#}"),
             }
+            // Watching fails while the system is out of watches or a watched directory is
+            // missing. Both can be temporary, so keep trying instead of ending the watch.
+            watcher = loop {
+                match check.watch() {
+                    Ok(watcher) => break watcher,
+                    Err(e) => {
+                        eprintln!("{e:#}\nTrying to watch again in {WATCH_RETRY_DELAY:?}");
+                        // `run_watch` is the only task on its runtime, and it already blocks on
+                        // the watcher, so blocking here stalls no other task.
+                        thread::sleep(WATCH_RETRY_DELAY);
+                    }
+                }
+            };
         }
+    }
+}
+
+/// How long `run_watch` waits before it tries again to watch after a failure.
+const WATCH_RETRY_DELAY: Duration = Duration::from_secs(5);
+
+/// A check in watch mode, and the paths that it watches.
+struct WatchedCheck {
+    command: IncrementalCheckCommand,
+    /// See `IncrementalChecker::config_paths`.
+    config_paths: SmallSet<PathBuf>,
+    /// The paths that are watched with everything under them.
+    roots: Vec<PathBuf>,
+    /// The directories of the config files outside of the roots, watched without their
+    /// subdirectories. A directory is watched instead of the file, because an editor can save the
+    /// file by replacing it, which ends a watch on the file.
+    config_dirs: Vec<PathBuf>,
+}
+
+impl WatchedCheck {
+    fn watch(&self) -> anyhow::Result<Watcher> {
+        Watcher::notify(&self.roots, &self.config_dirs)
     }
 }
 
