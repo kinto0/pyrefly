@@ -831,9 +831,14 @@ impl SolutionsData {
                 // structurally mutated after this loop, so each `SmallMap`
                 // position remains identical to its binding `Idx`.
                 for idx in keys {
-                    items
-                        .0
-                        .insert(bindings.idx_to_key(idx).clone(), AnswerSlot::default());
+                    let key = bindings.idx_to_key(idx);
+                    // `changed_exports` reports a change to an exported key as its
+                    // `AnyExportedKey`, so every exported key must have one.
+                    debug_assert!(
+                        key.try_to_anykey().is_some(),
+                        "exported key `{key:?}` has no `AnyExportedKey`"
+                    );
+                    items.0.insert(key.clone(), AnswerSlot::default());
                 }
                 assert_eq!(items.len(), len, "exported solution keys must be unique");
             }

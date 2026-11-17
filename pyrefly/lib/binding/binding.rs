@@ -480,6 +480,9 @@ impl Keyed for KeyTypeAlias {
             | BindingTypeAlias::TypeAliasType { range, .. } => *range,
         }
     }
+    fn try_to_anykey(&self) -> Option<AnyExportedKey> {
+        Some(AnyExportedKey::KeyTypeAlias(self.clone()))
+    }
 }
 impl Exported for KeyTypeAlias {
     fn to_anykey(&self) -> AnyExportedKey {
@@ -743,6 +746,9 @@ impl Keyed for KeyDjangoRelations {
         BindingTable: TableKeyed<Self, Value = BindingEntry<Self>>,
     {
         TextRange::default()
+    }
+    fn try_to_anykey(&self) -> Option<AnyExportedKey> {
+        Some(AnyExportedKey::KeyDjangoRelations(self.clone()))
     }
 }
 impl Exported for KeyDjangoRelations {
