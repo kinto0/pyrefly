@@ -1580,18 +1580,28 @@ impl IncrementalChecker {
         )
     }
 
-    /// The files of the configs of the configured file set.
-    fn config_files(&self) -> SmallSet<PathBuf> {
-        self.handles
+    /// The config files of the configured file set, and the files that those configs extend. A
+    /// change to any of these files can change the configs.
+    fn config_paths(&self) -> SmallSet<PathBuf> {
+        let configs = self
+            .handles
             .path_data
             .iter()
-            .filter_map(|path| {
+            .map(|path| {
                 self.state
                     .config_finder()
                     .python_file(ModuleNameWithKind::guaranteed(ModuleName::unknown()), path)
+            })
+            .collect::<SmallSet<_>>();
+        configs
+            .iter()
+            .flat_map(|config| {
+                config
                     .source
                     .file()
                     .map(Path::to_path_buf)
+                    .into_iter()
+                    .chain(config.extended_config_paths.iter().cloned())
             })
             .collect()
     }
@@ -1740,7 +1750,12 @@ async fn run_watch(
     resolve: impl Fn() -> anyhow::Result<(Box<dyn Includes>, ConfigFinder, UpsellDecision)>,
     thread_count: ThreadCount,
 ) -> anyhow::Result<()> {
-    let start = || -> anyhow::Result<(Watcher, IncrementalCheckCommand, UpsellDecision)> {
+    let start = || -> anyhow::Result<(
+        Watcher,
+        IncrementalCheckCommand,
+        SmallSet<PathBuf>,
+        UpsellDecision,
+    )> {
         let (files_to_check, config_finder, upsell) = resolve()?;
         let roots = files_to_check.roots();
         info!(
@@ -1753,14 +1768,15 @@ async fn run_watch(
             config_finder,
             thread_count,
         )?;
+        let config_paths = command.checker.config_paths();
         // A config file can be outside of the roots, so it is watched on its own.
         let watched = roots
             .into_iter()
-            .chain(command.checker.config_files())
+            .chain(config_paths.iter().cloned())
             .collect::<Vec<_>>();
-        Ok((Watcher::notify(&watched)?, command, upsell))
+        Ok((Watcher::notify(&watched)?, command, config_paths, upsell))
     };
-    let (mut watcher, mut command, mut upsell) = start()?;
+    let (mut watcher, mut command, mut config_paths, mut upsell) = start()?;
     let mut events = CategorizedEvents::default();
     loop {
         if let Err(e) = command.check(version, &events, upsell) {
@@ -1768,13 +1784,15 @@ async fn run_watch(
         }
         upsell = UpsellDecision::Skip;
         events = get_watcher_events(&mut watcher).await?;
+        // The same test as the language server's: config files can have any name, so the files
+        // of the current configs are matched by path.
         if events
             .iter()
-            .any(|path| ConfigFile::is_watched_metadata(path))
+            .any(|path| ConfigFile::is_watched_metadata(path) || config_paths.contains(path))
         {
             match start() {
                 Ok(started) => {
-                    (watcher, command, _) = started;
+                    (watcher, command, config_paths, _) = started;
                     events = CategorizedEvents::default();
                 }
                 // Keep checking with the previous configs until the metadata is valid again.
@@ -3115,7 +3133,7 @@ def go(w: Widget) -> int:
     }
 
     #[test]
-    fn incremental_checker_config_files() {
+    fn incremental_checker_config_paths() {
         let temp = TempDir::new().unwrap();
         let root = temp.path().join("project");
         fs::create_dir(&root).unwrap();
@@ -3123,14 +3141,17 @@ def go(w: Widget) -> int:
         fs::write(&path, "x = 1\n").unwrap();
         assert!(
             incremental_checker(&root, vec![path.clone()])
-                .config_files()
+                .config_paths()
                 .is_empty(),
             "a synthesized config has no file to watch",
         );
 
-        let config_file = root.join("pyrefly.toml");
+        // A config given with `--config` can have any name.
+        let config_file = root.join("ci.toml");
+        let base_file = temp.path().join("base.toml");
         let mut config = test_config(&root);
         config.source = ConfigSource::File(config_file.clone());
+        config.extended_config_paths = vec![base_file.clone()];
         let checker = IncrementalChecker::new(
             RequireLevels {
                 specified: Require::Errors,
@@ -3145,9 +3166,9 @@ def go(w: Widget) -> int:
         )
         .unwrap();
         assert_eq!(
-            checker.config_files().into_iter().collect::<Vec<_>>(),
-            vec![config_file],
-            "the config file of a checked file is watched",
+            checker.config_paths().into_iter().collect::<Vec<_>>(),
+            vec![config_file, base_file],
+            "the config file of a checked file and the file it extends are watched",
         );
     }
 
