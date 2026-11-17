@@ -16,6 +16,9 @@ use ruff_python_ast::Stmt;
 use ruff_text_size::Ranged;
 use ruff_text_size::TextRange;
 
+use crate::export::doc_ranges::class_doc_ranges;
+use crate::export::doc_ranges::function_doc_ranges;
+
 #[derive(Debug, Clone)]
 pub(crate) enum AttributeKind {
     Function,
@@ -177,7 +180,7 @@ fn definition_from_function(
         if let Stmt::FunctionDef(func_def) = stmt
             && &func_def.name.id == attr_name
         {
-            return Some((func_def.name.range, DocRanges::of_function(func_def)));
+            return Some((func_def.name.range, function_doc_ranges(func_def)));
         }
     }
     None
@@ -191,7 +194,7 @@ fn definition_from_class(
         if let Stmt::ClassDef(class_def) = stmt
             && &class_def.name.id == attr_name
         {
-            return Some((class_def.name.range, DocRanges::of_class(class_def)));
+            return Some((class_def.name.range, class_doc_ranges(class_def)));
         }
     }
     None

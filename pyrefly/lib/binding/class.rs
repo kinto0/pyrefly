@@ -89,6 +89,8 @@ use crate::binding::scope::Scope;
 use crate::binding::shape_type::ShapeDeclarationOwner;
 use crate::config::error_kind::ErrorKind;
 use crate::export::deprecation::parse_deprecation;
+use crate::export::doc_ranges::class_doc_ranges;
+use crate::export::doc_ranges::function_doc_ranges;
 use crate::export::special::SpecialExport;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFieldProperties;
@@ -263,7 +265,7 @@ impl<'a> BindingsBuilder<'a> {
             .find_map(|decorator| parse_deprecation(&decorator.expression))
             .map(Box::new);
         let mut pydantic_config_dict = PydanticConfigDict::default();
-        let doc_ranges = DocRanges::of_class(&x);
+        let doc_ranges = class_doc_ranges(&x);
         let body = mem::take(&mut x.body);
         let field_docstrings = Self::extract_field_docstrings(&body);
         let pydantic_before_validator_fields = self.extract_field_validator_fields(&body);
@@ -729,7 +731,7 @@ impl<'a> BindingsBuilder<'a> {
                 let first_range = *first_function_ranges
                     .entry(func_def.name.id.clone())
                     .or_insert(func_def.name.range);
-                let doc_ranges = DocRanges::of_function(func_def);
+                let doc_ranges = function_doc_ranges(func_def);
                 if !doc_ranges.is_empty() {
                     field_docstrings.insert(func_def.name.range, doc_ranges.clone());
                     // Class field metadata points at the first declaration in an overload chain,
@@ -737,7 +739,7 @@ impl<'a> BindingsBuilder<'a> {
                     field_docstrings.insert(first_range, doc_ranges);
                 }
             } else if let Stmt::ClassDef(class_def) = stmt {
-                let doc_ranges = DocRanges::of_class(class_def);
+                let doc_ranges = class_doc_ranges(class_def);
                 if !doc_ranges.is_empty() {
                     field_docstrings.insert(class_def.name.range, doc_ranges);
                 }

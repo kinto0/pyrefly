@@ -88,6 +88,8 @@ use crate::binding::metadata::BindingsMetadata;
 use crate::config::error_kind::ErrorKind;
 use crate::error::error::ErrorQuickFix;
 use crate::error::suppress::detect_line_ending;
+use crate::export::doc_ranges::class_doc_ranges;
+use crate::export::doc_ranges::function_doc_ranges;
 use crate::export::exports::Export;
 use crate::export::exports::ExportLocation;
 use crate::export::exports::Exports;
@@ -1193,21 +1195,21 @@ impl<'a> Transaction<'a> {
                 // def id(...): ...
                 Some(IdentifierWithContext::from_stmt_method_def(
                     id,
-                    DocRanges::of_function(stmt),
+                    function_doc_ranges(stmt),
                 ))
             }
             (Some(AnyNodeRef::Identifier(id)), Some(AnyNodeRef::StmtFunctionDef(stmt)), _, _) => {
                 // def id(...): ...
                 Some(IdentifierWithContext::from_stmt_function_def(
                     id,
-                    DocRanges::of_function(stmt),
+                    function_doc_ranges(stmt),
                 ))
             }
             (Some(AnyNodeRef::Identifier(id)), Some(AnyNodeRef::StmtClassDef(stmt)), _, _) => {
                 // class id(...): ...
                 Some(IdentifierWithContext::from_stmt_class_def(
                     id,
-                    DocRanges::of_class(stmt),
+                    class_doc_ranges(stmt),
                 ))
             }
             (Some(AnyNodeRef::Identifier(id)), Some(AnyNodeRef::Parameter(_)), _, _) => {
