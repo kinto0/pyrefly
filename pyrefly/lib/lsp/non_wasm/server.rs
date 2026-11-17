@@ -5,6 +5,7 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+mod code_lens;
 mod event_loop;
 
 use std::cmp::min;
@@ -50,9 +51,7 @@ use lsp_types::CodeActionProvider;
 use lsp_types::CodeActionRequest;
 use lsp_types::CodeActionResponse;
 use lsp_types::CodeActionTriggerKind;
-use lsp_types::CodeLens;
 use lsp_types::CodeLensOptions;
-use lsp_types::CodeLensParams;
 use lsp_types::CodeLensRequest;
 use lsp_types::CompletionItem;
 use lsp_types::CompletionList;
@@ -303,7 +302,6 @@ use crate::lsp::non_wasm::code_lens::OverrideCodeLensRefreshNotification;
 use crate::lsp::non_wasm::code_lens::OverrideCodeLensRequest;
 use crate::lsp::non_wasm::code_lens::OverrideCodeLensTarget;
 use crate::lsp::non_wasm::code_lens::OverrideCodeLensTargets;
-use crate::lsp::non_wasm::code_lens::runnable_lsp_code_lens;
 use crate::lsp::non_wasm::convert_module_package::convert_module_package_code_actions;
 use crate::lsp::non_wasm::document_symbols::flatten_to_symbol_information;
 use crate::lsp::non_wasm::external_provider::ExternalProvider;
@@ -3213,24 +3211,6 @@ impl Server {
         };
 
         telemetry.set_file_stats(TelemetryFileStats { uri, config_root });
-    }
-
-    fn runnable_code_lens_cwd(&self, path: &std::path::Path) -> Option<String> {
-        let config = self.state.config_finder().python_file(
-            ModuleNameWithKind::guaranteed(ModuleName::unknown()),
-            &ModulePath::filesystem(path.to_path_buf()),
-        );
-        let cwd = config
-            .source
-            .root_from_file()
-            .map(std::path::Path::to_path_buf)
-            .or_else(|| {
-                self.workspaces
-                    .get_with(path.to_path_buf(), |(workspace_root, _)| {
-                        workspace_root.cloned()
-                    })
-            })?;
-        Some(cwd.to_string_lossy().into_owned())
     }
 
     fn send_response(&self, x: Response) {
@@ -6266,36 +6246,6 @@ impl Server {
             }),
         );
         Ok(())
-    }
-
-    fn code_lens(
-        &self,
-        transaction: &Transaction<'_>,
-        params: CodeLensParams,
-    ) -> Option<Vec<CodeLens>> {
-        let uri = &params.text_document.uri;
-        let path = self.path_for_uri(uri)?;
-        let runnable_code_lens = self
-            .workspaces
-            .get_with(path.clone(), |(_, workspace)| workspace.runnable_code_lens);
-        let maybe_cell_idx = self.maybe_get_code_cell_index(uri);
-        let handle = self
-            .make_handle_if_enabled(uri, Some(CodeLensRequest::METHOD.as_str()))
-            .ok()?;
-        let info = transaction.get_module_info(&handle)?;
-        let entries = transaction.runnable_code_lens_entries(&handle, uri, runnable_code_lens)?;
-        let cwd = self.runnable_code_lens_cwd(&path);
-
-        let mut lenses = Vec::new();
-        for entry in entries {
-            if info.to_cell_for_lsp(entry.range.start()) != maybe_cell_idx {
-                continue;
-            }
-            let range = info.to_lsp_range(entry.range);
-            lenses.push(runnable_lsp_code_lens(uri, range, entry, cwd.as_deref()));
-        }
-
-        Some(lenses)
     }
 
     fn semantic_tokens_full(
