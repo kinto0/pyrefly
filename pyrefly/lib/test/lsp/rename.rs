@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::ops::Range;
+use std::sync::Arc;
 
 use dupe::Dupe;
 use itertools::Itertools;
@@ -18,6 +19,7 @@ use ruff_text_size::TextRange;
 use ruff_text_size::TextSize;
 use tempfile::TempDir;
 
+use crate::state::load::FileContents;
 use crate::state::lsp::FindPreference;
 use crate::state::lsp::ReferenceOptions;
 use crate::state::require::Require;
@@ -25,6 +27,133 @@ use crate::state::state::State;
 use crate::test::util::TestEnv;
 use crate::test::util::code_frame_of_source_at_range;
 use crate::test::util::get_batched_lsp_operations_report;
+
+/// Reference searches and rename must not use disk contents after an editor removes an import.
+#[test]
+fn references_ignore_removed_imports_in_unsaved_files() {
+    for options in [
+        ReferenceOptions::all(false),
+        ReferenceOptions::textual_only(true),
+    ] {
+        let root = TempDir::new().unwrap();
+        let definition_path = root.path().join("definitions.py");
+        let usage_path = root.path().join("usage.py");
+        fs::write(&definition_path, "def target() -> None:\n    pass\n").unwrap();
+        fs::write(&usage_path, "from definitions import target\ntarget()\n").unwrap();
+        let mut env = TestEnv::new().with_default_require_level(Require::Everything);
+        env.add_real_path("definitions", definition_path.clone());
+        env.add_real_path("usage", usage_path.clone());
+        let (state, handle) = env.to_state();
+        let definition_handle = handle("definitions");
+        let usage_handle = handle("usage").for_module(
+            handle("usage").module(),
+            ModulePath::memory(usage_path.clone()),
+        );
+        let mut transaction = state.transaction();
+        transaction.set_memory(vec![(
+            usage_path,
+            Some(Arc::new(FileContents::from_source(
+                "# No imports remain.\n".to_owned(),
+            ))),
+        )]);
+        transaction.run(&[usage_handle], Require::Everything, None);
+        let definition = transaction
+            .find_definition(
+                &definition_handle,
+                TextSize::new(4),
+                FindPreference::default(),
+            )
+            .unwrap()
+            .first()
+            .clone();
+        let references = transaction
+            .find_global_references_from_definition(
+                *definition_handle.sys_info(),
+                definition.metadata,
+                TextRangeWithModule::new(definition.module, definition.definition_range),
+                options,
+            )
+            .unwrap();
+        assert_eq!(
+            references
+                .iter()
+                .map(|(_, ranges)| ranges.len())
+                .sum::<usize>(),
+            usize::from(options.include_declaration),
+        );
+        assert!(references.iter().all(|(module, _)| {
+            module.path() == &ModulePath::filesystem(definition_path.clone())
+        }));
+    }
+}
+
+/// Buffered definitions in import cycles must not restore references from their disk copies.
+#[test]
+fn references_ignore_deleted_calls_in_buffered_import_cycles() {
+    for options in [
+        ReferenceOptions::all(false),
+        ReferenceOptions::textual_only(true),
+    ] {
+        let root = TempDir::new().unwrap();
+        let definition_path = root.path().join("definitions.py");
+        let usage_path = root.path().join("usage.py");
+        let buffered_source = "from usage import marker\ndef target() -> None:\n    pass\n";
+        fs::write(&definition_path, format!("{buffered_source}target()\n")).unwrap();
+        fs::write(
+            &usage_path,
+            "from definitions import target\nmarker = 1\ntarget()\n",
+        )
+        .unwrap();
+        let mut env = TestEnv::new().with_default_require_level(Require::Everything);
+        env.add_real_path("definitions", definition_path.clone());
+        env.add_real_path("usage", usage_path);
+        let (state, handle) = env.to_state();
+        let usage_handle = handle("usage");
+        let memory_path = ModulePath::memory(definition_path.clone());
+        let memory_handle =
+            handle("definitions").for_module(handle("definitions").module(), memory_path.dupe());
+        let mut transaction = state.transaction();
+        transaction.set_memory(vec![(
+            definition_path.clone(),
+            Some(Arc::new(FileContents::from_source(
+                buffered_source.to_owned(),
+            ))),
+        )]);
+        transaction.run(&[memory_handle], Require::Everything, None);
+        let definition = transaction
+            .find_definition(&usage_handle, TextSize::new(24), FindPreference::default())
+            .unwrap()
+            .first()
+            .clone();
+        assert_eq!(
+            definition.module.path(),
+            &ModulePath::filesystem(definition_path.clone()),
+        );
+        let references = transaction
+            .find_global_references_from_definition(
+                *usage_handle.sys_info(),
+                definition.metadata,
+                TextRangeWithModule::new(definition.module, definition.definition_range),
+                options,
+            )
+            .unwrap();
+        assert_eq!(
+            references
+                .iter()
+                .map(|(_, ranges)| ranges.len())
+                .sum::<usize>(),
+            2,
+        );
+        assert!(references.iter().all(|(module, _)| {
+            module.path() != &ModulePath::filesystem(definition_path.clone())
+        }));
+        assert!(
+            references
+                .iter()
+                .any(|(module, _)| module.path() == usage_handle.path())
+        );
+    }
+}
 
 /// Applies the reference edits used by rename to a source file, its stub, and a consumer.
 ///
