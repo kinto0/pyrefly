@@ -25,6 +25,7 @@ use ruff_text_size::TextRange;
 use starlark_map::small_map::SmallMap;
 
 use crate::class::Class;
+use crate::class::ClassDef;
 use crate::class::ClassDefIndex;
 use crate::class::ClassType;
 use crate::env::TypeEnv;
@@ -80,9 +81,18 @@ pub struct TestTypeEnv {
     /// The number of classes defined so far in each module. `ModuleKey` compares modules the way
     /// class identity does, so classes with different indices in one module are distinct.
     class_counts: RefCell<SmallMap<ModuleKey, u32>>,
-    /// The type parameters of every generic class. It is append-only, so `class_tparams` can
-    /// return borrows that live as long as the env.
-    tparams: AppendOnlyVec<(Class, Arc<TParams>)>,
+    /// The row of every class defined so far. It is append-only, so `class_def` and
+    /// `class_tparams` can return borrows that live as long as the env.
+    rows: AppendOnlyVec<ClassRow>,
+    /// The position of each class's row in `rows`.
+    row_indices: RefCell<SmallMap<Class, usize>>,
+}
+
+/// What a `TestTypeEnv` knows about a class it defined: the row that a module's metadata would
+/// hold for it, and its type parameters.
+struct ClassRow {
+    def: ClassDef,
+    tparams: TParams,
 }
 
 /// What identifies a class definition in a `TestTypeEnv`: its module, its name and range, and its
@@ -102,7 +112,8 @@ impl TestTypeEnv {
             modules: RefCell::new(SmallMap::new()),
             classes: RefCell::new(SmallMap::new()),
             class_counts: RefCell::new(SmallMap::new()),
-            tparams: AppendOnlyVec::new(),
+            rows: AppendOnlyVec::new(),
+            row_indices: RefCell::new(SmallMap::new()),
         };
         let stdlib = Stdlib::new(
             PythonVersion::default(),
@@ -281,8 +292,7 @@ impl TestTypeEnv {
         let count = class_counts.entry(key.module).or_insert(0);
         let index = ClassDefIndex(*count);
         *count += 1;
-        let cls = Class::new(
-            index,
+        let def = ClassDef::new(
             key.name.clone(),
             key.parent.dupe(),
             module,
@@ -290,11 +300,22 @@ impl TestTypeEnv {
             false,
             None,
         );
-        if !tparams.is_empty() {
-            self.tparams.push((cls.dupe(), Arc::new(tparams)));
-        }
+        let cls = Class::from_def(index, def.clone());
+        let row = self.rows.push(ClassRow { def, tparams });
+        self.row_indices.borrow_mut().insert(cls.dupe(), row);
         self.classes.borrow_mut().insert(key, cls.dupe());
         cls
+    }
+
+    /// The row of `cls`. Tests read only the classes they define, so any other class is a bug in
+    /// the test.
+    fn row(&self, cls: &Class) -> &ClassRow {
+        let row = *self
+            .row_indices
+            .borrow()
+            .get(cls)
+            .unwrap_or_else(|| panic!("`{cls:?}` is not defined in this `TestTypeEnv`"));
+        &self.rows[row]
     }
 }
 
@@ -303,11 +324,12 @@ impl TypeEnv for TestTypeEnv {
         &self.stdlib
     }
 
+    fn class_def<'a>(&'a self, cls: &'a Class) -> &'a ClassDef {
+        &self.row(cls).def
+    }
+
     fn class_tparams<'a>(&'a self, cls: &'a Class) -> &'a TParams {
-        self.tparams
-            .iter()
-            .find(|(c, _)| c == cls)
-            .map_or(TParams::empty_ref(), |(_, tparams)| tparams)
+        &self.row(cls).tparams
     }
 }
 
@@ -416,7 +438,6 @@ mod tests {
         let cls = env.class("foo", "Bar");
         // Read through a trait object to check that `TypeEnv` is object safe.
         let env: &dyn TypeEnv = &env;
-        assert!(std::ptr::eq(cls.def(env), cls.inline_def()));
         assert_eq!(cls.name(env).as_str(), "Bar");
         assert_eq!(cls.qname(env).id().as_str(), "Bar");
         assert_eq!(cls.module(env).name(), ModuleName::from_str("foo"));

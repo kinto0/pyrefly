@@ -82,6 +82,7 @@ use crate::table_mut_for_each;
 use crate::table_try_for_each;
 use crate::types::callable::Callable;
 use crate::types::class::Class;
+use crate::types::class::ClassDef;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFields;
 use crate::types::env::TypeEnv;
@@ -1310,6 +1311,14 @@ pub trait LookupAnswer: Sized {
     /// incremental rebuilds properly invalidate dependents when class
     /// fields change.
     fn get_class_fields(&self, cls: &Class) -> Option<&ClassFields>;
+
+    /// Look up the definition data of a class of another module: its row in the module's
+    /// binding metadata, or the module's placeholder row if the `ClassDefIndex` is stale.
+    ///
+    /// Implementations must register a dependency on the class's definition facts
+    /// (`ModuleDep::ClassDef`), and must return the same row for a class every time, so that an
+    /// order computed from rows stays consistent while one solver uses it.
+    fn get_class_def(&self, cls: &Class) -> &ClassDef;
 }
 
 impl Answers {

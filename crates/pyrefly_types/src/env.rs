@@ -23,11 +23,10 @@ use crate::types::Type;
 pub trait TypeEnv {
     fn stdlib(&self) -> &Stdlib;
 
-    /// Binding-time data of a class definition. The default reads the data stored in the
-    /// `Class` itself.
-    fn class_def<'a>(&'a self, cls: &'a Class) -> &'a ClassDef {
-        cls.inline_def()
-    }
+    /// Binding-time data of a class definition: the class's row in its module's metadata. Every
+    /// read of a class within one env returns the same row. An index that is out of range, because
+    /// the class's module was rebuilt with fewer classes, reads a placeholder row.
+    fn class_def<'a>(&'a self, cls: &'a Class) -> &'a ClassDef;
 
     /// A class's type parameters, which are empty if the class is not generic.
     fn class_tparams<'a>(&'a self, cls: &'a Class) -> &'a TParams;

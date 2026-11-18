@@ -222,7 +222,6 @@ mod tests {
 
     use super::*;
     use crate::class::Class;
-    use crate::class::ClassDefIndex;
     use crate::class::ClassType;
     use crate::lit_int::LitInt;
     use crate::literal::Lit;
@@ -232,20 +231,25 @@ mod tests {
     use crate::types::NeverStyle;
     use crate::types::TArgs;
 
-    /// A class `name` whose name starts at `position` in `module`, as the `index`-th class there.
-    fn class(module: &str, index: u32, name: &str, position: u32) -> Class {
-        Class::new(
-            ClassDefIndex(index),
-            Identifier::new(Name::new(name), TextRange::empty(TextSize::new(position))),
+    fn module(name: &str) -> Module {
+        Module::new(
+            ModuleName::from_str(name),
+            ModulePath::namespace(PathBuf::from(name)),
+            Arc::new(String::new()),
+        )
+    }
+
+    fn identifier(name: &str, position: u32) -> Identifier {
+        Identifier::new(Name::new(name), TextRange::empty(TextSize::new(position)))
+    }
+
+    /// Define in `env`, as the next class of `module`, a top-level class `name` whose name starts
+    /// at `position`.
+    fn class(env: &TestTypeEnv, module_name: &str, name: &str, position: u32) -> Class {
+        env.define_class(
+            identifier(name, position),
             NestingContext::toplevel(),
-            Module::new(
-                ModuleName::from_str(module),
-                ModulePath::namespace(PathBuf::from(module)),
-                Arc::new(String::new()),
-            ),
-            false,
-            false,
-            None,
+            module(module_name),
         )
     }
 
@@ -253,11 +257,20 @@ mod tests {
     fn test_classes_order_by_name_then_position_then_identity() {
         let env = TestTypeEnv::new();
         let ctx = TypeOrdCtx::new(&env);
-        let foo_zed = class("foo", 0, "Zed", 0);
-        let bar_abc = class("bar", 0, "Abc", 9);
-        let bar_zed = class("bar", 1, "Zed", 0);
-        let bar_zed_later = class("bar", 2, "Zed", 5);
-        let bar_zed_again = class("bar", 3, "Zed", 0);
+        let foo_zed = class(&env, "foo", "Zed", 0);
+        let bar_abc = class(&env, "bar", "Abc", 9);
+        let bar_zed = class(&env, "bar", "Zed", 0);
+        let bar_zed_later = class(&env, "bar", "Zed", 5);
+        // A class in another scope of `bar` with the same name and position as `bar_zed`, which
+        // only the index tells apart.
+        let bar_zed_again = env.define_class(
+            identifier("Zed", 0),
+            NestingContext::class(
+                ShortIdentifier::new(&identifier("Outer", 20)),
+                NestingContext::toplevel(),
+            ),
+            module("bar"),
+        );
         // The name comes first.
         assert_eq!(foo_zed.type_cmp(&bar_abc, &ctx), Ordering::Greater);
         // Then the position, before the module.
@@ -333,11 +346,8 @@ mod tests {
         let ctx = TypeOrdCtx::new(&env);
         let mut classes = Vec::new();
         for module in ["aaa", "zzz"] {
-            for (index, (name, position)) in [("Abc", 0), ("Abc", 4), ("Zed", 0), ("Zed", 4)]
-                .into_iter()
-                .enumerate()
-            {
-                classes.push(class(module, index as u32, name, position));
+            for (name, position) in [("Abc", 0), ("Abc", 4), ("Zed", 0), ("Zed", 4)] {
+                classes.push(class(&env, module, name, position));
             }
         }
         let mut rng = Rng(0x2545F4914F6CDD1D);

@@ -1131,10 +1131,11 @@ mod tests {
     }
 
     /// A class that a rebuilt module defines at the index of an old class is the same class by
-    /// identity, but its name and position differ. A union that holds old and new classes still
-    /// sorts like the `Ord` of classes that carry their data, without panicking.
+    /// identity, and an env reads the row of the new class for both. A union that holds old and new
+    /// classes sorts each old class next to the new class at its index, without panicking, and keeps
+    /// one class per index.
     #[test]
-    fn test_union_of_displaced_classes_sorts_like_ord() {
+    fn test_union_of_displaced_classes_sorts_by_current_rows() {
         let heap = TypeHeap::new();
         let env = TestTypeEnv::new();
         let module = Module::new(
@@ -1142,28 +1143,35 @@ mod tests {
             ModulePath::namespace(PathBuf::from("foo")),
             Arc::new(String::new()),
         );
-        let class = |index: u32, name: String, position: u32| {
-            Class::new(
-                ClassDefIndex(index),
-                Identifier::new(Name::new(name), TextRange::empty(TextSize::new(position))),
-                NestingContext::toplevel(),
-                module.dupe(),
-                false,
-                false,
-                None,
-            )
+        let identifier = |name: String, position: u32| {
+            Identifier::new(Name::new(name), TextRange::empty(TextSize::new(position)))
         };
-        // The old module had a class before `A00`, so each new class is at the index of the old
-        // class before it.
-        let old = (0..24)
-            .map(|i| class(i + 1, format!("A{i:02}"), 10 * i + 10))
-            .collect::<Vec<_>>();
         let new = (0..24)
-            .map(|i| class(i, format!("A{i:02}"), 10 * i))
+            .map(|i| {
+                env.define_class(
+                    identifier(format!("A{i:02}"), 10 * i),
+                    NestingContext::toplevel(),
+                    module.dupe(),
+                )
+            })
+            .collect::<Vec<_>>();
+        // The old module had a class before `A00`, so each old class is at the index of the new
+        // class after it.
+        let old = (0..23)
+            .map(|i| {
+                Class::new(
+                    ClassDefIndex(i + 1),
+                    identifier(format!("A{i:02}"), 10 * i + 10),
+                    NestingContext::toplevel(),
+                    module.dupe(),
+                    false,
+                    false,
+                    None,
+                )
+            })
             .collect::<Vec<_>>();
         let instance = |cls: &Class| ClassType::new(cls.dupe(), TArgs::default()).to_type();
-        // A small union is sorted directly. Here the new `A01` meets the old `A00`, which is the
-        // same class, before the new `A00` that goes between them.
+        // A small union is sorted directly. The old `A00` is the new `A01`.
         let small = vec![
             instance(&new[1]),
             instance(&new[0]),
@@ -1171,20 +1179,16 @@ mod tests {
             instance(&old[1]),
         ];
         // A large union is sorted by class name first.
-        let large = (0..48)
-            .map(|i| match i * 7 % 48 {
-                j if j < 24 => instance(&old[j]),
-                j => instance(&new[j - 24]),
+        let large = (0..47)
+            .map(|i| match i * 7 % 47 {
+                j if j < 23 => instance(&old[j]),
+                j => instance(&new[j - 23]),
             })
             .collect::<Vec<_>>();
-        for members in [small, large] {
-            let mut expected = members.clone();
-            expected.sort();
-            expected.dedup();
-            // Equality compares classes by identity, so compare their names and positions too.
+        for (members, expected) in [(small, &new[..3]), (large, &new[..])] {
             assert_eq!(
-                format!("{:?}", unions(members, &env, &heap)),
-                format!("{:?}", Type::union(expected))
+                unions(members, &env, &heap),
+                Type::union(expected.iter().map(instance).collect())
             );
         }
     }

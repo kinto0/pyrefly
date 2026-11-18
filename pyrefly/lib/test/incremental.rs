@@ -3718,6 +3718,30 @@ fn assert_rebuild_matches_clean(files: &[(&str, &str)], edits: &[(&str, &str)], 
     }
 }
 
+/// The errors of `module` after rechecking `edits`, which must be the same at 1, 3 and 8 threads.
+fn rebuilt_errors(files: &[(&str, &str)], edits: &[(&str, &str)], module: &str) -> Vec<String> {
+    let [first, rest @ ..] = [1, 3, 8].map(|threads| {
+        let rebuild = rebuild_against_clean(
+            files,
+            edits,
+            ThreadCount::NumThreads(NonZeroUsize::new(threads).unwrap()),
+            &[],
+        );
+        rebuild
+            .rebuilt
+            .get(module)
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("error "))
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    for errors in rest {
+        assert_eq!(errors, first);
+    }
+    first
+}
+
 /// The modules whose errors or exported answers differ from a clean check after a rebuild in
 /// `assert_tparams_rebuild_matches_clean`, for each way it applies the edit. A correct rebuild
 /// leaves none, so a test lists modules here only to document a known bug.
@@ -4246,6 +4270,43 @@ fn test_class_rename_invalidates_class_dependency() {
     assert_eq!(error_messages(&res), ["`Bar` is not assignable to `int`"]);
 }
 
+/// Renaming a class keeps its index. `main` shows the class's name, which it reads from the class's
+/// row in `foo`'s metadata, so the rename rechecks it, and its union of the class with `Mid` is
+/// sorted by the new name.
+#[test]
+fn test_class_rename_at_same_index_matches_clean() {
+    let foo = |name: &str| format!("class {name}: ...\nclass Mid: ...\nA = {name}\n");
+    let main = "from foo import A, Mid\ndef f(c: bool):\n    return A() if c else Mid()\nx: int = f(True)\n";
+    assert_rebuild_matches_clean(
+        &[("foo", &foo("Abc")), ("main", main)],
+        &[("foo", &foo("Zed"))],
+        &[],
+    );
+}
+
+/// An index that is out of range after its module drops classes reads the module's placeholder
+/// row. Without an import cycle, every module that holds such an index is rechecked before the
+/// check is committed, so, as in a clean check, no error or exported type shows the placeholder.
+#[test]
+fn test_dropped_classes_show_no_placeholder() {
+    let files = [
+        ("foo", "class A: ...\nclass B:\n    x: int = 1\nv = B()\n"),
+        ("bar", "from foo import v\nw = [v]\n"),
+        (
+            "main",
+            "from typing import reveal_type\nfrom bar import w\nreveal_type(w)\nreveal_type(w[0].x)\n",
+        ),
+    ];
+    // `B` moves to index 0, and the old index 1 is out of range.
+    assert_rebuild_matches_clean(
+        &files,
+        &[("foo", "class B:\n    x: int = 1\nv = B()\n")],
+        &[],
+    );
+    // Every class is dropped.
+    assert_rebuild_matches_clean(&files, &[("foo", "v = 1\n")], &[]);
+}
+
 /// Deprecating a class must recompute `main`, which sees the class only through the return type
 /// of `make`. The comment keeps every range the same, so only the deprecation changes.
 #[test]
@@ -4418,7 +4479,8 @@ fn test_own_class_read_through_cycle_at_index_of_other_class() {
 // `Unknown`.
 
 /// `a` drops `A`, which moves `B` to index 0, and reads back `w`, which names `B` at index 1.
-// Bug: `a` reports that `B` has no attribute `x`, and `main` reveals `B`.
+// Bug: `a` reports that `<placeholder>`, the row of the out-of-range old index of `B`, has no
+// attribute `x`, and `main` reveals `<placeholder>`.
 #[test]
 fn test_stale_cycle_class_out_of_range_attribute_in_owner() {
     assert_rebuild_matches_clean(
@@ -4468,7 +4530,8 @@ fn test_stale_cycle_class_out_of_range_corrected_by_recheck() {
 
 /// Like `test_stale_cycle_class_out_of_range_attribute_in_owner`, through a cycle of three modules:
 /// `foo` reads back `x` through `bar` and `baz`.
-// Bug: `foo` reports that `B` has no attribute `x`, and `main` reveals `B`.
+// Bug: `foo` reports that `<placeholder>`, the row of the out-of-range old index of `B`, has no
+// attribute `x`, and `main` reveals `<placeholder>`.
 #[test]
 fn test_stale_cycle_of_three_modules_class_out_of_range() {
     assert_rebuild_matches_clean(
@@ -4494,59 +4557,73 @@ fn test_stale_cycle_of_three_modules_class_out_of_range() {
 
 /// `a` drops `A`, which moves `B` to index 0, and reads back `w`, which names `B` at index 1. Only
 /// `main` reads its fields.
-// Bug: `main` reveals `B` and reports that `B` has no attribute `x`.
+// Bug: `main` reveals `<placeholder>`, the row of the out-of-range old index of `B`, and reports
+// that `<placeholder>` has no attribute `x`.
 #[test]
 fn test_stale_cycle_class_out_of_range() {
-    assert_rebuild_matches_clean(
-        &[
-            ("a", "class A: ...\nclass B:\n    x: int = 1\nv = B()\n"),
-            ("b", "from a import v\nw = v\n"),
-            ("main", "import a\n"),
-        ],
-        &[
-            ("a", "from b import w\nclass B:\n    x: int = 1\nv = w\n"),
-            (
-                "main",
-                "from typing import reveal_type\nfrom a import v\nreveal_type(v)\nreveal_type(v.x)\n",
-            ),
-        ],
-        &["a", "b", "main"],
+    let files = [
+        ("a", "class A: ...\nclass B:\n    x: int = 1\nv = B()\n"),
+        ("b", "from a import v\nw = v\n"),
+        ("main", "import a\n"),
+    ];
+    let edits = [
+        ("a", "from b import w\nclass B:\n    x: int = 1\nv = w\n"),
+        (
+            "main",
+            "from typing import reveal_type\nfrom a import v\nreveal_type(v)\nreveal_type(v.x)\n",
+        ),
+    ];
+    assert_rebuild_matches_clean(&files, &edits, &["a", "b", "main"]);
+    assert_eq!(
+        rebuilt_errors(&files, &edits, "main"),
+        [
+            "error 3:12-15 RevealType: revealed type: <placeholder>",
+            "error 4:12-17 RevealType: revealed type: Unknown",
+            "error 4:13-16 MissingAttribute: Object of class `<placeholder>` has no attribute `x`",
+        ]
     );
 }
 
 /// `a` swaps `A` and `B`, and reads back `w`, which names index 0 as `A`, where `a` now defines
 /// `B`.
-// Bug: `main` reveals `A`, reports that `A` has no attribute `x`, and reveals `v.y`, a field of
-// `B`, as `str`.
+// Bug: `main` reveals `B`, the class now at the old index of `A`, reports that `B` has no attribute
+// `x`, and reveals `v.y` as `str`.
 #[test]
 fn test_stale_cycle_class_displaced() {
-    assert_rebuild_matches_clean(
-        &[
-            (
-                "a",
-                "class A:\n    x: int = 1\nclass B:\n    y: str = ''\nv = A()\n",
-            ),
-            ("b", "from a import v\nw = v\n"),
-            ("main", "import a\n"),
-        ],
-        &[
-            (
-                "a",
-                "from b import w\nclass B:\n    y: str = ''\nclass A:\n    x: int = 1\nv = w\n",
-            ),
-            (
-                "main",
-                "from typing import reveal_type\nfrom a import v\nreveal_type(v)\nreveal_type(v.x)\nreveal_type(v.y)\n",
-            ),
-        ],
-        &["a", "b", "main"],
+    let files = [
+        (
+            "a",
+            "class A:\n    x: int = 1\nclass B:\n    y: str = ''\nv = A()\n",
+        ),
+        ("b", "from a import v\nw = v\n"),
+        ("main", "import a\n"),
+    ];
+    let edits = [
+        (
+            "a",
+            "from b import w\nclass B:\n    y: str = ''\nclass A:\n    x: int = 1\nv = w\n",
+        ),
+        (
+            "main",
+            "from typing import reveal_type\nfrom a import v\nreveal_type(v)\nreveal_type(v.x)\nreveal_type(v.y)\n",
+        ),
+    ];
+    assert_rebuild_matches_clean(&files, &edits, &["a", "b", "main"]);
+    assert_eq!(
+        rebuilt_errors(&files, &edits, "main"),
+        [
+            "error 3:12-15 RevealType: revealed type: B",
+            "error 4:12-17 RevealType: revealed type: Unknown",
+            "error 4:13-16 MissingAttribute: Object of class `B` has no attribute `x`",
+            "error 5:12-17 RevealType: revealed type: str",
+        ]
     );
 }
 
 /// `a` swaps `A[T]` and `B`, and reads back `w`, `A[str]`, whose index 0 now names the non-generic
 /// `B`.
-// Bug: `main` reveals `A[str]`, and `v.get()` as `int`, from `B`, and reports that `A[str]` is not
-// assignable to `A[str]`.
+// Bug: `main` reveals `B[str]`, with `B`, the class now at the old index of `A`, and `v.get()` as
+// `int`, and reports that `B[str]` is not assignable to `A[str]`.
 #[test]
 fn test_stale_cycle_generic_class_displaced_by_plain_class() {
     assert_rebuild_matches_clean(
@@ -4573,7 +4650,8 @@ fn test_stale_cycle_generic_class_displaced_by_plain_class() {
 }
 
 /// `a` swaps `A` and `B[T]`, and reads back `w`, `A`, whose index 0 now names the generic `B`.
-// Bug: `main` reveals `A`, and `v.get()` as the escaped type variable `T` of `B`.
+// Bug: `main` reveals `B`, the class now at the old index of `A`, and `v.get()` as the escaped type
+// variable `T` of `B`.
 #[test]
 fn test_stale_cycle_plain_class_displaced_by_generic_class() {
     assert_rebuild_matches_clean(
@@ -4927,7 +5005,8 @@ fn test_stale_cycle_function_type_parameter_removed() {
 
 /// `a` declares `Z[**P = [int, str]]` before `A`, and reads back `w` and `e`, which name index 0 as
 /// `A`, where `a` now defines `Z`.
-// Bug: `a` and `main` report that `A` has no attribute `get`, and `main` reveals `A[str]` and `A`.
+// Bug: `a` and `main` report that `Z`, the class now at the old index of `A`, has no attribute
+// `get`, and `main` reveals `Z[str]` and `Z`.
 #[test]
 fn test_stale_cycle_class_displaced_by_param_spec_default() {
     assert_rebuild_matches_clean(
@@ -4955,7 +5034,8 @@ fn test_stale_cycle_class_displaced_by_param_spec_default() {
 
 /// `a` swaps `A` and `B`, whose legacy type parameter `U` defaults to `T`, and reads back `w`,
 /// `A[int, int]`, which names index 0 as `A`, where `a` now defines `B`.
-// Bug: `a` and `main` report that `A` has no attribute `get`, and `main` reveals `A[int, int]`.
+// Bug: `a` and `main` report that `B`, the class now at the old index of `A`, has no attribute
+// `get`, and `main` reveals `B[int, int]`.
 #[test]
 fn test_stale_cycle_legacy_default_owner_displaced() {
     assert_rebuild_matches_clean(
@@ -4982,7 +5062,8 @@ fn test_stale_cycle_legacy_default_owner_displaced() {
 }
 
 /// `a` renames `Abc`, at index 0, to `Zzz`, and reads back `w`, the union `Abc | Zed`.
-// Bug: `main` reveals `Abc | Zed`, with the old name, and `list[Abc | Zed | Zzz]`.
+// Bug: `main` reveals `Zed | Zzz`, with the new name of the class at index 0, and
+// `list[Zed | Zzz]`.
 #[test]
 fn test_stale_cycle_union_after_class_rename() {
     assert_rebuild_matches_clean(
@@ -5010,7 +5091,8 @@ fn test_stale_cycle_union_after_class_rename() {
 
 /// `a` drops `A` and reads back `w`, which names `B` at its old index, while the annotation `B` in
 /// `a` names it at its new index.
-// Bug: `a` and `main` report that `B` is not assignable to `B`, and `main` reveals `B`.
+// Bug: `a` and `main` report that `<placeholder>`, the row of the out-of-range old index of `B`,
+// is not assignable to `B`, and `main` reveals `<placeholder>`.
 #[test]
 fn test_stale_cycle_class_index_of_two_versions() {
     assert_rebuild_matches_clean(
@@ -5032,7 +5114,7 @@ fn test_stale_cycle_class_index_of_two_versions() {
 
 /// `a` swaps the enum `E` and the class `P`, and reads back `w` and `y`, which name index 0 as `E`,
 /// where `a` now defines `P`.
-// Bug: `main` reveals `v` as `E` after narrowing.
+// Bug: `main` reveals `v` as `P`, the class now at the old index of `E`, after narrowing.
 #[test]
 fn test_stale_cycle_enum_displaced() {
     assert_rebuild_matches_clean(
@@ -5060,7 +5142,8 @@ fn test_stale_cycle_enum_displaced() {
 
 /// Like `test_stale_cycle_enum_displaced`, with uppercase constants, whose types keep the member
 /// literal, so `main` narrows by the member.
-// Bug: `main` reveals `XM` as `Literal[E.X]`, and `V` as `E` after narrowing by `is not` and `!=`.
+// Bug: `main` reveals `XM` as `Literal[P.X]`, where `P` is the class now at the old index of `E`,
+// and `V` as `P` after narrowing by `is not` and `!=`.
 #[test]
 fn test_stale_cycle_enum_constant_displaced() {
     assert_rebuild_matches_clean(

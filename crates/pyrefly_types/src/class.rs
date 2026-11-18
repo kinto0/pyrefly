@@ -52,7 +52,9 @@ use crate::types::Type;
 #[derive(Debug, Clone, Dupe)]
 pub struct Class(Arc<ClassInner>);
 
-/// The identity of a class and a copy of its definition data.
+/// The identity of a class and a copy of its definition data. Readers get definition data
+/// through a `TypeEnv`, which reads the class's row in its module's metadata, so the copy only
+/// serves the class's identity, `Ord` and `TypeEq`, and the accessors that take no env.
 ///
 /// Align to a cache line to prevent false sharing. `ClassInner` is stored
 /// behind `Arc` and accessed concurrently from multiple threads during
@@ -580,11 +582,6 @@ impl Class {
 
     pub fn is(&self, known: KnownClass) -> bool {
         self.0.def.known == Some(known)
-    }
-
-    /// The definition data stored in this `Class`, which `TypeEnv::class_def` returns by default.
-    pub(crate) fn inline_def(&self) -> &ClassDef {
-        &self.0.def
     }
 
     pub fn def<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {

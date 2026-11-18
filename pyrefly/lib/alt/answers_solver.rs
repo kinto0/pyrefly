@@ -103,6 +103,7 @@ use crate::solver::solver::SubsetError;
 use crate::solver::solver::VarRecurser;
 use crate::solver::type_order::TypeOrder;
 use crate::types::class::Class;
+use crate::types::class::ClassDef;
 use crate::types::class::ClassFields;
 use crate::types::env::TypeEnv;
 use crate::types::equality::TypeEq;
@@ -2199,6 +2200,22 @@ pub struct AnswersSolver<'ctx, 'answer, Ans: LookupAnswer> {
 impl<Ans: LookupAnswer> TypeEnv for AnswersSolver<'_, '_, Ans> {
     fn stdlib(&self) -> &Stdlib {
         self.stdlib
+    }
+
+    /// A class of this module reads its row from this module's bindings, which are fixed for the
+    /// solver's lifetime. A class of another module reads it through
+    /// `LookupAnswer::get_class_def`, which records a dependency on the class's definition facts.
+    /// The module is compared exactly, so an open buffer and its file on disk are different
+    /// modules here.
+    fn class_def<'a>(&'a self, cls: &'a Class) -> &'a ClassDef {
+        if cls.module_key().exact() == self.module().key().exact() {
+            return &self
+                .bindings()
+                .metadata()
+                .get_class_or_placeholder(cls.index())
+                .def;
+        }
+        self.answers.get_class_def(cls)
     }
 
     /// May solve the class's `KeyTParams` on demand, so no variable lock may be held across

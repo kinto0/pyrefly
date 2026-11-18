@@ -154,6 +154,7 @@ use crate::state::steps::Step;
 use crate::state::steps::StepsMut;
 use crate::state::subscriber::Subscriber;
 use crate::types::class::Class;
+use crate::types::class::ClassDef;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFields;
 use crate::types::env::TypeEnv;
@@ -2263,6 +2264,27 @@ impl<'a> Transaction<'a> {
         }
     }
 
+    /// The `Answers` of a module, or its `Solutions` if the `Answers` were evicted, computing them
+    /// if needed. `answer_scope` retains them on the first call for the module and returns the
+    /// same ones afterwards, so borrows into them live as long as the scope.
+    fn retain_answers<'answer>(
+        &self,
+        module_data: &ArcId<ModuleDataMut>,
+        answer_scope: &'answer AnswerScope,
+    ) -> &'answer AnswerProvider {
+        // Cheap if already done.
+        self.demand(module_data, Step::Answers);
+        answer_scope.retain_module(module_data, || match module_data.state.get_answers() {
+            Some(answers) => AnswerProvider::Answers(answers),
+            None => AnswerProvider::Solutions(
+                module_data
+                    .state
+                    .get_solutions()
+                    .expect("answers evicted implies solutions exist"),
+            ),
+        })
+    }
+
     fn lookup_answer<'answer, 'b, K: Solve<TransactionHandle<'b>> + Exported>(
         &'b self,
         module_data: &'b ArcId<ModuleDataMut>,
@@ -2276,20 +2298,7 @@ impl<'a> Transaction<'a> {
         SolutionsTable: TableKeyed<K, Value = SolutionsEntry<K>>,
     {
         let key = Hashed::new(key);
-
-        // Ensure answers (or solutions) are computed. Cheap if already done.
-        self.demand(module_data, Step::Answers);
-        let provider =
-            answer_scope.retain_module(module_data, || match module_data.state.get_answers() {
-                Some(answers) => AnswerProvider::Answers(answers),
-                None => AnswerProvider::Solutions(
-                    module_data
-                        .state
-                        .get_solutions()
-                        .expect("answers evicted implies solutions exist"),
-                ),
-            });
-        let answers = match provider {
+        let answers = match self.retain_answers(module_data, answer_scope) {
             AnswerProvider::Answers(answers) => answers,
             AnswerProvider::Solutions(solutions) => return solutions.get_hashed_opt(key),
         };
@@ -3196,25 +3205,42 @@ impl TypeEnv for TransactionTypeEnv<'_> {
         &self.stdlib
     }
 
+    /// Reads the row from the binding metadata of the class's module's `Answers` or `Solutions`,
+    /// which `answer_scope` retains, so every read of a class returns the same row.
+    fn class_def<'b>(&'b self, cls: &'b Class) -> &'b ClassDef {
+        let module_data = self.transaction.get_module(&self.class_handle(cls));
+        let metadata = match self
+            .transaction
+            .retain_answers(module_data, &self.answer_scope)
+        {
+            AnswerProvider::Answers(answers) => answers.bindings().metadata(),
+            AnswerProvider::Solutions(solutions) => solutions.metadata(),
+        };
+        &metadata.get_class_or_placeholder(cls.index()).def
+    }
+
     fn class_tparams<'b>(&'b self, cls: &'b Class) -> &'b TParams {
         if !cls.has_tparams() {
             return TParams::empty_ref();
         }
-        let handle = self.transaction.imported_handle(
-            &self.handle,
-            cls.module_name(),
-            cls.module_path().dupe(),
-        );
         // There is no answer only if the class's module was rebuilt without this class, in which
         // case the solver also treats the class as having no type parameters.
         self.transaction
             .lookup_answer(
-                self.transaction.get_module(&handle),
+                self.transaction.get_module(&self.class_handle(cls)),
                 &KeyTParams(cls.index()),
                 &self.thread_state,
                 &self.answer_scope,
             )
             .map_or(TParams::empty_ref(), |tparams| &**tparams)
+    }
+}
+
+impl TransactionTypeEnv<'_> {
+    /// The handle of the module that defines `cls`, as imported by the module of this env.
+    fn class_handle(&self, cls: &Class) -> Handle {
+        self.transaction
+            .imported_handle(&self.handle, cls.module_name(), cls.module_path().dupe())
     }
 }
 
@@ -3273,6 +3299,42 @@ enum TargetAnswers<'a> {
 }
 
 impl<'a> TransactionHandle<'a> {
+    /// The binding metadata of the module that defines `cls`, registering `dep`, a dependency on
+    /// the class, in that module's entry of `deferred_deps`, where it sets a bit in the class's
+    /// entry of `ClassReads`. The first read of a module loads its metadata into `metadata_cache`,
+    /// and later reads in this handle return the same metadata, even if the module is rebuilt
+    /// meanwhile.
+    fn class_metadata(&self, cls: &Class, dep: ModuleDep) -> &BindingsMetadata {
+        // Register the dependency via get_module, which handles both module resolution and dep
+        // tracking through deferred_deps. The module is looked up by its exact key, so an open
+        // buffer and its file on disk stay separate modules.
+        let module_data = self
+            .get_module(LookupModule::Exact(cls.module_key()), dep)
+            .finding()
+            .unwrap();
+
+        // Load metadata into cache (once per module), keyed by ArcId pointer
+        // to avoid atomic refcount ops and get a cheap 8-byte hash key.
+        // SAFETY: TransactionHandle is single-threaded and the cache is
+        // append-only, so references into existing entries remain valid.
+        let cache = unsafe { &mut *self.metadata_cache.get() };
+        cache.entry(module_data.id()).or_insert_with(|| {
+            self.transaction.demand(module_data, Step::Answers);
+
+            module_data
+                .state
+                .with_answers(|answers| answers.map(|answers| answers.bindings().metadata().dupe()))
+                .unwrap_or_else(|| {
+                    module_data.state.with_solutions(|solutions| {
+                        solutions
+                            .expect("answers evicted implies solutions exist")
+                            .metadata()
+                            .dupe()
+                    })
+                })
+        })
+    }
+
     fn get_module(
         &self,
         module: LookupModule,
@@ -3833,40 +3895,22 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
     }
 
     fn get_class_fields(&self, cls: &Class) -> Option<&ClassFields> {
-        // Register a class-level dependency via get_module, which handles
-        // both module resolution and dep tracking through deferred_deps.
-        let module_data = self
-            .get_module(
-                LookupModule::Exact(cls.module_key()),
-                ModuleDep::Class(cls.index()),
-            )
-            .finding()
-            .unwrap();
-
-        // Load metadata into cache (once per module), keyed by ArcId pointer
-        // to avoid atomic refcount ops and get a cheap 8-byte hash key.
-        // SAFETY: TransactionHandle is single-threaded and the cache is
-        // append-only, so references into existing entries remain valid.
-        let cache = unsafe { &mut *self.metadata_cache.get() };
-        let metadata = cache.entry(module_data.id()).or_insert_with(|| {
-            self.transaction.demand(module_data, Step::Answers);
-
-            module_data
-                .state
-                .with_answers(|answers| answers.map(|answers| answers.bindings().metadata().dupe()))
-                .unwrap_or_else(|| {
-                    module_data.state.with_solutions(|solutions| {
-                        solutions
-                            .expect("answers evicted implies solutions exist")
-                            .metadata()
-                            .dupe()
-                    })
-                })
-        });
         // ClassDefIndex may be stale if the target module was rebuilt with
         // fewer classes during this epoch (transient inconsistency that
         // resolves in the next epoch when rdeps are invalidated).
-        Some(&metadata.get_class_checked(cls.index())?.fields)
+        Some(
+            &self
+                .class_metadata(cls, ModuleDep::Class(cls.index()))
+                .get_class_checked(cls.index())?
+                .fields,
+        )
+    }
+
+    fn get_class_def(&self, cls: &Class) -> &ClassDef {
+        &self
+            .class_metadata(cls, ModuleDep::ClassDef(cls.index()))
+            .get_class_or_placeholder(cls.index())
+            .def
     }
 }
 
