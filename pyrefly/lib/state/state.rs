@@ -6,7 +6,6 @@
  */
 
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::hash_map::Entry;
@@ -2179,7 +2178,6 @@ impl<'a> Transaction<'a> {
             transaction: self,
             module_data,
             deferred_deps: RefCell::new(FxHashMap::default()),
-            metadata_cache: UnsafeCell::new(FxHashMap::default()),
         }
     }
 
@@ -3257,16 +3255,8 @@ pub(crate) struct TransactionHandle<'a> {
     /// Each entry also remembers the target module, so that repeated lookups of
     /// the same module skip the transaction's shared module map and do not build the
     /// target's handle again.
+    /// Entries are removed only when the handle is dropped.
     deferred_deps: RefCell<FxHashMap<ExactModuleKey, DeferredDeps<'a>>>,
-    /// Cache of cross-module `BindingsMetadata` for class field lookups.
-    /// Keyed by `ArcId::id()` (pointer-as-usize) to avoid atomic refcount
-    /// operations and to get a cheap 8-byte hash key.
-    /// Uses `UnsafeCell` because we need to return `&ClassFields` references
-    /// into the cached `Arc<BindingsMetadata>` values. This is safe because:
-    ///   1. `TransactionHandle` is single-threaded (not `Sync`).
-    ///   2. The cache is append-only — entries are never removed or replaced,
-    ///      so references into existing entries remain valid.
-    metadata_cache: UnsafeCell<FxHashMap<usize, Arc<BindingsMetadata>>>,
 }
 
 /// Dependencies of a `TransactionHandle`'s module on one target module, not yet
@@ -3275,6 +3265,46 @@ struct DeferredDeps<'a> {
     handle: Handle,
     module_data: &'a ArcId<ModuleDataMut>,
     deps: ModuleDeps,
+    /// What class reads use from the target module, from the first class read onwards.
+    class_rows: Option<ClassRows>,
+}
+
+/// What a `TransactionHandle` reads the classes of one target module from: the module's binding
+/// metadata, pinned by the first class read for the rest of the handle's lifetime, and which
+/// class reads are already recorded in the module's `deps`.
+struct ClassRows {
+    metadata: Arc<BindingsMetadata>,
+    /// The `ClassRowRead` bits of each class, by `ClassDefIndex`, whose dependencies are recorded.
+    recorded: Vec<u8>,
+}
+
+impl ClassRows {
+    /// Record the dependency of `read` of the class at `index` in `deps`, unless this handle
+    /// already has. `ClassReads` merges a dependency recorded twice, so recording it once gives
+    /// the same dependencies.
+    fn record(&mut self, index: ClassDefIndex, read: ClassRowRead, deps: &mut ModuleDeps) {
+        let i = index.0 as usize;
+        if i >= self.recorded.len() {
+            self.recorded.resize(i + 1, 0);
+        }
+        let bit = read as u8;
+        if self.recorded[i] & bit == 0 {
+            self.recorded[i] |= bit;
+            deps.add_dep(match read {
+                ClassRowRead::Fields => ModuleDep::Class(index),
+                ClassRowRead::Definition => ModuleDep::ClassDef(index),
+            });
+        }
+    }
+}
+
+/// What a class read uses from the class's row, which decides the dependency it records.
+#[derive(Clone, Copy)]
+enum ClassRowRead {
+    /// The fields that the class declares (`ModuleDep::Class`).
+    Fields = 1,
+    /// The class's definition facts (`ModuleDep::ClassDef`).
+    Definition = 2,
 }
 
 /// Result of looking up a target module's `Answers` for a cross-module
@@ -3299,29 +3329,27 @@ enum TargetAnswers<'a> {
 }
 
 impl<'a> TransactionHandle<'a> {
-    /// The binding metadata of the module that defines `cls`, registering `dep`, a dependency on
-    /// the class, in that module's entry of `deferred_deps`, where it sets a bit in the class's
-    /// entry of `ClassReads`. The first read of a module loads its metadata into `metadata_cache`,
-    /// and later reads in this handle return the same metadata, even if the module is rebuilt
-    /// meanwhile.
-    fn class_metadata(&self, cls: &Class, dep: ModuleDep) -> &BindingsMetadata {
-        // Register the dependency via get_module, which handles both module resolution and dep
-        // tracking through deferred_deps. The module is looked up by its exact key, so an open
-        // buffer and its file on disk stay separate modules.
-        let module_data = self
-            .get_module(LookupModule::Exact(cls.module_key()), dep)
-            .finding()
-            .unwrap();
-
-        // Load metadata into cache (once per module), keyed by ArcId pointer
-        // to avoid atomic refcount ops and get a cheap 8-byte hash key.
-        // SAFETY: TransactionHandle is single-threaded and the cache is
-        // append-only, so references into existing entries remain valid.
-        let cache = unsafe { &mut *self.metadata_cache.get() };
-        cache.entry(module_data.id()).or_insert_with(|| {
+    /// The binding metadata of the module that defines `cls`, after recording the dependency of
+    /// `read` of the class in the module's entry of `deferred_deps`, which this handle does once
+    /// per class and kind of read. The module is looked up by its exact key, so an open buffer and
+    /// its file on disk stay separate modules.
+    ///
+    /// The first class read of a module pins its metadata in the module's entry, so every later
+    /// read in this handle returns the same metadata, even if the module is rebuilt meanwhile.
+    fn class_metadata(&self, cls: &Class, read: ClassRowRead) -> &BindingsMetadata {
+        let key = cls.module_key();
+        let mut deferred_deps = self.deferred_deps.borrow_mut();
+        let DeferredDeps {
+            module_data,
+            deps,
+            class_rows,
+            ..
+        } = self.deferred_entry(&mut deferred_deps, key, &|| self.exact_handle(key));
+        // `demand` computes the target module with handles of its own, so it can't reach
+        // `deferred_deps` while it is borrowed here.
+        let rows = class_rows.get_or_insert_with(|| {
             self.transaction.demand(module_data, Step::Answers);
-
-            module_data
+            let metadata = module_data
                 .state
                 .with_answers(|answers| answers.map(|answers| answers.bindings().metadata().dupe()))
                 .unwrap_or_else(|| {
@@ -3331,8 +3359,52 @@ impl<'a> TransactionHandle<'a> {
                             .metadata()
                             .dupe()
                     })
-                })
+                });
+            ClassRows {
+                metadata,
+                recorded: Vec::new(),
+            }
+        });
+        // A one-shot transaction does not track dependencies, so its class reads only pin the
+        // metadata.
+        if self.transaction.data.track_deps {
+            rows.record(cls.index(), read, deps);
+        }
+        let metadata: *const BindingsMetadata = &*rows.metadata;
+        // SAFETY: the metadata is behind an `Arc` in an entry of `deferred_deps`, which keeps the
+        // `Arc` as long as the entry. Entries are removed only when the handle is dropped, so the
+        // metadata outlives every borrow of `self`, even if the map moves its entries.
+        unsafe { &*metadata }
+    }
+
+    /// The entry of `deferred_deps` of the module with `key`, created with the handle that `handle`
+    /// builds if the module has no entry yet.
+    fn deferred_entry<'d>(
+        &self,
+        deferred_deps: &'d mut FxHashMap<ExactModuleKey, DeferredDeps<'a>>,
+        key: ModuleKey,
+        handle: &dyn Fn() -> Handle,
+    ) -> &'d mut DeferredDeps<'a> {
+        deferred_deps.entry(key.exact()).or_insert_with(|| {
+            let handle = handle();
+            let module_data = self.transaction.get_imported_module(&handle);
+            DeferredDeps {
+                handle,
+                module_data,
+                deps: ModuleDeps::default(),
+                class_rows: None,
+            }
         })
+    }
+
+    /// The handle of the module with `key`, as imported by this handle's module.
+    fn exact_handle(&self, key: ModuleKey) -> Handle {
+        self.transaction.data.state.imported_handle_with_config(
+            &self.module_data.handle,
+            &self.module_data.config.read(),
+            key.name(),
+            key.path().dupe(),
+        )
     }
 
     fn get_module(
@@ -3343,38 +3415,18 @@ impl<'a> TransactionHandle<'a> {
         // `handle` builds the target's handle. It runs only when the target has no entry yet.
         let resolve = move |key: ModuleKey, handle: &dyn Fn() -> Handle| {
             let mut deferred_deps = self.deferred_deps.borrow_mut();
-            let deferred = deferred_deps.entry(key.exact()).or_insert_with(|| {
-                let handle = handle();
-                let module_data = self.transaction.get_imported_module(&handle);
-                DeferredDeps {
-                    handle,
-                    module_data,
-                    deps: ModuleDeps::default(),
-                }
-            });
+            let deferred = self.deferred_entry(&mut deferred_deps, key, handle);
             if self.transaction.data.track_deps {
                 deferred.deps.add_dep(dep);
             }
             deferred.module_data
         };
-        let imported_handle = |config: &ConfigFile, module: ModuleName, path: ModulePath| {
-            self.transaction.data.state.imported_handle_with_config(
-                &self.module_data.handle,
-                config,
-                module,
-                path,
-            )
-        };
         match module {
             // Explicit module — already resolved. Bypass imports entirely. Most lookups take this
             // path, so it resolves directly rather than through a `FindingOrError`.
-            LookupModule::Exact(key) => FindingOrError::new_finding(resolve(key, &|| {
-                imported_handle(
-                    &self.module_data.config.read(),
-                    key.name(),
-                    key.path().dupe(),
-                )
-            })),
+            LookupModule::Exact(key) => {
+                FindingOrError::new_finding(resolve(key, &|| self.exact_handle(key)))
+            }
             LookupModule::Import(module) => {
                 // Resolve the import with find_import, checking the imports cache first.
                 let imports_read = self.module_data.imports.read();
@@ -3395,7 +3447,14 @@ impl<'a> TransactionHandle<'a> {
                                 Some(self.module_data.handle.path()),
                                 Some(self.transaction.timing()),
                             )
-                            .map(|path| imported_handle(&config, module, path));
+                            .map(|path| {
+                                self.transaction.data.state.imported_handle_with_config(
+                                    &self.module_data.handle,
+                                    &config,
+                                    module,
+                                    path,
+                                )
+                            });
                         let fi_ns = fi_start.elapsed().as_nanos() as u64;
                         self.transaction
                             .timing()
@@ -3437,7 +3496,6 @@ impl<'a> TransactionHandle<'a> {
             transaction: self.transaction,
             module_data,
             deferred_deps: RefCell::new(FxHashMap::default()),
-            metadata_cache: UnsafeCell::new(FxHashMap::default()),
         };
         Some(f(&exports, &lookup))
     }
@@ -3522,6 +3580,7 @@ impl Drop for TransactionHandle<'_> {
                 handle: target_handle,
                 module_data: target,
                 deps: new_deps,
+                class_rows: _,
             },
         ) in deferred
         {
@@ -3900,7 +3959,7 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
         // resolves in the next epoch when rdeps are invalidated).
         Some(
             &self
-                .class_metadata(cls, ModuleDep::Class(cls.index()))
+                .class_metadata(cls, ClassRowRead::Fields)
                 .get_class_checked(cls.index())?
                 .fields,
         )
@@ -3908,7 +3967,7 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
 
     fn get_class_def(&self, cls: &Class) -> &ClassDef {
         &self
-            .class_metadata(cls, ModuleDep::ClassDef(cls.index()))
+            .class_metadata(cls, ClassRowRead::Definition)
             .get_class_or_placeholder(cls.index())
             .def
     }
