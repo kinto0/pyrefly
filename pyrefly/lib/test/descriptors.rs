@@ -1595,6 +1595,24 @@ reveal_type(K.__init__)  # E: revealed type: (self: K, x: bool = ...) -> None
 );
 
 testcase!(
+    test_descriptor_setter_missing_value_param_in_dataclass,
+    r#"
+from dataclasses import dataclass
+from typing import Any, reveal_type
+
+class Bad:
+    def __get__(self, obj: object, objtype: Any = None) -> int: ...
+    def __set__(self, obj: object) -> None: ...
+
+@dataclass
+class Owner:
+    b: Bad = Bad()
+
+reveal_type(Owner.__init__)  # E: revealed type: (self: Owner, b: Unknown = ...) -> None
+"#,
+);
+
+testcase!(
     test_decorator_override,
     r#"
 from typing import Any

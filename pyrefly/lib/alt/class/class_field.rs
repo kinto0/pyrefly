@@ -4208,7 +4208,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 &self.error_swallower(),
             )
         {
-            self.get_descriptor_setter_value(&setter)
+            self.get_callable_positional_param(&setter, 2)
         } else {
             ty.clone()
         };
@@ -6631,7 +6631,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         TextRange::default(),
                         &self.error_swallower(),
                     )
-                    .map(|setter| self.get_descriptor_setter_value(&setter));
+                    .map(|setter| self.get_callable_positional_param(&setter, 2));
                 is_subset(
                     &self.heap.mk_callable_ellipsis(got_read_ty.clone()),
                     want_getter,
@@ -6825,7 +6825,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .as_ref()?;
         Some(ClassAttribute::ReadWrite {
             read_type: contract.read_type.clone(),
-            write_type: Some(self.get_descriptor_setter_value(&setter)),
+            write_type: Some(self.get_callable_positional_param(&setter, 2)),
             is_method: IsMethod::No,
             is_instance_var: false,
         })
@@ -6853,7 +6853,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     .toplevel_func_metadata()
                     .and_then(|metadata| metadata.flags.descriptor_setter.as_ref())
                     .map_or_else(
-                        || self.get_descriptor_setter_value(&setter),
+                        || self.get_callable_positional_param(&setter, 2),
                         |contract| contract.override_type.clone(),
                     )
             });
@@ -6938,11 +6938,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    /// Given a `__set__(self, instance, value)` function, gets the type of `value`.
-    fn get_descriptor_setter_value(&self, setter: &Type) -> Type {
-        let values = setter
+    /// Given a callable, extracts the parameter type at `index`.
+    pub(crate) fn get_callable_positional_param(&self, ty: &Type, index: usize) -> Type {
+        let values = ty
             .toplevel_callable_signatures()
-            .filter_map(|(callable, _)| callable.get_positional_param(2).cloned())
+            .filter_map(|(callable, _)| callable.get_positional_param(index).cloned())
             .collect::<Vec<_>>();
         if values.is_empty() {
             self.heap.mk_any_implicit()
@@ -6950,7 +6950,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             self.unions(values)
         }
     }
-
     /// Return `__call__` as a bound method if instances of `cls` have `__call__`.
     /// This is what the runtime automatically does when we try to call an instance.
     pub fn instance_as_dunder_call(&self, cls: &ClassType) -> Option<Type> {
