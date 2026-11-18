@@ -382,8 +382,9 @@ mod tests {
         }
     }
 
-    /// `type_cmp` is a total order whose `Equal` is equality, so sorting with it cannot panic and
-    /// gives one order for any input order.
+    /// `type_cmp` is a total order, so sorting with it cannot panic and gives one order for any
+    /// input order. `Equal` implies `==`. On these types, which hold no open buffer and its file
+    /// on disk, `==` also implies `Equal`.
     #[test]
     fn test_type_ord_is_a_total_order() {
         let env = TestTypeEnv::new();
