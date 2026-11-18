@@ -2763,6 +2763,49 @@ exported()
 }
 
 #[test]
+fn hover_local_symbol_uses_corresponding_stub_docstring() {
+    let mut test_env = TestEnv::new();
+    let lib_code = r#"
+def documented() -> int:
+    """Implementation documentation."""
+    return 1
+
+documented()
+#   ^
+"#;
+    test_env.add_with_path("lib", "lib.py", lib_code);
+    test_env.add_with_path(
+        "lib",
+        "lib.pyi",
+        r#"
+def documented() -> int:
+    """Public stub documentation."""
+    ...
+"#,
+    );
+    let sys_info = test_env.sys_info();
+    let (state, _) = test_env.to_state();
+    let lib_handle = Handle::new(
+        ModuleName::from_str("lib"),
+        ModulePath::memory(PathBuf::from("lib.py")),
+        sys_info,
+    );
+    let position = extract_cursors_for_test(lib_code)[0];
+    let definitions = state
+        .transaction()
+        .find_definition(&lib_handle, position, FindPreference::default())
+        .unwrap();
+    assert!(!definitions.first().module.path().is_interface());
+
+    let report = get_test_report(&state, &lib_handle, position);
+    assert!(
+        report.contains("Public stub documentation."),
+        "got: {report}"
+    );
+    assert!(!report.contains("Implementation documentation."));
+}
+
+#[test]
 fn hover_in_dunder_all_prefers_stub_docstring() {
     let mut test_env = TestEnv::new();
     let lib_code = r#"
