@@ -13,7 +13,6 @@ from shape_extensions import assert_shape
 
 
 def test_conv1d_same_padding() -> None:
-    # TODO: BUG: Accept string padding.
-    conv = nn.Conv1d(3, 4, kernel_size=3, padding="same")  # E: `padding`
+    conv = nn.Conv1d(3, 4, kernel_size=3, padding="same")
     # TODO: BUG: Model string padding.
     assert_shape(conv(torch.randn((2, 3, 10))).shape, (2, 4, int), runtime=(2, 4, 10))

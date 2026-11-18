@@ -646,7 +646,7 @@ class Conv1d[
     Type parameters S, P, D are bound from constructor arguments via _Int[T].
     Omitted arguments use their precise scalar defaults. The gradual class
     defaults apply only when a control is not bound, as in an unparameterized
-    subclass.
+    subclass. String padding leaves the output length gradual.
     """
 
     weight: Tensor[[OutC, InC, K]]
@@ -657,7 +657,7 @@ class Conv1d[
         out_channels: _Int[OutC],
         kernel_size: _Int[K],
         stride: _Int[S] = 1,
-        padding: _Int[P] = 0,
+        padding: _Int[P] | str = 0,
         dilation: _Int[D] = 1,
         groups: int = 1,
         bias: bool = True,
