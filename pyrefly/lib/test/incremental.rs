@@ -5221,7 +5221,6 @@ fn test_function_type_parameter_displaced() {
 /// Without a cycle: `a` declares a type alias with a ParamSpec default before `A`, which moves the
 /// declaration of the type parameter of `A`. The instances of `A` that `b` keeps pair with the
 /// parameters of the moved `A`, so `main` sees the same types as in a clean check.
-// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
 fn test_class_type_parameter_default_displaced() {
     assert_rebuild_matches_clean(
@@ -5240,13 +5239,12 @@ fn test_class_type_parameter_default_displaced() {
                 "from typing import reveal_type\nimport b\nreveal_type(b.w)\nreveal_type(b.e)\nreveal_type(b.w.get())\nreveal_type(b.e.get())\n",
             ),
         ],
-        &["b"],
+        &[],
     );
 }
 
 /// Without a cycle: moving `A` down `a` moves the declaration of its type parameter. The `A[int]`
 /// that `b` keeps pairs with the parameter of the moved `A`, so `main` reveals `int`.
-// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
 fn test_generic_class_moved() {
     assert_rebuild_matches_clean(
@@ -5262,7 +5260,7 @@ fn test_generic_class_moved() {
                 "from typing import reveal_type\nimport b\nreveal_type(b.w)\nreveal_type(b.w.get())\n",
             ),
         ],
-        &["b"],
+        &[],
     );
 }
 
@@ -5283,7 +5281,6 @@ fn test_generic_class_moved_rechecks_only_its_module() {
 }
 
 /// A legacy generic class moves down its module, and another module subclasses an instance of it.
-// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
 fn test_legacy_generic_class_moved_under_subclass() {
     assert_rebuild_matches_clean(
@@ -5305,12 +5302,11 @@ fn test_legacy_generic_class_moved_under_subclass() {
                 "from typing import reveal_type\nfrom b import B\nreveal_type(B().get())\nx: int = B().get()\n",
             ),
         ],
-        &["b"],
+        &[],
     );
 }
 
 /// A generic class moves down its module, and another module returns an instance of it.
-// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
 fn test_generic_class_moved_under_return_annotation() {
     assert_rebuild_matches_clean(
@@ -5326,7 +5322,7 @@ fn test_generic_class_moved_under_return_annotation() {
                 "import b\nx: int = b.make().get()\ny: str = b.make().get()\n",
             ),
         ],
-        &["b"],
+        &[],
     );
 }
 
