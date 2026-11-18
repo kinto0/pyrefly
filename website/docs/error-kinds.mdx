@@ -2727,11 +2727,6 @@ only returns `T`, the warning suggests declaring `T` as covariant. Incorrect usa
 of an explicitly covariant or contravariant `TypeVar` is reported as
 [`invalid-variance`](#invalid-variance) instead.
 
-Constrained `TypeVar`s, such as `TypeVar("T", str, bytes)`, are exempt from this
-warning. Constraints commonly describe a fixed set of unrelated alternatives, so
-invariance is often sufficient and narrower-variance suggestions are noisy.
-Bounded `TypeVar`s, such as `TypeVar("T", bound=float)`, are still checked.
-
 ```python
 from typing import Protocol, TypeVar
 
