@@ -21,6 +21,25 @@ use url::Url;
 
 use crate::environment::environment::PythonEnvironment;
 
+/// The script run by [`query`] with `python -c`. It prints a JSON object matching [`QueryOutput`].
+const QUERY_SCRIPT: &str = "\
+import importlib.metadata, json, sys, sysconfig
+platform = sys.platform
+v = sys.version_info
+version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
+stdlib_paths = [p for p in [sysconfig.get_path('stdlib')] if p is not None]
+site_package_path = [p for p in sys.path if p != '' and '.zip' not in p and not p.endswith('/lib-dynload') and p not in stdlib_paths]
+distribution_urls = []
+for distribution in importlib.metadata.distributions():
+    try:
+        distribution_url = json.loads(distribution.read_text('direct_url.json') or 'null')
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        continue
+    if isinstance(distribution_url, dict):
+        distribution_urls.append(distribution_url)
+print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path, 'stdlib_paths': stdlib_paths, 'distribution_urls': distribution_urls}))
+";
+
 /// The JSON contract emitted by the interpreter-query script run in [`query`].
 /// `distribution_urls` is left untyped because its per-entry shape is best-effort
 /// PEP 610 metadata that [`editable_paths_from_query`] tolerates being partial.
@@ -46,27 +65,9 @@ pub fn query(interpreter: &Path) -> anyhow::Result<PythonEnvironment> {
         );
     }
 
-    let script = "\
-import importlib.metadata, json, sys, sysconfig
-platform = sys.platform
-v = sys.version_info
-version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
-stdlib_paths = [p for p in [sysconfig.get_path('stdlib')] if p is not None]
-site_package_path = [p for p in sys.path if p != '' and '.zip' not in p and not p.endswith('/lib-dynload') and p not in stdlib_paths]
-distribution_urls = []
-for distribution in importlib.metadata.distributions():
-    try:
-        distribution_url = json.loads(distribution.read_text('direct_url.json') or 'null')
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        continue
-    if isinstance(distribution_url, dict):
-        distribution_urls.append(distribution_url)
-print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path, 'stdlib_paths': stdlib_paths, 'distribution_urls': distribution_urls}))
-";
-
     let mut command = Command::new(interpreter);
     command.arg("-c");
-    command.arg(script);
+    command.arg(QUERY_SCRIPT);
 
     let python_info = command.output()?;
 
@@ -156,10 +157,182 @@ fn editable_paths_from_query(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use serde_json::json;
     use tempfile::tempdir;
+    use which::which;
 
     use super::*;
+
+    /// A working Python interpreter on `PATH`. Tests that run the query return early when
+    /// there is none, since the test environment is not guaranteed to provide one.
+    fn python() -> Option<PathBuf> {
+        ["python3", "python"]
+            .into_iter()
+            .filter_map(|name| which(name).ok())
+            .find(|python| {
+                Command::new(python)
+                    .args(["-c", "import sys"])
+                    .output()
+                    .is_ok_and(|output| output.status.success())
+            })
+    }
+
+    /// Run [`QUERY_SCRIPT`] with `python` in `cwd`, returning whether it succeeded and its stdout.
+    fn run_query_script(python: &Path, cwd: &Path) -> (bool, String) {
+        let output = Command::new(python)
+            .arg("-c")
+            .arg(QUERY_SCRIPT)
+            .current_dir(cwd)
+            .output()
+            .unwrap();
+        (
+            output.status.success(),
+            String::from_utf8(output.stdout).unwrap(),
+        )
+    }
+
+    #[test]
+    fn interpreter_query_output_format() {
+        let Some(python) = python() else {
+            eprintln!("Skipping: no Python interpreter on PATH");
+            return;
+        };
+        let cwd = tempdir().unwrap();
+
+        let (success, stdout) = run_query_script(&python, cwd.path());
+
+        assert!(success);
+        let output: Value = serde_json::from_str(&stdout).unwrap();
+        let mut keys: Vec<&str> = output
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            vec![
+                "distribution_urls",
+                "python_platform",
+                "python_version",
+                "site_package_path",
+                "stdlib_paths",
+            ]
+        );
+        assert!(
+            output["distribution_urls"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(Value::is_object)
+        );
+        let output: QueryOutput = serde_json::from_value(output).unwrap();
+        assert!(output.python_platform.is_some());
+        assert_eq!(output.python_version.unwrap().major, 3);
+        assert!(!output.stdlib_paths.is_empty());
+        let site_package_path = output.site_package_path.unwrap();
+        assert!(
+            output
+                .stdlib_paths
+                .iter()
+                .all(|path| !site_package_path.contains(path)),
+            "The standard library is not a site package path"
+        );
+    }
+
+    #[test]
+    fn interpreter_query_reports_venv_site_packages_and_editable_installs() {
+        let Some(python) = python() else {
+            eprintln!("Skipping: no Python interpreter on PATH");
+            return;
+        };
+        let temp = tempdir().unwrap();
+        let venv = temp.path().join("venv");
+        let project = temp.path().join("project");
+        fs::create_dir(&project).unwrap();
+        assert!(
+            Command::new(&python)
+                .args(["-m", "venv", "--without-pip"])
+                .arg(&venv)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let interpreter = if cfg!(windows) {
+            venv.join("Scripts").join("python.exe")
+        } else {
+            venv.join("bin").join("python")
+        };
+        let canonical_venv = venv.canonicalize().unwrap();
+        let site_packages = query(&interpreter)
+            .unwrap()
+            .interpreter_site_package_path
+            .into_iter()
+            .find(|path| {
+                path.ends_with("site-packages")
+                    && path
+                        .canonicalize()
+                        .is_ok_and(|path| path.starts_with(&canonical_venv))
+            })
+            .unwrap();
+        // An editable install of `foo` from `project`, and a regular install of `bar`.
+        fs::write(
+            site_packages.join("foo.pth"),
+            format!("{}\n", project.display()),
+        )
+        .unwrap();
+        for (distribution, direct_url) in [
+            (
+                "foo-1.0.dist-info",
+                json!({
+                    "url": Url::from_file_path(&project).unwrap().to_string(),
+                    "dir_info": {"editable": true},
+                }),
+            ),
+            (
+                "bar-1.0.dist-info",
+                json!({"url": "https://example.com/bar-1.0.tar.gz", "archive_info": {}}),
+            ),
+        ] {
+            fs::create_dir(site_packages.join(distribution)).unwrap();
+            fs::write(
+                site_packages.join(distribution).join("direct_url.json"),
+                direct_url.to_string(),
+            )
+            .unwrap();
+        }
+
+        let env = query(&interpreter).unwrap();
+
+        assert_eq!(env.python_version.unwrap().major, 3);
+        assert!(env.interpreter_site_package_path.contains(&site_packages));
+        assert!(env.interpreter_site_package_path.contains(&project));
+        assert_eq!(env.interpreter_editable_path, vec![project]);
+    }
+
+    #[test]
+    fn interpreter_query_runs_modules_in_working_directory() {
+        let Some(python) = python() else {
+            eprintln!("Skipping: no Python interpreter on PATH");
+            return;
+        };
+        let cwd = tempdir().unwrap();
+        // The query script imports `json`, so a project file with that name must not be run.
+        fs::write(
+            cwd.path().join("json.py"),
+            "open('json-was-imported', 'w').close()\n",
+        )
+        .unwrap();
+
+        run_query_script(&python, cwd.path());
+
+        // BUG: `python -c` puts the working directory first on `sys.path`, so the project's
+        // `json.py` shadows the standard library module and is executed.
+        assert!(cwd.path().join("json-was-imported").exists());
+    }
 
     #[test]
     fn interpreter_query_classifies_editable_file_urls() {
