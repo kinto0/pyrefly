@@ -1536,12 +1536,21 @@ fn inherited_method_docstring(
     let metadata = type_.toplevel_func_metadata()?;
     let cls = metadata.kind.class()?;
     let name = metadata.kind.function_name().into_owned();
+    // Visit only ancestors that declare `name` directly. A lookup on any other ancestor follows
+    // that ancestor's own MRO and can skip an earlier declaration in the MRO of `cls`.
     let ancestors: Vec<ClassType> =
         transaction.ad_hoc_solve(handle, "inherited_docstring", |solver| {
             solver
                 .get_mro_for_class(&cls)
                 .ancestors_no_object()
-                .to_vec()
+                .iter()
+                .filter(|ancestor| {
+                    solver
+                        .get_class_fields(ancestor.class_object())
+                        .is_some_and(|fields| fields.field_decl_range(&name).is_some())
+                })
+                .cloned()
+                .collect()
         })?;
     let preferences = [
         FindPreference::default(),

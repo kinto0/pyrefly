@@ -4764,7 +4764,6 @@ Child().f()
 #       ^
 "#;
     let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
-    // Bug: `B` precedes `Root` in the MRO of `Child`, so `B.f` should provide the docstring.
     assert_eq!(
         r#"
 # main.py
@@ -4774,7 +4773,7 @@ Child().f()
 (method) f: def f(self: Child) -> None: ...
 ```
 ---
-Root docstring."#
+B docstring."#
             .trim(),
         report.trim()
     );
