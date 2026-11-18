@@ -54,6 +54,15 @@ impl ClassMetadata {
     }
 }
 
+/// What differs between two versions of a class's row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClassRowChange {
+    /// The fields that the class declares.
+    pub fields: bool,
+    /// The class's definition facts (see `ClassDef::same_definition`).
+    pub def: bool,
+}
+
 /// Metadata collected during the binding phase for all classes in a module.
 ///
 /// Stored in an `Arc` so it can be shared between `Answers` and `Solutions`
@@ -63,8 +72,9 @@ impl ClassMetadata {
 #[derive(Debug, Clone)]
 pub struct BindingsMetadata {
     classes: Vec<ClassMetadata>,
-    /// The row of a class that has an index but whose definition is not bound yet. The binding
-    /// of every class definition replaces its row, so no row is a placeholder once the module is
+    /// The row of a class that has an index but whose definition is not bound yet, and the row
+    /// that `get_class_or_placeholder` returns for an index that is out of range. The binding of
+    /// every class definition replaces its row, so no row is a placeholder once the module is
     /// bound.
     placeholder: ClassMetadata,
 }
@@ -95,23 +105,40 @@ impl BindingsMetadata {
         self.classes.get(idx.0 as usize)
     }
 
+    /// The row for `idx`, or the module's placeholder row if `idx` is out of range. A class index
+    /// from another module is out of range if that module was rebuilt with fewer classes during
+    /// this epoch. A reader of the placeholder has recorded a dependency on the class, and the
+    /// rebuilt module reports the missing row as changed (see `changed_class_rows`), so the reader
+    /// is recomputed in the next epoch.
+    pub fn get_class_or_placeholder(&self, idx: ClassDefIndex) -> &ClassMetadata {
+        self.classes
+            .get(idx.0 as usize)
+            .unwrap_or(&self.placeholder)
+    }
+
     pub fn get_class_mut(&mut self, idx: ClassDefIndex) -> &mut ClassMetadata {
         &mut self.classes[idx.0 as usize]
     }
 
-    /// The classes whose declared fields differ between `self` and `other`, wherever in the file
-    /// they are declared, including the classes that only one of them has.
+    /// The classes whose rows differ between `self` and `other`, and what differs. Rows are
+    /// compared wherever in the file their classes are, so moving a class changes nothing. A class
+    /// that only one of them has counts as a change to both its fields and its definition.
     pub fn changed_class_rows<'a>(
         &'a self,
         other: &'a Self,
-    ) -> impl Iterator<Item = ClassDefIndex> + 'a {
-        (0..self.classes.len().max(other.classes.len()))
-            .filter(move |&i| {
-                !matches!(
-                    (self.classes.get(i), other.classes.get(i)),
-                    (Some(x), Some(y)) if x.fields.same_declarations(&y.fields)
-                )
-            })
-            .map(|i| ClassDefIndex(i as u32))
+    ) -> impl Iterator<Item = (ClassDefIndex, ClassRowChange)> + 'a {
+        (0..self.classes.len().max(other.classes.len())).filter_map(move |i| {
+            let change = match (self.classes.get(i), other.classes.get(i)) {
+                (Some(x), Some(y)) => ClassRowChange {
+                    fields: !x.fields.same_declarations(&y.fields),
+                    def: !x.def.same_definition(&y.def),
+                },
+                _ => ClassRowChange {
+                    fields: true,
+                    def: true,
+                },
+            };
+            (change.fields || change.def).then_some((ClassDefIndex(i as u32), change))
+        })
     }
 }

@@ -100,34 +100,14 @@ impl PartialEq for Class {
 impl Eq for Class {}
 
 /// Two classes are `TypeEq` when they are the same class (`PartialEq`, which with `Hash` stays
-/// identity-only, since `Class` is a map key) with the same definition facts: the name and the
-/// enclosing scopes that its printed name shows, whether it is a protocol, its deprecation, and
-/// whether it declares type parameters. A reader can use these facts from the value alone, so
-/// comparing an answer that holds the class catches a change to them. They are all decided at
-/// binding time, so the iterations of a recursive computation always agree on them. `known` is
-/// computed from the module, the name and the nesting, so it follows from those.
+/// identity-only, since `Class` is a map key) with the same definition facts (see
+/// `ClassDef::same_definition`). A reader can use these facts from the value alone, so comparing
+/// an answer that holds the class catches a change to them. They are all decided at binding time,
+/// so the iterations of a recursive computation always agree on them.
 impl TypeEq for Class {
     fn type_eq(&self, other: &Self, _ctx: &mut TypeEqCtx) -> bool {
-        if Arc::ptr_eq(&self.0, &other.0) {
-            return true;
-        }
-        let (x, y) = (&self.0.def, &other.0.def);
-        let same_name = x.qname.id() == y.qname.id()
-            && match (
-                x.qname.parent().is_toplevel(),
-                y.qname.parent().is_toplevel(),
-            ) {
-                (true, true) => true,
-                (false, false) => {
-                    x.qname.name_relative_to_module() == y.qname.name_relative_to_module()
-                }
-                _ => false,
-            };
-        self == other
-            && same_name
-            && x.deprecation == y.deprecation
-            && x.is_protocol == y.is_protocol
-            && x.has_tparams == y.has_tparams
+        Arc::ptr_eq(&self.0, &other.0)
+            || (self == other && self.0.def.same_definition(&other.0.def))
     }
 }
 
@@ -458,6 +438,29 @@ impl ClassDef {
             deprecation,
             has_tparams,
         }
+    }
+
+    /// Whether two versions of a class's definition have the same definition facts: the name and
+    /// the enclosing scopes that its printed name shows, whether it is a protocol, its deprecation,
+    /// and whether it declares type parameters. Positions are not compared, because any edit above
+    /// a class moves them. `known` is computed from the module, the name and the nesting, so it
+    /// follows from those.
+    pub fn same_definition(&self, other: &Self) -> bool {
+        let same_name = self.qname.id() == other.qname.id()
+            && match (
+                self.qname.parent().is_toplevel(),
+                other.qname.parent().is_toplevel(),
+            ) {
+                (true, true) => true,
+                (false, false) => {
+                    self.qname.name_relative_to_module() == other.qname.name_relative_to_module()
+                }
+                _ => false,
+            };
+        same_name
+            && self.deprecation == other.deprecation
+            && self.is_protocol == other.is_protocol
+            && self.has_tparams == other.has_tparams
     }
 }
 

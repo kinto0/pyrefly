@@ -110,6 +110,7 @@ use crate::binding::binding::Keyed;
 use crate::binding::bindings::BindingEntry;
 use crate::binding::bindings::BindingTable;
 use crate::binding::metadata::BindingsMetadata;
+use crate::binding::metadata::ClassRowChange;
 use crate::binding::scope::builtin_module_for_name;
 use crate::binding::table::TableKeyed;
 use crate::config::config::ConfigFile;
@@ -186,8 +187,8 @@ pub struct ModuleDeps {
     pub names: SmallMap<Name, NameDep>,
     /// Do we depend on the wildcard export set?
     pub wildcard: bool,
-    /// Which exported keys of classes, and which classes' declared fields (their rows in
-    /// `BindingsMetadata`), do we depend on?
+    /// Which exported keys of classes, and which classes' declared fields and definition facts
+    /// (their rows in `BindingsMetadata`), do we depend on?
     pub classes: ClassReads,
     /// Which type aliases do we depend on?
     pub type_aliases: SmallSet<TypeAliasIndex>,
@@ -196,10 +197,11 @@ pub struct ModuleDeps {
 }
 
 /// The exported keys of classes that a module read from another module, or that changed in a
-/// module, and the classes whose declared fields it read or that changed. Entries are packed into a
-/// `u64` each and kept sorted, with the class index in the high 32 bits:
+/// module, and the classes whose declared fields or definition facts it read or that changed.
+/// Entries are packed into a `u64` each and kept sorted, with the class index in the high 32 bits:
 /// - for each class, one entry with a bit per kind of key below the top bit (`ClassReads::MRO`
-///   and the others), where `ClassReads::ROW` stands for the declared fields;
+///   and the others), where `ClassReads::ROW` stands for the declared fields and
+///   `ClassReads::DEF` for the definition facts;
 /// - for each field key, one entry with the top bit set and a 31-bit hash of the field name.
 ///
 /// Two sets share a read when they have entries for the same class whose kind bits intersect, or
@@ -224,6 +226,8 @@ impl ClassReads {
     const SUBSCRIPT_SYMMETRY: u32 = 1 << 8;
     /// The fields that the class declares.
     const ROW: u32 = 1 << 9;
+    /// The class's definition facts (see `ClassDef::same_definition`).
+    const DEF: u32 = 1 << 10;
     /// Set in the entry of a field key.
     const FIELD: u64 = 1 << 31;
 
@@ -398,8 +402,10 @@ pub enum ModuleDep {
     /// existence-level only; used by call sites that want every export
     /// without establishing per-name dependencies.
     EveryExportUntracked,
-    /// Depend on the fields that a class declares, its row in `BindingsMetadata`.
+    /// Depend on the fields that a class declares, from its row in `BindingsMetadata`.
     Class(ClassDefIndex),
+    /// Depend on a class's definition facts, from its row in `BindingsMetadata`.
+    ClassDef(ClassDefIndex),
 }
 
 impl ModuleChanges {
@@ -423,9 +429,17 @@ impl ModuleChanges {
         }
     }
 
-    /// Record that the fields a class declares changed, or that the class was added or removed.
-    pub fn add_class_row(&mut self, class: ClassDefIndex) {
-        self.0.classes.insert_kinds(class, ClassReads::ROW);
+    /// Record what changed in a class's row: the fields it declares, its definition facts, or
+    /// both, for a class that was added or removed.
+    pub fn add_class_row(&mut self, class: ClassDefIndex, change: ClassRowChange) {
+        let mut kinds = 0;
+        if change.fields {
+            kinds |= ClassReads::ROW;
+        }
+        if change.def {
+            kinds |= ClassReads::DEF;
+        }
+        self.0.classes.insert_kinds(class, kinds);
     }
 
     /// Merge another `ModuleChanges` into this one, mutating in place.
@@ -548,6 +562,9 @@ impl ModuleDeps {
             ModuleDep::Class(idx) => {
                 self.classes.insert_kinds(idx, ClassReads::ROW);
             }
+            ModuleDep::ClassDef(idx) => {
+                self.classes.insert_kinds(idx, ClassReads::DEF);
+            }
         }
     }
 
@@ -646,6 +663,7 @@ impl ModuleDep {
             ModuleDep::Wildcard => "get_wildcard",
             ModuleDep::EveryExportUntracked => "get_every_export_untracked",
             ModuleDep::Class(_) => "class",
+            ModuleDep::ClassDef(_) => "class_def",
         }
     }
 }
@@ -1937,17 +1955,18 @@ impl<'a> Transaction<'a> {
                     .state
                     .get_solutions()
                     .expect("solutions must exist after computing Solutions");
-                // Class rows: the fields each class declares, which other modules read through
-                // `get_class_fields` rather than through an exported key. Without old answers or
-                // solutions, no module could have read them.
+                // Class rows: the fields each class declares and its definition facts, which other
+                // modules read from the row rather than through an exported key. Without old
+                // answers or solutions, no module could have read them.
                 let old_metadata = match (&old_solutions, &old_answers) {
                     (Some(solutions), _) => Some(solutions.metadata().dupe()),
                     (None, Some(answers)) => Some(answers.bindings().metadata().dupe()),
                     (None, None) => None,
                 };
                 if let Some(old_metadata) = old_metadata {
-                    for class in old_metadata.changed_class_rows(new_solutions.metadata()) {
-                        changed.add_class_row(class);
+                    for (class, change) in old_metadata.changed_class_rows(new_solutions.metadata())
+                    {
+                        changed.add_class_row(class, change);
                     }
                 }
                 if let Some(old_sol) = old_solutions {
@@ -4417,6 +4436,13 @@ mod tests {
         assert!(!reads.intersects(&with(&|c| c.insert_field(c0, &Name::new_static("y")))));
         assert!(!reads.intersects(&with(&|c| c.insert_field(c1, &Name::new_static("x")))));
         assert!(!reads.intersects(&with(&|c| c.insert_kinds(c1, ClassReads::ROW))));
+        // A class's definition facts and its declared fields are separate reads.
+        assert!(!reads.intersects(&with(&|c| c.insert_kinds(c0, ClassReads::DEF))));
+        assert!(
+            with(&|c| c.insert_kinds(c1, ClassReads::DEF)).intersects(&with(&|c| {
+                c.insert_kinds(c1, ClassReads::ROW | ClassReads::DEF)
+            }))
+        );
 
         // Merging keeps one kinds entry per class and drops repeated fields.
         let mut merged = with(&|c| {

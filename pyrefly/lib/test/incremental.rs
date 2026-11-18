@@ -32,6 +32,7 @@ use starlark_map::small_map::SmallMap;
 use crate::alt::answers::Solutions;
 use crate::binding::binding::KeyExport;
 use crate::binding::binding::KeyTParams;
+use crate::binding::metadata::ClassRowChange;
 use crate::config::config::ConfigFile;
 use crate::config::error::ErrorDisplayConfig;
 use crate::config::finder::ConfigFinder;
@@ -42,6 +43,7 @@ use crate::state::load::FileContents;
 use crate::state::require::Require;
 use crate::state::state::State;
 use crate::state::subscriber::TestSubscriber;
+use crate::test::util::TestEnv;
 use crate::test::util::init_test;
 use crate::test::util::report_unreachable_at_warn;
 use crate::types::types::Type;
@@ -5362,6 +5364,99 @@ fn test_class_declarations_change_rechecks_attribute_readers() {
         "# moved\n\nclass Hub:\n    a: int = 1\n    b: int = 2\n    c: int = 3",
     );
     i.check_matches_clean(&["main", "bar", "foo"], &["bar", "foo", "main"]);
+}
+
+const FIELDS: ClassRowChange = ClassRowChange {
+    fields: true,
+    def: false,
+};
+const DEF: ClassRowChange = ClassRowChange {
+    fields: false,
+    def: true,
+};
+const BOTH: ClassRowChange = ClassRowChange {
+    fields: true,
+    def: true,
+};
+
+/// The class rows that differ between two versions of a module, by class index.
+fn class_row_changes(old: &str, new: &str) -> Vec<(u32, ClassRowChange)> {
+    let rows = |code: &str| {
+        let (state, handle) = TestEnv::one("main", code).to_state();
+        state
+            .transaction()
+            .get_bindings_metadata(&handle("main"))
+            .unwrap()
+    };
+    rows(old)
+        .changed_class_rows(&rows(new))
+        .map(|(class, change)| (class.0, change))
+        .collect()
+}
+
+#[test]
+fn test_class_row_changes_of_definition_facts() {
+    let fields = "    x: int = 0";
+    // A rename, of the class or of a class that encloses it.
+    assert_eq!(
+        class_row_changes(
+            &format!("class A:\n{fields}"),
+            &format!("class B:\n{fields}")
+        ),
+        [(0, DEF)]
+    );
+    assert_eq!(
+        class_row_changes("class A:\n    class B: ...", "class C:\n    class B: ..."),
+        [(0, DEF), (1, DEF)]
+    );
+    // Becoming a protocol.
+    assert_eq!(
+        class_row_changes(
+            &format!("from typing import Protocol\nclass A:\n{fields}"),
+            &format!("from typing import Protocol\nclass A(Protocol):\n{fields}"),
+        ),
+        [(0, DEF)]
+    );
+    // Becoming deprecated.
+    assert_eq!(
+        class_row_changes(
+            &format!("from warnings import deprecated\nclass A:\n{fields}"),
+            &format!("from warnings import deprecated\n@deprecated('old')\nclass A:\n{fields}"),
+        ),
+        [(0, DEF)]
+    );
+    // Declaring type parameters.
+    assert_eq!(
+        class_row_changes(
+            &format!("class A:\n{fields}"),
+            &format!("class A[T]:\n{fields}")
+        ),
+        [(0, DEF)]
+    );
+}
+
+#[test]
+fn test_class_row_changes_ignore_positions() {
+    // Moving a class changes neither its fields nor its definition.
+    assert_eq!(
+        class_row_changes(
+            "class A:\n    x: int = 0",
+            "def f() -> None: ...\n\nclass A:\n    x: int = 0"
+        ),
+        []
+    );
+    // A field change leaves the definition alone.
+    assert_eq!(
+        class_row_changes("class A:\n    x: int = 0", "class A:\n    y: int = 0"),
+        [(0, FIELDS)]
+    );
+}
+
+#[test]
+fn test_class_row_changes_of_added_and_removed_classes() {
+    let two = "class A: ...\nclass B: ...";
+    assert_eq!(class_row_changes(two, "class A: ..."), [(1, BOTH)]);
+    assert_eq!(class_row_changes("class A: ...", two), [(1, BOTH)]);
 }
 
 /// Edits to the fields of a class in `foo`, read by `main`.
