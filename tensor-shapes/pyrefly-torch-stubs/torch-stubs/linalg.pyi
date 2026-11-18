@@ -70,7 +70,11 @@ def solve[Shape: IntTuple, OtherShape: IntTuple](
     self: Tensor[Shape], other: Tensor[OtherShape]
 ) -> Tensor[OtherShape]: ...
 def solve_triangular[Shape: IntTuple, OtherShape: IntTuple](
-    self: Tensor[Shape], other: Tensor[OtherShape], upper: bool = False
+    self: Tensor[Shape],
+    other: Tensor[OtherShape],
+    upper: bool = False,
+    *,
+    unitriangular: bool = False,
 ) -> Tensor[OtherShape]: ...
 def cholesky_solve[Shape: IntTuple, OtherShape: IntTuple](
     self: Tensor[Shape], other: Tensor[OtherShape], upper: bool = False

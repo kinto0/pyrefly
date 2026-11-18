@@ -15,7 +15,7 @@ def test_solve_triangular_unitriangular() -> None:
         matrix,
         rhs,
         upper=True,
-        unitriangular=True,  # E: Unexpected keyword argument `unitriangular`
+        unitriangular=True,
     )
     assert_shape(solution.shape, (2, 1))
     assert torch.equal(solution, torch.tensor(((1.0,), (2.0,))))
@@ -28,7 +28,7 @@ def test_solve_triangular_nonunit_diagonal() -> None:
         matrix,
         rhs,
         upper=True,
-        unitriangular=False,  # E: Unexpected keyword argument `unitriangular`
+        unitriangular=False,
     )
     assert_shape(solution.shape, (2, 1))
     assert torch.equal(solution, torch.tensor(((2.0,), (2.0,))))
