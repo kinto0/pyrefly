@@ -321,12 +321,14 @@ EOF
     }
 
     /// Write an executable `bin/python` that runs `query_response` for
-    /// pyrefly's environment query and fails for anything else.
+    /// pyrefly's environment query and fails for anything else. The query is
+    /// recognized by `distribution_urls`, a key of the JSON it prints, so the
+    /// mock keeps working when the query script's implementation changes.
     #[cfg(unix)]
     fn write_mock_interpreter(&self, query_response: &str) -> PathBuf {
         let script = format!(
             r#"#!/usr/bin/env bash
-if [[ "$1" == "-c" && "$2" == *"import importlib.metadata, json, sys, sysconfig"* ]]; then
+if [[ "$1" == "-c" && "$2" == *"distribution_urls"* ]]; then
 {query_response}
 else
     echo "Mock python interpreter - args: $@" >&2
@@ -414,7 +416,7 @@ mod tests {
 
         assert!(interpreter_path.exists());
         let output = Command::new(&interpreter_path)
-            .args(["-c", "import importlib.metadata, json, sys, sysconfig"])
+            .args(["-c", "print(distribution_urls)"])
             .output()
             .unwrap();
         assert!(output.status.success());
@@ -445,7 +447,7 @@ mod tests {
             let interpreter_path = venv.create_mock_interpreter();
 
             let output = Command::new(&interpreter_path)
-                .args(["-c", "import importlib.metadata, json, sys, sysconfig"])
+                .args(["-c", "print(distribution_urls)"])
                 .output()
                 .unwrap();
             assert!(output.status.success());

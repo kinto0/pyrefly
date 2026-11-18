@@ -22,8 +22,17 @@ use url::Url;
 use crate::environment::environment::PythonEnvironment;
 
 /// The script run by [`query`] with `python -c`. It prints a JSON object matching [`QueryOutput`].
+///
+/// `python -c` inserts `''` (the working directory) at the front of `sys.path` after `site` has
+/// run and before the script starts, so removing that entry before the first import keeps files
+/// in the working directory, usually the user's project, from shadowing the modules the script
+/// imports and being executed. `sys` is built in, so importing it cannot load such a file.
+/// Python 3.11+ omits the entry under `-P` or `PYTHONSAFEPATH`, which the check allows for.
 const QUERY_SCRIPT: &str = "\
-import importlib.metadata, json, sys, sysconfig
+import sys
+if sys.path and sys.path[0] == '':
+    del sys.path[0]
+import importlib.metadata, json, sysconfig
 platform = sys.platform
 v = sys.version_info
 version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
@@ -314,7 +323,7 @@ mod tests {
     }
 
     #[test]
-    fn interpreter_query_runs_modules_in_working_directory() {
+    fn interpreter_query_ignores_modules_in_working_directory() {
         let Some(python) = python() else {
             eprintln!("Skipping: no Python interpreter on PATH");
             return;
@@ -327,11 +336,11 @@ mod tests {
         )
         .unwrap();
 
-        run_query_script(&python, cwd.path());
+        let (success, stdout) = run_query_script(&python, cwd.path());
 
-        // BUG: `python -c` puts the working directory first on `sys.path`, so the project's
-        // `json.py` shadows the standard library module and is executed.
-        assert!(cwd.path().join("json-was-imported").exists());
+        assert!(success);
+        assert!(serde_json::from_str::<QueryOutput>(&stdout).is_ok());
+        assert!(!cwd.path().join("json-was-imported").exists());
     }
 
     #[test]
