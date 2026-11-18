@@ -214,10 +214,7 @@ impl HoverValue {
             .and_then(|meta| {
                 let symbol = meta.kind.to_func_symbol()?;
                 let class = symbol.cls.as_ref()?;
-                Some(Type::ClassType(ClassType::new(
-                    class.clone(),
-                    Default::default(),
-                )))
+                Some(Type::ClassType(ClassType::new(*class, Default::default())))
             })
             .or_else(|| {
                 if let Type::Callable(callable) = context_type

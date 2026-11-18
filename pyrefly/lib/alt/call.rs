@@ -2024,7 +2024,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     }
                 };
                 self.check_unnecessary_type_conversion(&cls, args, arguments_range, errors);
-                let class_object = cls.class_object().clone();
+                let class_object = *cls.class_object();
                 let constructed_type = self.construct_class(
                     cls,
                     constructor_kind,

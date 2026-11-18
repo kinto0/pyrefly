@@ -928,7 +928,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // Metadata that is not a class (such as `Any`) is excluded.
             let has_custom_schema = metadata_items.iter().any(|metadata_item| {
                 let cls = match self.expr_infer(metadata_item, &ignore_errors) {
-                    Type::ClassType(cls) => cls.class_object().clone(),
+                    Type::ClassType(cls) => *cls.class_object(),
                     Type::ClassDef(cls) => cls,
                     _ => return false,
                 };

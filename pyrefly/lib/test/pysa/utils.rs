@@ -57,7 +57,7 @@ pub fn get_class(module_name: &str, class_name: &str, context: &ModuleContext) -
     answers
         .bindings()
         .keys::<KeyClass>()
-        .map(|idx| answers.get_idx(idx).unwrap().0.clone().unwrap())
+        .map(|idx| answers.get_idx(idx).unwrap().0.unwrap())
         .find(|class| class.name(&type_env) == class_name)
         .unwrap_or_else(|| panic!("expected valid class name, got `{module_name}.{class_name}`"))
 }

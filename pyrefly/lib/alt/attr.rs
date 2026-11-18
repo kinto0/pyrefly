@@ -2304,18 +2304,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         KnownClass::Object,
                     )
                 {
-                    acc.not_found(NotFoundOn::ClassInstance(
-                        metaclass.class_object().clone(),
-                        base,
-                    ));
+                    acc.not_found(NotFoundOn::ClassInstance(*metaclass.class_object(), base));
                     return;
                 }
                 match self.get_metaclass_attribute(class, metaclass, dunder_name) {
                     Some(attr) => acc.found_class_attribute(attr, base),
-                    None => acc.not_found(NotFoundOn::ClassInstance(
-                        metaclass.class_object().clone(),
-                        base,
-                    )),
+                    None => {
+                        acc.not_found(NotFoundOn::ClassInstance(*metaclass.class_object(), base))
+                    }
                 }
             }
             AttributeBase1::GenericAlias(origin) => {
@@ -2360,7 +2356,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         KnownClass::Object,
                     ) =>
             {
-                acc.not_found(NotFoundOn::ClassInstance(cls.class_object().clone(), base))
+                acc.not_found(NotFoundOn::ClassInstance(*cls.class_object(), base))
             }
             // Dunders on a property-decorated function resolve against `builtins.property`.
             AttributeBase1::Property(_) => self.lookup_magic_dunder_attr1(
@@ -2382,7 +2378,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     ) =>
             {
                 acc.not_found(NotFoundOn::ClassInstance(
-                    self.stdlib.method_type().class_object().clone(),
+                    *self.stdlib.method_type().class_object(),
                     base,
                 ))
             }
@@ -2392,15 +2388,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     || *dunder_name == dunder::GETATTRIBUTE =>
             {
                 acc.not_found(NotFoundOn::ClassInstance(
-                    self.stdlib.str().class_object().clone(),
+                    *self.stdlib.str().class_object(),
                     base,
                 ))
             }
-            AttributeBase1::TypedDict(typed_dict) if *dunder_name == dunder::GETATTRIBUTE => acc
-                .not_found(NotFoundOn::ClassInstance(
-                    typed_dict.class_object().clone(),
-                    base,
-                )),
+            AttributeBase1::TypedDict(typed_dict) if *dunder_name == dunder::GETATTRIBUTE => {
+                acc.not_found(NotFoundOn::ClassInstance(*typed_dict.class_object(), base))
+            }
             _ => self.lookup_attr_static1(base, dunder_name, acc),
         }
     }

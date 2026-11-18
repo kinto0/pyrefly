@@ -104,7 +104,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         }
                         all_fields.shift_remove(name);
                     }
-                    all_fields.insert(name.clone(), defining_class.clone());
+                    all_fields.insert(name.clone(), *defining_class);
                 }
             }
         }
@@ -126,7 +126,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     if relocate_redefined {
                         all_fields.shift_remove(name);
                     }
-                    all_fields.insert(name.clone(), cls.clone());
+                    all_fields.insert(name.clone(), *cls);
                 }
             }
         }
@@ -1198,14 +1198,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         };
 
         let mut result: SmallMap<Class, SmallSet<Name>> = SmallMap::new();
-        result.insert(cls.clone(), compute_for_class(cls));
+        result.insert(*cls, compute_for_class(cls));
 
         for ancestor in self.get_mro_for_class(cls).ancestors_no_object() {
             let ancestor_cls = ancestor.class_object();
             if ancestor_cls == cls {
                 continue;
             }
-            result.insert(ancestor_cls.clone(), compute_for_class(ancestor_cls));
+            result.insert(*ancestor_cls, compute_for_class(ancestor_cls));
         }
         result
     }

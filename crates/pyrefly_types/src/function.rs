@@ -451,7 +451,7 @@ impl FuncSymbol {
         (
             self.module.name(),
             self.module.path().to_key_eq(),
-            self.cls.clone(),
+            self.cls,
             &self.name,
         )
     }
@@ -715,17 +715,17 @@ impl FunctionKind {
             Self::RuntimeCheckable => None,
             Self::NumbaJit => None,
             Self::NumbaNjit => None,
-            Self::Synthesized(id) => id.cls.clone(),
+            Self::Synthesized(id) => id.cls,
             Self::CallbackProtocol(cls) => Some(cls.class_object().dupe()),
             Self::SingleDispatchRegister(_) => None,
             Self::AbstractMethod => None,
             Self::NoTypeCheck => None,
             Self::TotalOrdering => None,
             Self::DisjointBase => None,
-            Self::Def(func_id) => func_id.cls.clone(),
-            Self::TypeShapeDsl(id, _) => id.cls.clone(),
+            Self::Def(func_id) => func_id.cls,
+            Self::TypeShapeDsl(id, _) => id.cls,
             Self::DefinesAssertShape => None,
-            Self::SqlAlchemyMappedColumn(id) => id.cls.clone(),
+            Self::SqlAlchemyMappedColumn(id) => id.cls,
         }
     }
 

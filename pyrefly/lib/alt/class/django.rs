@@ -1366,7 +1366,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 };
 
                 per_class
-                    .entry(target_class.clone())
+                    .entry(*target_class)
                     .or_insert_with(SmallMap::new)
                     .insert(related_name, ClassSynthesizedField::new(related_type));
             }

@@ -262,9 +262,7 @@ impl TestStdlib {
             none_type: test_class(env, ModuleName::types(), "NoneType"),
             bool_type: test_class(env, ModuleName::builtins(), "bool"),
             int_type: test_class(env, ModuleName::builtins(), "int"),
-            tuple_class: test_class(env, ModuleName::builtins(), "tuple")
-                .class_object()
-                .clone(),
+            tuple_class: *test_class(env, ModuleName::builtins(), "tuple").class_object(),
         }
     }
 

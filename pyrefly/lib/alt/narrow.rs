@@ -168,7 +168,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let class = cls.class_object();
                 self.get_disjoint_base_for_class(class)
                     .representative()
-                    .cloned()
+                    .copied()
                     .unwrap_or_else(|| self.stdlib.object().class_object().dupe())
             }
             Type::Quantified(q) if q.is_type_var() => match q.restriction() {
@@ -180,8 +180,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     self.stdlib.object().class_object().dupe()
                 }
             },
-            Type::Tuple(_) => self.stdlib.tuple_object().clone(),
-            _ => self.stdlib.object().class_object().clone(),
+            Type::Tuple(_) => *self.stdlib.tuple_object(),
+            _ => *self.stdlib.object().class_object(),
         }
     }
 

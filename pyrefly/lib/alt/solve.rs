@@ -3648,7 +3648,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let Some(owners) = expect
             .class_idxs
             .iter()
-            .map(|class_idx| self.get_idx(*class_idx).0.clone())
+            .map(|class_idx| self.get_idx(*class_idx).0)
             .collect::<Option<Vec<_>>>()
         else {
             return;
@@ -4609,7 +4609,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // both must use the same hint to report the same errors. Only the class field
                 // checks the value against the inherited annotation.
                 let inherited_ty = class_key.and_then(|k| {
-                    let cls = self.get_idx(k).0.clone()?;
+                    let cls = self.get_idx(k).0?;
                     self.get_inherited_type_and_annotation(&cls, name)
                         .1
                         .map(|annot| annot.get_type().clone())
@@ -5937,7 +5937,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // If the attribute lookup fails here, we'll emit an `unknown-name` error, since this
             // is a deferred lookup that can't be calculated at the bindings step
             let error_swallower = self.error_swallower();
-            let cls_def = self.heap.mk_class_def(cls.clone());
+            let cls_def = self.heap.mk_class_def(*cls);
             let attr_ty =
                 self.attr_infer_for_type(&cls_def, &name.id, name.range(), &error_swallower, None);
             if attr_ty.is_error() {
@@ -8174,24 +8174,19 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub fn type_of(&self, ty: Type) -> Type {
         match ty {
             Type::ClassType(ref cls) if self.is_typed_dict_class(cls.class_object()) => {
-                self.heap.mk_class_def(self.stdlib.dict_object().clone())
+                self.heap.mk_class_def(*self.stdlib.dict_object())
             }
             Type::ClassType(_) | Type::SelfType(_) => self.heap.mk_type_of(ty),
-            Type::Literal(lit) => self.heap.mk_class_def(
-                lit.value
-                    .general_class_type(self.stdlib)
-                    .class_object()
-                    .clone(),
-            ),
-            Type::LiteralString(_) => self
+            Type::Literal(lit) => self
                 .heap
-                .mk_class_def(self.stdlib.str().class_object().clone()),
+                .mk_class_def(*lit.value.general_class_type(self.stdlib).class_object()),
+            Type::LiteralString(_) => self.heap.mk_class_def(*self.stdlib.str().class_object()),
             Type::None => self
                 .heap
-                .mk_class_def(self.stdlib.none_type().class_object().clone()),
-            Type::Tuple(_) => self.heap.mk_class_def(self.stdlib.tuple_object().clone()),
+                .mk_class_def(*self.stdlib.none_type().class_object()),
+            Type::Tuple(_) => self.heap.mk_class_def(*self.stdlib.tuple_object()),
             Type::AnonymousTypedDict(_) | Type::PartialTypedDict(_) => {
-                self.heap.mk_class_def(self.stdlib.dict_object().clone())
+                self.heap.mk_class_def(*self.stdlib.dict_object())
             }
             Type::Union(f) if !f.members.is_empty() => {
                 let mut ts = Vec::new();
@@ -8374,8 +8369,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
         if matches!(type_form_context, TypeFormContext::TypeArgumentForType(_))
             && let Some(cls) = match &ty {
-                Type::ClassType(cls) | Type::SelfType(cls) => Some(cls.class_object().clone()),
-                Type::ClassDef(cls) => Some(cls.clone()),
+                Type::ClassType(cls) | Type::SelfType(cls) => Some(*cls.class_object()),
+                Type::ClassDef(cls) => Some(*cls),
                 _ => None,
             }
             && self.get_metadata_for_class(&cls).is_new_type()

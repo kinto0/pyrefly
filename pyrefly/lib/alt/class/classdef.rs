@@ -58,11 +58,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
-    /// The class defined at `def_index` in this module, which carries a copy of its row.
+    /// The class defined at `def_index` in this module.
     pub fn class_definition(&self, def_index: ClassDefIndex) -> Class {
-        Class::from_def(
+        Class::new(
+            self.module().key(),
             def_index,
-            self.bindings().metadata().get_class(def_index).def.clone(),
+            self.bindings().metadata().get_class(def_index).def.known(),
         )
     }
 

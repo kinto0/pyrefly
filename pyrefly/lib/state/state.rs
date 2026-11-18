@@ -2207,18 +2207,16 @@ impl<'a> Transaction<'a> {
             return None;
         };
         let class = class.dupe();
-        let tparams = if class.has_tparams() {
-            self.lookup_answer(
+        // A class without type parameters has no `KeyTParams`.
+        let tparams = self
+            .lookup_answer(
                 module_data,
                 &KeyTParams(class.index()),
                 thread_state,
                 &answer_scope,
             )
             .filter(|tparams| !tparams.is_empty())
-            .map(Dupe::dupe)
-        } else {
-            None
-        };
+            .map(Dupe::dupe);
         Some((class, tparams))
     }
 
@@ -3218,7 +3216,7 @@ impl TypeEnv for TransactionTypeEnv<'_> {
     }
 
     fn class_tparams<'b>(&'b self, cls: &'b Class) -> &'b TParams {
-        if !cls.has_tparams() {
+        if !cls.has_tparams(self) {
             return TParams::empty_ref();
         }
         // There is no answer only if the class's module was rebuilt without this class, in which

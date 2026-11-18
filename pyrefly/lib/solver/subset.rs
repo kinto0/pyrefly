@@ -720,11 +720,8 @@ impl<'solver, 'subset, Ans: LookupAnswer> Subset<'solver, 'subset, Ans> {
         let class_check = if let Type::ClassType(got_class) = &got
             && got.may_contain_placeholder_var()
         {
-            let key = (
-                got_class.class_object().clone(),
-                protocol.class_object().clone(),
-            );
-            if !self.class_protocol_assumptions.insert(key.clone()) {
+            let key = (*got_class.class_object(), *protocol.class_object());
+            if !self.class_protocol_assumptions.insert(key) {
                 // Coinductive: assume this recursive class-level check succeeds.
                 // Mark that a coinductive assumption was used so callers don't
                 // cache results that depend on this optimistic assumption.

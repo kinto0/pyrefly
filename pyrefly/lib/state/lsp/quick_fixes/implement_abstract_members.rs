@@ -95,7 +95,7 @@ pub(crate) fn implement_abstract_members_code_actions(
             |solver| -> Option<Vec<AbstractMemberInfo>> {
                 let key = KeyClass(ShortIdentifier::new(&class_def.name));
                 let class_idx = solver.bindings().key_to_idx_hashed_opt(Hashed::new(&key))?;
-                let class = solver.get_idx(class_idx).0.clone()?;
+                let class = solver.get_idx(class_idx).0?;
                 // A protocol's members are its interface, so they stay unimplemented.
                 if solver.get_metadata_for_class(&class).is_protocol() {
                     return None;

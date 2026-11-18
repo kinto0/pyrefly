@@ -195,7 +195,7 @@ pub(crate) fn type_to_structured(
             let raw_qname = qname_to_full_string(ct.qname(env));
             let qname = canonicalize_class_qname(&raw_qname);
             let idx = insert_class_with_args(&qname, arg_indices, table);
-            pending_class_traits.push((idx, ct.class_object().clone()));
+            pending_class_traits.push((idx, *ct.class_object()));
             idx
         }
         Type::Union(u) => {

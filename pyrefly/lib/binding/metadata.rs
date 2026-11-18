@@ -24,7 +24,7 @@ use ruff_text_size::TextRange;
 /// Metadata for a single class definition, populated during binding.
 #[derive(Debug, Clone)]
 pub struct ClassMetadata {
-    /// The definition data of the class. Each `Class` of this module carries a copy of it.
+    /// The definition data of the class, which a `TypeEnv` reads for a `Class` of this module.
     pub def: ClassDef,
     /// The fields are all the names declared on the class that we were able to detect
     /// from an AST traversal, which includes:

@@ -11,8 +11,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
 
 use dupe::Dupe;
 use parse_display::Display;
@@ -37,7 +35,6 @@ use starlark_map::small_map::SmallMap;
 
 use crate::env::TypeEnv;
 use crate::equality::TypeEq;
-use crate::equality::TypeEqCtx;
 use crate::function::Deprecation;
 use crate::known_class::KnownClass;
 use crate::type_ord::TypeOrd;
@@ -48,98 +45,52 @@ use crate::types::TArgs;
 use crate::types::TParams;
 use crate::types::Type;
 
-/// The name of a nominal type, e.g. `str`
-#[derive(Debug, Clone, Dupe)]
-pub struct Class(Arc<ClassInner>);
-
-/// The identity of a class and a copy of its definition data. Readers get definition data
-/// through a `TypeEnv`, which reads the class's row in its module's metadata, so the copy only
-/// serves the class's identity, `Ord` and `TypeEq`, and the accessors that take no env.
+/// The identity of a nominal type, e.g. `str`: the module that defines it and the index of its
+/// definition there (see `ClassDefIndex`), plus its known class, which the identity fixes. The
+/// definition data lives in a row of the module's metadata, which a `TypeEnv` reads
+/// (`Class::def`).
 ///
-/// Align to a cache line to prevent false sharing. `ClassInner` is stored
-/// behind `Arc` and accessed concurrently from multiple threads during
-/// type checking. Without alignment, multiple `Arc<ClassInner>` allocations
-/// can land on the same cache line, causing cross-thread invalidation
-/// traffic when any of them are accessed (even read-only, due to the Arc
-/// refcount on adjacent allocations).
-#[repr(align(64))]
-struct ClassInner {
+/// Equality, hashing and `Ord` go by identity: the module (by name, then path), then the index.
+/// All three are the same in every run and with any number of threads, because `ModuleKey`
+/// compares and hashes by value and indices are assigned in source order during binding. Unions
+/// sort their members with `TypeOrd` instead, which orders classes by name.
+#[derive(Clone, Copy, Dupe, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Class {
+    module: ModuleKey,
     index: ClassDefIndex,
-    def: ClassDef,
+    /// Only set for top-level classes.
+    known: Option<KnownClass>,
 }
 
-impl Debug for ClassInner {
+assert_bytes!(Class, 16);
+
+impl Debug for Class {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ClassDef")
-            .field("index", &self.index)
-            .field("qname", &self.def.qname)
-            .field("is_protocol", &self.def.is_protocol)
-            .field("deprecation", &self.def.deprecation)
-            .field("has_tparams", &self.def.has_tparams)
-            // We don't print `fields` because it's way too long.
-            .finish_non_exhaustive()
+        match self.known {
+            Some(known) => write!(f, "{}.{}", self.module_name(), known.name()),
+            None => write!(f, "{}#{}", self.module_name(), self.index),
+        }
     }
 }
 
-impl Display for ClassInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.def, f)
-    }
-}
+/// A class's definition data is not part of its identity. A change to it that dependents care
+/// about (see `ClassDef::same_definition`) is found by comparing the old and new rows, and
+/// invalidates every computation that read the row, so `TypeEq` does not compare it.
+impl TypeEq for Class {}
 
-impl Hash for Class {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key_eq().hash(state)
-    }
-}
-
-impl PartialEq for Class {
-    fn eq(&self, other: &Self) -> bool {
-        self.key_eq().eq(&other.key_eq())
-    }
-}
-
-impl Eq for Class {}
-
-/// Two classes are `TypeEq` when they are the same class (`PartialEq`, which with `Hash` stays
-/// identity-only, since `Class` is a map key) with the same definition facts (see
-/// `ClassDef::same_definition`). A reader can use these facts from the value alone, so comparing
-/// an answer that holds the class catches a change to them. They are all decided at binding time,
-/// so the iterations of a recursive computation always agree on them.
-impl TypeEq for Class {
-    fn type_eq(&self, other: &Self, _ctx: &mut TypeEqCtx) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-            || (self == other && self.0.def.same_definition(&other.0.def))
-    }
-}
-
-impl Ord for Class {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.key_ord().cmp(&other.key_ord())
-    }
-}
-
-impl PartialOrd for Class {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-/// Classes are ordered by name, then by the position of their name in its module, both read
-/// through the env, and then by `Ord`. `Ord` breaks the remaining ties, so this is a total order
-/// even if two different classes read the same name and position.
+/// Classes are ordered by name, read through the env, and then by identity (`Ord`). A recheck
+/// tracks both: a new name is a new definition (`ClassDef::same_definition`), and identity is what
+/// `TypeEq` compares, so a recheck orders a union as a fresh check does. Each class reads its own
+/// row, so this is a total order even when an open buffer and its file on disk, which are one
+/// module to `ModuleKey`, hold different classes at one index.
 impl TypeOrd for Class {
     fn type_cmp(&self, other: &Self, ctx: &TypeOrdCtx) -> Ordering {
-        // One allocation holds one definition, so both reads would return the same data.
-        if Arc::ptr_eq(&self.0, &other.0) {
+        // Both classes read the same row, so the order below would also say `Equal`.
+        if self.module.exact() == other.module.exact() && self.index == other.index {
             return Ordering::Equal;
         }
-        // `TypeEq` ignores where a class is defined, so moving a class within its file does not
-        // recheck the modules that import it. A union there that holds two classes with the same
-        // name keeps its old member order until it is rechecked.
-        let (a, b) = (self.qname(ctx.env()), other.qname(ctx.env()));
-        (a.id(), a.range().start(), a.range().end())
-            .cmp(&(b.id(), b.range().start(), b.range().end()))
+        self.name(ctx.env())
+            .cmp(other.name(ctx.env()))
             .then_with(|| self.cmp(other))
     }
 }
@@ -405,8 +356,7 @@ impl ClassFields {
 }
 
 /// The definition data of a class, which the binding phase records in a row of its module's
-/// metadata. The class's index is not part of it: a `Class` pairs the index with a copy of its
-/// row.
+/// metadata. A `Class` identifies the row by its module and index.
 #[derive(Clone)]
 pub struct ClassDef {
     qname: QName,
@@ -463,6 +413,10 @@ impl ClassDef {
             && self.deprecation == other.deprecation
             && self.is_protocol == other.is_protocol
             && self.has_tparams == other.has_tparams
+    }
+
+    pub fn known(&self) -> Option<KnownClass> {
+        self.known
     }
 }
 
@@ -533,55 +487,41 @@ impl Display for ClassDef {
 //   which involves substituting type arguments for the class type parameters as
 //   well as descriptor handling (including method binding).
 impl Class {
-    /// A class that no module's metadata holds, such as a class made up by a test.
-    pub fn new(
-        def_index: ClassDefIndex,
-        name: Identifier,
-        parent: NestingContext,
-        module: Module,
-        has_tparams: bool,
-        is_protocol: bool,
-        deprecation: Option<Box<Deprecation>>,
-    ) -> Self {
-        Self::from_def(
-            def_index,
-            ClassDef::new(name, parent, module, has_tparams, is_protocol, deprecation),
-        )
-    }
-
-    /// The class at `index` in its module, whose definition data is `def`, a copy of the row at
-    /// `index` in the module's metadata.
-    pub fn from_def(index: ClassDefIndex, def: ClassDef) -> Self {
-        Self(Arc::new(ClassInner { index, def }))
-    }
-
-    pub fn has_tparams(&self) -> bool {
-        self.0.def.has_tparams
+    /// The class defined at `index` in the module `module`. `known` is the known class of its
+    /// definition (`ClassDef::known`).
+    pub fn new(module: ModuleKey, index: ClassDefIndex, known: Option<KnownClass>) -> Self {
+        Self {
+            module,
+            index,
+            known,
+        }
     }
 
     pub fn index(&self) -> ClassDefIndex {
-        self.0.index
+        self.index
     }
 
     pub fn module_name(&self) -> ModuleName {
-        self.0.def.qname.module_name()
+        self.module.name()
     }
 
-    pub fn module_path(&self) -> &ModulePath {
-        self.0.def.qname.module_path()
+    /// The path of the module that defines this class, which is the path to look the module up
+    /// by.
+    pub fn module_path(&self) -> &'static ModulePath {
+        self.module.path()
     }
 
     pub fn module_key(&self) -> ModuleKey {
-        self.0.def.qname.module().key()
+        self.module
     }
 
     /// The known class this is, if it is one. Only top-level classes can be known classes.
     pub fn known(&self) -> Option<KnownClass> {
-        self.0.def.known
+        self.known
     }
 
     pub fn is(&self, known: KnownClass) -> bool {
-        self.0.def.known == Some(known)
+        self.known == Some(known)
     }
 
     pub fn def<'a, E: TypeEnv + ?Sized>(&'a self, env: &'a E) -> &'a ClassDef {
@@ -622,17 +562,9 @@ impl Class {
         env.class_tparams(self)
     }
 
-    /// Key to use for equality purposes. If we have the same module and index,
-    /// we must point at the same class underneath. `ModuleKey` equality treats a
-    /// file open in memory and the same file on disk as one module.
-    fn key_eq(&self) -> (ClassDefIndex, ModuleKey) {
-        (self.0.index, self.module_key())
-    }
-
-    /// Key to use for comparison purposes. Main used to sort identifiers in union,
-    /// and then alphabetically sorting by the name gives a predictable answer.
-    fn key_ord(&self) -> (&QName, ClassDefIndex) {
-        (&self.0.def.qname, self.0.index)
+    /// Whether the class declares any type parameters, which its definition decides from syntax.
+    pub fn has_tparams<E: TypeEnv + ?Sized>(&self, env: &E) -> bool {
+        self.def(env).has_tparams
     }
 }
 
@@ -640,7 +572,7 @@ impl Class {
 #[derive(Visit, VisitMut, TypeEq, TypeOrd)]
 pub struct ClassType(Class, TArgs);
 
-assert_bytes!(ClassType, 16);
+assert_bytes!(ClassType, 24);
 
 /// A Django specialization of a class instance, made where the instance is constructed.
 ///

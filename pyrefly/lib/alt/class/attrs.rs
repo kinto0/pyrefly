@@ -394,9 +394,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             };
             let (cls, class_type) = match ty {
                 Type::ClassDef(cls) => (Some(cls), None),
-                Type::SpecializedClassDef(c) => (Some(c.class_object().clone()), Some(c)),
+                Type::SpecializedClassDef(c) => (Some(*c.class_object()), Some(c)),
                 Type::Type(inner) => match *inner {
-                    Type::ClassType(c) => (Some(c.class_object().clone()), Some(c)),
+                    Type::ClassType(c) => (Some(*c.class_object()), Some(c)),
                     _ => (None, None),
                 },
                 _ => (None, None),
@@ -484,7 +484,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         let name = Name::new_static("Attribute");
         for module in [ModuleName::attr(), ModuleName::attrs()] {
             if let Some(Type::ClassDef(cls)) = self.try_get_from_export(module, name.clone()) {
-                return Some(cls.clone());
+                return Some(*cls);
             }
         }
         None

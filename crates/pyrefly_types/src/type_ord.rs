@@ -8,10 +8,10 @@
 //! The canonical order of types, which unions and intersections keep their members in.
 //!
 //! The canonical order compares classes by name and then by the position of their definition.
-//! That is definition data, which only a `TypeEnv` can read once `Class` stops carrying it. So the
+//! That is definition data, which only a `TypeEnv` can read, since a `Class` is an ID. So the
 //! canonical order is `TypeOrd`, a derived order like `Ord` whose context holds the env. It falls
 //! back to `Ord` to break ties between classes, so it is a total order as long as the env reads the
-//! same data for a class throughout one sort. While `Class` carries its data, `TypeOrd` is `Ord`.
+//! same data for a class throughout one sort.
 
 use std::cmp::Ordering;
 use std::marker::PhantomData;
@@ -254,15 +254,13 @@ mod tests {
     }
 
     #[test]
-    fn test_classes_order_by_name_then_position_then_identity() {
+    fn test_classes_order_by_name_then_identity() {
         let env = TestTypeEnv::new();
         let ctx = TypeOrdCtx::new(&env);
         let foo_zed = class(&env, "foo", "Zed", 0);
         let bar_abc = class(&env, "bar", "Abc", 9);
-        let bar_zed = class(&env, "bar", "Zed", 0);
-        let bar_zed_later = class(&env, "bar", "Zed", 5);
-        // A class in another scope of `bar` with the same name and position as `bar_zed`, which
-        // only the index tells apart.
+        let bar_zed = class(&env, "bar", "Zed", 5);
+        // A later class of `bar` with the same name, whose name starts earlier.
         let bar_zed_again = env.define_class(
             identifier("Zed", 0),
             NestingContext::class(
@@ -273,9 +271,7 @@ mod tests {
         );
         // The name comes first.
         assert_eq!(foo_zed.type_cmp(&bar_abc, &ctx), Ordering::Greater);
-        // Then the position, before the module.
-        assert_eq!(foo_zed.type_cmp(&bar_zed_later, &ctx), Ordering::Less);
-        // Then `Ord`: the module, then the index.
+        // Then `Ord`: the module, then the index. The position is not read.
         assert_eq!(bar_zed.type_cmp(&foo_zed, &ctx), Ordering::Less);
         assert_eq!(bar_zed.type_cmp(&bar_zed_again, &ctx), Ordering::Less);
         assert_eq!(foo_zed.type_cmp(&foo_zed.clone(), &ctx), Ordering::Equal);
@@ -284,6 +280,52 @@ mod tests {
             Type::ClassDef(bar_zed).type_cmp(&Type::None, &ctx),
             "types of different variants are ordered by variant"
         );
+    }
+
+    /// An open buffer and its file on disk are one module to class identity, but are bound
+    /// separately, so they can hold different classes at one index. Each class reads its own row,
+    /// so the order stays total.
+    #[test]
+    fn test_type_ord_is_total_with_a_buffer_and_its_file_on_disk() {
+        let env = TestTypeEnv::new();
+        let ctx = TypeOrdCtx::new(&env);
+        let foo = |path: ModulePath| {
+            Module::new(ModuleName::from_str("foo"), path, Arc::new(String::new()))
+        };
+        let on_disk = env.define_class(
+            identifier("Foo", 0),
+            NestingContext::toplevel(),
+            foo(ModulePath::filesystem(PathBuf::from("foo.py"))),
+        );
+        let in_memory = env.define_class(
+            identifier("Bar", 0),
+            NestingContext::toplevel(),
+            foo(ModulePath::memory(PathBuf::from("foo.py"))),
+        );
+        assert_eq!(
+            on_disk, in_memory,
+            "class identity treats them as one class"
+        );
+        let between = class(&env, "baz", "Cat", 0);
+        assert_eq!(in_memory.type_cmp(&between, &ctx), Ordering::Less);
+        assert_eq!(between.type_cmp(&on_disk, &ctx), Ordering::Less);
+        let classes = [on_disk, in_memory, between];
+        for x in &classes {
+            for y in &classes {
+                let xy = x.type_cmp(y, &ctx);
+                assert_eq!(xy, y.type_cmp(x, &ctx).reverse(), "{x:?} vs {y:?}");
+                for z in &classes {
+                    let yz = y.type_cmp(z, &ctx);
+                    if xy != Ordering::Greater && yz != Ordering::Greater {
+                        assert_ne!(
+                            x.type_cmp(z, &ctx),
+                            Ordering::Greater,
+                            "{x:?} <= {y:?} <= {z:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// A deterministic xorshift generator.
@@ -307,7 +349,7 @@ mod tests {
                 random_type(rng, env, classes, depth - 1)
             }
         };
-        let class = |rng: &mut Rng| classes[rng.below(classes.len())].clone();
+        let class = |rng: &mut Rng| classes[rng.below(classes.len())];
         match rng.below(16) {
             0 | 1 => ClassType::new(class(rng), TArgs::default()).to_type(),
             2 => Type::ClassDef(class(rng)),
@@ -340,8 +382,10 @@ mod tests {
         }
     }
 
+    /// `type_cmp` is a total order whose `Equal` is equality, so sorting with it cannot panic and
+    /// gives one order for any input order.
     #[test]
-    fn test_type_ord_agrees_with_ord_while_classes_carry_their_data() {
+    fn test_type_ord_is_a_total_order() {
         let env = TestTypeEnv::new();
         let ctx = TypeOrdCtx::new(&env);
         let mut classes = Vec::new();
@@ -352,23 +396,27 @@ mod tests {
         }
         let mut rng = Rng(0x2545F4914F6CDD1D);
         for _ in 0..200 {
-            let mut members: Vec<Type> = (0..rng.below(12))
+            let members: Vec<Type> = (0..rng.below(12))
                 .map(|_| random_type(&mut rng, &env, &classes, 2))
                 .collect();
             for x in &members {
                 for y in &members {
-                    assert_eq!(x.type_cmp(y, &ctx), x.cmp(y), "{x:?} vs {y:?}");
+                    let xy = x.type_cmp(y, &ctx);
+                    assert_eq!(xy, y.type_cmp(x, &ctx).reverse(), "{x:?} vs {y:?}");
+                    assert_eq!(xy == Ordering::Equal, x == y, "{x:?} vs {y:?}");
+                    for z in &members {
+                        if xy != Ordering::Greater && y.type_cmp(z, &ctx) != Ordering::Greater {
+                            assert_ne!(x.type_cmp(z, &ctx), Ordering::Greater, "{x:?} vs {z:?}");
+                        }
+                    }
                 }
             }
-            // The order that union simplification sorts members in, without an env.
-            let mut expected = members.clone();
-            expected.sort_by(|x, y| {
-                x.ignoring_truthiness_marker()
-                    .cmp(y.ignoring_truthiness_marker())
-                    .then_with(|| x.cmp(y))
-            });
-            members.sort_by(|x, y| cmp_union_members(x, y, &ctx));
-            assert_eq!(members, expected);
+            let mut sorted = members.clone();
+            sorted.sort_by(|x, y| cmp_union_members(x, y, &ctx));
+            let mut reversed = members.clone();
+            reversed.reverse();
+            reversed.sort_by(|x, y| cmp_union_members(x, y, &ctx));
+            assert_eq!(sorted, reversed);
         }
     }
 }

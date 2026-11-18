@@ -776,7 +776,7 @@ fn inherited_annotation_slots(
     class_idx: Idx<KeyClass>,
     field_name: &Name,
 ) -> Option<SlotCounts> {
-    let class = answers.get_idx(class_idx).and_then(|r| r.0.clone())?;
+    let class = answers.get_idx(class_idx).and_then(|r| r.0)?;
     class_mro(answers, &class)
         .ancestors_no_object()
         .iter()
@@ -840,7 +840,7 @@ fn parse_instance_attrs(
         .iter()
         .map(|&class_idx| {
             let mut names = SmallSet::new();
-            if let Some(cls) = answers.get_idx(class_idx).and_then(|r| r.0.clone()) {
+            if let Some(cls) = answers.get_idx(class_idx).and_then(|r| r.0) {
                 let ancestors = class_mro(answers, &cls).ancestors_no_object();
                 let mro =
                     std::iter::once(&cls).chain(ancestors.iter().map(ClassType::class_object));
@@ -1554,7 +1554,7 @@ fn collect_class_members(
         if binding.parent.has_function_ancestor() {
             continue;
         }
-        let Some(cls) = answers.get_idx(idx).and_then(|r| r.0.clone()) else {
+        let Some(cls) = answers.get_idx(idx).and_then(|r| r.0) else {
             continue;
         };
 

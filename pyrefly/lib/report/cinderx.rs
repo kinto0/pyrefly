@@ -170,7 +170,7 @@ impl CinderxSolutions {
                 let ancestors: Vec<Class> = mro
                     .ancestors_no_object()
                     .iter()
-                    .map(|ancestor| ancestor.class_object().clone())
+                    .map(|ancestor| *ancestor.class_object())
                     .collect();
                 (
                     class_ref,
@@ -202,7 +202,7 @@ impl CinderxSolutions {
                 let ancestors: Vec<Class> = mro
                     .ancestors_no_object()
                     .iter()
-                    .map(|ancestor| ancestor.class_object().clone())
+                    .map(|ancestor| *ancestor.class_object())
                     .collect();
                 (
                     class_ref,

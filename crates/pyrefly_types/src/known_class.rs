@@ -42,6 +42,13 @@ macro_rules! known_classes {
                     _ => None,
                 }
             }
+
+            /// The name the class is defined with.
+            pub fn name(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $name,)*
+                }
+            }
         }
     };
 }

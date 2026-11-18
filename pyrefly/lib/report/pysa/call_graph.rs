@@ -3795,19 +3795,13 @@ impl<'a> CallGraphVisitor<'a> {
                 {
                     match targ {
                         Type::ClassType(class_type) => Some((
-                            class_type.class_object().clone(),
+                            *class_type.class_object(),
                             ReturnShimArgumentMapping::ReturnExpressionElement,
                         )),
-                        _ => Some((
-                            class_object.clone(),
-                            ReturnShimArgumentMapping::ReturnExpression,
-                        )),
+                        _ => Some((*class_object, ReturnShimArgumentMapping::ReturnExpression)),
                     }
                 } else {
-                    Some((
-                        class_object.clone(),
-                        ReturnShimArgumentMapping::ReturnExpression,
-                    ))
+                    Some((*class_object, ReturnShimArgumentMapping::ReturnExpression))
                 }
             }
             _ => None,

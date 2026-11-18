@@ -845,7 +845,7 @@ pub fn get_all_functions<'a>(
                         _ => true,
                     }
                 })
-                .map(|(name, field)| (class.clone(), Cow::Owned(name.into_owned()), field))
+                .map(|(name, field)| (class, Cow::Owned(name.into_owned()), field))
                 // Required by borrow checker.
                 // This is fine because the amount of class fields should be small.
                 .collect::<Vec<_>>()

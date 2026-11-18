@@ -14,7 +14,7 @@ use std::sync::Arc;
 use append_only_vec::AppendOnlyVec;
 use dupe::Dupe;
 use pyrefly_python::module::Module;
-use pyrefly_python::module_key::ModuleKey;
+use pyrefly_python::module_key::ExactModuleKey;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_python::module_path::ModulePath;
 use pyrefly_python::nesting_context::NestingContext;
@@ -64,7 +64,8 @@ const STDLIB_TYPE_VARS: &[&str] = &[
 /// A `TypeEnv` for unit tests, which defines its own classes.
 ///
 /// Defining a class twice, with the same module, name, range and enclosing scope, returns the same
-/// class. Otherwise every class defined here is distinct: it gets the next index in its module.
+/// class. Otherwise the class gets the next index in its module. As in the checker, an open buffer
+/// and its file on disk number their classes separately.
 ///
 /// The classes of `class` and `generic_class` never compare equal to classes of real modules. A
 /// class's identity includes its module's path, and every module they use has a namespace package
@@ -78,14 +79,15 @@ pub struct TestTypeEnv {
     modules: RefCell<SmallMap<ModuleName, Module>>,
     /// Every class defined so far, keyed by its definition.
     classes: RefCell<SmallMap<ClassKey, Class>>,
-    /// The number of classes defined so far in each module. `ModuleKey` compares modules the way
-    /// class identity does, so classes with different indices in one module are distinct.
-    class_counts: RefCell<SmallMap<ModuleKey, u32>>,
+    /// The number of classes defined so far in each module. An open buffer and its file on disk
+    /// count separately, as the checker binds them separately, so they can hold different classes
+    /// at one index.
+    class_counts: RefCell<SmallMap<ExactModuleKey, u32>>,
     /// The row of every class defined so far. It is append-only, so `class_def` and
     /// `class_tparams` can return borrows that live as long as the env.
     rows: AppendOnlyVec<ClassRow>,
-    /// The position of each class's row in `rows`.
-    row_indices: RefCell<SmallMap<Class, usize>>,
+    /// The position of each class's row in `rows`, by the exact module and index of the class.
+    row_indices: RefCell<SmallMap<(ExactModuleKey, ClassDefIndex), usize>>,
 }
 
 /// What a `TestTypeEnv` knows about a class it defined: the row that a module's metadata would
@@ -99,7 +101,7 @@ struct ClassRow {
 /// enclosing scope.
 #[derive(PartialEq, Eq, Hash)]
 struct ClassKey {
-    module: ModuleKey,
+    module: ExactModuleKey,
     name: Identifier,
     parent: NestingContext,
 }
@@ -280,8 +282,9 @@ impl TestTypeEnv {
         module: Module,
         tparams: TParams,
     ) -> Class {
+        let module_key = module.key();
         let key = ClassKey {
-            module: module.key(),
+            module: module_key.exact(),
             name,
             parent,
         };
@@ -300,9 +303,11 @@ impl TestTypeEnv {
             false,
             None,
         );
-        let cls = Class::from_def(index, def.clone());
+        let cls = Class::new(module_key, index, def.known());
         let row = self.rows.push(ClassRow { def, tparams });
-        self.row_indices.borrow_mut().insert(cls.dupe(), row);
+        self.row_indices
+            .borrow_mut()
+            .insert((key.module, index), row);
         self.classes.borrow_mut().insert(key, cls.dupe());
         cls
     }
@@ -313,7 +318,7 @@ impl TestTypeEnv {
         let row = *self
             .row_indices
             .borrow()
-            .get(cls)
+            .get(&(cls.module_key().exact(), cls.index()))
             .unwrap_or_else(|| panic!("`{cls:?}` is not defined in this `TestTypeEnv`"));
         &self.rows[row]
     }
@@ -335,6 +340,7 @@ impl TypeEnv for TestTypeEnv {
 
 #[cfg(test)]
 mod tests {
+    use pyrefly_python::module_key::ModuleKey;
     use ruff_text_size::TextSize;
 
     use super::*;
@@ -409,25 +415,18 @@ mod tests {
     fn test_classes_differ_from_real_classes() {
         let env = TestTypeEnv::new();
         let fake = env.class("foo", "Bar");
-        let real_module = |path: ModulePath| {
-            Module::new(ModuleName::from_str("foo"), path, Arc::new(String::new()))
-        };
         for path in [
             ModulePath::filesystem(PathBuf::from("foo")),
             ModulePath::memory(PathBuf::from("foo")),
         ] {
             let real = Class::new(
+                ModuleKey::new(ModuleName::from_str("foo"), &path),
                 fake.index(),
-                Identifier::new(Name::new("Bar"), TextRange::default()),
-                NestingContext::toplevel(),
-                real_module(path),
-                false,
-                false,
                 None,
             );
             assert_ne!(
                 fake, real,
-                "a real class with the same module name, path, index and name is a different class"
+                "a real class with the same module name and index is a different class"
             );
         }
     }

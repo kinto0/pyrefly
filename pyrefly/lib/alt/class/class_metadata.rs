@@ -617,7 +617,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // desirable for methods but problematic for fields like `__total__` that should be available on the class
             // but not the instance. For now, we make all fields available on both classes and instances.
             let td_fallback = self.stdlib.typed_dict_fallback();
-            vec![td_fallback.class_object().clone()]
+            vec![*td_fallback.class_object()]
         } else {
             bases_with_metadata
                 .into_iter()

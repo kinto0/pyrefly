@@ -123,7 +123,7 @@ impl ClassRef {
         ClassRef {
             module_id,
             class_id: ClassId::from_class(class),
-            class: class.clone(),
+            class: *class,
             class_name: class.name(env).clone(),
         }
     }

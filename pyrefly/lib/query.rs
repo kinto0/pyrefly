@@ -339,10 +339,8 @@ impl TypeShapeContext<'_> {
     }
 
     fn declared_type_param_arity_for_class(&self, class: &Class) -> Option<usize> {
-        if !class.has_tparams() {
-            return None;
-        }
-        // The arity is only known once the class's `KeyTParams` binding has been solved.
+        // The arity is only known once the class's `KeyTParams` binding has been solved. A class
+        // without type parameters has no such binding.
         let handle = Handle::new(
             class.module_name(),
             class.module_path().dupe(),

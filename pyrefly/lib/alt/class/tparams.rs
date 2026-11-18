@@ -154,7 +154,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Returns the shared `Arc` rather than its contents, so a caller needing
     /// ownership can `dupe` it without the answer being cloned.
     pub fn get_class_tparams<'b>(&'b self, class: &'b Class) -> Option<&'b Arc<TParams>> {
-        if !class.has_tparams() {
+        if !class.has_tparams(self) {
             return None;
         }
         // `has_tparams` is decided from syntax, so a class can have it and still resolve to no type
