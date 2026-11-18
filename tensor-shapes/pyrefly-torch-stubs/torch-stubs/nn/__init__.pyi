@@ -496,59 +496,32 @@ class GroupNorm(Module):
     ) -> None: ...
     def forward[S: IntTuple](self, input: Tensor[S]) -> Tensor[S]: ...
 
-class BatchNorm1d(Module):
+class _BatchNorm(Module):
+    """Common base of the batch normalization modules"""
+
+    weight: Tensor
+    bias: Tensor
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: float = 0.1,
+        affine: bool = True,
+        track_running_stats: bool = True,
+        device: Any = None,
+        dtype: Any = None,
+    ) -> None: ...
+    def forward[S: IntTuple](self, input: Tensor[S]) -> Tensor[S]: ...
+
+class BatchNorm1d(_BatchNorm):
     """Applies Batch Normalization over a 2D or 3D input"""
 
-    weight: Tensor
-    bias: Tensor
-
-    def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-        device: Any = None,
-        dtype: Any = None,
-    ) -> None: ...
-    def forward[S: IntTuple](self, input: Tensor[S]) -> Tensor[S]: ...
-
-class BatchNorm2d(Module):
+class BatchNorm2d(_BatchNorm):
     """Applies Batch Normalization over a 4D input"""
 
-    weight: Tensor
-    bias: Tensor
-
-    def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-        device: Any = None,
-        dtype: Any = None,
-    ) -> None: ...
-    def forward[S: IntTuple](self, input: Tensor[S]) -> Tensor[S]: ...
-
-class BatchNorm3d(Module):
+class BatchNorm3d(_BatchNorm):
     """Applies Batch Normalization over a 5D input"""
-
-    weight: Tensor
-    bias: Tensor
-
-    def __init__(
-        self,
-        num_features: int,
-        eps: float = 1e-5,
-        momentum: float = 0.1,
-        affine: bool = True,
-        track_running_stats: bool = True,
-        device: Any = None,
-        dtype: Any = None,
-    ) -> None: ...
-    def forward[S: IntTuple](self, input: Tensor[S]) -> Tensor[S]: ...
 
 class InstanceNorm1d(Module):
     """Applies Instance Normalization over a 3D input"""
