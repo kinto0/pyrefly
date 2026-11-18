@@ -33,9 +33,7 @@ use pyrefly_derive::VisitMut;
 use pyrefly_python::module_name::ModuleName;
 use pyrefly_util::visit::Visit;
 use pyrefly_util::visit::VisitMut;
-use ruff_python_ast::Identifier;
 use ruff_python_ast::name::Name;
-use ruff_text_size::TextRange;
 
 use crate::dimension::ShapeError;
 use crate::env::TypeEnv;
@@ -43,6 +41,7 @@ use crate::equality::TypeEq;
 use crate::equality::TypeEqCtx;
 use crate::quantified::AnchorIndex;
 use crate::quantified::Quantified;
+use crate::quantified::QuantifiedAnchor;
 use crate::quantified::QuantifiedIdentity;
 use crate::quantified::QuantifiedOrigin;
 use crate::shaped_array::IntTuple;
@@ -63,7 +62,7 @@ fn normalized_mapper(depth: u32) -> Quantified {
         Name::new_static("__map_lambda__"),
         QuantifiedIdentity::new(
             ModuleName::from_str(NORMALIZED_MAPPER_MODULE),
-            AnchorIndex::new(TextRange::default(), depth),
+            AnchorIndex::new(QuantifiedAnchor::None, depth),
             QuantifiedOrigin::NormalizedMapIntTuplesParameter,
         ),
         None,
@@ -260,16 +259,20 @@ fn invalid_source() -> ShapeError {
 
 /// Builds the binder denoted by an `IntTuples` mapper parameter.
 ///
-/// The binder depends only on the parameter's module, name, and source location. Binding and
-/// solving can therefore reconstruct the same binder independently, regardless of solve order.
-/// Mapper parsing and standalone parameter resolution must both call this constructor so their
-/// `QuantifiedIdentity` values compare equal during substitution.
-pub fn map_int_tuples_mapper_binder(module: ModuleName, parameter: &Identifier) -> Quantified {
+/// The binder depends only on the parameter's module, name, and lambda parameter id, which
+/// binding numbers in source order. Mapper parsing and standalone parameter resolution can
+/// therefore reconstruct the same binder independently, regardless of solve order, and must both
+/// call this constructor so their `QuantifiedIdentity` values compare equal during substitution.
+pub fn map_int_tuples_mapper_binder(
+    module: ModuleName,
+    name: &Name,
+    lambda_param: u32,
+) -> Quantified {
     Quantified::type_var(
-        parameter.id.clone(),
+        name.clone(),
         QuantifiedIdentity::new(
             module,
-            AnchorIndex::first(parameter.range),
+            AnchorIndex::first(QuantifiedAnchor::LambdaParameter(lambda_param)),
             QuantifiedOrigin::MapIntTuplesParameter,
         ),
         None,
@@ -520,7 +523,6 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_util::display::DisplayWithCtx;
     use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
 
     use super::*;
     use crate::dimension::Int;
@@ -541,7 +543,7 @@ mod tests {
             Name::new_static(name),
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), index),
+                AnchorIndex::new(QuantifiedAnchor::None, index),
                 QuantifiedOrigin::synthetic(),
             ),
             None,
@@ -605,7 +607,7 @@ mod tests {
             Name::new_static("T"),
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 1),
+                AnchorIndex::new(QuantifiedAnchor::None, 1),
                 QuantifiedOrigin::synthetic(),
             ),
             None,
@@ -696,7 +698,7 @@ mod tests {
         let middle = Type::Quantified(Box::new(Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 1),
+                AnchorIndex::new(QuantifiedAnchor::None, 1),
                 QuantifiedOrigin::synthetic(),
             ),
             Name::new_static("Ts"),
@@ -828,7 +830,7 @@ mod tests {
             Name::new_static("Captured"),
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 3),
+                AnchorIndex::new(QuantifiedAnchor::None, 3),
                 QuantifiedOrigin::synthetic(),
             ),
             None,

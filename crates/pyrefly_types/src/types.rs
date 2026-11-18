@@ -2871,7 +2871,6 @@ mod tests {
     use pyrefly_python::module_name::ModuleName;
     use pyrefly_util::visit::Visit;
     use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
     use vec1::vec1;
 
     use crate::callable::Callable;
@@ -2893,6 +2892,7 @@ mod tests {
     use crate::map_int_tuples::TypeLambda;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -2918,7 +2918,7 @@ mod tests {
         Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str(module),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new_static(name),
@@ -2950,7 +2950,7 @@ mod tests {
         let tparam = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("test"),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new_static("T"),

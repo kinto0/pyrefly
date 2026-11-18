@@ -50,6 +50,7 @@ use crate::binding::scope::FlowStyle;
 use crate::binding::scope::NameReadInfo;
 use crate::export::special::SpecialExport;
 use crate::types::class::AttrsFieldSpecifierKind;
+use crate::types::quantified::QuantifiedAnchor;
 
 impl<'a> BindingsBuilder<'a> {
     /// Bind one level of an unpacked LHS target, for example in `x, (y, [*z]), q = foo`
@@ -723,10 +724,14 @@ impl<'a> BindingsBuilder<'a> {
         let uses_first_use =
             !is_definitely_type_alias && receiver_idx.is_none() && self.infer_with_first_use();
         let scope_idx = current.idx();
+        let type_alias_index = is_definitely_type_alias.then(|| self.type_alias_index());
         let mut tparams = None;
         if ensure_assigned {
-            if is_definitely_type_alias {
-                let mut legacy = LegacyTParamCollector::new(false);
+            if let Some(type_alias_index) = type_alias_index {
+                let mut legacy = LegacyTParamCollector::new(
+                    false,
+                    QuantifiedAnchor::TypeAlias(type_alias_index),
+                );
                 self.ensure_type_with_usage(
                     &mut value,
                     Some(&mut legacy),
@@ -789,9 +794,9 @@ impl<'a> BindingsBuilder<'a> {
         } else {
             None
         };
-        let binding = if is_definitely_type_alias {
+        let binding = if let Some(type_alias_index) = type_alias_index {
             let range = value.range();
-            let key_type_alias = KeyTypeAlias(self.type_alias_index());
+            let key_type_alias = KeyTypeAlias(type_alias_index);
             let binding_type_alias = BindingTypeAlias::Legacy {
                 name: name.id.clone(),
                 range: name.range,

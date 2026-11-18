@@ -371,7 +371,9 @@ impl MemberRenderer<'_> {
                 param.default().is_none()
                     && matches!(
                         param.identity().origin,
-                        QuantifiedOrigin::Pep695 | QuantifiedOrigin::ScopedLegacy
+                        QuantifiedOrigin::Pep695
+                            | QuantifiedOrigin::ScopedLegacy
+                            | QuantifiedOrigin::InferredLegacy
                     )
             });
         let erased;

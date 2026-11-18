@@ -748,6 +748,7 @@ mod tests {
     use crate::literal::Lit;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -917,7 +918,7 @@ mod tests {
         Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 0),
+                AnchorIndex::new(QuantifiedAnchor::None, 0),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new_static("T"),
@@ -1012,11 +1013,10 @@ mod tests {
 
         use pyrefly_python::module_name::ModuleName;
         use ruff_python_ast::name::Name;
-        use ruff_text_size::TextRange;
-        use ruff_text_size::TextSize;
 
         use crate::quantified::AnchorIndex;
         use crate::quantified::Quantified;
+        use crate::quantified::QuantifiedAnchor;
         use crate::quantified::QuantifiedIdentity;
         use crate::quantified::QuantifiedKind;
         use crate::quantified::QuantifiedOrigin;
@@ -1025,7 +1025,7 @@ mod tests {
 
         let q_id = QuantifiedIdentity::new(
             ModuleName::from_str("test"),
-            AnchorIndex::new(TextRange::new(TextSize::new(0), TextSize::new(10)), 0),
+            AnchorIndex::new(QuantifiedAnchor::None, 0),
             QuantifiedOrigin::ScopedLegacy,
         );
         let tvt = Quantified::new(

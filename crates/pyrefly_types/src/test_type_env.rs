@@ -31,6 +31,7 @@ use crate::class::ClassType;
 use crate::env::TypeEnv;
 use crate::quantified::AnchorIndex;
 use crate::quantified::Quantified;
+use crate::quantified::QuantifiedAnchor;
 use crate::quantified::QuantifiedIdentity;
 use crate::quantified::QuantifiedKind;
 use crate::quantified::QuantifiedOrigin;
@@ -160,7 +161,7 @@ impl TestTypeEnv {
             Quantified::new(
                 QuantifiedIdentity::new(
                     module,
-                    AnchorIndex::new(TextRange::default(), index as u32),
+                    AnchorIndex::new(QuantifiedAnchor::None, index as u32),
                     QuantifiedOrigin::ScopedLegacy,
                 ),
                 Name::new(name),
@@ -352,7 +353,7 @@ mod tests {
         Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("foo"),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new(name),

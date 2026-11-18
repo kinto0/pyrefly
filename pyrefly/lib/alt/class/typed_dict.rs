@@ -51,6 +51,7 @@ use crate::types::function::Function;
 use crate::types::literal::Lit;
 use crate::types::quantified::AnchorIndex;
 use crate::types::quantified::Quantified;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedOrigin;
 use crate::types::read_only::ReadOnlyReason;
@@ -599,10 +600,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         ty: Type,
     ) -> OverloadType {
         // Synthetic `_T` quantified used internally for the default parameter type.
-        // Anchored to the TypedDict class definition range with Synthetic origin.
+        // Anchored to the TypedDict class definition with Synthetic origin.
         let identity = QuantifiedIdentity::new(
-            self.module().name(),
-            AnchorIndex::first(cls.range(self)),
+            cls.module_name(),
+            AnchorIndex::first(QuantifiedAnchor::Class(cls.index())),
             QuantifiedOrigin::synthetic(),
         );
         let q = Quantified::type_var(

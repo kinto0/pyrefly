@@ -92,6 +92,8 @@ use crate::binding::scope::YieldsAndReturns;
 use crate::config::base::InferReturnTypes;
 use crate::config::error_kind::ErrorKind;
 use crate::export::special::SpecialExport;
+use crate::types::function::FuncDefIndex;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::types::AnyStyle;
 
 struct Decorators {
@@ -494,16 +496,18 @@ impl<'a> BindingsBuilder<'a> {
         override_func: Option<Idx<KeyUndecoratedFunction>>,
         usage: &mut Usage,
         parent: &NestingContext,
+        def_index: FuncDefIndex,
     ) -> (
         Option<(TextRange, Idx<KeyAnnotation>)>,
         Vec<Idx<KeyLegacyTypeParam>>,
     ) {
         let tparams = x.type_params.as_mut().map(|tparams| {
             let owner = parent.owner_path(&self.module_info, func_name.id.as_str());
-            self.type_params_with_owner(tparams, owner)
+            self.type_params(tparams, QuantifiedAnchor::Function(def_index), owner)
         });
 
-        let mut legacy = LegacyTParamCollector::new(tparams.is_some());
+        let mut legacy =
+            LegacyTParamCollector::new(tparams.is_some(), QuantifiedAnchor::Function(def_index));
 
         // We need to bind all the parameters expressions _after_ the type params, but before the parameter names,
         // which might shadow some types.
@@ -1096,6 +1100,7 @@ impl<'a> BindingsBuilder<'a> {
             &x,
             class_key.is_none() && !parent.has_function_ancestor(),
             enclosing_class,
+            func_def_index,
         );
 
         self.maybe_record_pytest_fixture_definition(&x, class_key);
@@ -1122,6 +1127,7 @@ impl<'a> BindingsBuilder<'a> {
             override_func,
             def_idx.usage(),
             parent,
+            func_def_index,
         );
 
         let docstring_range = Docstring::range_from_stmts(x.body.as_slice());

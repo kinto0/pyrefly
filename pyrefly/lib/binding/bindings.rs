@@ -99,6 +99,7 @@ use crate::binding::binding::LambdaParamId;
 use crate::binding::binding::LastPath;
 use crate::binding::binding::LastStmt;
 use crate::binding::binding::LegacyTypeParamModule;
+use crate::binding::binding::LegacyTypeParamSource;
 use crate::binding::binding::NarrowUseLocation;
 use crate::binding::binding::SuiteGate;
 use crate::binding::binding::TypeAliasParams;
@@ -151,6 +152,7 @@ use crate::table_for_each;
 use crate::table_try_for_each;
 use crate::types::globals::ImplicitGlobal;
 use crate::types::quantified::AnchorIndex;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::quantified::QuantifiedOrigin;
@@ -1051,11 +1053,14 @@ impl Bindings {
     }
 
     /// Whether `name` is bound as an experimental `MapIntTuples` mapper parameter.
-    pub fn is_type_level_lambda_parameter(&self, name: &Identifier) -> bool {
-        matches!(
-            self.get(self.key_to_idx(&Key::Definition(ShortIdentifier::new(name)))),
-            Binding::TypeLevelLambdaParameter(_)
-        )
+    pub fn type_level_lambda_parameter(
+        &self,
+        name: &Identifier,
+    ) -> Option<&TypeLevelLambdaParameter> {
+        match self.get(self.key_to_idx(&Key::Definition(ShortIdentifier::new(name)))) {
+            Binding::TypeLevelLambdaParameter(parameter) => Some(parameter),
+            _ => None,
+        }
     }
 
     pub fn get_function_param(&self, name: &Identifier) -> &FunctionParameter {
@@ -3186,17 +3191,16 @@ impl<'a> BindingsBuilder<'a> {
         );
     }
 
-    pub fn type_params(&mut self, x: &mut TypeParams) -> SmallSet<Name> {
-        self.type_params_with_owner(x, None)
-    }
-
-    pub fn type_params_with_owner(
+    /// Bind the PEP 695 type parameters of the definition that `anchor` names. `owner` is the
+    /// qualified name that displays of the parameters show, if any.
+    pub fn type_params(
         &mut self,
         x: &mut TypeParams,
+        anchor: QuantifiedAnchor,
         owner: Option<Name>,
     ) -> SmallSet<Name> {
         let mut names = SmallSet::new();
-        for x in x.type_params.iter_mut() {
+        for (index, x) in x.type_params.iter_mut().enumerate() {
             let name = x.name().clone();
             names.insert(name.id.clone());
 
@@ -3288,11 +3292,9 @@ impl<'a> BindingsBuilder<'a> {
             };
             self.scopes
                 .add_scoped_type_parameter_to_current_static(&name);
-            // PEP 695 type parameters use the parameter's own definition range as anchor,
-            // which is unique within the module by construction (no two syntax nodes share a range).
             let identity = QuantifiedIdentity::new(
                 self.module_info.name(),
-                AnchorIndex::first(name.range),
+                AnchorIndex::new(anchor, index as u32),
                 QuantifiedOrigin::Pep695,
             );
             self.bind_definition(
@@ -3519,13 +3521,16 @@ pub struct LegacyTParamCollector {
     legacy_tparams: SmallMap<String, TParamLookupResult>,
     /// Are there scoped type parameters? Used to control downstream errors.
     has_scoped_tparams: bool,
+    /// The definition whose signature or bases use the names.
+    anchor: QuantifiedAnchor,
 }
 
 impl LegacyTParamCollector {
-    pub fn new(has_scoped_tparams: bool) -> Self {
+    pub fn new(has_scoped_tparams: bool, anchor: QuantifiedAnchor) -> Self {
         Self {
             legacy_tparams: SmallMap::new(),
             has_scoped_tparams,
+            anchor,
         }
     }
 
@@ -3563,11 +3568,15 @@ impl<'a> BindingsBuilder<'a> {
         id: LegacyTParamId,
         usage: &mut Usage,
     ) -> NameLookupResult {
+        let anchor = AnchorIndex::new(
+            legacy_tparams.anchor,
+            legacy_tparams.legacy_tparams.len() as u32,
+        );
         let result = legacy_tparams
             .legacy_tparams
             .entry(id.tvar_name())
             .or_insert_with(|| {
-                self.lookup_legacy_tparam(id, usage, legacy_tparams.has_scoped_tparams)
+                self.lookup_legacy_tparam(id, usage, legacy_tparams.has_scoped_tparams, anchor)
             });
         result.as_name_lookup_result()
     }
@@ -3606,6 +3615,7 @@ impl<'a> BindingsBuilder<'a> {
         id: LegacyTParamId,
         usage: &mut Usage,
         has_scoped_type_params: bool,
+        anchor: AnchorIndex,
     ) -> TParamLookupResult {
         let name = id.as_identifier();
         match self.lookup_name(Hashed::new(&name.id), usage) {
@@ -3639,6 +3649,7 @@ impl<'a> BindingsBuilder<'a> {
                     has_scoped_type_params,
                     shadows_enclosing_annotation_scope,
                     class_scope_fallback,
+                    anchor,
                 ) {
                     Some(possible_tparam) => TParamLookupResult::MaybeTParam(possible_tparam),
                     None => TParamLookupResult::NotTParam {
@@ -3690,6 +3701,7 @@ impl<'a> BindingsBuilder<'a> {
         has_scoped_type_params: bool,
         shadows_enclosing_annotation_scope: bool,
         class_scope_fallback: Option<Idx<Key>>,
+        anchor: AnchorIndex,
     ) -> Option<PossibleTParam> {
         let (mut original_idx, mut original_binding) = self.get_original_binding(original_idx)?;
         if shadows_enclosing_annotation_scope {
@@ -3705,7 +3717,7 @@ impl<'a> BindingsBuilder<'a> {
         // for the raw lookup, then insert another key / binding pair for the
         // `CheckLegacyTypeParam`, and return the `Idx<Key>`.
         let tparam_idx = Self::make_legacy_tparam(&id, original_binding, original_idx)
-            .map(|(k, v)| self.insert_binding(k, v))?;
+            .map(|(k, source)| self.insert_binding(k, BindingLegacyTypeParam { anchor, source }))?;
         let idx = self.insert_binding(
             id.as_possible_legacy_tparam_key(),
             Binding::PossibleLegacyTParam(
@@ -3741,7 +3753,7 @@ impl<'a> BindingsBuilder<'a> {
         id: &LegacyTParamId,
         binding: Option<&Binding>,
         original_idx: Idx<Key>,
-    ) -> Option<(KeyLegacyTypeParam, BindingLegacyTypeParam)> {
+    ) -> Option<(KeyLegacyTypeParam, LegacyTypeParamSource)> {
         match id {
             LegacyTParamId::Name(name) => match binding {
                 Some(
@@ -3752,7 +3764,7 @@ impl<'a> BindingsBuilder<'a> {
                 )
                 | None => Some((
                     KeyLegacyTypeParam(ShortIdentifier::new(name)),
-                    BindingLegacyTypeParam::ParamKeyed(original_idx),
+                    LegacyTypeParamSource::ParamKeyed(original_idx),
                 )),
                 Some(_) => None,
             },
@@ -3765,7 +3777,7 @@ impl<'a> BindingsBuilder<'a> {
                 )
                 | None => Some((
                     KeyLegacyTypeParam(ShortIdentifier::new(attrs.last())),
-                    BindingLegacyTypeParam::ModuleKeyed(Box::new(LegacyTypeParamModule {
+                    LegacyTypeParamSource::ModuleKeyed(Box::new(LegacyTypeParamModule {
                         base: original_idx,
                         attrs: attrs.mapped_ref(|a| a.id.clone()),
                     })),
@@ -3787,9 +3799,10 @@ impl<'a> BindingsBuilder<'a> {
         let mut module_heads: SmallMap<Name, Idx<Key>> = SmallMap::new();
         for entry in legacy_tparams.legacy_tparams.values() {
             if let TParamLookupResult::MaybeTParam(possible_tparam) = entry {
-                if let BindingLegacyTypeParam::ModuleKeyed(module) = self
+                if let LegacyTypeParamSource::ModuleKeyed(module) = &mut self
                     .idx_to_binding_mut(possible_tparam.tparam_idx)
                     .expect("a possible legacy type parameter should have a binding")
+                    .source
                 {
                     let base = possible_tparam.id.as_identifier().id.clone();
                     if let Some(prior) = module_heads.insert(base, possible_tparam.idx) {

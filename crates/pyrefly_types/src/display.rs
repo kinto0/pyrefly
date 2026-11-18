@@ -2016,6 +2016,7 @@ pub mod tests {
     use crate::polars_dtype::PolarsDType;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -2055,7 +2056,7 @@ pub mod tests {
     fn fake_tparam(ordinal: u32, name: &str, kind: QuantifiedKind) -> Quantified {
         let identity = QuantifiedIdentity::new(
             ModuleName::from_str("__test__"),
-            AnchorIndex::new(ruff_text_size::TextRange::default(), ordinal),
+            AnchorIndex::new(QuantifiedAnchor::None, ordinal),
             QuantifiedOrigin::Pep695,
         );
         Quantified::new(

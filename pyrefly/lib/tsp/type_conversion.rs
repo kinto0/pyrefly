@@ -1204,6 +1204,7 @@ mod tests {
     use pyrefly_types::literal::LitStyle;
     use pyrefly_types::module::ModuleType;
     use pyrefly_types::quantified::AnchorIndex;
+    use pyrefly_types::quantified::QuantifiedAnchor;
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::special_form::SpecialForm;
     use pyrefly_types::test_type_env::TestTypeEnv;
@@ -1228,7 +1229,7 @@ mod tests {
     fn make_quantified(name: &str, module: &str, origin: QuantifiedOrigin) -> Quantified {
         let identity = QuantifiedIdentity::new(
             ModuleName::from_str(module),
-            AnchorIndex::first(TextRange::default()),
+            AnchorIndex::first(QuantifiedAnchor::None),
             origin,
         );
         Quantified::type_var(

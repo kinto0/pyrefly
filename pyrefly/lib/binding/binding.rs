@@ -96,6 +96,7 @@ use crate::types::env::TypeEnv;
 use crate::types::equality::TypeEq;
 use crate::types::function::FuncDefIndex;
 use crate::types::globals::ImplicitGlobal;
+use crate::types::quantified::AnchorIndex;
 use crate::types::quantified::Quantified;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedKind;
@@ -146,7 +147,7 @@ assert_bytes!(BindingAbstractClassCheck, 4);
 assert_bytes!(BindingClassSubscriptSymmetry, 4);
 assert_words!(BindingClassField, 11);
 assert_words!(BindingClassSynthesizedFields, 2);
-assert_bytes!(BindingLegacyTypeParam, 16);
+assert_bytes!(BindingLegacyTypeParam, 32);
 assert_words!(BindingYield, 4);
 assert_words!(BindingYieldFrom, 4);
 assert_words!(BindingDecorator, 9);
@@ -2576,8 +2577,8 @@ pub enum LambdaKind {
 #[derive(Clone, Debug)]
 pub struct TypeLevelLambdaParameter {
     /// Retained because the lambda expression can still pass through ordinary callable inference.
+    /// With `identifier`, it determines the synthetic type binder independently of solve order.
     pub id: LambdaParamId,
-    /// Determines the synthetic type binder independently of solve order.
     pub identifier: Identifier,
 }
 
@@ -3970,8 +3971,17 @@ impl DisplayWith<Bindings> for BindingClassSubscriptSymmetry {
 }
 
 #[derive(Clone, Debug)]
-/// A legacy type parameter (`T = typing.TypeVar("T")`).
-pub enum BindingLegacyTypeParam {
+/// A name in the signature or bases of a definition that may be a legacy type parameter
+/// (`T = typing.TypeVar("T")`) of that definition.
+pub struct BindingLegacyTypeParam {
+    /// The definition and the position of the name among the names that the definition's
+    /// collector met, which identify the `Quantified` if the name is a type variable.
+    pub anchor: AnchorIndex,
+    pub source: LegacyTypeParamSource,
+}
+
+#[derive(Clone, Debug)]
+pub enum LegacyTypeParamSource {
     /// The key points directly to an expression that may be a legacy type parameter.
     ParamKeyed(Idx<Key>),
     ModuleKeyed(Box<LegacyTypeParamModule>),
@@ -3993,9 +4003,9 @@ pub struct LegacyTypeParamModule {
 impl DisplayWith<Bindings> for BindingLegacyTypeParam {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, ctx: &Bindings) -> fmt::Result {
         write!(f, "BindingLegacyTypeParam(")?;
-        match self {
-            Self::ParamKeyed(k) => write!(f, "{}", ctx.display(*k)),
-            Self::ModuleKeyed(module) => {
+        match &self.source {
+            LegacyTypeParamSource::ParamKeyed(k) => write!(f, "{}", ctx.display(*k)),
+            LegacyTypeParamSource::ModuleKeyed(module) => {
                 write!(f, "{}", ctx.display(module.base))?;
                 for attr in module.attrs.iter() {
                     write!(f, ".{}", attr)?;
@@ -4009,9 +4019,9 @@ impl DisplayWith<Bindings> for BindingLegacyTypeParam {
 
 impl BindingLegacyTypeParam {
     pub fn idx(&self) -> Idx<Key> {
-        match self {
-            Self::ParamKeyed(idx) => *idx,
-            Self::ModuleKeyed(module) => module.base,
+        match &self.source {
+            LegacyTypeParamSource::ParamKeyed(idx) => *idx,
+            LegacyTypeParamSource::ModuleKeyed(module) => module.base,
         }
     }
 }

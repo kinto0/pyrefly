@@ -987,7 +987,6 @@ mod tests {
     use pyrefly_util::visit::Visit;
     use pyrefly_util::visit::VisitMut;
     use ruff_python_ast::name::Name;
-    use ruff_text_size::TextRange;
 
     use crate::callable::Callable;
     use crate::callable::DefaultValue;
@@ -998,6 +997,7 @@ mod tests {
     use crate::callable::Required;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -1172,7 +1172,7 @@ mod tests {
         let q = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new("T"),
@@ -1195,7 +1195,7 @@ mod tests {
         let q = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 1),
+                AnchorIndex::new(QuantifiedAnchor::None, 1),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new("T"),

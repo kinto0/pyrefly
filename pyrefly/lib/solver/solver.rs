@@ -4533,6 +4533,7 @@ mod tests {
     use pyrefly_types::identity::IdentityIgnored;
     use pyrefly_types::lit_int::LitInt;
     use pyrefly_types::quantified::AnchorIndex;
+    use pyrefly_types::quantified::QuantifiedAnchor;
     use pyrefly_types::quantified::QuantifiedIdentity;
     use pyrefly_types::quantified::QuantifiedOrigin;
     use pyrefly_types::shaped_array::IntTuple;
@@ -4858,7 +4859,7 @@ mod tests {
         Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("test"),
-                AnchorIndex::new(TextRange::default(), index),
+                AnchorIndex::new(QuantifiedAnchor::None, index),
                 QuantifiedOrigin::synthetic(),
             ),
             Name::new(match kind {

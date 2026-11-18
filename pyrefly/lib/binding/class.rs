@@ -97,6 +97,7 @@ use crate::types::class::ClassDef;
 use crate::types::class::ClassDefIndex;
 use crate::types::class::ClassFieldProperties;
 use crate::types::class::ClassFields;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::types::AnyStyle;
 
 enum IllegalIdentifierHandling {
@@ -281,6 +282,7 @@ impl<'a> BindingsBuilder<'a> {
             &x.name,
             x.range().end(),
             ShapeDeclarationOwner::Class(class_indices.class_idx),
+            QuantifiedAnchor::Class(class_indices.def_index),
         );
         let decorators =
             self.ensure_and_bind_decorators(mem::take(&mut x.decorator_list), class_object.usage());
@@ -292,10 +294,13 @@ impl<'a> BindingsBuilder<'a> {
             .as_mut()
             .map(|tp| {
                 let owner = parent.owner_path(&self.module_info, x.name.id.as_str());
-                self.type_params_with_owner(tp, owner)
+                self.type_params(tp, QuantifiedAnchor::Class(class_indices.def_index), owner)
             })
             .unwrap_or_default();
-        let mut legacy = LegacyTParamCollector::new(x.type_params.is_some());
+        let mut legacy = LegacyTParamCollector::new(
+            x.type_params.is_some(),
+            QuantifiedAnchor::Class(class_indices.def_index),
+        );
         let bases = x.bases().map(|base| {
             let mut base = base.clone();
             if self.shape_comments.annotations.contains_key(&base.range())

@@ -325,6 +325,7 @@ mod tests {
     use crate::literal::LitStyle;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -458,7 +459,7 @@ mod tests {
         let tparam1 = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new("T"),
@@ -470,7 +471,7 @@ mod tests {
         let tparam2 = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 1),
+                AnchorIndex::new(QuantifiedAnchor::None, 1),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new("U"),
@@ -482,7 +483,7 @@ mod tests {
         let tparam3 = Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::new(TextRange::default(), 2),
+                AnchorIndex::new(QuantifiedAnchor::None, 2),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new("V"),

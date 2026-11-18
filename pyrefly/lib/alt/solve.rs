@@ -130,6 +130,7 @@ use crate::binding::binding::KeyUndecoratedFunction;
 use crate::binding::binding::Keyed;
 use crate::binding::binding::LastPath;
 use crate::binding::binding::LastStmt;
+use crate::binding::binding::LegacyTypeParamSource;
 use crate::binding::binding::LinkedKey;
 use crate::binding::binding::ModuleDiagnostic;
 use crate::binding::binding::MultiTargetReceiver;
@@ -182,6 +183,7 @@ use crate::types::module::ModuleType;
 use crate::types::param_spec::ParamSpec;
 use crate::types::quantified::AnchorIndex;
 use crate::types::quantified::Quantified;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::quantified::QuantifiedOrigin;
@@ -207,17 +209,19 @@ use crate::types::types::Type;
 
 /// Collects each legacy type parameter once, retaining its declaration range for ordering.
 /// The alias anchor keeps quantifications of the same variable in different aliases distinct.
-/// Within an alias, a parameter's index is the order in which the collector first meets it. The
-/// declaration's offset would not do: variables declared in different modules can share it.
+/// Within an alias, a parameter's index is the order in which the collector first meets it.
 struct LegacyTypeParamCollector {
     module: ModuleName,
-    alias_anchor: TextRange,
+    alias_anchor: QuantifiedAnchor,
     seen: SmallMap<Type, Quantified>,
     tparams: Vec<(TextRange, Quantified)>,
 }
 
 impl LegacyTypeParamCollector {
-    fn new(module: ModuleName, alias_anchor: TextRange) -> Self {
+    /// `alias_anchor` is the alias, or `QuantifiedAnchor::None` for an assignment that solving
+    /// recognizes as an implicit alias. Such an alias's parameters are closed in its `Forall`, so
+    /// they cannot meet the parameters of another alias that share their identities.
+    fn new(module: ModuleName, alias_anchor: QuantifiedAnchor) -> Self {
         Self {
             module,
             alias_anchor,
@@ -234,7 +238,7 @@ impl LegacyTypeParamCollector {
                 let identity = QuantifiedIdentity::new(
                     self.module,
                     AnchorIndex::new(self.alias_anchor, self.tparams.len() as u32),
-                    QuantifiedOrigin::ScopedLegacy,
+                    QuantifiedOrigin::InferredLegacy,
                 );
                 let q = Quantified::from_type_var_like(x, identity);
                 e.insert(q.clone());
@@ -449,9 +453,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Resolve the original value before a possible legacy type parameter is quantified.
     pub(crate) fn legacy_tparam_value(&self, binding: &BindingLegacyTypeParam) -> TypeInfo {
-        match binding {
-            BindingLegacyTypeParam::ParamKeyed(k) => self.get_idx(*k).clone(),
-            BindingLegacyTypeParam::ModuleKeyed(module) => {
+        match &binding.source {
+            LegacyTypeParamSource::ParamKeyed(k) => self.get_idx(*k).clone(),
+            LegacyTypeParamSource::ModuleKeyed(module) => {
                 // Errors in attribute lookup are reported elsewhere.
                 module
                     .attrs
@@ -472,30 +476,21 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Solve a `BindingLegacyTypeParam`, producing a `LegacyTypeParameterLookup` that tells the
     /// caller whether the name is a type parameter and, if so, which `Quantified` to use.
     ///
-    /// The `scope_anchor` is the range of the `KeyLegacyTypeParam` key itself — the first
-    /// occurrence of the TypeVar name in this scope. It is unique per (scope, TypeVar) pair:
-    /// two functions that both use an imported `T` will have different first-occurrence ranges,
-    /// so their `Quantified`s will have different identities even though they share the same
-    /// module-level `TypeVar` declaration.
+    /// The binding's anchor names the definition and the name's position among the names that
+    /// the definition uses, so it is unique per (definition, TypeVar) pair: two functions that
+    /// both use an imported `T` get `Quantified`s with different identities even though they
+    /// share the same module-level `TypeVar` declaration.
     pub fn solve_legacy_tparam(
         &self,
         binding: &BindingLegacyTypeParam,
-        scope_anchor: TextRange,
     ) -> LegacyTypeParameterLookup {
         let maybe_parameter = self.legacy_tparam_value(binding);
-        // Use the scope_anchor (the KeyLegacyTypeParam's own range, i.e. the first occurrence
-        // of this TypeVar name in the enclosing function/class/alias scope) as the identity
-        // anchor. This gives each (scope, TypeVar) pair a distinct Quantified even when multiple
-        // scopes import and reuse the same module-level TypeVar declaration.
         let module = self.module().name();
         let ty = maybe_parameter.ty();
         match ty.as_type_var_like() {
             Some(x) => {
-                let identity = QuantifiedIdentity::new(
-                    module,
-                    AnchorIndex::first(scope_anchor),
-                    QuantifiedOrigin::ScopedLegacy,
-                );
+                let identity =
+                    QuantifiedIdentity::new(module, binding.anchor, QuantifiedOrigin::ScopedLegacy);
                 LegacyTypeParameterLookup::Parameter(Quantified::from_type_var_like(x, identity))
             }
             None => LegacyTypeParameterLookup::NotParameter(ty.clone()),
@@ -1484,10 +1479,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         &self,
         exprs: &Vec<Expr>,
         legacy_params: &[Idx<KeyLegacyTypeParam>],
+        anchor: QuantifiedAnchor,
         range: TextRange,
         errors: &ErrorCollector,
     ) -> Vec<Quantified> {
-        let mut collector = LegacyTypeParamCollector::new(self.module().name(), range);
+        let mut collector = LegacyTypeParamCollector::new(self.module().name(), anchor);
         for expr in exprs {
             let inferred_ty = self.expr_infer(expr, errors);
             let ty = self
@@ -1537,10 +1533,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .into_iter()
             .map(|param| (param.name().clone(), param))
             .collect::<SmallMap<_, _>>();
-        // `legacy_params` contains the tparams (built via solve_legacy_tparam, anchored to the
-        // KeyLegacyTypeParam's scope range) actually used in the alias. If we find a tparam in
-        // `tparams` but not in `legacy_tparams`, that means it's declared and not used, which is
-        // pointless but legal.
+        // `legacy_params` contains the tparams (built via solve_legacy_tparam) actually used in
+        // the alias. If we find a tparam in `tparams` but not in `legacy_tparams`, that means it's
+        // declared and not used, which is pointless but legal.
         let tparams = collector
             .tparams
             .into_map(|(_, param)| legacy_params.shift_remove(param.name()).unwrap_or(param));
@@ -1809,8 +1804,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
 
         // Step 3: Extract type parameters from the (now expanded) body.
+        let anchor = current_index.map_or(QuantifiedAnchor::None, QuantifiedAnchor::TypeAlias);
         let tvars_to_tparams_for_type_alias = |ty| {
-            let mut collector = LegacyTypeParamCollector::new(self.module().name(), range);
+            let mut collector = LegacyTypeParamCollector::new(self.module().name(), anchor);
             self.tvars_to_tparams_for_type_alias(ty, &mut collector);
             // Sort by source location to restore the user's intended type parameter order.
             // This is needed because union members get sorted alphabetically during
@@ -1825,7 +1821,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 legacy_params,
             } => {
                 // Handle type params from `TypeAliasType(type_params=...)`.
-                self.tvars_to_tparams_for_type_alias_type(type_params, legacy_params, range, errors)
+                self.tvars_to_tparams_for_type_alias_type(
+                    type_params,
+                    legacy_params,
+                    anchor,
+                    range,
+                    errors,
+                )
             }
             TypeAliasParams::Legacy(Some(legacy_tparams)) => {
                 // Collect type params that appear in a legacy type alias that we were able to detect
@@ -1886,25 +1888,33 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     pub fn create_type_alias_params_recursive(
         &self,
         tparams: &TypeAliasParams,
-        anchor: TextRange,
+        index: TypeAliasIndex,
+        range: TextRange,
     ) -> Arc<TParams> {
         let errors = self.error_swallower();
         let params = match tparams {
             TypeAliasParams::TypeAliasType {
                 declared_params: tparams,
                 legacy_params,
-            } => self.tvars_to_tparams_for_type_alias_type(tparams, legacy_params, anchor, &errors),
+            } => self.tvars_to_tparams_for_type_alias_type(
+                tparams,
+                legacy_params,
+                QuantifiedAnchor::TypeAlias(index),
+                range,
+                &errors,
+            ),
             TypeAliasParams::Legacy(Some(tparams)) => self.create_legacy_type_params(tparams),
             TypeAliasParams::Legacy(None) => Vec::new(),
             TypeAliasParams::Scoped(tparams) => self.scoped_type_params(tparams.as_ref(), &errors),
         };
-        Arc::new(self.validated_tparams(anchor, params, TParamsSource::TypeAlias, &errors))
+        Arc::new(self.validated_tparams(range, params, TParamsSource::TypeAlias, &errors))
     }
 
     fn create_legacy_type_params(&self, keys: &[Idx<KeyLegacyTypeParam>]) -> Vec<Quantified> {
         keys.iter()
             .filter_map(|key| {
-                if let BindingLegacyTypeParam::ParamKeyed(def_key) = self.bindings().get(*key)
+                if let LegacyTypeParamSource::ParamKeyed(def_key) =
+                    &self.bindings().get(*key).source
                     && matches!(
                         self.bindings().get(*def_key),
                         Binding::TypeAlias(..) | Binding::TypeAliasRef(..)
@@ -6667,9 +6677,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             LegacyTypeParameterLookup::NotParameter(ty) => ty.clone(),
         };
-        match self.bindings().get(key) {
-            BindingLegacyTypeParam::ParamKeyed(_) => TypeInfo::of_ty(resolve(key)),
-            BindingLegacyTypeParam::ModuleKeyed(binding) => {
+        match &self.bindings().get(key).source {
+            LegacyTypeParamSource::ParamKeyed(_) => TypeInfo::of_ty(resolve(key)),
+            LegacyTypeParamSource::ModuleKeyed(binding) => {
                 // `base` points at a module whose attr chain may end in a legacy type
                 // variable that needs to be replaced with a QuantifiedValue. Since the
                 // binding is for the module itself, we use the mechanism for attribute
@@ -7045,9 +7055,12 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     }
 
     fn wrap_callable_legacy_typevars(&self, ty: Type) -> Type {
+        // The callables share one numbering, so that a callable nested in another one never
+        // binds a parameter with the identity of the outer callable's parameter.
+        let mut next_index = 0;
         ty.transform(&mut |ty| match ty {
             Type::Callable(callable) => {
-                let tparams = self.promote_callable_legacy_typevars(callable);
+                let tparams = self.promote_callable_legacy_typevars(callable, &mut next_index);
                 if !tparams.is_empty() {
                     *ty = Forallable::Callable((**callable).clone())
                         .forall(Arc::new(TParams::new(tparams)));
@@ -7057,7 +7070,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         })
     }
 
-    fn promote_callable_legacy_typevars(&self, callable: &mut Callable) -> Vec<Quantified> {
+    /// Bind the legacy type variables of `callable` in a closed `Forall`. Its parameters belong
+    /// to no definition, so they are numbered from `next_index` instead.
+    fn promote_callable_legacy_typevars(
+        &self,
+        callable: &mut Callable,
+        next_index: &mut u32,
+    ) -> Vec<Quantified> {
         let mut seen_type_vars = SmallMap::new();
         let mut tparams = Vec::new();
         let heap = self.heap;
@@ -7070,9 +7089,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         .or_insert_with(|| {
                             let identity = QuantifiedIdentity::new(
                                 module,
-                                AnchorIndex::first(tv.qname().range()),
-                                QuantifiedOrigin::ScopedLegacy,
+                                AnchorIndex::new(QuantifiedAnchor::None, *next_index),
+                                QuantifiedOrigin::InferredLegacy,
                             );
+                            *next_index += 1;
                             let q = Quantified::from_type_var_like(tv, identity);
                             tparams.push(q.clone());
                             q
@@ -7616,14 +7636,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     module_path: self.module().path().clone(),
                     index,
                 };
-                let anchor = KeyTypeAlias::range_with(x.key_type_alias, self.bindings());
-                let tparams = self.create_type_alias_params_recursive(&x.tparams, anchor);
+                let range = KeyTypeAlias::range_with(x.key_type_alias, self.bindings());
+                let tparams = self.create_type_alias_params_recursive(&x.tparams, index, range);
                 Forallable::TypeAlias(TypeAliasData::Ref(r)).forall(tparams)
             }
             Binding::LambdaParameter(id, owner) => self.resolve_lambda_param_type(*id, *owner),
             Binding::StaticLambdaParameter(_) => self.heap.mk_any_implicit(),
             Binding::TypeLevelLambdaParameter(parameter) => {
-                self.resolve_map_int_tuples_mapper_parameter(&parameter.identifier)
+                self.resolve_map_int_tuples_mapper_parameter(parameter)
             }
             Binding::FunctionParameter(param) => self.binding_to_type_function_parameter(param),
             Binding::SuperInstance(x) => self.solve_super_binding(&x.0, x.1, errors),

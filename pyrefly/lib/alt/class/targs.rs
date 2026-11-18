@@ -35,6 +35,7 @@ use crate::types::class::ClassType;
 use crate::types::literal::Lit;
 use crate::types::quantified::AnchorIndex;
 use crate::types::quantified::Quantified;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::quantified::QuantifiedOrigin;
@@ -318,7 +319,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // in TypeEqCtx handles pairing with other synthetic quantifieds correctly.
         let identity = QuantifiedIdentity::new(
             self.module().name(),
-            AnchorIndex::first(TextRange::default()),
+            AnchorIndex::first(QuantifiedAnchor::None),
             QuantifiedOrigin::synthetic(),
         );
         let quantified = Quantified::new(
@@ -344,7 +345,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // in TypeEqCtx handles pairing with other synthetic quantifieds correctly.
         let identity = QuantifiedIdentity::new(
             self.module().name(),
-            AnchorIndex::new(TextRange::default(), 1),
+            AnchorIndex::new(QuantifiedAnchor::None, 1),
             QuantifiedOrigin::synthetic(),
         );
         let quantified = Quantified::new(

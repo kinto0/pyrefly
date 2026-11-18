@@ -11,8 +11,10 @@ use pyrefly_graph::index::Idx;
 use pyrefly_python::ast::Ast;
 use pyrefly_python::keywords::is_valid_identifier;
 use pyrefly_types::dimension::gradual_size;
+use pyrefly_types::function::FuncDefIndex;
 use pyrefly_types::quantified::AnchorIndex;
 use pyrefly_types::quantified::Quantified;
+use pyrefly_types::quantified::QuantifiedAnchor;
 use pyrefly_types::quantified::QuantifiedIdentity;
 use pyrefly_types::quantified::QuantifiedKind;
 use pyrefly_types::quantified::QuantifiedOrigin;
@@ -581,6 +583,7 @@ impl BindingsBuilder<'_> {
         function: &StmtFunctionDef,
         is_top_level: bool,
         enclosing_class: Option<Idx<KeyClass>>,
+        def_index: FuncDefIndex,
     ) -> ShapeFunctionMetadata {
         let is_type_shape_dsl = function.decorator_list.iter().any(|decorator| {
             self.as_special_export(&decorator.expression)
@@ -608,6 +611,7 @@ impl BindingsBuilder<'_> {
             &function.name,
             function.range().end(),
             ShapeDeclarationOwner::Function(enclosing_class),
+            QuantifiedAnchor::Function(def_index),
         );
 
         ShapeFunctionMetadata { type_shape_dsl_def }
@@ -625,8 +629,9 @@ impl BindingsBuilder<'_> {
         name: &Identifier,
         end: TextSize,
         owner: ShapeDeclarationOwner,
+        anchor: QuantifiedAnchor,
     ) {
-        let decorated = self.extract_shape_declaration(decorators, owner);
+        let decorated = self.extract_shape_declaration(decorators, owner, anchor);
         let commented = self.shape_comments.declarations.shift_remove(&name.range());
         let declaration = match commented {
             Some(comment) => {
@@ -652,6 +657,7 @@ impl BindingsBuilder<'_> {
                             comment.range,
                             kind,
                             owner,
+                            anchor,
                             required,
                         ),
                     ))
@@ -707,6 +713,7 @@ impl BindingsBuilder<'_> {
         &mut self,
         decorators: &[Decorator],
         owner: ShapeDeclarationOwner,
+        anchor: QuantifiedAnchor,
     ) -> Option<(ShapeDeclarationKind, Box<[Quantified]>)> {
         let mut declaration = None;
         let mut seen: Option<ShapeDeclarationKind> = None;
@@ -737,7 +744,7 @@ impl BindingsBuilder<'_> {
             }
             seen = Some(kind);
             declaration = self
-                .parse_shape_declaration(call, kind, owner)
+                .parse_shape_declaration(call, kind, owner, anchor)
                 .map(|dims| (kind, dims));
         }
         declaration
@@ -781,6 +788,7 @@ impl BindingsBuilder<'_> {
         call: &ExprCall,
         kind: ShapeDeclarationKind,
         owner: ShapeDeclarationOwner,
+        anchor: QuantifiedAnchor,
     ) -> Option<Box<[Quantified]>> {
         // A class's `@shape_vars` dimensions default to gradual ones, so adding the
         // decorator to a published class does not break a downstream `Encoder[T]`.
@@ -852,6 +860,7 @@ impl BindingsBuilder<'_> {
             declaration.range(),
             kind,
             owner,
+            anchor,
             required,
         ))
     }
@@ -863,6 +872,7 @@ impl BindingsBuilder<'_> {
         range: TextRange,
         kind: ShapeDeclarationKind,
         owner: ShapeDeclarationOwner,
+        anchor: QuantifiedAnchor,
         required: bool,
     ) -> Box<[Quantified]> {
         // A declaration may introduce any number of variadic shapes: each lowers to
@@ -923,8 +933,8 @@ impl BindingsBuilder<'_> {
             dims.push(Quantified::new(
                 QuantifiedIdentity::new(
                     self.module_info.name(),
-                    AnchorIndex::new(range, index as u32),
-                    QuantifiedOrigin::synthetic(),
+                    AnchorIndex::new(anchor, index as u32),
+                    QuantifiedOrigin::ShapeDeclaration,
                 ),
                 name,
                 quantified_kind,

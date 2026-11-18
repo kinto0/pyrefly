@@ -92,6 +92,7 @@ use crate::export::definitions::MutableCaptureKind;
 use crate::export::special::SpecialExport;
 use crate::state::loader::FindingOrError;
 use crate::types::alias::resolve_typeshed_alias;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedKind;
 use crate::types::special_form::SpecialForm;
 use crate::types::types::AnyStyle;
@@ -773,12 +774,14 @@ impl<'a> BindingsBuilder<'a> {
     }
 
     fn assign_type_alias_type(&mut self, name: &ExprName, call: &mut ExprCall) {
-        let mut collector = LegacyTParamCollector::new(false);
+        let type_alias_index = self.type_alias_index();
+        let mut collector =
+            LegacyTParamCollector::new(false, QuantifiedAnchor::TypeAlias(type_alias_index));
         self.ensure_type_alias_type_args(call, &mut collector);
         let assigned = self.declare_current_idx(Key::Definition(ShortIdentifier::expr_name(name)));
         let ann = self.bind_current(&name.id, &assigned, FlowStyle::Other);
         let (value, type_params) = self.typealiastype_from_call(&name.id, call);
-        let key_type_alias = KeyTypeAlias(self.type_alias_index());
+        let key_type_alias = KeyTypeAlias(type_alias_index);
         let binding_type_alias = BindingTypeAlias::TypeAliasType {
             name: name.id.clone(),
             range: name.range,
@@ -1427,8 +1430,13 @@ impl<'a> BindingsBuilder<'a> {
                 if let Expr::Name(name) = *x.name {
                     // Create a new scope for the type alias type parameters
                     self.scopes.push(Scope::type_alias(x.range));
+                    let type_alias_index = self.type_alias_index();
                     if let Some(params) = &mut x.type_params {
-                        self.type_params(params);
+                        self.type_params(
+                            params,
+                            QuantifiedAnchor::TypeAlias(type_alias_index),
+                            None,
+                        );
                     }
                     self.ensure_type_with_usage(
                         &mut x.value,
@@ -1441,7 +1449,7 @@ impl<'a> BindingsBuilder<'a> {
                     // Pop the type alias scope before binding the definition
                     self.scopes.pop();
                     let range = x.value.range();
-                    let key_type_alias = KeyTypeAlias(self.type_alias_index());
+                    let key_type_alias = KeyTypeAlias(type_alias_index);
                     let binding_type_alias = BindingTypeAlias::Scoped {
                         name: name.id.clone(),
                         range: name.range,

@@ -48,9 +48,6 @@ pub struct TypeEqCtx {
     type_var: SmallMap<TypeVar, TypeVar>,
     type_var_tuple: SmallMap<TypeVarTuple, TypeVarTuple>,
     sentinel: SmallMap<Sentinel, Sentinel>,
-    /// Alpha-equivalence mapping for Quantified binders: LHS identity → RHS identity.
-    /// First pairing wins; subsequent occurrences must match.
-    quantified_identity: SmallMap<QuantifiedIdentity, QuantifiedIdentity>,
 }
 
 impl TypeEq for Unique {
@@ -72,22 +69,11 @@ impl TypeEq for Unique {
     }
 }
 
-impl TypeEq for QuantifiedIdentity {
-    fn type_eq(&self, other: &Self, ctx: &mut TypeEqCtx) -> bool {
-        if self == other {
-            // Identical identities — trivially alpha-equivalent; avoid polluting the map.
-            true
-        } else {
-            match ctx.quantified_identity.entry(self.clone()) {
-                Entry::Occupied(e) => e.get() == other,
-                Entry::Vacant(e) => {
-                    e.insert(other.clone());
-                    true
-                }
-            }
-        }
-    }
-}
+/// Quantifieds compare by identity, not up to renaming: the type arguments of a class instance
+/// that another module keeps pair with the class's type parameters by identity, so a renamed
+/// parameter is a change that readers can see. Identities do not depend on source positions, so
+/// an edit that only moves code keeps them equal.
+impl TypeEq for QuantifiedIdentity {}
 
 fn type_eq_identity<T>(
     x: &T,
@@ -325,7 +311,6 @@ impl<T: TypeEq> TypeEq for SmallSet<T> {
 mod tests {
     use pyrefly_derive::TypeEq;
     use pyrefly_python::module_name::ModuleName;
-    use ruff_text_size::TextRange;
 
     use super::*;
     use crate::callable::Callable;
@@ -337,6 +322,7 @@ mod tests {
     use crate::heap::TypeHeap;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedKind;
     use crate::quantified::QuantifiedOrigin;
@@ -426,14 +412,14 @@ mod tests {
     }
 
     #[test]
-    fn test_equal_forall() {
+    fn test_forall_compares_type_parameters_by_identity() {
         let heap = TypeHeap::new();
 
         fn mk_function(heap: &TypeHeap, ordinal: u32) -> Type {
             let q = Quantified::new(
                 QuantifiedIdentity::new(
                     ModuleName::from_str("__test__"),
-                    AnchorIndex::new(TextRange::default(), ordinal),
+                    AnchorIndex::new(QuantifiedAnchor::None, ordinal),
                     QuantifiedOrigin::Pep695,
                 ),
                 Name::new_static("test"),
@@ -461,6 +447,6 @@ mod tests {
         assert_ne!(a, b);
 
         assert!(a.type_eq(&a, &mut TypeEqCtx::default()));
-        assert!(a.type_eq(&b, &mut TypeEqCtx::default()));
+        assert!(!a.type_eq(&b, &mut TypeEqCtx::default()));
     }
 }

@@ -5219,11 +5219,11 @@ fn test_function_type_parameter_displaced() {
 }
 
 /// Without a cycle: `a` declares a type alias with a ParamSpec default before `A`, which moves the
-/// declaration of the type parameter of `A`. Type parameters compare equal wherever they are
-/// declared, so `b` is not rechecked, and its instances of `A` keep the old declaration.
-// Bug: `main` reveals `w.get()` and `e.get()` as the escaped type variable `T`.
+/// declaration of the type parameter of `A`. The instances of `A` that `b` keeps pair with the
+/// parameters of the moved `A`, so `main` sees the same types as in a clean check.
+// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
-fn test_stale_class_type_parameter_default_displaced() {
+fn test_class_type_parameter_default_displaced() {
     assert_rebuild_matches_clean(
         &[
             ("a", "class A[T = int]:\n    def get(self) -> T: ...\n"),
@@ -5237,19 +5237,18 @@ fn test_stale_class_type_parameter_default_displaced() {
             ),
             (
                 "main",
-                "from typing import reveal_type\nfrom b import w, e\nreveal_type(w)\nreveal_type(e)\nreveal_type(w.get())\nreveal_type(e.get())\n",
+                "from typing import reveal_type\nimport b\nreveal_type(b.w)\nreveal_type(b.e)\nreveal_type(b.w.get())\nreveal_type(b.e.get())\n",
             ),
         ],
-        &["b", "main"],
+        &["b"],
     );
 }
 
-/// Without a cycle: moving `A` down `a` moves the declaration of its type parameter. Type
-/// parameters compare equal wherever they are declared, so `b` is not rechecked, and its `A[int]`
-/// keeps the old declaration.
-// Bug: `main` reveals `w.get()` as the escaped type variable `T`.
+/// Without a cycle: moving `A` down `a` moves the declaration of its type parameter. The `A[int]`
+/// that `b` keeps pairs with the parameter of the moved `A`, so `main` reveals `int`.
+// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
 #[test]
-fn test_stale_generic_class_moved() {
+fn test_generic_class_moved() {
     assert_rebuild_matches_clean(
         &[
             ("a", "class A[T]:\n    def get(self) -> T: ...\n"),
@@ -5260,10 +5259,74 @@ fn test_stale_generic_class_moved() {
             ("a", "x = 1\nclass A[T]:\n    def get(self) -> T: ...\n"),
             (
                 "main",
-                "from typing import reveal_type\nfrom b import w\nreveal_type(w)\nreveal_type(w.get())\n",
+                "from typing import reveal_type\nimport b\nreveal_type(b.w)\nreveal_type(b.w.get())\n",
             ),
         ],
-        &["b", "main"],
+        &["b"],
+    );
+}
+
+/// Moving a generic class gives its type parameters no new identity, so the modules that keep
+/// its instances are not rechecked.
+#[test]
+fn test_generic_class_moved_rechecks_only_its_module() {
+    let mut i = Incremental::new();
+    i.set("foo", "class A[T]:\n    def get(self) -> T: ...\n");
+    i.set("bar", "from foo import A\nw = A[int]()\n");
+    i.set(
+        "main",
+        "from typing import assert_type\nfrom bar import w\nassert_type(w.get(), int)\n",
+    );
+    i.check(&["main"], &["main", "foo", "bar"]);
+    i.set("foo", "x = 1\n\nclass A[T]:\n    def get(self) -> T: ...\n");
+    i.check(&["main"], &["foo"]);
+}
+
+/// A legacy generic class moves down its module, and another module subclasses an instance of it.
+// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
+#[test]
+fn test_legacy_generic_class_moved_under_subclass() {
+    assert_rebuild_matches_clean(
+        &[
+            (
+                "a",
+                "from typing import Generic, TypeVar\nT = TypeVar('T')\nclass A(Generic[T]):\n    def get(self) -> T: ...\n",
+            ),
+            ("b", "from a import A\nclass B(A[int]): ...\n"),
+            ("main", "import b\n"),
+        ],
+        &[
+            (
+                "a",
+                "from typing import Generic, TypeVar\nT = TypeVar('T')\nx = 1\nclass A(Generic[T]):\n    def get(self) -> T: ...\n",
+            ),
+            (
+                "main",
+                "from typing import reveal_type\nfrom b import B\nreveal_type(B().get())\nx: int = B().get()\n",
+            ),
+        ],
+        &["b"],
+    );
+}
+
+/// A generic class moves down its module, and another module returns an instance of it.
+// `b` is not rechecked, so its values keep the position that `Class` stores for `A`.
+#[test]
+fn test_generic_class_moved_under_return_annotation() {
+    assert_rebuild_matches_clean(
+        &[
+            ("a", "class A[T]:\n    def get(self) -> T: ...\n"),
+            ("b", "from a import A\ndef make() -> A[int]: ...\n"),
+            ("main", "import b\n"),
+        ],
+        &[
+            ("a", "\nclass A[T]:\n    def get(self) -> T: ...\n"),
+            (
+                "main",
+                "import b\nx: int = b.make().get()\ny: str = b.make().get()\n",
+            ),
+        ],
+        &["b"],
     );
 }
 

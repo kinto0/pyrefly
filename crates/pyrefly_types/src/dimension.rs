@@ -1726,6 +1726,7 @@ mod tests {
     use crate::literal::Literal;
     use crate::quantified::AnchorIndex;
     use crate::quantified::Quantified;
+    use crate::quantified::QuantifiedAnchor;
     use crate::quantified::QuantifiedIdentity;
     use crate::quantified::QuantifiedOrigin;
     use crate::test_type_env::TestTypeEnv;
@@ -1803,7 +1804,7 @@ mod tests {
         Type::Quantified(Box::new(Quantified::new(
             QuantifiedIdentity::new(
                 ModuleName::from_str("__test__"),
-                AnchorIndex::first(TextRange::default()),
+                AnchorIndex::first(QuantifiedAnchor::None),
                 QuantifiedOrigin::Pep695,
             ),
             Name::new_static("N"),

@@ -102,6 +102,7 @@ use crate::types::keywords::TypeMap;
 use crate::types::literal::Lit;
 use crate::types::quantified::AnchorIndex;
 use crate::types::quantified::Quantified;
+use crate::types::quantified::QuantifiedAnchor;
 use crate::types::quantified::QuantifiedIdentity;
 use crate::types::quantified::QuantifiedOrigin;
 use crate::types::read_only::ReadOnlyReason;
@@ -3764,8 +3765,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// Creates a Quantified for a class's "self" type.
     fn get_self_quantified(&self, class: &Class, instance_type: Type) -> Quantified {
         let identity = QuantifiedIdentity::new(
-            self.module().name(),
-            AnchorIndex::first(class.range(self)),
+            class.module_name(),
+            AnchorIndex::first(QuantifiedAnchor::Class(class.index())),
             QuantifiedOrigin::Synthetic { is_self: true },
         );
         Quantified::new(

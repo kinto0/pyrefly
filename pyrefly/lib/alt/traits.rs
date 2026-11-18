@@ -222,7 +222,7 @@ impl<Ans: LookupAnswer> Solve<Ans> for Key {
                 Some(TypeInfo::of_ty(answers.heap.mk_any_implicit()))
             }
             Binding::TypeLevelLambdaParameter(parameter) => {
-                let ty = answers.resolve_map_int_tuples_mapper_parameter(&parameter.identifier);
+                let ty = answers.resolve_map_int_tuples_mapper_parameter(parameter);
                 Some(TypeInfo::of_ty(ty))
             }
             Binding::Forward(_) | Binding::Narrow(..) | Binding::Phi(JoinStyle::NarrowOf(_), _) => {
@@ -593,13 +593,10 @@ impl<Ans: LookupAnswer> Solve<Ans> for KeyLegacyTypeParam {
     fn solve(
         answers: &AnswersSolver<Ans>,
         binding: &BindingLegacyTypeParam,
-        range: TextRange,
+        _range: TextRange,
         _errors: &ErrorCollector,
     ) -> SolveResult<Self> {
-        // `range` is the KeyLegacyTypeParam's own range (first occurrence of the TypeVar
-        // name in this scope), which is unique per (scope, TypeVar) pair and serves as
-        // the scope anchor for deterministic Quantified identity.
-        SolveResult::Answer(answers.solve_legacy_tparam(binding, range))
+        SolveResult::Answer(answers.solve_legacy_tparam(binding))
     }
 
     fn promote_recursive(heap: &TypeHeap, _: Var) -> Self::Answer {

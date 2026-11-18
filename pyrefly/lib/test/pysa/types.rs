@@ -14,6 +14,7 @@ use pyrefly_types::class::ClassType;
 use pyrefly_types::lit_int::LitInt;
 use pyrefly_types::quantified::AnchorIndex;
 use pyrefly_types::quantified::Quantified;
+use pyrefly_types::quantified::QuantifiedAnchor;
 use pyrefly_types::quantified::QuantifiedIdentity;
 use pyrefly_types::quantified::QuantifiedOrigin;
 use pyrefly_types::simplify::unions;
@@ -25,7 +26,6 @@ use pyrefly_types::typed_dict::AnonymousTypedDictInner;
 use pyrefly_types::typed_dict::TypedDictField;
 use pyrefly_types::types::Type;
 use ruff_python_ast::name::Name;
-use ruff_text_size::TextRange;
 
 use crate::report::pysa::class::ClassRef;
 use crate::report::pysa::context::ModuleAnswersContext;
@@ -483,7 +483,7 @@ class MyTypedDict(TypedDict):
                     Name::new_static("T"),
                     QuantifiedIdentity::new(
                         ModuleName::from_str("__test__"),
-                        AnchorIndex::first(TextRange::default()),
+                        AnchorIndex::first(QuantifiedAnchor::None),
                         QuantifiedOrigin::Pep695,
                     ),
                     /* default */ None,
@@ -516,7 +516,7 @@ class MyTypedDict(TypedDict):
                     Name::new_static("F"),
                     QuantifiedIdentity::new(
                         ModuleName::from_str("__test__"),
-                        AnchorIndex::new(TextRange::default(), 2),
+                        AnchorIndex::new(QuantifiedAnchor::None, 2),
                         QuantifiedOrigin::Pep695,
                     ),
                     None,
@@ -565,7 +565,7 @@ class MyTypedDict(TypedDict):
                     Name::new_static("G"),
                     QuantifiedIdentity::new(
                         ModuleName::from_str("__test__"),
-                        AnchorIndex::new(TextRange::default(), 3),
+                        AnchorIndex::new(QuantifiedAnchor::None, 3),
                         QuantifiedOrigin::Pep695,
                     ),
                     None,
@@ -598,7 +598,7 @@ class MyTypedDict(TypedDict):
                     Name::new_static("T"),
                     QuantifiedIdentity::new(
                         ModuleName::from_str("__test__"),
-                        AnchorIndex::new(TextRange::default(), 1),
+                        AnchorIndex::new(QuantifiedAnchor::None, 1),
                         QuantifiedOrigin::Pep695,
                     ),
                     /* default */ None,

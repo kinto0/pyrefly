@@ -27,6 +27,7 @@ use pyrefly_types::known_class::KnownClass;
 use pyrefly_types::literal::LitStyle;
 use pyrefly_types::quantified::AnchorIndex;
 use pyrefly_types::quantified::Quantified;
+use pyrefly_types::quantified::QuantifiedAnchor;
 use pyrefly_types::quantified::QuantifiedIdentity;
 use pyrefly_types::quantified::QuantifiedOrigin;
 use pyrefly_types::type_level_dsl::ParsedTypeShapeDslFunction;
@@ -678,7 +679,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     Name::new_static("Receiver"),
                     QuantifiedIdentity::new(
                         self.module().name(),
-                        AnchorIndex::first(def.name.range),
+                        AnchorIndex::first(QuantifiedAnchor::Function(def_index)),
                         QuantifiedOrigin::MethodReceiver,
                     ),
                     None,
