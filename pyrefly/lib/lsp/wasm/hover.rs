@@ -1525,6 +1525,50 @@ fn class_docstring_for_constructor(
     from_definition.or_else(|| docstring_for_class_object_type(transaction, handle, &callee_type))
 }
 
+/// Docstring inherited from the nearest base class method with the same name, for a
+/// method override that has no docstring of its own. For each base class, a stub
+/// docstring wins over the implementation.
+fn inherited_method_docstring(
+    transaction: &Transaction<'_>,
+    handle: &Handle,
+    type_: &Type,
+) -> Option<Docstring> {
+    let metadata = type_.toplevel_func_metadata()?;
+    let cls = metadata.kind.class()?;
+    let name = metadata.kind.function_name().into_owned();
+    let ancestors: Vec<ClassType> =
+        transaction.ad_hoc_solve(handle, "inherited_docstring", |solver| {
+            solver
+                .get_mro_for_class(&cls)
+                .ancestors_no_object()
+                .to_vec()
+        })?;
+    let preferences = [
+        FindPreference::default(),
+        FindPreference {
+            prefer_pyi: false,
+            include_interpreter_stdlib: true,
+            ..FindPreference::default()
+        },
+    ];
+    ancestors.into_iter().find_map(|ancestor| {
+        preferences.into_iter().find_map(|preference| {
+            let item = transaction
+                .find_attribute_definition_for_base_type(
+                    handle,
+                    preference,
+                    Type::ClassType(ancestor.clone()),
+                    &name,
+                )
+                .ok()?
+                .into_vec()
+                .into_iter()
+                .next()?;
+            nonempty_docstring(Docstring(item.doc_ranges.docstring()?, item.module))
+        })
+    })
+}
+
 pub fn get_hover(
     transaction: &Transaction<'_>,
     handle: &Handle,
@@ -1693,6 +1737,7 @@ pub fn get_hover_with_verbosity(
     } else {
         docstring
     }
+    .or_else(|| inherited_method_docstring(transaction, handle, &type_))
     .or_else(|| field_docstring_at_definition(ast.as_deref()?, module_info?, position));
 
     let name = name.or_else(|| identifier_text_at(transaction, handle, position));

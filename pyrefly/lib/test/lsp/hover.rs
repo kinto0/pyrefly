@@ -4638,3 +4638,106 @@ greet(name="x")
     );
     assert_eq!(report.matches("Who to greet").count(), 2);
 }
+
+#[test]
+fn hover_on_override_without_docstring_shows_base_docstring() {
+    let code = r#"
+class SettingsProvider:
+    def get_setting(self, key: str) -> str | None:
+        """Return the setting value, or None if it is not configured."""
+        return None
+
+class DictSettingsProvider(SettingsProvider):
+    def get_setting(self, key: str) -> str | None:
+        return None
+
+DictSettingsProvider().get_setting("x")
+#                        ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    assert!(
+        report.contains("Return the setting value"),
+        "Expected base class docstring on override hover, got: {report}"
+    );
+}
+
+#[test]
+fn hover_on_override_with_docstring_prefers_own_docstring() {
+    let code = r#"
+class Base:
+    def f(self) -> None:
+        """Base docstring."""
+
+class Child(Base):
+    def f(self) -> None:
+        """Child docstring."""
+
+Child().f()
+#       ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    assert!(report.contains("Child docstring."), "got: {report}");
+    assert!(!report.contains("Base docstring."), "got: {report}");
+}
+
+#[test]
+fn hover_on_override_falls_back_to_base_py_docstring() {
+    let mut test_env = TestEnv::new();
+    test_env.add_with_path(
+        "lib",
+        "lib.py",
+        r#"class Base:
+    def f(self) -> None:
+        """Base documentation."""
+
+    def g(self) -> None:
+        """Implementation documentation."""
+"#,
+    );
+    test_env.add_with_path(
+        "lib",
+        "lib.pyi",
+        r#"class Base:
+    def f(self) -> None: ...
+    def g(self) -> None:
+        """Stub documentation."""
+"#,
+    );
+    let main_code = r#"from lib import Base
+
+class Child(Base):
+    def f(self) -> None:
+        pass
+
+    def g(self) -> None:
+        pass
+
+Child().f()
+#       ^
+Child().g()
+#       ^
+"#;
+    test_env.add("main", main_code);
+    let (state, handle) = test_env.to_state();
+    let main_handle = handle("main");
+    let reports = extract_cursors_for_test(main_code)
+        .into_iter()
+        .map(|position| get_test_report(&state, &main_handle, position))
+        .collect::<Vec<_>>();
+
+    assert!(
+        reports[0].contains("Base documentation."),
+        "got: {}",
+        reports[0]
+    );
+    assert!(
+        reports[1].contains("Stub documentation."),
+        "got: {}",
+        reports[1]
+    );
+    assert!(
+        !reports[1].contains("Implementation documentation."),
+        "got: {}",
+        reports[1]
+    );
+}
