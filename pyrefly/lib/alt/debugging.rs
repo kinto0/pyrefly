@@ -8,7 +8,6 @@
 use pyrefly_graph::index::Idx;
 use pyrefly_util::display::DisplayWithCtx;
 
-use crate::alt::answers::Answers;
 use crate::alt::answers::LookupAnswer;
 use crate::alt::answers_solver::AnswersSolver;
 use crate::alt::answers_solver::CalcId;
@@ -64,14 +63,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         format!("{}", self.bindings().get(idx).display_with(self.bindings()))
     }
 
-    pub fn show_binding_for_with<K: Keyed>(&self, idx: Idx<K>, answers: &Answers) -> String
-    where
-        BindingTable: TableKeyed<K, Value = BindingEntry<K>>,
-    {
-        let bindings = answers.bindings();
-        format!("{}", bindings.get(idx).display_with(bindings))
-    }
-
     pub fn show_current_module(&self) -> String {
         format!("{}", self.module().name())
     }
@@ -82,7 +73,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // In practice we'll never hit this debugging, but there's no need to panic if we do.
                 "(None)".to_owned()
             }
-            Some(calc_id) => format!("{calc_id}"),
+            Some(calc_id) => format!("{calc_id:?}"),
         }
     }
 
@@ -92,9 +83,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 // In practice we'll never hit this debugging, but there's no need to panic if we do.
                 "(None)".to_owned()
             }
-            Some(CalcId(answers, idx)) => {
-                dispatch_anyidx!(&idx, self, show_binding_for_with, &answers)
+            // Only the bindings of this solver's module are at hand.
+            Some(CalcId(module, idx)) if module == self.module().key().exact() => {
+                dispatch_anyidx!(&idx, self, show_binding_for)
             }
+            Some(calc_id) => format!("{calc_id:?}"),
         }
     }
 
@@ -102,7 +95,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.stack()
             .into_vec()
             .into_iter()
-            .map(|calc_id| format!("{calc_id}"))
+            .map(|calc_id| format!("{calc_id:?}"))
     }
 
     // Get a printable representation of the current cycle.
@@ -113,6 +106,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             .current_cycle()
             .unwrap()
             .into_iter()
-            .map(|c| format!("{c}"))
+            .map(|c| format!("{c:?}"))
     }
 }

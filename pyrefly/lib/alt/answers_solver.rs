@@ -16,7 +16,8 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::hash::Hasher;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::slice;
 use std::sync::Arc;
@@ -35,6 +36,8 @@ use pyrefly_graph::index::Idx;
 use pyrefly_python::module_key::ExactModuleKey;
 use pyrefly_python::module_key::ModuleKey;
 use pyrefly_python::module_name::ModuleName;
+#[cfg(test)]
+use pyrefly_python::module_path::ModulePath;
 use pyrefly_types::class::ClassType;
 use pyrefly_types::heap::TypeHeap;
 use pyrefly_types::known_class::KnownClass;
@@ -97,8 +100,6 @@ use crate::export::exports::LookupExport;
 use crate::module::module_info::ModuleInfo;
 use crate::solver::solver::CallContext;
 use crate::solver::solver::PinError;
-#[cfg(test)]
-use crate::solver::solver::Solver;
 use crate::solver::solver::SubsetError;
 use crate::solver::solver::VarRecurser;
 use crate::solver::type_order::TypeOrder;
@@ -143,67 +144,33 @@ impl<'a, 'subset> TypeCheckOptions<'a, 'subset> {
 
 /// Compactly represents the identity of a binding, for the purposes of
 /// understanding the calculation stack.
-#[derive(Clone, Dupe)]
-pub struct CalcId(pub Arc<Answers>, pub AnyIdx);
+///
+/// The module is compared exactly, so an open buffer and its file on disk are
+/// different modules here.
+#[derive(Clone, Dupe, PartialEq, Eq, Hash)]
+pub struct CalcId(pub ExactModuleKey, pub AnyIdx);
 
 impl Debug for CalcId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let module = self.0.key();
         write!(
             f,
             "CalcId({}, {}, {:?})",
-            self.bindings().module().name(),
-            self.bindings().module().path(),
-            self.1,
+            module.name(),
+            module.path(),
+            self.1
         )
     }
 }
 
-impl Display for CalcId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "CalcId({}, {}, {})",
-            self.bindings().module().name(),
-            self.bindings().module().path(),
-            self.1.display_with(self.bindings()),
-        )
-    }
-}
-
-impl PartialEq for CalcId {
-    fn eq(&self, other: &Self) -> bool {
-        (
-            self.bindings().module().name(),
-            self.bindings().module().path(),
-            &self.1,
-        ) == (
-            other.bindings().module().name(),
-            other.bindings().module().path(),
-            &other.1,
-        )
-    }
-}
-
-impl Eq for CalcId {}
-
+/// Orders by index, then by module name and path, which is the same in every run.
 impl Ord for CalcId {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.1.cmp(&other.1) {
-            Ordering::Equal => match self
-                .bindings()
-                .module()
-                .name()
-                .cmp(&other.bindings().module().name())
-            {
-                Ordering::Equal => self
-                    .bindings()
-                    .module()
-                    .path()
-                    .cmp(other.bindings().module().path()),
-                not_equal => not_equal,
-            },
-            not_equal => not_equal,
-        }
+        let (module, other_module) = (self.0.key(), other.0.key());
+        self.1
+            .cmp(&other.1)
+            .then_with(|| module.name().cmp(&other_module.name()))
+            .then_with(|| module.path().cmp(other_module.path()))
     }
 }
 
@@ -213,19 +180,7 @@ impl PartialOrd for CalcId {
     }
 }
 
-impl Hash for CalcId {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.bindings().module().name().hash(state);
-        self.bindings().module().path().hash(state);
-        self.1.hash(state);
-    }
-}
-
 impl CalcId {
-    pub(crate) fn bindings(&self) -> &Bindings {
-        self.0.bindings()
-    }
-
     /// Create a CalcId for testing purposes.
     ///
     /// The `module_name` creates a distinguishable module, and `idx` creates
@@ -233,19 +188,9 @@ impl CalcId {
     /// (module_name, idx) pairs will compare as not equal.
     #[cfg(test)]
     pub fn for_test(module_name: &str, idx: usize) -> Self {
-        use pyrefly_graph::index::Idx;
-
-        let answers = Arc::new(Answers::new(
-            Bindings::for_test(module_name),
-            Solver::new(Default::default()),
-            false,
-            false,
-            ErrorStyle::Never,
-        ));
-        // Create a fake Key index - the actual key doesn't matter for test purposes,
-        // only that different idx values produce different CalcIds
-        let key_idx: Idx<Key> = Idx::new(idx);
-        CalcId(answers, AnyIdx::Key(key_idx))
+        let path = ModulePath::filesystem(PathBuf::from(format!("/test/{module_name}.py")));
+        let module = ModuleKey::new(ModuleName::from_str(module_name), &path);
+        CalcId(module.exact(), AnyIdx::Key(Idx::new(idx)))
     }
 }
 
@@ -865,7 +810,6 @@ impl CalcStack {
     ///
     /// When a new SCC overlaps with existing SCCs (shares participants),
     /// we merge them to form a larger SCC.
-    #[allow(clippy::mutable_key_type)] // CalcId's Hash impl doesn't depend on mutable parts
     fn on_scc_detected(&self, raw: Vec1<CalcId>) {
         let calc_stack_vec = self.into_vec();
 
@@ -930,8 +874,7 @@ impl CalcStack {
                     .rev()
                     .skip(1)
                     .all(|scc| !scc.node_state.contains_key(current)),
-                "on_calculation_finished: CalcId {} found in multiple SCCs",
-                current,
+                "on_calculation_finished: {current:?} found in multiple SCCs",
             );
             canonical
         }; // scc_stack borrow dropped here
@@ -983,7 +926,6 @@ impl CalcStack {
     /// `detected_at`; this has the potentially-useful property of being a valid
     /// identifier of the merged Scc *after* the merge, since we always use the
     /// very first cycle detected for `detected_at`.
-    #[allow(clippy::mutable_key_type)]
     fn merge_sccs(&self, detected_at_of_scc: &CalcId) {
         let calc_stack_vec = self.into_vec();
         let mut scc_stack = self.scc_stack.borrow_mut();
@@ -1070,9 +1012,8 @@ impl CalcStack {
         // If we merged but the target is somehow not in iteration state,
         // this is a bug: the merge should have included it.
         unreachable!(
-            "membership back-edge: target {} was in iterating SCC but \
+            "membership back-edge: target {current:?} was in iterating SCC but \
              not found in merged SCC's iteration state",
-            current,
         );
     }
 
@@ -1205,8 +1146,7 @@ impl CalcStack {
                 .rev()
                 .skip(1)
                 .all(|scc| !scc.node_state.contains_key(target)),
-            "set_iteration_placeholder: CalcId {} found in multiple SCCs",
-            target,
+            "set_iteration_placeholder: {target:?} found in multiple SCCs",
         );
         answer
     }
@@ -1294,10 +1234,6 @@ impl CalcStack {
     ///
     /// Within a warm iteration of an SCC, a member that was widened once stays
     /// widened until the SCC restarts cold, so the widening is monotonic.
-    #[expect(
-        clippy::mutable_key_type,
-        reason = "CalcId's Hash impl doesn't depend on mutable parts"
-    )]
     pub fn widen_inferred_return(&self, exceeds_limit: bool) -> bool {
         let mut scc_stack = self.scc_stack.borrow_mut();
         let Some(top_scc) = scc_stack.last_mut() else {
@@ -1627,7 +1563,7 @@ impl Display for Scc {
         let states: Vec<_> = self.node_state.iter().collect();
         write!(
             f,
-            "Scc{{node_state: {:?}, detected_at: {}}}",
+            "Scc{{node_state: {:?}, detected_at: {:?}}}",
             states, self.detected_at,
         )
     }
@@ -1643,7 +1579,6 @@ impl Scc {
         SccDriver(id)
     }
 
-    #[allow(clippy::mutable_key_type)] // CalcId's Hash impl doesn't depend on mutable parts
     fn new(raw: Vec1<CalcId>, calc_stack_vec: &[CalcId], owner: SccOwner) -> Self {
         let detected_at = raw.first().dupe();
 
@@ -1754,7 +1689,6 @@ impl Scc {
     /// state). Answer generations from both SCCs remain available while active
     /// calculations unwind; their `NeedsDemotion` representation makes the
     /// required cold restart explicit.
-    #[allow(clippy::mutable_key_type)]
     fn merge(mut self, other: Scc) -> Self {
         // Union node_state maps (keep the more advanced state)
         for (k, v) in other.node_state {
@@ -1821,7 +1755,6 @@ impl Scc {
     /// They must be `InProgress` (not `Fresh`) because their computation has
     /// already started — a revisit of a `Fresh` node would incorrectly trigger
     /// the `Participant → InProgress` transition again.
-    #[allow(clippy::mutable_key_type)]
     fn absorb_calc_stack_members(&mut self, calc_stack: &[CalcId], from_pos: usize) {
         let mut added_new = false;
         for calc_id in calc_stack.iter().skip(from_pos) {
@@ -1836,7 +1769,6 @@ impl Scc {
     }
 
     /// Pair every final answer with its node's deferred side effects.
-    #[allow(clippy::mutable_key_type)] // CalcId's ordering does not depend on mutable parts.
     fn into_final_answers(
         self,
     ) -> impl ExactSizeIterator<
@@ -1880,7 +1812,7 @@ impl Scc {
                     | SccNodeState::InProgress
                     | SccNodeState::HasPlaceholder(_) => {
                         panic!(
-                            "SCC node {} is {:?} when collecting final answers",
+                            "SCC node {:?} is {:?} when collecting final answers",
                             calc_id, node_state,
                         );
                     }
@@ -1922,7 +1854,6 @@ impl Scc {
     /// Advances answer storage so the current generation becomes the previous
     /// generation, resets all member states to Fresh, increments the iteration
     /// counter, resets `has_changed`, and clears `recursion_breaks`.
-    #[allow(clippy::mutable_key_type)]
     fn advance_to_next_warm_iteration(&mut self) {
         let current_iteration = self.iterative.iteration;
         self.iterative.answers.advance();
@@ -2154,10 +2085,6 @@ const MAX_DEMOTIONS: u32 = 10;
 /// Check whether the demotion count has exceeded `MAX_DEMOTIONS`, and panic
 /// if so. Extracted from the `iterative_resolve_scc` loop to allow direct
 /// unit testing of the safety limit.
-///
-/// Uses `Debug` formatting for `scc_identity` rather than `Display` because
-/// `CalcId::Display` requires a populated bindings table (which panics in
-/// test contexts), while `CalcId::Debug` prints the raw index safely.
 fn check_demotion_limit(demotions: u32, scc_identity: &CalcId) {
     if demotions > MAX_DEMOTIONS {
         panic!(
@@ -2783,15 +2710,14 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
 
         // Fast path: if the value is already calculated, return it immediately
-        // without constructing a CalcId or touching the CalcStack. This avoids
-        // the CalcId Arc increment, position_of hash map insert/remove, RefCell
-        // borrows, and SCC checks for the common case of re-reading an already-
-        // solved binding.
+        // without touching the CalcStack. This avoids the position_of hash map
+        // insert/remove, RefCell borrows, and SCC checks for the common case of
+        // re-reading an already-solved binding.
         if let Some(v) = self.current().get_idx(idx) {
             return (v, true);
         }
 
-        let current = CalcId(self.current.dupe(), K::to_anyidx(idx));
+        let current = CalcId(self.module().key().exact(), K::to_anyidx(idx));
 
         // Check depth limit before any calculation
         let borrowed = if let Some(config) = self.recursion_limit_config()
@@ -3197,9 +3123,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Returns true if the cell is same-module.
     fn is_same_module(&self, calc_id: &CalcId) -> bool {
-        let bindings = calc_id.bindings();
-        bindings.module().name() == self.bindings().module().name()
-            && bindings.module().path() == self.bindings().module().path()
+        calc_id.0 == self.module().key().exact()
     }
 
     /// Reserve a single result slot for SCC publication.
@@ -3329,7 +3253,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ///
     /// Called after the fixpoint iteration converges (or max iterations are
     /// reached).
-    #[allow(clippy::mutable_key_type)]
     fn commit_final_answers(&self, scc: Scc) {
         let members = scc.into_final_answers();
 
@@ -3362,31 +3285,27 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
 
     /// Drive a single iteration member by calling `get_idx` for its typed index.
     ///
-    /// The member is a `CalcId` containing `(Answers, AnyIdx)`. For same-module
+    /// The member is a `CalcId` containing `(ExactModuleKey, AnyIdx)`. For same-module
     /// members (where the member's module matches this solver's module), we
     /// dispatch through `dispatch_anyidx!` to call `get_idx` with the concrete
     /// key type. Cross-module members are driven via `solve_idx_erased`, which
     /// constructs a temporary `AnswersSolver` in the target module's context
     /// using the shared `ThreadState` (and therefore the shared `CalcStack`).
     fn drive_member(&self, calc_id: &CalcId) {
-        let any_idx = &calc_id.1;
-        let bindings = calc_id.bindings();
-        if bindings.module().name() != self.bindings().module().name()
-            || bindings.module().path() != self.bindings().module().path()
-        {
+        if !self.is_same_module(calc_id) {
             // Cross-module member: drive via LookupAnswer::solve_idx_erased,
             // which routes to the target module's Answers and constructs a
             // temporary AnswersSolver there with the shared ThreadState.
             assert!(
                 self.answers
                     .solve_idx_erased(calc_id, self.thread_state, self.answer_scope),
-                "drive_member: cross-module driving failed for {}. \
+                "drive_member: cross-module driving failed for {:?}. \
                  The target module's Answers may not be loaded.",
                 calc_id,
             );
             return;
         }
-        dispatch_anyidx!(any_idx, self, drive_member_typed);
+        dispatch_anyidx!(&calc_id.1, self, drive_member_typed);
     }
 
     /// Type-specialized helper for `drive_member`. Calls `get_idx` for the
@@ -3456,7 +3375,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     /// driver returns without popping or committing it. The older driver is
     /// suspended lower on the Rust call stack and resumes ownership when the
     /// nested calculation returns.
-    #[allow(clippy::mutable_key_type)]
     fn iterative_resolve_scc(&self, mut scc: Scc) {
         let driver = scc.start_driver();
         let mut demotions: u32 = 0;
@@ -3534,6 +3452,17 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 let errors = errors
                     .as_ref()
                     .expect("a final non-convergent SCC member must have collected errors");
+                // A cross-module member's module is looked up as it is for publication. If its
+                // Answers are gone, another worker published its Solutions, and publication
+                // discards this member's errors as well.
+                let member_answers = if self.is_same_module(calc_id) {
+                    self.current.dupe()
+                } else {
+                    let Some(answers) = self.answers.answers_in_module(calc_id) else {
+                        continue;
+                    };
+                    answers
+                };
                 let current = scc
                     .iterative
                     .answers
@@ -3546,7 +3475,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     report_non_convergent_member,
                     current,
                     previous,
-                    &calc_id.0,
+                    &member_answers,
                     errors
                 );
             }
@@ -3674,7 +3603,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         eprintln!("\n--- CalcStack ---");
         let stack_vec = self.stack().into_vec();
         for (i, calc_id) in stack_vec.iter().rev().enumerate() {
-            eprintln!("  [{}] {}", i, calc_id);
+            eprintln!("  [{}] {:?}", i, calc_id);
         }
 
         eprintln!("\n--- Scc Stack ---");
@@ -4399,7 +4328,6 @@ mod scc_tests {
     ///
     /// This bypasses the normal Scc::new constructor to allow direct construction
     /// for testing merge logic.
-    #[allow(clippy::mutable_key_type)]
     fn make_test_scc(
         node_state: BTreeMap<CalcId, SccNodeState>,
         detected_at: CalcId,
@@ -4439,7 +4367,6 @@ mod scc_tests {
     }
 
     /// Helper to create node_state map with all nodes Fresh.
-    #[allow(clippy::mutable_key_type)]
     fn fresh_nodes(ids: &[CalcId]) -> BTreeMap<CalcId, SccNodeState> {
         ids.iter()
             .map(|id| (id.dupe(), SccNodeState::Fresh))
@@ -4582,7 +4509,6 @@ mod scc_tests {
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn test_scc_merge_retains_current_and_previous_answers() {
         let a = CalcId::for_test("m", 0);
         let b = CalcId::for_test("m", 1);
@@ -4876,7 +4802,6 @@ mod scc_tests {
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn test_merge_many_takes_most_advanced_state() {
         let a = CalcId::for_test("m", 0);
         let b = CalcId::for_test("m", 1);
@@ -5046,7 +4971,6 @@ mod scc_tests {
     }
 
     #[test]
-    #[allow(clippy::mutable_key_type)]
     fn test_membership_back_edge_merge_and_demotion() {
         // Verify that pushing a CalcId which is a member of a non-top iterating
         // SCC causes the SCCs and their answer generations to merge.
@@ -5253,5 +5177,20 @@ mod scc_tests {
         // developers investigating a crash can identify the root cause.
         let id = CalcId::for_test("m", 0);
         check_demotion_limit(MAX_DEMOTIONS + 1, &id);
+    }
+
+    #[test]
+    fn test_calc_id_keeps_open_buffer_and_disk_file_apart() {
+        // An open buffer and its file on disk are solved separately, so the
+        // same index in each is a different calculation.
+        let name = ModuleName::from_str("foo");
+        let path = PathBuf::from("/test/foo.py");
+        let disk = ModuleKey::new(name, &ModulePath::filesystem(path.clone()));
+        let memory = ModuleKey::new(name, &ModulePath::memory(path));
+        let disk_id = CalcId(disk.exact(), AnyIdx::Key(Idx::new(0)));
+        let memory_id = CalcId(memory.exact(), AnyIdx::Key(Idx::new(0)));
+        assert_ne!(disk_id, memory_id);
+        assert_ne!(disk_id.cmp(&memory_id), Ordering::Equal);
+        assert_eq!(disk_id, CalcId(disk.exact(), AnyIdx::Key(Idx::new(0))));
     }
 }

@@ -674,59 +674,6 @@ impl Bindings {
         res
     }
 
-    /// Create a minimal Bindings for testing purposes.
-    ///
-    /// This creates a fake module with the given name and a mutation-free wrapper summary,
-    /// which is useful for creating distinguishable CalcIds in tests.
-    #[cfg(test)]
-    pub fn for_test(name: &str) -> Self {
-        use std::path::PathBuf;
-
-        use pyrefly_python::module::Module;
-        use pyrefly_python::module_path::ModulePath;
-
-        let module_name = ModuleName::from_str(name);
-        let module_path = ModulePath::filesystem(PathBuf::from(format!("/test/{}.py", name)));
-        let contents = Arc::new(String::new());
-        let module_info = Module::new(module_name, module_path, contents);
-        let mut table = BindingTable::default();
-        let functools_wrapper_mutation =
-            bind_functools_wrapper_mutation(&mut table, TextRange::default(), false);
-        let metadata = Arc::new(BindingsMetadata::new(&module_info));
-        Self {
-            module_info,
-            parse_errors: ModuleDiagnostics::default(),
-            binding_errors: ModuleDiagnostics::default(),
-            sys_info: SysInfo::default(),
-            table,
-            metadata,
-            module_ranges: None,
-            annotated_metadata_ranges: Vec::new(),
-            docstring_type_ranges: Vec::new(),
-            scope_trace: None,
-            module_deletes: SmallSet::new(),
-            unset_nodes: UnsetNodes::default(),
-            global_declarations: SmallSet::new(),
-            environment_definitions: SmallMap::new(),
-            environment_names: SmallSet::new(),
-            unused_imports: Vec::new(),
-            unused_variables: Vec::new(),
-            pytest_info: None,
-            setattr_name_literals: Vec::new(),
-            lambda_yield_keys: Vec::new(),
-            owned_lambda_params: SmallMap::new(),
-            lambda_parameter_derived: OnceLock::new(),
-            class_scopes: Vec::new(),
-            call_base_classes: Vec::new(),
-            class_field_definitions: SmallMap::new(),
-            shape_declarations: ShapeDeclarations::default(),
-            subsequently_initialized: SmallSet::new(),
-            class_scope_fallbacks: SmallMap::new(),
-            promote_ranges: SmallSet::new(),
-            functools_wrapper_mutation,
-        }
-    }
-
     pub fn display<K: Keyed>(&self, idx: Idx<K>) -> impl Display + '_
     where
         BindingTable: TableKeyed<K, Value = BindingEntry<K>>,

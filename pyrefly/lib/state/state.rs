@@ -3500,7 +3500,8 @@ impl<'a> TransactionHandle<'a> {
 
     /// Look up a target module's Answers for a cross-module operation.
     ///
-    /// Cross-module SCC publication and `solve_idx_erased` need to:
+    /// Cross-module SCC publication, non-convergence reporting, and
+    /// `solve_idx_erased` need to:
     ///   1. Resolve the target module from a `CalcId`.
     ///   2. Read the module's `Steps` under a read lock.
     ///   3. Handle the case where Answers have been evicted but Solutions
@@ -3509,15 +3510,10 @@ impl<'a> TransactionHandle<'a> {
     /// This helper centralizes that logic and returns a `TargetAnswers`
     /// enum so callers only need to handle the "answers available" case.
     fn lookup_target_answers(&self, calc_id: &CalcId) -> TargetAnswers<'a> {
-        let bindings = calc_id.bindings();
-
         // Look up the target module. Use default ModuleDep since cross-module
         // operations don't establish new dependencies.
         let module_data = match self
-            .get_module(
-                LookupModule::Exact(bindings.module().key()),
-                ModuleDep::Exists,
-            )
+            .get_module(LookupModule::Exact(calc_id.0.key()), ModuleDep::Exists)
             .finding()
         {
             Some(data) => data,
@@ -3948,6 +3944,13 @@ impl<'a> LookupAnswer for TransactionHandle<'a> {
                 let (errors, traces) = reserved.take_side_effects();
                 answers.publish_reserved_preliminary(reserved, errors, traces);
             }
+        }
+    }
+
+    fn answers_in_module(&self, calc_id: &CalcId) -> Option<Arc<Answers>> {
+        match self.lookup_target_answers(calc_id) {
+            TargetAnswers::Available { answers, .. } => Some(answers),
+            TargetAnswers::ModuleNotFound | TargetAnswers::Evicted => None,
         }
     }
 

@@ -1300,6 +1300,16 @@ pub trait LookupAnswer: Sized {
     /// Default implementation does nothing (not supported).
     fn publish_reserved_in_module(&self, _reserved: &mut ReservedSlot<'_, '_, '_, Self>) {}
 
+    /// Look up the Answers of a cross-module SCC member's module, to report on
+    /// that member.
+    ///
+    /// Returns `None` if the Answers are unavailable, in which case
+    /// `reserve_in_module` does not reserve the member either. The default
+    /// implementation returns `None` (not supported).
+    fn answers_in_module(&self, _calc_id: &CalcId) -> Option<Arc<Answers>> {
+        None
+    }
+
     /// Look up the class fields for a class, which may be defined in another
     /// module. The fields are populated during the binding phase and can be
     /// queried without going through the solve code path.

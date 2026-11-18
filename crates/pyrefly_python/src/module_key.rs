@@ -81,6 +81,14 @@ impl ModuleKey {
     }
 }
 
+impl ExactModuleKey {
+    /// The `ModuleKey` of this module, whose `name` and `path` are the ones this key was created
+    /// with.
+    pub fn key(self) -> ModuleKey {
+        ModuleKey(self.0)
+    }
+}
+
 /// The interned hash, which covers only what `eq` compares (see `ModuleIdentity`).
 impl Hash for ModuleKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
