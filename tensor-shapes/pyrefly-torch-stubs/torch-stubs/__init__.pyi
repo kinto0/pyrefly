@@ -706,6 +706,7 @@ type _DType = dtype
 
 # Dtype and memory-format constants
 qint8: Any
+qint32: dtype
 quint8: Any
 float16: Any
 half: Any
