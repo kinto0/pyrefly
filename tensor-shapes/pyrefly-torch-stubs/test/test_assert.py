@@ -10,10 +10,10 @@ from shape_extensions import assert_raises, assert_shape
 def test_assert() -> None:
     # https://docs.pytorch.org/docs/stable/generated/torch._assert.html
     tensor = torch.ones((2, 3))
-    torch._assert(tensor.shape == (2, 3), "shape")  # E: attribute `_assert`
-    torch._assert(torch.tensor(True), "scalar")  # E: attribute `_assert`
+    torch._assert(tensor.shape == (2, 3), "shape")
+    torch._assert(torch.tensor(True), "scalar")
     assert_shape(tensor.shape, (2, 3))
     with assert_raises(AssertionError):
-        torch._assert(False, "false")  # E: attribute `_assert`
+        torch._assert(False, "false")
     with assert_raises(AssertionError):
-        torch._assert(torch.tensor(False), "false tensor")  # E: attribute `_assert`
+        torch._assert(torch.tensor(False), "false tensor")
