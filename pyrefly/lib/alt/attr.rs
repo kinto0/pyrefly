@@ -3070,6 +3070,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         self.as_attribute_base1_of_type(member, acc);
                     }
                 }
+                // type[type[T]] is approximated by type[type[<upper bound of T>]].
+                Type::Quantified(q) => self.as_attribute_base1_of_type(
+                    self.heap.mk_type_of(q.upper_bound(self, self.heap)),
+                    acc,
+                ),
                 _ => {}
             },
             Type::TypeVar(_) => acc.push(AttributeBase1::ClassObject(ClassBase::ClassType(

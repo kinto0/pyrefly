@@ -2228,3 +2228,11 @@ def literal_union[T: (Literal[0, 1], Literal[2])](x: T, y: T) -> Literal[0]:
     return 0
 "#,
 );
+
+testcase!(
+    test_eq_on_class_of_typevar_type,
+    r#"
+def f[V](x: type[V]) -> None:
+    x.__class__ == int
+    "#,
+);
