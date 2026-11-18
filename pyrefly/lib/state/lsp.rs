@@ -4712,7 +4712,7 @@ impl<'a> Transaction<'a> {
 
     pub fn prepare_rename(&self, handle: &Handle, position: TextSize) -> Option<TextRange> {
         let identifier_context = self.identifier_at(handle, position);
-        let dunder_all_range = if identifier_context.is_none()
+        let symbol_literal_range = if identifier_context.is_none()
             && let Some(answers) = self.get_answers(handle)
         {
             let bindings = answers.bindings();
@@ -4730,7 +4730,11 @@ impl<'a> Transaction<'a> {
                     return None;
                 }
             }
-            entry.map(|entry| entry.range)
+            entry.map(|entry| entry.range).or_else(|| {
+                bindings
+                    .dunder_slots_entry_at(position)
+                    .map(|entry| entry.name.range)
+            })
         } else {
             None
         };
@@ -4748,7 +4752,7 @@ impl<'a> Transaction<'a> {
             .map(Vec1::into_vec)
             .unwrap_or_default();
 
-        if dunder_all_range.is_some()
+        if symbol_literal_range.is_some()
             && (definitions.is_empty()
                 || definitions
                     .iter()
@@ -4789,7 +4793,7 @@ impl<'a> Transaction<'a> {
                 self.setattr_name_literal_at(handle, position)
                     .map(|(name, _)| name.range)
             })
-            .or(dunder_all_range)
+            .or(symbol_literal_range)
     }
 
     pub fn find_local_references(
