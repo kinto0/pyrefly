@@ -43,7 +43,7 @@ def repeat_shape(shape: IntTuple, repeats: Int, axis: int | None) -> IntTuple:
         if axis < 0:
             normalized_axis = axis + rank
         else:
-            normalized_axis = axis + 0
+            normalized_axis = axis
         return dsl.IntTuple(
             (
                 shape[index] * repeats if index == normalized_axis else shape[index]
@@ -72,7 +72,7 @@ def repeat_sequence_shape(
         if axis < 0:
             normalized_axis = axis + rank
         else:
-            normalized_axis = axis + 0
+            normalized_axis = axis
     else:
         return dsl.Invalid("axis must be an integer or None")
     extent = source[normalized_axis]
@@ -106,7 +106,7 @@ def take_shape(shape: IntTuple, indices: IntTuple, axis: int | None) -> IntTuple
         if axis < 0:
             normalized_axis = axis + rank
         else:
-            normalized_axis = axis + 0
+            normalized_axis = axis
         return dsl.concat(
             dsl.concat(shape[:normalized_axis], indices),
             shape[normalized_axis + 1 :],
@@ -139,11 +139,11 @@ def diagonal_shape(
     if axis1 < 0:
         first = axis1 + len(shape)
     else:
-        first = axis1 + 0
+        first = axis1
     if axis2 < 0:
         second = axis2 + len(shape)
     else:
-        second = axis2 + 0
+        second = axis2
     if first == second:
         return dsl.Invalid("diagonal axes must be distinct")
     outer = dsl.IntTuple(
@@ -266,7 +266,7 @@ def stack_shape(shapes: IntTuples, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + output_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     rank_mismatches = dsl.IntTuple(
         (0 if len(shape) == len(first) else 1 for shape in shapes)
     )
@@ -300,7 +300,7 @@ def expand_dims_shape(shape: IntTuple, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + output_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     return dsl.IntTuple(
         (
             1
@@ -318,11 +318,11 @@ def swapaxes_shape(shape: IntTuple, axis1: int, axis2: int) -> IntTuple:
     if axis1 < 0:
         first = axis1 + rank
     else:
-        first = axis1 + 0
+        first = axis1
     if axis2 < 0:
         second = axis2 + rank
     else:
-        second = axis2 + 0
+        second = axis2
     return dsl.IntTuple(
         (
             shape[second]

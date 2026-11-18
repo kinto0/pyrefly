@@ -270,11 +270,11 @@ def flatten_shape(shape: IntTuple, start_dim: int, end_dim: int) -> IntTuple:
     if start_dim < 0:
         start = start_dim + rank
     else:
-        start = start_dim + 0
+        start = start_dim
     if end_dim < 0:
         end = end_dim + rank
     else:
-        end = end_dim + 0
+        end = end_dim
     if start > end:
         return dsl.Invalid("flatten start_dim cannot come after end_dim")
     return dsl.concat(
@@ -494,7 +494,6 @@ def unfold_checked_shape(
 def unfold_shape(shape: IntTuple, dimension: int, size: int, step: int) -> IntTuple:
     # TODO(stroxler): Preserve symbolic configuration values instead of returning a gradual shape
     # when the DSL can represent their arithmetic and range constraints.
-    # Binding the rank lets both branches assign the normalized Flag value consistently.
     rank = len(shape)
     if rank == 0:
         if dimension != 0 and dimension != -1:
@@ -509,7 +508,7 @@ def unfold_shape(shape: IntTuple, dimension: int, size: int, step: int) -> IntTu
     if dimension < 0:
         normalized = dimension + rank
     else:
-        normalized = dimension + 0
+        normalized = dimension
     if normalized < 0 or normalized >= rank:
         return dsl.Invalid("unfold dimension out of range")
     if size < 0:
@@ -541,7 +540,7 @@ def cat_shape(shapes: IntTuples, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + len(first)
     else:
-        axis = dim + 0
+        axis = dim
     ranks = dsl.IntTuple((0 if len(shape) == len(first) else 1 for shape in shapes))
     if any(rank == 1 for rank in ranks):
         return dsl.Invalid("cat expects all tensors to have the same rank")
@@ -584,7 +583,7 @@ def stack_shape(shapes: IntTuples, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + output_rank
     else:
-        axis = dim + 0
+        axis = dim
     ranks = dsl.IntTuple((0 if len(shape) == len(first) else 1 for shape in shapes))
     if any(rank == 1 for rank in ranks):
         return dsl.Invalid("stack expects all tensors to have the same rank")
@@ -633,7 +632,7 @@ def select_shape(shape: IntTuple, dim: int, index: Int) -> IntTuple:
             if index < 0:
                 normalized_index = index + extent
             else:
-                normalized_index = index + 0
+                normalized_index = index
             if normalized_index // extent != 0:
                 return dsl.Invalid("select index out of range")
         return shape[:-1]
@@ -642,7 +641,7 @@ def select_shape(shape: IntTuple, dim: int, index: Int) -> IntTuple:
     if dim < 0:
         axis = dim + len(shape)
     else:
-        axis = dim + 0
+        axis = dim
     extent = shape[axis]
     if dsl.is_concrete_int(index) and dsl.is_concrete_int(extent):
         if extent == 0:
@@ -650,7 +649,7 @@ def select_shape(shape: IntTuple, dim: int, index: Int) -> IntTuple:
         if index < 0:
             normalized_index = index + extent
         else:
-            normalized_index = index + 0
+            normalized_index = index
         if normalized_index // extent != 0:
             return dsl.Invalid("select index out of range")
     return dsl.IntTuple(
@@ -700,7 +699,7 @@ def narrow_shape(shape: IntTuple, dim: int, start: Int, length: Int) -> IntTuple
         if dim < 0:
             axis = dim + len(shape)
         else:
-            axis = dim + 0
+            axis = dim
         extent = shape[axis]
     if dsl.is_concrete_int(length) and length < 0:
         return dsl.Invalid("narrow length must be non-negative")
@@ -712,7 +711,7 @@ def narrow_shape(shape: IntTuple, dim: int, start: Int, length: Int) -> IntTuple
         if start < 0:
             normalized_start = start + extent
         else:
-            normalized_start = start + 0
+            normalized_start = start
         if normalized_start // (extent + 1) != 0:
             return dsl.Invalid("narrow start out of range")
         if (normalized_start + length) // (extent + 1) != 0:
@@ -737,7 +736,7 @@ def topk_shape(shape: IntTuple, dim: int, extent: Int) -> IntTuple:
         if dim < 0:
             axis = dim + len(shape)
         else:
-            axis = dim + 0
+            axis = dim
         selected_extent = shape[axis]
     if (
         dsl.is_concrete_int(extent)
@@ -895,7 +894,7 @@ def chunk_shapes(shape: IntTuple, chunks: Int, dim: int) -> IntTuples:
     if dim < 0:
         axis = dim + len(shape)
     else:
-        axis = dim + 0
+        axis = dim
     extent = shape[axis]
     if dsl.is_concrete_int(extent) and extent == 0:
         return dsl.IntTuples(
@@ -1372,11 +1371,11 @@ def diag_embed_shape(shape: IntTuple, offset: int, dim1: int, dim2: int) -> IntT
     if dim1 < 0:
         normalized_dim1 = dim1 + output_rank
     else:
-        normalized_dim1 = dim1 + 0
+        normalized_dim1 = dim1
     if dim2 < 0:
         normalized_dim2 = dim2 + output_rank
     else:
-        normalized_dim2 = dim2 + 0
+        normalized_dim2 = dim2
     if (
         normalized_dim1 < 0
         or normalized_dim1 >= output_rank
@@ -1430,11 +1429,11 @@ def vecdot_shape(left: IntTuple, right: IntTuple, dim: int) -> IntTuple:
     if dim < 0:
         left_axis = dim + len(left)
     else:
-        left_axis = dim + 0
+        left_axis = dim
     if dim < 0:
         right_axis = dim + len(right)
     else:
-        right_axis = dim + 0
+        right_axis = dim
     left_batch = dsl.concat(left[:left_axis], left[left_axis + 1 :])
     right_batch = dsl.concat(right[:right_axis], right[right_axis + 1 :])
     moved_left = dsl.concat(left_batch, left[left_axis : left_axis + 1])
@@ -1464,11 +1463,11 @@ def cross_shape(left: IntTuple, right: IntTuple, dim: int) -> IntTuple:
     if dim < 0:
         left_axis = dim + len(left)
     else:
-        left_axis = dim + 0
+        left_axis = dim
     if dim < 0:
         right_axis = dim + len(right)
     else:
-        right_axis = dim + 0
+        right_axis = dim
     left_extent = left[left_axis]
     right_extent = right[right_axis]
     if dsl.is_concrete_int(left_extent) and left_extent != 3:
@@ -1563,14 +1562,14 @@ def diagonal_shape(shape: IntTuple, offset: int, dim1: int, dim2: int) -> IntTup
     if dim1 < 0:
         normalized_dim1 = dim1 + rank
     else:
-        normalized_dim1 = dim1 + 0
+        normalized_dim1 = dim1
     if normalized_dim1 < 0 or normalized_dim1 >= rank:
         return dsl.Invalid("diagonal dim1 out of range")
 
     if dim2 < 0:
         normalized_dim2 = dim2 + rank
     else:
-        normalized_dim2 = dim2 + 0
+        normalized_dim2 = dim2
     if normalized_dim2 < 0 or normalized_dim2 >= rank:
         return dsl.Invalid("diagonal dim2 out of range")
     if normalized_dim1 == normalized_dim2:
@@ -2278,7 +2277,7 @@ def fft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT dimension out of range")
     if n is None:
@@ -2294,7 +2293,7 @@ def rfft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT dimension out of range")
     if n is None:
@@ -2311,7 +2310,7 @@ def irfft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT dimension out of range")
     if n is None:

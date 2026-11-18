@@ -58,7 +58,7 @@ def linspace_shape(base_shape: IntTuple, num: Int, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + out_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     return dsl.concat(
         dsl.concat(base_shape[:norm_axis], dsl.IntTuple((num,))),
         base_shape[norm_axis:],
@@ -75,7 +75,7 @@ def choice_shape(
     if axis < 0:
         normalized_axis = axis + len(population_shape)
     else:
-        normalized_axis = axis + 0
+        normalized_axis = axis
     return dsl.concat(
         dsl.concat(population_shape[:normalized_axis], sample_shape),
         population_shape[normalized_axis + 1 :],
@@ -318,7 +318,6 @@ def svd_vt_shape(shape: IntTuple, full_matrices: bool) -> IntTuple:
         return dsl.concat(batch, dsl.IntTuple((n, n)))
     return dsl.concat(batch, dsl.IntTuple((dsl.Int.gradual(), n)))
 
-# Arithmetic gives both axis-normalization branches the same DSL value domain.
 # Negative bounds use subtraction because the DSL cannot negate Flag integers.
 @type_shape_dsl_function
 def lax_all_gather_shape(shape: IntTuple, axis: int, tiled: bool) -> IntTuple:
@@ -331,7 +330,7 @@ def lax_all_gather_shape(shape: IntTuple, axis: int, tiled: bool) -> IntTuple:
     if axis < 0:
         normalized = axis + rank
     else:
-        normalized = axis + 0
+        normalized = axis
     # Axis names carry no group size; only the communicated dimension is gradual.
     if tiled:
         return dsl.IntTuple(
@@ -349,7 +348,7 @@ def lax_psum_scatter_shape(shape: IntTuple, axis: int, tiled: bool) -> IntTuple:
     if axis < 0:
         normalized = axis + rank
     else:
-        normalized = axis + 0
+        normalized = axis
     if normalized < 0 or normalized >= rank:
         return dsl.Invalid("psum_scatter dimension out of bounds")
     if tiled:
@@ -460,7 +459,7 @@ def repeat_shape(shape: IntTuple, repeats: Int, axis: int | None) -> IntTuple:
         if axis < 0:
             normalized_axis = axis + rank
         else:
-            normalized_axis = axis + 0
+            normalized_axis = axis
         return dsl.IntTuple(
             (
                 shape[index] * repeats if index == normalized_axis else shape[index]
@@ -477,8 +476,7 @@ def unstack_shape(batch: IntTuple, last: Int, axis: int) -> IntTuple:
     if axis < 0:
         normalized_axis = axis + len(shape)
     else:
-        # Arithmetic keeps both branch assignments in the same DSL value domain.
-        normalized_axis = axis + 0
+        normalized_axis = axis
     return dsl.concat(shape[:normalized_axis], shape[normalized_axis + 1 :])
 
 @type_shape_dsl_function
@@ -491,7 +489,7 @@ def fft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT axis out of bounds")
     if dsl.is_concrete_int(n) and n < 0:
@@ -506,7 +504,7 @@ def rfft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT axis out of bounds")
     if n is None:
@@ -527,7 +525,7 @@ def irfft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     if dim < 0:
         axis = dim + rank
     else:
-        axis = dim + 0
+        axis = dim
     if axis < 0 or axis >= rank:
         return dsl.Invalid("FFT axis out of bounds")
     if n is None:
@@ -535,7 +533,7 @@ def irfft_shape(shape: IntTuple, n: Int | None, dim: int) -> IntTuple:
     else:
         if dsl.is_concrete_int(n) and n < 0:
             return dsl.Invalid("n must be non-negative")
-        extent = n + 0
+        extent = n
     return dsl.concat(
         dsl.concat(shape[:axis], dsl.IntTuple((extent,))), shape[axis + 1 :]
     )
@@ -1071,14 +1069,14 @@ def diagonal_shape(shape: IntTuple, offset: int, axis1: int, axis2: int) -> IntT
     if axis1 < 0:
         norm_axis1 = axis1 + rank
     else:
-        norm_axis1 = axis1 + 0
+        norm_axis1 = axis1
     if norm_axis1 < 0 or norm_axis1 >= rank:
         return dsl.Invalid("axis1 out of bounds")
 
     if axis2 < 0:
         norm_axis2 = axis2 + rank
     else:
-        norm_axis2 = axis2 + 0
+        norm_axis2 = axis2
     if norm_axis2 < 0 or norm_axis2 >= rank:
         return dsl.Invalid("axis2 out of bounds")
 
@@ -1166,14 +1164,14 @@ def trace_shape(shape: IntTuple, offset: int, axis1: int, axis2: int) -> IntTupl
     if axis1 < 0:
         norm_axis1 = axis1 + rank
     else:
-        norm_axis1 = axis1 + 0
+        norm_axis1 = axis1
     if norm_axis1 < 0 or norm_axis1 >= rank:
         return dsl.Invalid("axis1 out of bounds")
 
     if axis2 < 0:
         norm_axis2 = axis2 + rank
     else:
-        norm_axis2 = axis2 + 0
+        norm_axis2 = axis2
     if norm_axis2 < 0 or norm_axis2 >= rank:
         return dsl.Invalid("axis2 out of bounds")
 
@@ -1203,14 +1201,14 @@ def cross_axes_shape(
     if axisa < 0:
         norm_axisa = axisa + rank_a
     else:
-        norm_axisa = axisa + 0
+        norm_axisa = axisa
     if norm_axisa < 0 or norm_axisa >= rank_a:
         return dsl.Invalid("axisa out of bounds")
 
     if axisb < 0:
         norm_axisb = axisb + rank_b
     else:
-        norm_axisb = axisb + 0
+        norm_axisb = axisb
     if norm_axisb < 0 or norm_axisb >= rank_b:
         return dsl.Invalid("axisb out of bounds")
 
@@ -1250,7 +1248,7 @@ def cross_axes_shape(
     if axisc < 0:
         norm_axisc = axisc + out_rank
     else:
-        norm_axisc = axisc + 0
+        norm_axisc = axisc
     if norm_axisc < 0 or norm_axisc >= out_rank:
         return dsl.Invalid("axisc out of bounds")
     return dsl.concat(
@@ -1274,7 +1272,7 @@ def expand_dims_shape(shape: IntTuple, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + out_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     return dsl.concat(
         dsl.concat(shape[:norm_axis], dsl.IntTuple((1,))),
         shape[norm_axis:],
@@ -1296,7 +1294,7 @@ def squeeze_shape(shape: IntTuple, axis: int | tuple[int, ...] | None) -> IntTup
         if axis < 0:
             norm_axis = axis + len(shape)
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         dim_val = shape[norm_axis]
         if dsl.is_concrete_int(dim_val) and dim_val != 1:
             return dsl.Invalid(
@@ -1318,7 +1316,7 @@ def concatenate_shape(shapes: IntTuples, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     ranks = dsl.IntTuple((0 if len(shape) == rank else 1 for shape in shapes))
     if any(r == 1 for r in ranks):
         return dsl.Invalid("all input arrays must have the same number of dimensions")
@@ -1358,7 +1356,7 @@ def stack_shape(shapes: IntTuples, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + out_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     ranks = dsl.IntTuple((0 if len(shape) == len(first) else 1 for shape in shapes))
     if any(r == 1 for r in ranks):
         return dsl.Invalid("all input arrays must have the same number of dimensions")
@@ -1439,11 +1437,11 @@ def swapaxes_shape(shape: IntTuple, axis1: int, axis2: int) -> IntTuple:
     if axis1 < 0:
         norm_axis1 = axis1 + rank
     else:
-        norm_axis1 = axis1 + 0
+        norm_axis1 = axis1
     if axis2 < 0:
         norm_axis2 = axis2 + rank
     else:
-        norm_axis2 = axis2 + 0
+        norm_axis2 = axis2
     if norm_axis1 == norm_axis2:
         return shape
     return dsl.IntTuple(
@@ -1465,13 +1463,13 @@ def moveaxis_shape(shape: IntTuple, source: int, destination: int) -> IntTuple:
     if source < 0:
         norm_source = source + rank
     else:
-        norm_source = source + 0
+        norm_source = source
     if destination < 0 - rank or destination >= rank:
         return dsl.Invalid("destination axis out of bounds")
     if destination < 0:
         norm_dest = destination + rank
     else:
-        norm_dest = destination + 0
+        norm_dest = destination
     dim = shape[norm_source]
     remaining = dsl.concat(shape[:norm_source], shape[norm_source + 1 :])
     return dsl.concat(
@@ -1489,17 +1487,17 @@ def rollaxis_shape(shape: IntTuple, axis: int, start: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     if start < 0 - rank or start > rank:
         return dsl.Invalid("start out of bounds")
     if start < 0:
         norm_start = start + rank
     else:
-        norm_start = start + 0
+        norm_start = start
     if norm_axis < norm_start:
         target_pos = norm_start - 1
     else:
-        target_pos = norm_start + 0
+        target_pos = norm_start
     dim = shape[norm_axis]
     remaining = dsl.concat(shape[:norm_axis], shape[norm_axis + 1 :])
     return dsl.concat(
@@ -1629,7 +1627,7 @@ def collapse_to_end_shape(shape: IntTuple, start: int) -> IntTuple:
     if start < 0:
         norm_start = start + rank
     else:
-        norm_start = start + 0
+        norm_start = start
     if norm_start < 0 or norm_start > rank:
         return dsl.Invalid("start_dimension out of bounds")
     collapsed_dim = dsl.prod(shape[norm_start:])
@@ -1641,11 +1639,11 @@ def collapse_shape(shape: IntTuple, start: int, stop: int) -> IntTuple:
     if start < 0:
         norm_start = start + rank
     else:
-        norm_start = start + 0
+        norm_start = start
     if stop < 0:
         norm_stop = stop + rank
     else:
-        norm_stop = stop + 0
+        norm_stop = stop
     if norm_start < 0 or norm_start > rank:
         return dsl.Invalid("start_dimension out of bounds")
     if norm_stop < 0 or norm_stop > rank:
@@ -1691,7 +1689,7 @@ def top_k_shape(shape: IntTuple, k: int, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     if norm_axis < 0 or norm_axis >= rank:
         return dsl.Invalid("axis out of bounds")
     if k < 0:
@@ -1754,7 +1752,7 @@ def lax_associative_scan_shape(shape: IntTuple, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     if norm_axis < 0 or norm_axis >= rank:
         return dsl.Invalid("axis out of bounds")
     return shape
@@ -1841,7 +1839,7 @@ def lax_dynamic_index_in_dim_shape(
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     if keepdims:
         return dsl.concat(
             dsl.concat(shape[:norm_axis], dsl.IntTuple((1,))),
@@ -1859,7 +1857,7 @@ def lax_dynamic_slice_in_dim_shape(
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     extent = slice_size + 0
     return dsl.concat(
         dsl.concat(shape[:norm_axis], dsl.IntTuple((extent,))),
@@ -1887,7 +1885,7 @@ def take_shape(
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         if norm_axis < 0 or norm_axis >= rank:
             return dsl.Invalid("axis out of bounds")
         return dsl.concat(
@@ -1925,7 +1923,7 @@ def take_along_axis_shape(
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         if norm_axis < 0 or norm_axis >= rank:
             return dsl.Invalid("axis out of bounds")
         extent = idx_shape[norm_axis] + 0
@@ -1953,7 +1951,7 @@ def compress_shape(
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         if norm_axis < 0 or norm_axis >= rank:
             return dsl.Invalid("axis out of bounds")
         return dsl.concat(
@@ -2039,7 +2037,7 @@ def append_shape(
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         if any(arr_shape[i] != values_shape[i] for i in range(rank) if i != norm_axis):
             return dsl.Invalid(
                 "all input array dimensions for the concatenation axis must match exactly"
@@ -2065,7 +2063,7 @@ def packbits_shape(shape: IntTuple, axis: int | None) -> IntTuple:
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         return dsl.IntTuple(
             ((shape[i] + 7) // 8 if i == norm_axis else shape[i] for i in range(rank))
         )
@@ -2090,7 +2088,7 @@ def unpackbits_shape(shape: IntTuple, axis: int | None, count: int | None) -> In
         if axis < 0:
             norm_axis = axis + rank
         else:
-            norm_axis = axis + 0
+            norm_axis = axis
         if count is not None:
             if dsl.is_int_value(count):
                 return dsl.IntTuple(
@@ -2246,7 +2244,7 @@ def split_shape(shape: IntTuple, sections: int, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     if sections <= 0:
         return dsl.Invalid("number of sections must be positive")
     extent = shape[norm_axis]
@@ -2357,7 +2355,7 @@ def one_hot_shape(shape: IntTuple, num_classes: Int, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + out_rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     return dsl.concat(
         dsl.concat(shape[:norm_axis], dsl.IntTuple((num_classes,))),
         shape[norm_axis:],
@@ -2373,7 +2371,7 @@ def glu_shape(shape: IntTuple, axis: int) -> IntTuple:
     if axis < 0:
         norm_axis = axis + rank
     else:
-        norm_axis = axis + 0
+        norm_axis = axis
     extent = shape[norm_axis]
     if dsl.is_concrete_int(extent) and extent % 2 != 0:
         return dsl.Invalid("glu input dimension must be divisible by 2")
