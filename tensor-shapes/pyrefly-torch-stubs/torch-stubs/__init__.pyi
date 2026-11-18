@@ -707,6 +707,7 @@ type _DType = dtype
 # Dtype and memory-format constants
 qint8: Any
 qint32: dtype
+per_tensor_symmetric: qscheme
 quint8: Any
 float16: Any
 half: Any
