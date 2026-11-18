@@ -1500,29 +1500,40 @@ fn class_docstring_for_constructor(
         return None;
     }
 
-    let preferences = [
-        FindPreference {
-            resolve_call_dunders: false,
-            ..FindPreference::default()
-        },
-        FindPreference {
-            prefer_pyi: false,
-            include_interpreter_stdlib: true,
-            resolve_call_dunders: false,
-            ..FindPreference::default()
-        },
-    ];
-    let from_definition = preferences.into_iter().find_map(|preference| {
-        let item = transaction
+    let base = FindPreference {
+        resolve_call_dunders: false,
+        ..FindPreference::default()
+    };
+    docstring_preferring_stub(base, |preference| {
+        transaction
             .find_definition(handle, position, preference)
-            .ok()
-            .and_then(|items| items.into_vec().into_iter().next())?;
-        item.doc_ranges
-            .docstring()
-            .map(|range| Docstring(range, item.module))
-            .and_then(nonempty_docstring)
-    });
-    from_definition.or_else(|| docstring_for_class_object_type(transaction, handle, &callee_type))
+            .ok()?
+            .into_vec()
+            .into_iter()
+            .next()
+    })
+    .or_else(|| docstring_for_class_object_type(transaction, handle, &callee_type))
+}
+
+/// The first nonempty docstring that `lookup` finds when it prefers the stub, then when
+/// it prefers the implementation, so a stub docstring wins over the implementation's.
+fn docstring_preferring_stub(
+    base: FindPreference,
+    lookup: impl Fn(FindPreference) -> Option<FindDefinitionItemWithDocstring>,
+) -> Option<Docstring> {
+    let stub = FindPreference {
+        prefer_pyi: true,
+        ..base
+    };
+    let implementation = FindPreference {
+        prefer_pyi: false,
+        include_interpreter_stdlib: true,
+        ..base
+    };
+    [stub, implementation].into_iter().find_map(|preference| {
+        let item = lookup(preference)?;
+        nonempty_docstring(Docstring(item.doc_ranges.docstring()?, item.module))
+    })
 }
 
 /// Docstring inherited from the nearest base class method with the same name, for a
@@ -1559,17 +1570,9 @@ fn inherited_method_docstring(
                 .cloned()
                 .collect()
         })?;
-    let preferences = [
-        FindPreference::default(),
-        FindPreference {
-            prefer_pyi: false,
-            include_interpreter_stdlib: true,
-            ..FindPreference::default()
-        },
-    ];
     ancestors.into_iter().find_map(|ancestor| {
-        preferences.into_iter().find_map(|preference| {
-            let item = transaction
+        docstring_preferring_stub(FindPreference::default(), |preference| {
+            transaction
                 .find_attribute_definition_for_base_type(
                     handle,
                     preference,
@@ -1579,8 +1582,7 @@ fn inherited_method_docstring(
                 .ok()?
                 .into_vec()
                 .into_iter()
-                .next()?;
-            nonempty_docstring(Docstring(item.doc_ranges.docstring()?, item.module))
+                .next()
         })
     })
 }
