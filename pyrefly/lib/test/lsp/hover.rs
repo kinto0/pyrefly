@@ -4741,3 +4741,131 @@ Child().g()
         reports[1]
     );
 }
+
+#[test]
+fn hover_on_override_inherits_docstring_in_mro_order() {
+    let code = r#"
+class Root:
+    def f(self) -> None:
+        """Root docstring."""
+
+class A(Root):
+    pass
+
+class B(Root):
+    def f(self) -> None:
+        """B docstring."""
+
+class Child(A, B):
+    def f(self) -> None:
+        pass
+
+Child().f()
+#       ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    // Bug: `B` precedes `Root` in the MRO of `Child`, so `B.f` should provide the docstring.
+    assert_eq!(
+        r#"
+# main.py
+17 | Child().f()
+             ^
+```python
+(method) f: def f(self: Child) -> None: ...
+```
+---
+Root docstring."#
+            .trim(),
+        report.trim()
+    );
+}
+
+#[test]
+fn hover_on_name_bound_to_override_does_not_inherit_docstring() {
+    let code = r#"
+class Base:
+    def f(self) -> None:
+        """Base docstring."""
+
+class Child(Base):
+    def f(self) -> None:
+        pass
+
+class Holder:
+    callback = Child.f
+#   ^
+    """Field docstring."""
+    f = Child.f
+#   ^
+    """Same-name field docstring."""
+
+bound = Child().f
+print(bound)
+#     ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    // Bug: none of these names is an override of `Base.f`. The fields should show their own
+    // docstrings, and the variable should show none.
+    assert_eq!(
+        r#"
+# main.py
+11 |     callback = Child.f
+         ^
+```python
+(function) callback: def f(self: Child) -> None: ...
+```
+---
+Base docstring.
+
+14 |     f = Child.f
+         ^
+```python
+(function) f: def f(self: Child) -> None: ...
+```
+---
+Base docstring.
+
+19 | print(bound)
+           ^
+```python
+(method) bound: def f(self: Child) -> None: ...
+```
+---
+Base docstring."#
+            .trim(),
+        report.trim()
+    );
+}
+
+#[test]
+fn hover_on_private_method_does_not_inherit_docstring() {
+    let code = r#"
+class Base:
+    def __helper(self) -> None:
+        """Base docstring."""
+
+class Child(Base):
+    def __helper(self) -> None:
+        pass
+
+    def run(self) -> None:
+        self.__helper()
+#              ^
+"#;
+    let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
+    // Bug: name mangling makes `Child.__helper` a different attribute from `Base.__helper`,
+    // so it is not an override and should not inherit the docstring.
+    assert_eq!(
+        r#"
+# main.py
+11 |         self.__helper()
+                    ^
+```python
+(method) __helper: def __helper(self: Self@Child) -> None: ...
+```
+---
+Base docstring."#
+            .trim(),
+        report.trim()
+    );
+}
