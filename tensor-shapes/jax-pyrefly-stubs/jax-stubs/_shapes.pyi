@@ -48,9 +48,7 @@ def arange_size(start: int, stop: int, step: int) -> Int:
 
 @type_shape_dsl_function
 def linspace_shape(base_shape: IntTuple, num: Int, axis: int) -> IntTuple:
-    zero_tuple = dsl.IntTuple((0,))
-    zero = zero_tuple[0]
-    if dsl.is_concrete_int(num) and num < zero:
+    if dsl.is_concrete_int(num) and num < 0:
         return dsl.Invalid("Number of samples, num, must be non-negative")
     out_rank = len(base_shape) + 1
     if axis < 0 - out_rank or axis >= out_rank:
@@ -1130,12 +1128,7 @@ def diagonal_shape(shape: IntTuple, offset: int, axis1: int, axis2: int) -> IntT
 @type_shape_dsl_function
 def diag_shape(shape: IntTuple, k: int) -> IntTuple:
     if len(shape) == 1:
-        if k >= 0:
-            k_tuple = dsl.IntTuple((k + 0,))
-        else:
-            k_tuple = dsl.IntTuple((0 - k,))
-        k_dim = k_tuple[0]
-        dim = shape[0] + k_dim
+        dim = shape[0] + abs(k)
         return dsl.IntTuple((dim, dim))
     elif len(shape) == 2:
         axis1 = 0
@@ -1146,13 +1139,7 @@ def diag_shape(shape: IntTuple, k: int) -> IntTuple:
 
 @type_shape_dsl_function
 def diagflat_shape(shape: IntTuple, k: int) -> IntTuple:
-    if k >= 0:
-        k_tuple = dsl.IntTuple((k + 0,))
-    else:
-        k_tuple = dsl.IntTuple((0 - k,))
-    k_dim = k_tuple[0]
-    total = dsl.prod(shape)
-    dim = total + k_dim
+    dim = dsl.prod(shape) + abs(k)
     return dsl.IntTuple((dim, dim))
 
 @type_shape_dsl_function
@@ -1926,9 +1913,8 @@ def take_along_axis_shape(
             norm_axis = axis
         if norm_axis < 0 or norm_axis >= rank:
             return dsl.Invalid("axis out of bounds")
-        extent = idx_shape[norm_axis] + 0
         return dsl.concat(
-            dsl.concat(arr_shape[:norm_axis], dsl.IntTuple((extent,))),
+            dsl.concat(arr_shape[:norm_axis], dsl.IntTuple((idx_shape[norm_axis],))),
             arr_shape[norm_axis + 1 :],
         )
     return dsl.Invalid("axis must be an integer or None")
@@ -1973,8 +1959,7 @@ def diag_indices_from_shape(shape: IntTuple) -> IntTuple:
         return dsl.Invalid("input array must be at least 2-d")
     if any(shape[i] != shape[0] for i in range(rank)):
         return dsl.Invalid("All dimensions of input must be of equal length")
-    extent = shape[0] + 0
-    return dsl.IntTuple((extent,))
+    return dsl.IntTuple((shape[0],))
 
 @type_shape_dsl_function
 def ix_shapes(shapes: IntTuples) -> IntTuples:
@@ -1994,9 +1979,7 @@ def convolve_shape(a_shape: IntTuple, v_shape: IntTuple, mode: str) -> IntTuple:
         return dsl.Invalid("convolve and correlate only support 1-dimensional inputs")
     n = a_shape[0]
     m = v_shape[0]
-    zero_tuple = dsl.IntTuple((0,))
-    zero = zero_tuple[0]
-    if n == zero or m == zero:
+    if n == 0 or m == 0:
         return dsl.Invalid("inputs cannot be empty")
     if mode == "full":
         return dsl.IntTuple((n + m - 1,))
@@ -2345,9 +2328,7 @@ def triu_indices_from_shape(shape: IntTuple, k: int) -> IntTuple:
 
 @type_shape_dsl_function
 def one_hot_shape(shape: IntTuple, num_classes: Int, axis: int) -> IntTuple:
-    zero_tuple = dsl.IntTuple((0,))
-    zero = zero_tuple[0]
-    if dsl.is_concrete_int(num_classes) and num_classes < zero:
+    if dsl.is_concrete_int(num_classes) and num_classes < 0:
         return dsl.Invalid("num_classes must be non-negative")
     out_rank = len(shape) + 1
     if axis < 0 - out_rank or axis >= out_rank:

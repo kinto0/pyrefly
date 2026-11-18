@@ -2264,7 +2264,7 @@ def stft_shape(
             shape[:-1], dsl.IntTuple((n_fft // 2 + 1, dsl.Int.gradual()))
         )
     else:
-        result = dsl.concat(shape[:-1], dsl.IntTuple((n_fft + 0, dsl.Int.gradual())))
+        result = dsl.concat(shape[:-1], dsl.IntTuple((n_fft, dsl.Int.gradual())))
     if return_complex is None or return_complex:
         return result
     return dsl.concat(result, dsl.IntTuple((2,)))
