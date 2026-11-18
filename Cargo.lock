@@ -2315,7 +2315,7 @@ checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pyrefly"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anstream",
  "anyhow",
@@ -2390,7 +2390,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_bench_harness"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "pyrefly",
  "pyrefly_config",
@@ -2399,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_build"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "derive_more",
@@ -2421,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_bundled"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "sha2",
@@ -2432,7 +2432,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_config"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2468,7 +2468,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_derive"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2477,7 +2477,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_glean_schema"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2486,7 +2486,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_graph"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "dupe",
  "pyrefly_util",
@@ -2495,7 +2495,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_lsp_test"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anstream",
  "anyhow",
@@ -2510,7 +2510,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_python"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2539,7 +2539,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_types"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "append-only-vec",
  "compact_str",
@@ -2560,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "pyrefly_util"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "anstream",
  "anyhow",
@@ -3669,7 +3669,7 @@ dependencies = [
 
 [[package]]
 name = "tsp_types"
-version = "1.5.0-dev.1"
+version = "1.5.0"
 dependencies = [
  "lsp-server",
  "serde",

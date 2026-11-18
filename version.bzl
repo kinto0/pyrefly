@@ -22,4 +22,4 @@
 # * The publish workflows are:
 #   * https://github.com/pyrefly-org/pyrefly/actions/workflows/publish_to_pypi.yml
 #   * https://github.com/pyrefly-org/pyrefly/actions/workflows/publish_extension.yml
-VERSION = "1.5.0-dev.1"
+VERSION = "1.5.0"
