@@ -2042,7 +2042,7 @@ impl<'a> Transaction<'a> {
     }
 
     /// The references in `references_by_module` that point at the definition at `definition_range`
-    /// in `module`. Both `Index` attribute reference maps are keyed and shaped alike, so they share
+    /// in `module`. The `Index` attribute reference maps are keyed and shaped alike, so they share
     /// this scan.
     fn recorded_attribute_references(
         &self,
@@ -4983,6 +4983,10 @@ impl<'a> Transaction<'a> {
         let definition_name = Name::new(module.code_at(definition_range));
         let is_parameter_definition =
             definition_metadata.symbol_kind() == Some(SymbolKind::Parameter);
+        let is_attribute = matches!(
+            definition_metadata,
+            DefinitionMetadata::Attribute | DefinitionMetadata::VariableOrAttribute(_)
+        );
         let mut references = if handle.path() != module.path() {
             self.local_references_from_external_definition(handle, definition_range, module)?
         } else {
@@ -4994,11 +4998,7 @@ impl<'a> Transaction<'a> {
                 options.include_declaration,
             )?
         };
-        if matches!(
-            definition_metadata,
-            DefinitionMetadata::Attribute | DefinitionMetadata::VariableOrAttribute(_)
-        ) && let Some(answers) = self.get_answers(handle)
-        {
+        if is_attribute && let Some(answers) = self.get_answers(handle) {
             let literals = answers
                 .bindings()
                 .setattr_name_literals()
@@ -5030,6 +5030,18 @@ impl<'a> Transaction<'a> {
                 module,
                 definition_range,
                 &definition_name,
+            ));
+        }
+        if is_attribute
+            && let Some(index) = self
+                .get_solutions(handle)
+                .and_then(|solutions| solutions.get_index())
+        {
+            references.extend(self.recorded_attribute_references(
+                handle,
+                &index.lock().slot_references,
+                module,
+                definition_range,
             ));
         }
         references.sort_by_key(|range| range.start());
