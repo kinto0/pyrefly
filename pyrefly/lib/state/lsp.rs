@@ -85,6 +85,7 @@ use crate::alt::attr::AttrInfo;
 use crate::binding::binding::Binding;
 use crate::binding::binding::Key;
 use crate::binding::binding::KeyAnnotation;
+use crate::binding::binding::KeyExport;
 use crate::binding::metadata::BindingsMetadata;
 use crate::config::error_kind::ErrorKind;
 use crate::error::error::ErrorQuickFix;
@@ -1495,6 +1496,12 @@ impl<'a> Transaction<'a> {
             context,
         }) = self.identifier_at(handle, position)
         else {
+            if let Some((_, name)) = self.get_exports_data(handle).dunder_all_name_at(position)
+                && let Some(solutions) = self.get_solutions(handle)
+                && let Some(ty) = solutions.get_hashed_opt(Hashed::new(&KeyExport(name)))
+            {
+                return Some(ty.clone());
+            }
             return self
                 .type_from_match_wildcard_at_impl(handle, position)
                 .or_else(|| self.type_from_expression_at_impl(handle, position, false));
