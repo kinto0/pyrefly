@@ -12,7 +12,7 @@ from typing import assert_type
 
 import torch
 import torch.nn as nn
-from shape_extensions import assert_shape, IntTuple
+from shape_extensions import assert_shape
 
 
 def test_module_dict_mapping_items() -> None:
@@ -20,7 +20,6 @@ def test_module_dict_mapping_items() -> None:
     module_dict = nn.ModuleDict(modules)
     for name, module in module_dict.items():
         assert name == "projection"
-        # TODO: BUG: Each value of a module mapping should be a module.
-        assert_type(module, Mapping[str, nn.Linear[3, 4]])
-        projected = module(torch.ones((2, 3)))  # E: Expected a callable
-        assert_shape(projected.shape, IntTuple, runtime=(2, 4))
+        assert_type(module, nn.Linear[3, 4])
+        projected = module(torch.ones((2, 3)))
+        assert_shape(projected.shape, (2, 4))
