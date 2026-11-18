@@ -114,6 +114,7 @@ use crate::state::state::Transaction;
 use crate::state::state::TransactionHandle;
 use crate::types::module::ModuleType;
 use crate::types::type_var::Restriction;
+use crate::types::types::AnyStyle;
 use crate::types::types::Type;
 
 mod dict_completions;
@@ -4669,18 +4670,50 @@ impl<'a> Transaction<'a> {
 
     pub fn prepare_rename(&self, handle: &Handle, position: TextSize) -> Option<TextRange> {
         let identifier_context = self.identifier_at(handle, position);
+        let dunder_all_range = if identifier_context.is_none()
+            && let Some(answers) = self.get_answers(handle)
+        {
+            let bindings = answers.bindings();
+            let entry = bindings
+                .dunder_all_entries()
+                .iter()
+                .find(|entry| entry.range.contains_inclusive(position));
+            // A string can be renamed only when it identifies an editable, resolved binding.
+            if let Some(entry) = entry {
+                let key = bindings.dunder_all_binding(&entry.id)?;
+                if matches!(
+                    bindings.get(bindings.key_to_idx(key)),
+                    Binding::Any(AnyStyle::Error)
+                ) {
+                    return None;
+                }
+            }
+            entry.map(|entry| entry.range)
+        } else {
+            None
+        };
 
         let definitions = self
             .find_definition(
                 handle,
                 position,
                 FindPreference {
+                    import_behavior: ImportBehavior::StopAtRenamedImports,
                     resolve_call_dunders: false,
                     ..Default::default()
                 },
             )
             .map(Vec1::into_vec)
             .unwrap_or_default();
+
+        if dunder_all_range.is_some()
+            && (definitions.is_empty()
+                || definitions
+                    .iter()
+                    .any(|definition| definition.module.path().is_bundled()))
+        {
+            return None;
+        }
 
         for FindDefinitionItemWithDocstring {
             module,
@@ -4714,6 +4747,7 @@ impl<'a> Transaction<'a> {
                 self.setattr_name_literal_at(handle, position)
                     .map(|(name, _)| name.range)
             })
+            .or(dunder_all_range)
     }
 
     pub fn find_local_references(
