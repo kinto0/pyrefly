@@ -4848,8 +4848,6 @@ class Child(Base):
 #              ^
 "#;
     let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
-    // Bug: name mangling makes `Child.__helper` a different attribute from `Base.__helper`,
-    // so it is not an override and should not inherit the docstring.
     assert_eq!(
         r#"
 # main.py
@@ -4857,9 +4855,7 @@ class Child(Base):
                     ^
 ```python
 (method) __helper: def __helper(self: Self@Child) -> None: ...
-```
----
-Base docstring."#
+```"#
             .trim(),
         report.trim()
     );

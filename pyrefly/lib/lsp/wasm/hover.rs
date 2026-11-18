@@ -1541,7 +1541,8 @@ fn docstring_preferring_stub(
 /// docstring wins over the implementation.
 ///
 /// Applies only when `hovered_name` is the method's own name: a field or variable bound to a
-/// method, such as `callback = Child.f`, is not an override.
+/// method, such as `callback = Child.f`, is not an override. A private method is never an
+/// override, because name mangling gives each class its own attribute.
 fn inherited_method_docstring(
     transaction: &Transaction<'_>,
     handle: &Handle,
@@ -1551,7 +1552,7 @@ fn inherited_method_docstring(
     let metadata = type_.toplevel_func_metadata()?;
     let cls = metadata.kind.class()?;
     let name = metadata.kind.function_name().into_owned();
-    if name.as_str() != hovered_name {
+    if name.as_str() != hovered_name || Ast::is_mangled_attr(&name) {
         return None;
     }
     // Visit only ancestors that declare `name` directly. A lookup on any other ancestor follows
