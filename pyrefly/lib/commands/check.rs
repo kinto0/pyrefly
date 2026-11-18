@@ -107,6 +107,8 @@ use crate::error::suppress;
 use crate::error::suppress::CommentLocation;
 use crate::error::suppress::SerializedError;
 use crate::error::suppress::UnusedIgnoreKind;
+use crate::module::typeshed::typeshed;
+use crate::module::typeshed_third_party::typeshed_third_party;
 use crate::report;
 use crate::state::load::FileContents;
 use crate::state::require::Require;
@@ -170,6 +172,18 @@ pub struct FullCheckArgs {
     pub config_override: ConfigOverrideArgs,
 }
 
+/// Read the bundled stdlib stubs, which every check loads, and the index of the bundled
+/// third-party stubs, which every unresolved import consults, on a background thread, while the
+/// check finds its configuration and queries the Python interpreter, which need neither.
+fn preload_bundled_stubs() {
+    thread::spawn(|| {
+        if let Ok(typeshed) = typeshed() {
+            typeshed.preload();
+        }
+        let _ = typeshed_third_party();
+    });
+}
+
 impl FullCheckArgs {
     pub async fn run(
         self,
@@ -178,6 +192,7 @@ impl FullCheckArgs {
         thread_count: ThreadCount,
     ) -> anyhow::Result<(CommandExitStatus, Option<CheckResult>)> {
         self.config_override.validate()?;
+        preload_bundled_stubs();
         let resolve = || {
             self.files
                 .clone()

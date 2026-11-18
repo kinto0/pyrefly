@@ -149,6 +149,11 @@ impl Bundle {
         })
     }
 
+    /// Read the contents now instead of when the first file is loaded.
+    pub(crate) fn preload(&self) {
+        LazyLock::force(&self.contents);
+    }
+
     pub(crate) fn find(&self, module: ModuleName) -> Option<&PathBuf> {
         let index = *self.find.get(&module)?;
         Some(

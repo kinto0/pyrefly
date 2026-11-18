@@ -312,6 +312,11 @@ pub fn custom_typeshed_excludes(stdlib: &Path, module: ModuleName, version: Pyth
 }
 
 impl BundledTypeshedStdlib {
+    /// Decompress the stubs now instead of when the first one is loaded.
+    pub fn preload(&self) {
+        self.bundle.preload();
+    }
+
     pub fn has_module(&self, module: ModuleName) -> bool {
         self.versions.contains_key(&module)
     }
