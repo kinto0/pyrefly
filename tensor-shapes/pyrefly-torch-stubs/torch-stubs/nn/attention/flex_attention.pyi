@@ -24,6 +24,8 @@ class BlockMask:
     kv_num_blocks: Tensor[[int, int, int]]
     mask_mod: _mask_mod_signature | None
 
+    @property
+    def shape(self) -> tuple[int, ...]: ...
     def __init__(
         self,
         mask_mod: _mask_mod_signature | None = None,
