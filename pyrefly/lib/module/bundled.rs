@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 use anyhow::Context as _;
+use dupe::Dupe;
 use pyrefly_config::config::ConfigFile;
 use pyrefly_config::error::ErrorDisplayConfig;
 use pyrefly_config::error_kind::ErrorKind;
@@ -162,7 +163,12 @@ impl Bundle {
         if !self.paths.contains(path) {
             return None;
         }
-        self.contents.get(path).cloned()
+        Some(
+            self.contents
+                .get(path)
+                .expect("the index lists exactly the files in the contents")
+                .dupe(),
+        )
     }
 
     pub(crate) fn modules(&self) -> impl Iterator<Item = ModuleName> + '_ {
