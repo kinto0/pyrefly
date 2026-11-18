@@ -1503,6 +1503,9 @@ impl<'a> Transaction<'a> {
             {
                 return Some(ty.clone());
             }
+            if let Some(ty) = self.dunder_slots_entry_type(handle, position) {
+                return Some(ty);
+            }
             return self
                 .type_from_match_wildcard_at_impl(handle, position)
                 .or_else(|| self.type_from_expression_at_impl(handle, position, false));
@@ -2977,6 +2980,28 @@ impl<'a> Transaction<'a> {
         None
     }
 
+    /// Return the instance attribute type named by a literal `__slots__` entry.
+    fn dunder_slots_entry_type(&self, handle: &Handle, position: TextSize) -> Option<Type> {
+        let answers = self.get_answers(handle)?;
+        let entry = answers.bindings().dunder_slots_entry_at(position)?;
+        self.ad_hoc_solve(handle, "dunder_slots_entry_type", |solver| {
+            let class = solver.get_idx(entry.class_idx).0.as_ref()?;
+            let instance = solver.instantiate(class);
+            if !solver.has_attr(&instance, &entry.name.id) {
+                return None;
+            }
+            Some(solver.type_of_attr_get(
+                &instance,
+                &entry.name.id,
+                entry.name.range,
+                &solver.error_swallower(),
+                ErrorKind::MissingAttribute,
+                None,
+                "dunder_slots_entry_type",
+            ))
+        })?
+    }
+
     fn find_definition_for_keyword_argument(
         &self,
         handle: &Handle,
@@ -3132,6 +3157,23 @@ impl<'a> Transaction<'a> {
                 self.find_definition_for_dunder_all_entry(handle, position, preference)
             {
                 return Ok(vec1![definition]);
+            }
+            if let Some(answers) = self.get_answers(handle)
+                && let Some(entry) = answers.bindings().dunder_slots_entry_at(position)
+                && let Some(class_type) = self
+                    .ad_hoc_solve(handle, "dunder_slots_definition", |solver| {
+                        Some(Type::ClassDef(
+                            solver.get_idx(entry.class_idx).0.as_ref()?.dupe(),
+                        ))
+                    })
+                    .flatten()
+            {
+                return self.find_attribute_definition_for_base_type(
+                    handle,
+                    preference,
+                    class_type,
+                    &entry.name.id,
+                );
             }
         }
 
