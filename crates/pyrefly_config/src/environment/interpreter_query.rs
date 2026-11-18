@@ -28,24 +28,36 @@ use crate::environment::environment::PythonEnvironment;
 /// in the working directory, usually the user's project, from shadowing the modules the script
 /// imports and being executed. `sys` is built in, so importing it cannot load such a file.
 /// Python 3.11+ omits the entry under `-P` or `PYTHONSAFEPATH`, which the check allows for.
+///
+/// `distribution_urls` holds the PEP 610 `direct_url.json` of every distribution installed in a
+/// `sys.path` directory. It is collected by listing those directories rather than through
+/// `importlib.metadata`, which finds the same files but takes most of the script's run time to
+/// import.
 const QUERY_SCRIPT: &str = "\
 import sys
 if sys.path and sys.path[0] == '':
     del sys.path[0]
-import importlib.metadata, json, sysconfig
+import json, os, sysconfig
 platform = sys.platform
 v = sys.version_info
 version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
 stdlib_paths = [p for p in [sysconfig.get_path('stdlib')] if p is not None]
 site_package_path = [p for p in sys.path if p != '' and '.zip' not in p and not p.endswith('/lib-dynload') and p not in stdlib_paths]
 distribution_urls = []
-for distribution in importlib.metadata.distributions():
+for path in sys.path:
     try:
-        distribution_url = json.loads(distribution.read_text('direct_url.json') or 'null')
-    except (OSError, UnicodeError, json.JSONDecodeError):
+        names = os.listdir(path)
+    except OSError:
         continue
-    if isinstance(distribution_url, dict):
-        distribution_urls.append(distribution_url)
+    for name in names:
+        if name.lower().endswith(('.dist-info', '.egg-info')):
+            try:
+                with open(os.path.join(path, name, 'direct_url.json'), encoding='utf-8') as f:
+                    distribution_url = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(distribution_url, dict):
+                distribution_urls.append(distribution_url)
 print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path, 'stdlib_paths': stdlib_paths, 'distribution_urls': distribution_urls}))
 ";
 
@@ -287,7 +299,8 @@ mod tests {
                         .is_ok_and(|path| path.starts_with(&canonical_venv))
             })
             .unwrap();
-        // An editable install of `foo` from `project`, and a regular install of `bar`.
+        // An editable install of `foo` from `project`, a regular install of `bar`, and
+        // distributions whose `direct_url.json` is missing, malformed, or not an object.
         fs::write(
             site_packages.join("foo.pth"),
             format!("{}\n", project.display()),
@@ -305,6 +318,7 @@ mod tests {
                 "bar-1.0.dist-info",
                 json!({"url": "https://example.com/bar-1.0.tar.gz", "archive_info": {}}),
             ),
+            ("baz-1.0.dist-info", json!("not an object")),
         ] {
             fs::create_dir(site_packages.join(distribution)).unwrap();
             fs::write(
@@ -313,6 +327,15 @@ mod tests {
             )
             .unwrap();
         }
+        fs::create_dir(site_packages.join("qux-1.0.dist-info")).unwrap();
+        fs::create_dir(site_packages.join("quux-1.0.dist-info")).unwrap();
+        fs::write(
+            site_packages
+                .join("quux-1.0.dist-info")
+                .join("direct_url.json"),
+            "{",
+        )
+        .unwrap();
 
         let env = query(&interpreter).unwrap();
 
