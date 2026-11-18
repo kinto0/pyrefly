@@ -152,6 +152,34 @@ $ VENV_PROJECT=$(mktemp -d -p /tmp venv.XXXXXX) && \
 > echo "x = 1" > $VENV_PROJECT/test.py && \
 > env -u VIRTUAL_ENV -u CONDA_PREFIX $PYREFLY check $VENV_PROJECT/test.py; \
 > STATUS=$?; rm -rf $VENV_PROJECT; exit $STATUS
+ WARN */pyrefly.toml: Pyrefly * is running, but the Python environment of `*/venv/bin/python` has Pyrefly 0.0.1 installed, so results can differ from that version. Run the Pyrefly from that environment, or set `required-version` to allow other versions. (glob)
+ INFO 0 errors* (glob)
+[0]
+```
+
+## A dev, local, or equal Pyrefly version in the project environment
+
+Only a version equal to the running Pyrefly under PEP 440 is silent.
+
+```scrut {output_stream: stderr}
+$ VENV_PROJECT=$(mktemp -d -p /tmp venv.XXXXXX) && \
+> python3 -m venv $VENV_PROJECT/venv 2>$TMPDIR/venv_stderr || \
+> { cat $TMPDIR/venv_stderr >&2; false; } && \
+> site_packages=$($VENV_PROJECT/venv/bin/python -c "import site; print(site.getsitepackages()[0])") && \
+> touch $VENV_PROJECT/pyrefly.toml && \
+> echo "x = 1" > $VENV_PROJECT/test.py && \
+> RUNNING=$($PYREFLY --version | cut -d' ' -f2) && \
+> for INSTALLED in $RUNNING.dev0 $RUNNING+local $RUNNING; do \
+>   rm -rf $site_packages/pyrefly-*.dist-info && \
+>   mkdir $site_packages/pyrefly-$INSTALLED.dist-info && \
+>   printf 'Metadata-Version: 2.1\nName: pyrefly\nVersion: %s\n' $INSTALLED > $site_packages/pyrefly-$INSTALLED.dist-info/METADATA && \
+>   env -u VIRTUAL_ENV -u CONDA_PREFIX $PYREFLY check $VENV_PROJECT/test.py; \
+> done; \
+> STATUS=$?; rm -rf $VENV_PROJECT; exit $STATUS
+ WARN */pyrefly.toml: Pyrefly * is running, but the Python environment of `*/venv/bin/python` has Pyrefly *.dev0 installed, so results can differ from that version. Run the Pyrefly from that environment, or set `required-version` to allow other versions. (glob)
+ INFO 0 errors* (glob)
+ WARN */pyrefly.toml: Pyrefly * is running, but the Python environment of `*/venv/bin/python` has Pyrefly *+local installed, so results can differ from that version. Run the Pyrefly from that environment, or set `required-version` to allow other versions. (glob)
+ INFO 0 errors* (glob)
  INFO 0 errors* (glob)
 [0]
 ```

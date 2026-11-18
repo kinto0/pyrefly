@@ -33,6 +33,9 @@ use crate::environment::environment::PythonEnvironment;
 /// `sys.path` directory. It is collected by listing those directories rather than through
 /// `importlib.metadata`, which finds the same files but takes most of the script's run time to
 /// import.
+///
+/// `pyrefly_version` is the version of the first `pyrefly` distribution on `sys.path`, the one
+/// `importlib.metadata.version('pyrefly')` returns, read from that distribution's metadata file.
 const QUERY_SCRIPT: &str = "\
 import sys
 if sys.path and sys.path[0] == '':
@@ -44,6 +47,7 @@ version = '{}.{}.{}'.format(v.major, v.minor, v.micro)
 stdlib_paths = [p for p in [sysconfig.get_path('stdlib')] if p is not None]
 site_package_path = [p for p in sys.path if p != '' and '.zip' not in p and not p.endswith('/lib-dynload') and p not in stdlib_paths]
 distribution_urls = []
+pyrefly_version = None
 for path in sys.path:
     try:
         names = os.listdir(path)
@@ -51,6 +55,13 @@ for path in sys.path:
         continue
     for name in names:
         if name.lower().endswith(('.dist-info', '.egg-info')):
+            if pyrefly_version is None and name.lower().startswith('pyrefly-'):
+                metadata = 'METADATA' if name.lower().endswith('.dist-info') else 'PKG-INFO'
+                try:
+                    with open(os.path.join(path, name, metadata), encoding='utf-8') as f:
+                        pyrefly_version = next((line[len('Version:'):].strip() for line in f if line.startswith('Version:')), None)
+                except (OSError, ValueError):
+                    pass
             try:
                 with open(os.path.join(path, name, 'direct_url.json'), encoding='utf-8') as f:
                     distribution_url = json.load(f)
@@ -58,7 +69,7 @@ for path in sys.path:
                 continue
             if isinstance(distribution_url, dict):
                 distribution_urls.append(distribution_url)
-print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path, 'stdlib_paths': stdlib_paths, 'distribution_urls': distribution_urls}))
+print(json.dumps({'python_platform': platform, 'python_version': version, 'site_package_path': site_package_path, 'stdlib_paths': stdlib_paths, 'distribution_urls': distribution_urls, 'pyrefly_version': pyrefly_version}))
 ";
 
 /// The JSON contract emitted by the interpreter-query script run in [`query`].
@@ -73,6 +84,8 @@ struct QueryOutput {
     stdlib_paths: Vec<PathBuf>,
     #[serde(default)]
     distribution_urls: Value,
+    #[serde(default)]
+    pyrefly_version: Option<String>,
 }
 
 /// Given a path to a Python interpreter executable, query that interpreter for its
@@ -136,6 +149,7 @@ pub fn query(interpreter: &Path) -> anyhow::Result<PythonEnvironment> {
         interpreter_site_package_path,
         interpreter_editable_path,
         interpreter_stdlib_path: query_output.stdlib_paths,
+        interpreter_pyrefly_version: query_output.pyrefly_version,
     })
 }
 
@@ -237,6 +251,7 @@ mod tests {
             keys,
             vec![
                 "distribution_urls",
+                "pyrefly_version",
                 "python_platform",
                 "python_version",
                 "site_package_path",

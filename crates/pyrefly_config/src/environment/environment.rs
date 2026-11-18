@@ -78,6 +78,10 @@ pub struct PythonEnvironment {
 
     #[serde(alias = "stdlib_paths", default, skip_serializing)]
     pub interpreter_stdlib_path: Vec<PathBuf>,
+
+    /// The version of the `pyrefly` package installed in the interpreter's environment.
+    #[serde(skip)]
+    pub interpreter_pyrefly_version: Option<String>,
 }
 
 impl PythonEnvironment {
@@ -129,9 +133,10 @@ impl PythonEnvironment {
         if self.site_package_path.is_none() {
             self.site_package_path = other.site_package_path;
         }
-        self.interpreter_site_package_path = other.interpreter_site_package_path.clone();
-        self.interpreter_editable_path = other.interpreter_editable_path.clone();
-        self.interpreter_stdlib_path = other.interpreter_stdlib_path.clone();
+        self.interpreter_site_package_path = other.interpreter_site_package_path;
+        self.interpreter_editable_path = other.interpreter_editable_path;
+        self.interpreter_stdlib_path = other.interpreter_stdlib_path;
+        self.interpreter_pyrefly_version = other.interpreter_pyrefly_version;
     }
 
     /// Given a path to a Python interpreter executable, query that interpreter for its
@@ -265,6 +270,7 @@ mod tests {
                 PathBuf::from("/usr/lib/python3.10"),
                 PathBuf::from("/usr/lib/python3.10/lib-dynload"),
             ],
+            interpreter_pyrefly_version: None,
         };
 
         let display = format!("{}", env);
@@ -281,6 +287,7 @@ mod tests {
             interpreter_site_package_path: Vec::new(),
             interpreter_editable_path: Vec::new(),
             interpreter_stdlib_path: Vec::new(),
+            interpreter_pyrefly_version: None,
         };
 
         let env2 = PythonEnvironment {
@@ -293,6 +300,7 @@ mod tests {
                 PathBuf::from("/usr/lib/python3.10"),
                 PathBuf::from("/usr/lib/python3.10/lib-dynload"),
             ],
+            interpreter_pyrefly_version: None,
         };
 
         env1.override_empty(env2.clone());

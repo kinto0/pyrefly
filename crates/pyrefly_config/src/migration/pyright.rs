@@ -725,6 +725,7 @@ mod tests {
                         .python_environment
                         .interpreter_stdlib_path
                         .clone(),
+                    interpreter_pyrefly_version: None,
                 },
                 root: ConfigBase {
                     infer_with_first_use: Some(false),
@@ -773,6 +774,7 @@ mod tests {
                         .python_environment
                         .interpreter_stdlib_path
                         .clone(),
+                    interpreter_pyrefly_version: None,
                 },
                 root: ConfigBase {
                     infer_with_first_use: Some(false),

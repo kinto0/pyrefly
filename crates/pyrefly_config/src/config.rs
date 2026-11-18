@@ -1860,10 +1860,34 @@ impl ConfigFile {
                 Ok(interpreter) => {
                     let (env, error) = PythonEnvironment::get_interpreter_env(&interpreter);
                     self.python_environment.override_empty(env);
-                    self.interpreters.python_interpreter_path = Some(interpreter);
                     if let Some(error) = error {
                         configure_errors.push(error);
                     }
+                    // A project environment with Pyrefly installed expects that version, unless
+                    // `required-version` says which versions the project accepts. The default
+                    // interpreter on `PATH` is not a project environment.
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if self.required_version.is_none()
+                        && let Some(installed_version) =
+                            &self.python_environment.interpreter_pyrefly_version
+                        && !matches!(
+                            &interpreter,
+                            ConfigOrigin::Auto(path) if Some(path.as_path()) == Interpreters::get_default_interpreter()
+                        )
+                        && installed_version.parse::<Version>().ok()
+                            != Some(
+                                env!("CARGO_PKG_VERSION")
+                                    .parse::<Version>()
+                                    .expect("Pyrefly's package version must be PEP 440 compatible"),
+                            )
+                    {
+                        configure_errors.push(anyhow!(
+                            "Pyrefly {} is running, but the Python environment of `{}` has Pyrefly {installed_version} installed, so results can differ from that version. Run the Pyrefly from that environment, or set `required-version` to allow other versions.",
+                            env!("CARGO_PKG_VERSION"),
+                            interpreter.display()
+                        ));
+                    }
+                    self.interpreters.python_interpreter_path = Some(interpreter);
                 }
                 Err(error) => {
                     self.python_environment.set_empty_to_default();
@@ -2881,6 +2905,7 @@ mod tests {
                         .python_environment
                         .interpreter_editable_path
                         .clone(),
+                    interpreter_pyrefly_version: None,
                 },
                 interpreters: Interpreters {
                     python_interpreter_path: Some(ConfigOrigin::config(PathBuf::from(
@@ -3161,6 +3186,7 @@ mod tests {
                         .python_environment
                         .interpreter_stdlib_path
                         .clone(),
+                    interpreter_pyrefly_version: None,
                 },
                 output_format: Some(OutputFormat::Json),
                 coverage: CoverageConfig {
@@ -3216,6 +3242,7 @@ mod tests {
                         .python_environment
                         .interpreter_stdlib_path
                         .clone(),
+                    interpreter_pyrefly_version: None,
                 },
                 ..Default::default()
             }
