@@ -666,8 +666,26 @@ impl Globs {
                 Self::should_skip_walk_error(filter, err, path)
             }
             ignore::Error::Loop { child, .. } => Self::should_skip_path_error(filter, child),
-            ignore::Error::Io(_)
-            | ignore::Error::Glob { .. }
+            // Ignore broken symlinks for files unrelated to Python.
+            ignore::Error::Io(_) => path.is_some_and(|path| {
+                if Self::should_skip_path_error(filter, path) {
+                    return true;
+                }
+                if Glob::is_python_extension(path.extension()) {
+                    return false;
+                }
+                let Some((link, target)) = Self::broken_symlink_walk_error(error, Some(path))
+                else {
+                    return false;
+                };
+                warn!(
+                    "Skipping broken symlink when walking project files: `{}` points to {:?}",
+                    link.display(),
+                    target,
+                );
+                true
+            }),
+            ignore::Error::Glob { .. }
             | ignore::Error::UnrecognizedFileType(_)
             | ignore::Error::InvalidDefinition => {
                 path.is_some_and(|path| Self::should_skip_path_error(filter, path))
@@ -2544,10 +2562,47 @@ mod tests {
             );
         }
 
-        check(".eslintignore", "missing-target");
-        check("generated.txt", "missing-target");
         check("broken.py", "missing-target\n");
-        check("package", "missing-target");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_dangling_non_python_symlinks_are_skipped() {
+        let tempdir = tempfile::tempdir().unwrap();
+        let root = tempdir.path();
+        TestPath::setup_test_directory(
+            root,
+            vec![
+                TestPath::file("ok.py"),
+                TestPath::dir("sub", vec![TestPath::file("nested.py")]),
+            ],
+        );
+        let missing_dir = root.join("missing-dir");
+        for (link_name, target) in [
+            (".eslintignore", Path::new("missing-target")),
+            ("generated.txt", Path::new("missing-target")),
+            ("sub/LICENSE", Path::new("../LICENSE")),
+            ("sub/package", missing_dir.as_path()),
+        ] {
+            std::os::unix::fs::symlink(target, root.join(link_name)).unwrap();
+        }
+
+        let filtered = FilteredGlobs::new(
+            Globs::new_with_root(root, vec!["**".to_owned()]).unwrap(),
+            Globs::empty(),
+            None,
+            HiddenDirFilter::Disabled,
+        );
+
+        let expected = vec![root.join("ok.py"), root.join("sub/nested.py")];
+        assert_eq!(filtered.files_iter().unwrap().collect::<Vec<_>>(), expected);
+        assert_eq!(
+            filtered
+                .files_iter_with_limit(10)
+                .unwrap()
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 
     /// An excluded dangling symlink is not part of the Python file set and
