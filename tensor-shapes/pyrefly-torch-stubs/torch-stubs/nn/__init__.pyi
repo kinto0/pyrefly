@@ -1446,7 +1446,9 @@ class Flatten[StartDim: Flag[int], EndDim: Flag[int]](Module):
 
 class Unflatten(Module):
     """Unflattens a dimension"""
-    def __init__(self, dim: int | str, unflattened_size: tuple[int, ...]) -> None: ...
+    def __init__(
+        self, dim: int | str, unflattened_size: tuple[int, ...] | list[int]
+    ) -> None: ...
     def forward(self, input: Tensor) -> Tensor: ...
 
 class ReflectionPad2d[Padding: Flag[int]](Module):

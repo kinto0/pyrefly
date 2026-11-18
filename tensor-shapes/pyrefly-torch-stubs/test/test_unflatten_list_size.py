@@ -13,7 +13,6 @@ from shape_extensions import assert_shape, IntTuple
 
 
 def test_unflatten_list_size() -> None:
-    # TODO: BUG: Accept a list of sizes.
-    unflatten = nn.Unflatten(1, [2, 3])  # E: `unflattened_size`
+    unflatten = nn.Unflatten(1, [2, 3])
     # TODO: BUG: Infer the unflattened shape.
     assert_shape(unflatten(torch.randn((4, 6))).shape, IntTuple, runtime=(4, 2, 3))
