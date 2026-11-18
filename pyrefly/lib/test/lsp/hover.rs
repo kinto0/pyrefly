@@ -4803,8 +4803,6 @@ print(bound)
 #     ^
 "#;
     let report = get_batched_lsp_operations_report(&[("main", code)], get_test_report);
-    // Bug: none of these names is an override of `Base.f`. The fields should show their own
-    // docstrings, and the variable should show none.
     assert_eq!(
         r#"
 # main.py
@@ -4814,7 +4812,7 @@ print(bound)
 (function) callback: def f(self: Child) -> None: ...
 ```
 ---
-Base docstring.
+Field docstring.
 
 14 |     f = Child.f
          ^
@@ -4822,15 +4820,13 @@ Base docstring.
 (function) f: def f(self: Child) -> None: ...
 ```
 ---
-Base docstring.
+Same-name field docstring.
 
 19 | print(bound)
            ^
 ```python
 (method) bound: def f(self: Child) -> None: ...
-```
----
-Base docstring."#
+```"#
             .trim(),
         report.trim()
     );

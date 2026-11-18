@@ -1528,14 +1528,21 @@ fn class_docstring_for_constructor(
 /// Docstring inherited from the nearest base class method with the same name, for a
 /// method override that has no docstring of its own. For each base class, a stub
 /// docstring wins over the implementation.
+///
+/// Applies only when `hovered_name` is the method's own name: a field or variable bound to a
+/// method, such as `callback = Child.f`, is not an override.
 fn inherited_method_docstring(
     transaction: &Transaction<'_>,
     handle: &Handle,
     type_: &Type,
+    hovered_name: &str,
 ) -> Option<Docstring> {
     let metadata = type_.toplevel_func_metadata()?;
     let cls = metadata.kind.class()?;
     let name = metadata.kind.function_name().into_owned();
+    if name.as_str() != hovered_name {
+        return None;
+    }
     // Visit only ancestors that declare `name` directly. A lookup on any other ancestor follows
     // that ancestor's own MRO and can skip an earlier declaration in the MRO of `cls`.
     let ancestors: Vec<ClassType> =
@@ -1746,8 +1753,8 @@ pub fn get_hover_with_verbosity(
     } else {
         docstring
     }
-    .or_else(|| inherited_method_docstring(transaction, handle, &type_))
-    .or_else(|| field_docstring_at_definition(ast.as_deref()?, module_info?, position));
+    .or_else(|| field_docstring_at_definition(ast.as_deref()?, module_info?, position))
+    .or_else(|| inherited_method_docstring(transaction, handle, &type_, name.as_deref()?));
 
     let name = name.or_else(|| identifier_text_at(transaction, handle, position));
 
