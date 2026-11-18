@@ -65,15 +65,15 @@ def test_conv2d_tuple_kernel() -> None:
 def test_conv2d_tuple_stride() -> None:
     tensor = torch.randn((1, 3, 64, 64))
     output = nn.Conv2d(3, 16, kernel_size=3, stride=(2, 1), padding=1)(tensor)
-    # TODO: BUG: Track per-axis convolution controls instead of using scalar defaults.
-    assert_shape(output.shape, (1, 16, 64, 64), runtime=(1, 16, 32, 64))
+    # TODO: BUG: Track per-axis convolution controls.
+    assert_shape(output.shape, (1, 16, int, int), runtime=(1, 16, 32, 64))
 
 
 def test_conv2d_string_padding() -> None:
     tensor = torch.randn((1, 3, 32, 32))
     output = nn.Conv2d(3, 16, kernel_size=3, padding="same")(tensor)
-    # TODO: BUG: Model string padding instead of using the scalar default.
-    assert_shape(output.shape, (1, 16, 30, 30), runtime=(1, 16, 32, 32))
+    # TODO: BUG: Model string padding.
+    assert_shape(output.shape, (1, 16, int, int), runtime=(1, 16, 32, 32))
 
 
 def test_conv_transpose3d_controls() -> None:

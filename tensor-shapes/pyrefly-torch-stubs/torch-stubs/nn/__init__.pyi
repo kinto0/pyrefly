@@ -637,14 +637,16 @@ class Conv1d[
     InC: IntVar,
     OutC: IntVar,
     K: IntVar,
-    S: IntVar = 1,
-    P: IntVar = 0,
-    D: IntVar = 1,
+    S: IntVar = int,
+    P: IntVar = int,
+    D: IntVar = int,
 ](Module):
     """1D convolution. Tracks channel and spatial dimensions.
 
     Type parameters S, P, D are bound from constructor arguments via _Int[T].
-    PEP 696 defaults (S=1, P=0, D=1) apply when arguments are omitted.
+    Omitted arguments use their precise scalar defaults. The gradual class
+    defaults apply only when a control is not bound, as in an unparameterized
+    subclass.
     """
 
     weight: Tensor[[OutC, InC, K]]
@@ -671,14 +673,16 @@ class Conv2d[
     InC: IntVar,
     OutC: IntVar,
     K: IntVar,
-    S: IntVar = 1,
-    P: IntVar = 0,
-    D: IntVar = 1,
+    S: IntVar = int,
+    P: IntVar = int,
+    D: IntVar = int,
 ](Module):
     """2D convolution. Tracks channel and spatial dimensions.
 
     Type parameters S, P, D are bound from constructor arguments via _Int[T].
-    PEP 696 defaults (S=1, P=0, D=1) apply when arguments are omitted.
+    Omitted arguments use their precise scalar defaults. The gradual class
+    defaults apply only when a control is not bound, as in an unparameterized
+    subclass.
 
     kernel_size, stride, padding, and dilation also accept tuple[int, int]
     for per-axis values.  When a tuple is passed the corresponding type

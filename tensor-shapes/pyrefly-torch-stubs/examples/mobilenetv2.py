@@ -100,9 +100,10 @@ class InvertedResidual[Inp: IntVar, Oup: IntVar, ER: IntVar, S: IntVar](nn.Modul
             out = x  # type: ignore[pyrefly:bad-assignment]  # conditional: Inp*ER == Inp when ER==1
         assert_type(out, Tensor[[B, Inp * ER, H, W]])
         out2 = self.dw(out)
-        assert_type(out2, Tensor[[B, Inp * ER, H, W]])
+        # The stride check narrows `stride` to `Never`, so strided extents are gradual.
+        assert_type(out2, Tensor[[B, Inp * ER, int, int]])
         out3 = self.project(out2)
-        assert_type(out3, Tensor[[B, Oup, H, W]])
+        assert_type(out3, Tensor[[B, Oup, int, int]])
         if self.use_res_connect:
             return x + out3  # type: ignore[pyrefly:bad-return, pyrefly:unsupported-operation]  # conditional: Inp==Oup
         return out3

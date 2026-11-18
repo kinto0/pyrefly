@@ -14,27 +14,25 @@ from shape_extensions import assert_shape
 
 class Conv1dBlock(nn.Conv1d):
     def __init__(self, channels: int, stride: int, padding: int, dilation: int) -> None:
-        # TODO: BUG: Accept plain `int` controls in subclass constructors.
         super().__init__(
             channels,
             channels,
             3,
-            stride=stride,  # E: not assignable to parameter `stride`
-            padding=padding,  # E: not assignable to parameter `padding`
-            dilation=dilation,  # E: not assignable to parameter `dilation`
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
         )
 
 
 class Conv2dBlock(nn.Conv2d):
     def __init__(self, channels: int, stride: int, padding: int, dilation: int) -> None:
-        # TODO: BUG: Accept plain `int` controls in subclass constructors.
         super().__init__(
             channels,
             channels,
             3,
-            stride=stride,  # E: not assignable to parameter `stride`
-            padding=padding,  # E: not assignable to parameter `padding`
-            dilation=dilation,  # E: not assignable to parameter `dilation`
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
         )
 
 
