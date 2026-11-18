@@ -2967,6 +2967,61 @@ def go(p: Platform) -> None:
         assert!(!facts.contains("lib.src.platform"));
     }
 
+    /// The Glean report names a stub on a search path that overrides a stdlib module after its
+    /// path, like a copy of the module on a later search path.
+    #[test]
+    fn glean_report_names_stdlib_override_stubs() {
+        let temp = TempDir::new().unwrap();
+        // Canonical, so that the search paths and the checked files' paths agree.
+        let root = fs::canonicalize(temp.path()).unwrap().join("project");
+        let stubs = root.join("stubs");
+        let copies = root.join("copies");
+        fs::create_dir_all(&stubs).unwrap();
+        fs::create_dir_all(&copies).unwrap();
+        let stub = stubs.join("__future__.pyi");
+        fs::write(&stub, "class _Feature: ...\n\nannotations: _Feature\n").unwrap();
+        let copy = copies.join("__future__.py");
+        fs::write(&copy, "annotations = None\n").unwrap();
+        let main = root.join("main.py");
+        fs::write(&main, "from __future__ import annotations\n").unwrap();
+        let glean_dir = temp.path().join("glean");
+
+        let mut config = ConfigFile::default();
+        config.python_environment.set_empty_to_default();
+        config.interpreters.skip_interpreter_query = true;
+        config.search_path_from_file = vec![stubs, copies, root.clone()];
+        config.disable_search_path_heuristics = true;
+        config.configure();
+        let args = CheckArgs::parse_from(["check", "--report-glean", glean_dir.to_str().unwrap()]);
+        let (_, check_result) = args
+            .run_once(
+                "test",
+                Box::new(TestIncludes {
+                    root,
+                    initial_files: vec![stub, copy, main],
+                }),
+                ConfigFinder::new_constant(ArcId::new(config)),
+                UpsellDecision::Skip,
+                ThreadCount::Inline,
+            )
+            .unwrap();
+        let errors = &check_result.legacy_errors;
+        assert!(errors.is_empty(), "unexpected type errors: {errors:#?}");
+
+        let facts: String = fs::read_dir(&glean_dir)
+            .unwrap()
+            .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+            .collect();
+        assert!(
+            facts.contains("stubs.__future__.annotations\""),
+            "the stub should be named after its path"
+        );
+        assert!(
+            facts.contains("copies.__future__.annotations\""),
+            "the copy should be named after its path"
+        );
+    }
+
     #[test]
     fn check_writes_cinderx_and_glean_reports_together() {
         let temp = TempDir::new().unwrap();
