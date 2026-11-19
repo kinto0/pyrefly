@@ -736,6 +736,7 @@ channels_last: memory_format
 channels_last_3d: memory_format
 preserve_format: memory_format
 strided: layout
+jagged: layout
 ops: Any
 
 # ============================================================================
