@@ -11,6 +11,7 @@ functions are defined in `torch/_shapes.pyi`.
 """
 
 import builtins
+import math as math
 from collections.abc import Iterator, Sequence
 from math import e as e, nan as nan
 from types import EllipsisType
