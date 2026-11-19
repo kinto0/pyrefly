@@ -209,6 +209,7 @@ impl Preset {
                     (ErrorKind::OpenUnpacking, Severity::Error),
                     (ErrorKind::PossiblyUninitializedAttribute, Severity::Error),
                     (ErrorKind::PotentialBadKeywordArgument, Severity::Error),
+                    (ErrorKind::PropertyTypeMismatch, Severity::Error),
                     (ErrorKind::UnusedIgnore, Severity::Error),
                 ]);
                 ConfigBase {

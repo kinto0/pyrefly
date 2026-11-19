@@ -1895,6 +1895,25 @@ opts: Options = {}
 f(name="test", **opts)  # E: Multiple values for argument `name`
 ```
 
+## property-type-mismatch
+
+Default severity: `ignore`
+
+The `strict` preset enables this check as an error.
+
+Pyrefly reports a property setter whose value type cannot overlap the getter's return type.
+Such a property is type safe, but reading it back never returns a value of the type that was assigned, which is usually a mistake.
+A setter that accepts a wider or narrower type than the getter returns is not reported.
+
+```python
+class Config:
+    @property
+    def port(self) -> int: ...
+
+    @port.setter
+    def port(self, value: str) -> None: ...  # property-type-mismatch
+```
+
 ## protected-access
 
 Default severity: `ignore`

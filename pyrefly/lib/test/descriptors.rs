@@ -336,8 +336,8 @@ class Foo:
 
 // https://github.com/pyrefly-org/pyrefly/issues/3654
 testcase!(
-    bug = "A setter whose value type cannot overlap the getter type should be reported",
     test_property_setter_type_disjoint_from_getter,
+    TestEnv::new().enable_property_type_mismatch_error(),
     r#"
 class Foo:
     @property
@@ -345,7 +345,7 @@ class Foo:
         return 1
 
     @value.setter
-    def value(self, new_value: str) -> None:
+    def value(self, new_value: str) -> None:  # E: Setter for property `value` accepts `str`, which cannot overlap the getter type `int`
         pass
 
 class Bar:
@@ -354,13 +354,14 @@ class Bar:
         return None
 
     @value.setter
-    def value(self, new_value: str | bytes) -> None:
+    def value(self, new_value: str | bytes) -> None:  # E: Setter for property `value` accepts `bytes | str`, which cannot overlap the getter type `int | None`
         pass
     "#,
 );
 
 testcase!(
     test_property_setter_type_overlapping_getter,
+    TestEnv::new().enable_property_type_mismatch_error(),
     r#"
 from pathlib import Path
 from typing import overload

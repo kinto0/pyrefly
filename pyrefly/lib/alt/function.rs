@@ -922,6 +922,36 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 ),
             );
         }
+        // Compare only types the user wrote: an inferred getter return (e.g. `None` from a
+        // `pass` body) or an unannotated value parameter is not evidence of a mismatch.
+        // Overload signatures are skipped because the implementation states the full
+        // accepted type, and custom decorators may reshape the setter's parameters.
+        if def.decorators.is_empty()
+            && !def.metadata.flags.is_overload
+            && let Some(property) = &def.metadata.flags.property_metadata
+            && matches!(property.role, PropertyRole::Setter)
+            && property
+                .getter
+                .toplevel_func_metadata()
+                .is_some_and(|getter| !getter.flags.is_return_inferred)
+            && let Some(getter_ty) = property.getter.callable_return_type(self.heap, self)
+            && let Some(Param::Pos(_, value_ty, _) | Param::PosOnly(_, value_ty, _)) =
+                def.params.get(1)
+            && let Some(annotation) = stmt.parameters.iter().nth(1).and_then(|p| p.annotation())
+            && self.is_provably_disjoint(value_ty, &getter_ty)
+        {
+            self.error(
+                errors,
+                annotation.range(),
+                ErrorKind::PropertyTypeMismatch,
+                format!(
+                    "Setter for property `{}` accepts `{}`, which cannot overlap the getter type `{}`",
+                    stmt.name,
+                    self.display(value_ty.clone()),
+                    self.display(getter_ty),
+                ),
+            );
+        }
         // The first parameter of a non-static method is the implicit self/cls
         // parameter and does not require an annotation, regardless of its name.
         // __new__ is an implicit staticmethod but still takes cls as its first parameter.

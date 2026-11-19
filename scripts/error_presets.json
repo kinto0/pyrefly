@@ -117,6 +117,7 @@
     "partially-unknown-type": ["all"],
     "possibly-uninitialized-attribute": ["strict", "all"],
     "potential-bad-keyword-argument": ["strict", "all"],
+    "property-type-mismatch": ["strict", "all"],
     "protected-access": ["all"],
     "protocol-implicitly-defined-attribute": ["legacy", "default", "strict", "all"],
     "pytorch-efficiency-lint-cuda-call": ["all"],

@@ -305,6 +305,7 @@ pub struct TestEnv {
     implicit_any_lambda_error: bool,
     invalid_abstract_method_error: bool,
     abstract_method_with_implementation_error: bool,
+    property_type_mismatch_error: bool,
     empty_body_error: bool,
     instance_var_assign_error: bool,
     unknown_argument_type_error: bool,
@@ -388,6 +389,7 @@ impl TestEnv {
             implicit_any_lambda_error: false,
             invalid_abstract_method_error: false,
             abstract_method_with_implementation_error: false,
+            property_type_mismatch_error: false,
             empty_body_error: false,
             instance_var_assign_error: false,
             unknown_argument_type_error: false,
@@ -750,6 +752,11 @@ impl TestEnv {
         self
     }
 
+    pub fn enable_property_type_mismatch_error(mut self) -> Self {
+        self.property_type_mismatch_error = true;
+        self
+    }
+
     pub fn enable_empty_body_error(mut self) -> Self {
         self.empty_body_error = true;
         self
@@ -1066,6 +1073,9 @@ impl TestEnv {
         }
         if self.abstract_method_with_implementation_error {
             errors.set_error_severity(ErrorKind::AbstractMethodWithImplementation, Severity::Error);
+        }
+        if self.property_type_mismatch_error {
+            errors.set_error_severity(ErrorKind::PropertyTypeMismatch, Severity::Error);
         }
         if self.empty_body_error {
             errors.set_error_severity(ErrorKind::EmptyBody, Severity::Error);
