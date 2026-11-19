@@ -32,6 +32,8 @@ def test_torch_submodules_are_attributes() -> None:
     assert_type(torch.backends.mps.is_available(), bool)
     _ = torch.testing.assert_close, torch.special.erf, torch.optim.Adam
     _ = torch.nn.utils.clip_grad_norm_, torch.nn.parameter.Parameter
+    # TODO: BUG: Re-export `math`, which `torch/__init__.py` imports.
+    assert torch.math.prod((2, 3)) == 6  # E: No attribute `math` in module `torch`
     # TODO: BUG: Add a shape-aware overlay for `torch.special`.
     assert_shape(
         torch.special.erf(torch.ones((2, 3))).shape,
