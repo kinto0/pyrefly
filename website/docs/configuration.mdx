@@ -1196,9 +1196,9 @@ in per-file `pyrefly check`; for per-file `check`,
 Controls whether Pyrefly enforces strict parameter compatibility when checking
 callable subtyping for signatures with `*args: Any, **kwargs: Any`.
 
-When set to `false` (the default), callables with `*args: Any, **kwargs: Any`
-are treated as a gradual type — assignability checks in both directions succeed
-when they otherwise wouldn't, similar to how `...` (ellipsis) parameters behave.
+When set to `false` (the default), `*args: Any, **kwargs: Any` in a signature
+is treated as gradual, like `...` (ellipsis): it is compatible with any
+parameters, while the other parameters in the signature are still checked.
 This is a pragmatic default because many real-world stubs and decorators use
 `*args: Any, **kwargs: Any` as a wildcard signature.
 

@@ -353,14 +353,50 @@ class GradualBase:
 
 class Child(GradualBase):
     @override
-    def method1(self) -> None: ...
+    def method1(self) -> None: ...  # E: Class member `Child.method1` overrides parent class `GradualBase` in an inconsistent manner
+
+class LooseChild(GradualBase):
+    @override
+    def method1(self, a: int, b: str, /, *, k: int, m: int) -> None: ...
 
 class Base:
     def method1(self) -> None: ...
 
 class GradualChild(Base):
     @override
-    def method1(self, a: int, /, *args: Any, k: int, **kwargs: Any) -> None: ...
+    def method1(self, a: int, /, *args: Any, k: int, **kwargs: Any) -> None: ...  # E: Class member `GradualChild.method1` overrides parent class `Base` in an inconsistent manner
+
+class LooseGradualChild(Base):
+    @override
+    def method1(self, a: int = 0, /, *args: Any, k: int = 0, **kwargs: Any) -> None: ...
+    "#,
+);
+
+// The parameters that precede a gradual `*args: Any, **kwargs: Any` tail are still checked,
+// including against each signature of an overloaded parent method.
+testcase!(
+    test_override_parameter_gradual_prefix,
+    r#"
+from typing import Any, overload
+
+class Base:
+    @overload
+    def m(self, x: int) -> None: ...
+    @overload
+    def m(self, x: bytes) -> None: ...
+    def m(self, x: int | bytes) -> None: ...
+
+class Child(Base):
+    def m(self, x: str, *args: Any, **kwargs: Any) -> None: ...  # E: Class member `Child.m` overrides parent class `Base` in an inconsistent manner
+
+class Base2:
+    def m(self, x: int) -> None: ...
+
+class Child2(Base2):
+    def m(self, x: str, *args: Any, **kwargs: Any) -> None: ...  # E: Class member `Child2.m` overrides parent class `Base2` in an inconsistent manner
+
+class Child3(Base2):
+    def m(self, x: int, *args: Any, **kwargs: Any) -> None: ...
     "#,
 );
 

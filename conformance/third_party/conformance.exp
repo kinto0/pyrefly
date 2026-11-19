@@ -3844,8 +3844,8 @@
     {
       "code": -2,
       "column": 12,
-      "concise_description": "revealed type: (*args: Any, **kwargs: Any) -> NoReturn",
-      "description": "revealed type: (*args: Any, **kwargs: Any) -> NoReturn",
+      "concise_description": "revealed type: (...) -> NoReturn",
+      "description": "revealed type: (...) -> NoReturn",
       "line": 99,
       "name": "reveal-type",
       "severity": "info",

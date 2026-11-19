@@ -1071,3 +1071,32 @@ from typing import ParamSpec
 P = ParamSpec("P", int, str)  # E: Unexpected positional argument  # E: Unexpected positional argument
     "#,
 );
+
+// A function with a `Concatenate` prefix passed where the callable's parameters are an unpacked
+// `*args`: the unpacked `*args` matches the whole prefix.
+testcase!(
+    test_concatenate_against_unpacked_varargs,
+    r#"
+from typing import Callable
+
+def run_soon[*Ts](f: Callable[[*Ts], object], *args: *Ts) -> None: ...
+def call_with[**P, T](f: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T: ...
+def no_args() -> None: ...
+
+run_soon(call_with, no_args)
+"#,
+);
+
+// An unbounded `*args` that consumes the rest of a `Concatenate` prefix also remains for the
+// `ParamSpec`, so the extra argument is accepted.
+testcase!(
+    test_concatenate_prefix_consumed_by_varargs,
+    r#"
+from typing import Any, Callable, Concatenate
+
+def add_callback[**P](cb: Callable[Concatenate[str, P], object], *args: P.args, **kwargs: P.kwargs) -> None: ...
+def cb(*args: object, **kwargs: object) -> Any: ...
+
+add_callback(cb, "foo")
+"#,
+);

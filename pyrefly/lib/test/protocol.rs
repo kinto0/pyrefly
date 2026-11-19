@@ -2983,3 +2983,36 @@ pt: PT[int] = C()
 bad: P = D()  # E: `D` is not assignable to `P`
 "#,
 );
+
+// The parameters before a gradual `*args: Any, **kwargs: Any` tail are checked when matching a
+// protocol member, too.
+testcase!(
+    test_protocol_method_gradual_tail_checks_other_params,
+    r#"
+from typing import Any, Literal, Protocol
+
+class TakesStr(Protocol):
+    def method(self, a: str, /) -> None: ...
+
+class A:
+    def method(self, a: int, /, *args: Any, **kwargs: Any) -> None: ...
+
+class B:
+    def method(self, a: str, /, *args: Any, **kwargs: Any) -> None: ...
+
+a: TakesStr = A()  # E: `A` is not assignable to `TakesStr`
+b: TakesStr = B()
+
+class Proto(Protocol):
+    def m(self, x: object, kind: str, /, *args: Any, **kwargs: Any) -> Any: ...
+
+class Narrow:
+    def m(self, x: object, kind: Literal["foo", "bar"], /, *args: Any, **kwargs: Any) -> Any: ...
+
+class Wide:
+    def m(self, x: object, kind: str, /, *args: Any, **kwargs: Any) -> Any: ...
+
+c: Proto = Narrow()  # E: `Narrow` is not assignable to `Proto`
+d: Proto = Wide()
+    "#,
+);

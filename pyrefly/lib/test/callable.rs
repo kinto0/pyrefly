@@ -2498,6 +2498,120 @@ def f(n: NoArgs) -> None:
     "#,
 );
 
+// A gradual `*args: Any, **kwargs: Any` tail does not make the rest of the signature gradual:
+// the other parameters are still checked. See https://github.com/pyrefly-org/pyrefly/issues/5194.
+testcase!(
+    test_gradual_variadic_params_check_other_params,
+    r#"
+from typing import Any, Callable, Protocol, TypedDict
+
+class Unannotated(Protocol):
+    def __call__(self, a: str, /, *args, **kwargs) -> None: ...
+
+class Annotated(Protocol):
+    def __call__(self, a: str, /, *args: Any, **kwargs: Any) -> None: ...
+
+def f(p1: Unannotated, p2: Annotated) -> None:
+    x1: Callable[[int], None] = p1  # E: `Unannotated` is not assignable to `(int) -> None`
+    x2: Callable[[int], None] = p2  # E: `Annotated` is not assignable to `(int) -> None`
+    x3: Callable[[str, int], None] = p2
+
+def g(a: str, /, *args, **kwargs) -> None: ...
+x4: Callable[[int], None] = g  # E: is not assignable to `(int) -> None`
+x5: Callable[[], None] = g  # E: is not assignable to `() -> None`
+
+def h(*args: Any, k: str, **kwargs: Any) -> None: ...
+x6: Callable[[], None] = h  # E: is not assignable to `() -> None`
+
+class A(TypedDict):
+    x: int
+class B(TypedDict):
+    y: int
+
+class KwStr(Protocol):
+    def __call__(self, *, b: int) -> None: ...
+def kw_str(*args: Any, b: str, **kwargs: Any) -> None: ...
+x7: KwStr = kw_str  # E: is not assignable to `KwStr`
+
+class KwTypedDict(Protocol):
+    def __call__(self, *, b: B) -> None: ...
+def kw_typed_dict(*args: Any, b: A, **kwargs: Any) -> None: ...
+x8: KwTypedDict = kw_typed_dict  # E: is not assignable to `KwTypedDict`
+    "#,
+);
+
+// A gradual tail in the target accepts whatever parameters remain after matching the target's
+// other parameters.
+testcase!(
+    test_gradual_variadic_params_target_tail,
+    r#"
+from typing import Any, Protocol
+
+class Prefix(Protocol):
+    def __call__(self, a: int, /, *args: Any, **kwargs: Any) -> None: ...
+
+class Keyword(Protocol):
+    def __call__(self, *args: Any, k: str, **kwargs: Any) -> None: ...
+
+def no_params() -> None: ...
+def extra_params(a: int, b: str, /, *, m: str) -> None: ...
+def wrong_prefix(a: str, b: str, /) -> None: ...
+def varargs(*args: int) -> None: ...
+def keyword(x: int, *, k: str) -> None: ...
+def wrong_keyword(*, k: int) -> None: ...
+
+ok1: Prefix = extra_params
+ok2: Prefix = varargs
+ok3: Keyword = keyword
+err1: Prefix = no_params  # E: is not assignable to `Prefix`
+err2: Prefix = wrong_prefix  # E: is not assignable to `Prefix`
+err3: Keyword = varargs  # E: is not assignable to `Keyword`
+err4: Keyword = wrong_keyword  # E: is not assignable to `Keyword`
+    "#,
+);
+
+// A gradual tail is `...` when matched against a `ParamSpec`.
+testcase!(
+    test_gradual_variadic_params_paramspec,
+    r#"
+from typing import Any, Callable, Concatenate, Protocol, reveal_type
+
+def drop_two[**P](f: Callable[Concatenate[int, str, P], None]) -> Callable[P, None]: ...
+
+def gradual(*args: Any, **kwargs: Any) -> None: ...
+def gradual_prefix(a: int, b: str, c: bytes, /, *args: Any, **kwargs: Any) -> None: ...
+def gradual_wrong_prefix(a: str, /, *args: Any, **kwargs: Any) -> None: ...
+
+reveal_type(drop_two(gradual))  # E: revealed type: (...) -> None
+reveal_type(drop_two(gradual_prefix))  # E: revealed type: (c: bytes, /, *args: Any, **kwargs: Any) -> None
+drop_two(gradual_wrong_prefix)  # E: Argument `(a: str, /, *args: Any, **kwargs: Any) -> None` is not assignable to parameter `f`
+
+# A gradual `*args` that consumes the rest of the prefix also stays in the remainder, along with
+# the keyword-only parameters after it.
+def keyword(*args: Any, flag: bool, **kwargs: Any) -> None: ...
+reveal_type(drop_two(keyword))  # E: revealed type: (*args: Any, *, flag: bool, **kwargs: Any) -> None
+
+class KeywordTail(Protocol):
+    def __call__(self, *args: Any, flag: bool, **kwargs: Any) -> None: ...
+
+def g[**P](x: Callable[Concatenate[int, str, P], None]) -> None:
+    y: KeywordTail = x  # E: is not assignable to `KeywordTail`
+
+class Prefix(Protocol):
+    def __call__(self, a: int, /, *args: Any, **kwargs: Any) -> None: ...
+
+class WithParamSpec[**P](Protocol):
+    def __call__(self, a: int, /, *args: P.args, **kwargs: P.kwargs) -> None: ...
+
+class WithParamSpecStr[**P](Protocol):
+    def __call__(self, a: str, /, *args: P.args, **kwargs: P.kwargs) -> None: ...
+
+def f[**P](x: WithParamSpec[P], y: WithParamSpecStr[P]) -> None:
+    ok: Prefix = x
+    err: Prefix = y  # E: is not assignable to `Prefix`
+    "#,
+);
+
 testcase!(
     test_defaultdict_frozenset,
     r#"
