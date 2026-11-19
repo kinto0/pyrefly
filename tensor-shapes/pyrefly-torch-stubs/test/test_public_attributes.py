@@ -19,12 +19,11 @@ def test_public_attributes() -> None:
     assert_type(torch.strided, torch.layout)
     assert_type(torch.jagged, torch.layout)
     assert torch.jagged != torch.strided
-    # TODO: BUG: Declare the sparse layouts.
-    _ = torch.sparse_coo  # E: No attribute `sparse_coo` in module `torch`
-    _ = torch.sparse_csr  # E: No attribute `sparse_csr` in module `torch`
-    _ = torch.sparse_csc  # E: No attribute `sparse_csc` in module `torch`
-    _ = torch.sparse_bsr  # E: No attribute `sparse_bsr` in module `torch`
-    _ = torch.sparse_bsc  # E: No attribute `sparse_bsc` in module `torch`
+    assert_type(torch.sparse_coo, torch.layout)
+    assert_type(torch.sparse_csr, torch.layout)
+    assert_type(torch.sparse_csc, torch.layout)
+    assert_type(torch.sparse_bsr, torch.layout)
+    assert_type(torch.sparse_bsc, torch.layout)
     assert_type(torch.get_num_threads(), int)
     assert_type(torch.get_float32_matmul_precision(), str)
     assert_type(torch.are_deterministic_algorithms_enabled(), bool)

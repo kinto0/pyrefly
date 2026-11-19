@@ -736,6 +736,11 @@ channels_last: memory_format
 channels_last_3d: memory_format
 preserve_format: memory_format
 strided: layout
+sparse_coo: layout
+sparse_csr: layout
+sparse_csc: layout
+sparse_bsr: layout
+sparse_bsc: layout
 jagged: layout
 ops: Any
 
