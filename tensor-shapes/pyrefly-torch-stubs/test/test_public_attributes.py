@@ -17,6 +17,8 @@ def test_public_attributes() -> None:
     assert_type(torch.complex64, torch.dtype)
     assert_type(torch.complex128, torch.dtype)
     assert_type(torch.strided, torch.layout)
+    # TODO: BUG: Declare the `jagged` layout.
+    assert torch.jagged != torch.strided  # E: No attribute `jagged` in module `torch`
     assert_type(torch.get_num_threads(), int)
     assert_type(torch.get_float32_matmul_precision(), str)
     assert_type(torch.are_deterministic_algorithms_enabled(), bool)
