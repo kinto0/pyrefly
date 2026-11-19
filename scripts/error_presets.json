@@ -135,6 +135,7 @@
     "unannotated-attribute": ["all"],
     "unannotated-parameter": ["all"],
     "unannotated-protocol-member": ["legacy", "default", "strict", "all"],
+    "unannotated-public-return": ["all"],
     "unannotated-return": ["all"],
     "unbound-name": ["default", "strict", "all"],
     "unexpected-keyword": ["basic", "legacy", "default", "strict", "all"],

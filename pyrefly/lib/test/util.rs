@@ -265,6 +265,7 @@ pub struct TestEnv {
     explicit_any_use_error: bool,
     implicit_any_error: bool,
     unannotated_return_error: bool,
+    unannotated_public_return_error: bool,
     implicit_any_parameter_error: bool,
     implicit_any_attribute_error: bool,
     implicit_bool_error: bool,
@@ -349,6 +350,7 @@ impl TestEnv {
             explicit_any_use_error: false,
             implicit_any_error: false,
             unannotated_return_error: false,
+            unannotated_public_return_error: false,
             implicit_any_parameter_error: false,
             implicit_any_attribute_error: false,
             implicit_bool_error: false,
@@ -561,6 +563,11 @@ impl TestEnv {
 
     pub fn enable_unannotated_return_error(mut self) -> Self {
         self.unannotated_return_error = true;
+        self
+    }
+
+    pub fn enable_unannotated_public_return_error(mut self) -> Self {
+        self.unannotated_public_return_error = true;
         self
     }
 
@@ -982,6 +989,9 @@ impl TestEnv {
         }
         if self.unannotated_return_error {
             errors.set_error_severity(ErrorKind::UnannotatedReturn, Severity::Error);
+        }
+        if self.unannotated_public_return_error {
+            errors.set_error_severity(ErrorKind::UnannotatedPublicReturn, Severity::Error);
         }
         if self.implicit_any_parameter_error {
             errors.set_error_severity(ErrorKind::ImplicitAnyParameter, Severity::Error);

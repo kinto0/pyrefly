@@ -2155,11 +2155,35 @@ class MyProto(Protocol):
     x: int | None = None
 ```
 
+## unannotated-public-return
+
+Default severity: `ignore`
+
+A public function is missing a return annotation. Here, public means a name without a leading underscore (or a dunder name), with only public classes as enclosing scopes. Functions nested inside functions are excluded. This is a name-based check: it does not follow `__all__`, re-exports, or module visibility. As with [unannotated-return](#unannotated-return), `__init__` methods and `@no_type_check` functions are exempt.
+
+To require return annotations only on public functions:
+
+```toml
+[errors]
+unannotated-return = "ignore"
+unannotated-public-return = "error"
+```
+
+```python
+def calculate_sum(x: int, y: int):  # error: missing a return annotation
+    return x + y
+
+def _helper():  # private: return type is inferred
+    return 1
+```
+
+This is a sub-kind of `unannotated-return`: it inherits that code's configured severity unless overridden explicitly. Suppressing `unannotated-return` also suppresses this code.
+
 ## unannotated-return
 
 Default severity: `ignore`
 
-This error is raised when a function is missing a return type annotation. This helps enforce fully-typed codebases by ensuring all functions declare their return types explicitly. To fix it, add a return type annotation to the function.
+This error is raised when a function is missing a return type annotation. This helps enforce fully-typed codebases by ensuring all functions declare their return types explicitly. Public functions are reported under the [unannotated-public-return](#unannotated-public-return) sub-kind. To fix it, add a return type annotation to the function.
 
 ```python
 def calculate_sum(x: int, y: int):  # error: `calculate_sum` is missing a return annotation

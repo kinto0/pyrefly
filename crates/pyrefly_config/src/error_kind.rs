@@ -468,6 +468,9 @@ pub enum ErrorKind {
     UnannotatedParameter,
     /// A protocol member is assigned a value in the class body without an explicit type annotation.
     UnannotatedProtocolMember,
+    /// A public function is missing a return type annotation.
+    /// This is a sub-kind of [UnannotatedReturn].
+    UnannotatedPublicReturn,
     /// A function is missing a return type annotation.
     UnannotatedReturn,
     /// Attempting to use a name that may be unbound or uninitialized
@@ -622,6 +625,7 @@ impl ErrorKind {
             | ErrorKind::PytorchEfficiencyLintRedundantToCall => {
                 Some(ErrorKind::PytorchEfficiencyLints)
             }
+            ErrorKind::UnannotatedPublicReturn => Some(ErrorKind::UnannotatedReturn),
             _ => None,
         }
     }
@@ -710,6 +714,7 @@ impl ErrorKind {
             ErrorKind::StringAsIterable => Severity::Ignore,
             ErrorKind::UnannotatedAttribute => Severity::Ignore,
             ErrorKind::UnannotatedParameter => Severity::Ignore,
+            ErrorKind::UnannotatedPublicReturn => Severity::Ignore,
             ErrorKind::UnannotatedReturn => Severity::Ignore,
             ErrorKind::UnexpectedNever => Severity::Warn,
             ErrorKind::UninitializedInstanceVariable => Severity::Ignore,

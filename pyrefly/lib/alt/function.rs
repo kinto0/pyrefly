@@ -6,6 +6,7 @@
  */
 
 use std::collections::VecDeque;
+use std::iter::successors;
 use std::sync::Arc;
 
 use dupe::Dupe;
@@ -879,10 +880,22 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             // don't report the error for `__init__` methods
             && (stmt.name.id != dunder::INIT || def.defining_cls.is_none())
         {
+            let is_public_name = |name: &str| !name.starts_with('_') || name.ends_with("__");
+            let is_public = is_public_name(stmt.name.as_str())
+                && successors(Some(&binding.parent), |context| context.parent()).all(|context| {
+                    !context.is_function()
+                        && context
+                            .identifier()
+                            .is_none_or(|id| is_public_name(self.module().code_at(id.range())))
+                });
             self.error(
                 errors,
                 stmt.name.range(),
-                ErrorKind::UnannotatedReturn,
+                if is_public {
+                    ErrorKind::UnannotatedPublicReturn
+                } else {
+                    ErrorKind::UnannotatedReturn
+                },
                 format!("`{}` is missing a return annotation", stmt.name),
             );
         }

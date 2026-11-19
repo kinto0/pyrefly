@@ -614,31 +614,30 @@ def __init__():  # E: `__init__` is missing a return annotation
 
 // https://github.com/pyrefly-org/pyrefly/issues/5132
 testcase!(
-    bug = "Cannot require return annotations only on public functions",
     test_unannotated_public_return,
-    TestEnv::new().enable_unannotated_return_error(),
+    TestEnv::new().enable_unannotated_public_return_error(),
     r#"
 from typing import Literal, assert_type, no_type_check
 
 def foo() -> int:
     return _bar()
 
-def _bar():  # E: `_bar` is missing a return annotation
+def _bar():
     return 1
 
 class _Baz:
-    def fn(self):  # E: `fn` is missing a return annotation
+    def fn(self):
         return 1
 
     class Nested:
-        def method(self):  # E: `method` is missing a return annotation
+        def method(self):
             return 1
 
 def public():  # E: `public` is missing a return annotation
-    def local():  # E: `local` is missing a return annotation
+    def local():
         return 1
     class Local:
-        def method(self):  # E: `method` is missing a return annotation
+        def method(self):
             return 1
     return local()
 
@@ -649,10 +648,10 @@ class Public:
     def method(self):  # E: `method` is missing a return annotation
         return 1
 
-    def _private(self):  # E: `_private` is missing a return annotation
+    def _private(self):
         return 1
 
-    def __mangled(self):  # E: `__mangled` is missing a return annotation
+    def __mangled(self):
         return 1
 
     def __str__(self):  # E: `__str__` is missing a return annotation
@@ -675,13 +674,13 @@ class Public:
             return 1
 
     class _Private:
-        def method(self):  # E: `method` is missing a return annotation
+        def method(self):
             return 1
 
 async def async_public():  # E: `async_public` is missing a return annotation
     return 1
 
-async def _async_private():  # E: `_async_private` is missing a return annotation
+async def _async_private():
     return 1
 
 @no_type_check
