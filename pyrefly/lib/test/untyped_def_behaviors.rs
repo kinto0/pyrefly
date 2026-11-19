@@ -612,6 +612,110 @@ def __init__():  # E: `__init__` is missing a return annotation
 "#,
 );
 
+// https://github.com/pyrefly-org/pyrefly/issues/5132
+testcase!(
+    bug = "Cannot require return annotations only on public functions",
+    test_unannotated_public_return,
+    TestEnv::new().enable_unannotated_return_error(),
+    r#"
+from typing import Literal, assert_type, no_type_check
+
+def foo() -> int:
+    return _bar()
+
+def _bar():  # E: `_bar` is missing a return annotation
+    return 1
+
+class _Baz:
+    def fn(self):  # E: `fn` is missing a return annotation
+        return 1
+
+    class Nested:
+        def method(self):  # E: `method` is missing a return annotation
+            return 1
+
+def public():  # E: `public` is missing a return annotation
+    def local():  # E: `local` is missing a return annotation
+        return 1
+    class Local:
+        def method(self):  # E: `method` is missing a return annotation
+            return 1
+    return local()
+
+class Public:
+    def __init__(self):
+        pass
+
+    def method(self):  # E: `method` is missing a return annotation
+        return 1
+
+    def _private(self):  # E: `_private` is missing a return annotation
+        return 1
+
+    def __mangled(self):  # E: `__mangled` is missing a return annotation
+        return 1
+
+    def __str__(self):  # E: `__str__` is missing a return annotation
+        return "public"
+
+    @staticmethod
+    def static():  # E: `static` is missing a return annotation
+        return 1
+
+    @classmethod
+    def class_method(cls):  # E: `class_method` is missing a return annotation
+        return 1
+
+    @property
+    def prop(self):  # E: `prop` is missing a return annotation
+        return 1
+
+    class Nested:
+        def method(self):  # E: `method` is missing a return annotation
+            return 1
+
+    class _Private:
+        def method(self):  # E: `method` is missing a return annotation
+            return 1
+
+async def async_public():  # E: `async_public` is missing a return annotation
+    return 1
+
+async def _async_private():  # E: `_async_private` is missing a return annotation
+    return 1
+
+@no_type_check
+def unchecked():
+    return 1
+
+def suppressed():  # pyrefly: ignore[unannotated-return]
+    return 1
+
+assert_type(foo(), int)
+assert_type(_bar(), Literal[1])
+assert_type(_Baz().fn(), Literal[1])
+assert_type(public(), Literal[1])
+"#,
+);
+
+testcase!(
+    test_unannotated_return_includes_private_functions,
+    TestEnv::new().enable_unannotated_return_error(),
+    r#"
+def public():  # E: `public` is missing a return annotation
+    def local():  # E: `local` is missing a return annotation
+        return 1
+    return local()
+
+def _private():  # E: `_private` is missing a return annotation
+    return 1
+
+class _Private:
+    def method(self):  # E: `method` is missing a return annotation
+        return 1
+"#,
+);
+
 /// Verifies that `analyze_unannotated_for_ide` is gated on `Require` level:
 /// - `Require::Errors` (batch/CLI): unannotated bodies are skipped, no body errors.
 /// - `Require::Everything` (IDE): unannotated bodies are analyzed, body errors reported.
