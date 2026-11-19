@@ -334,6 +334,112 @@ class Foo:
     "#,
 );
 
+// https://github.com/pyrefly-org/pyrefly/issues/3654
+testcase!(
+    bug = "A setter whose value type cannot overlap the getter type should be reported",
+    test_property_setter_type_disjoint_from_getter,
+    r#"
+class Foo:
+    @property
+    def value(self) -> int:
+        return 1
+
+    @value.setter
+    def value(self, new_value: str) -> None:
+        pass
+
+class Bar:
+    @property
+    def value(self) -> int | None:
+        return None
+
+    @value.setter
+    def value(self, new_value: str | bytes) -> None:
+        pass
+    "#,
+);
+
+testcase!(
+    test_property_setter_type_overlapping_getter,
+    r#"
+from pathlib import Path
+from typing import overload
+
+class Wider:
+    @property
+    def path(self) -> Path:
+        return Path()
+
+    @path.setter
+    def path(self, value: str | Path) -> None:
+        pass
+
+class Narrower:
+    @property
+    def count(self) -> int | None:
+        return None
+
+    @count.setter
+    def count(self, value: bool) -> None:
+        pass
+
+class Base: ...
+class Other: ...
+
+class Unrelated:
+    @property
+    def item(self) -> Base:
+        return Base()
+
+    @item.setter
+    def item(self, value: Other) -> None:
+        pass
+
+class Generic[T]:
+    @property
+    def item(self) -> T:
+        raise NotImplementedError
+
+    @item.setter
+    def item(self, value: list[T]) -> None:
+        pass
+
+class Unannotated:
+    @property
+    def inferred(self):
+        pass
+
+    @inferred.setter
+    def inferred(self, value: int) -> None:
+        pass
+
+    @property
+    def value(self) -> int:
+        return 1
+
+    @value.setter
+    def value(self, value) -> None:
+        pass
+
+class OverloadedSetter:
+    @property
+    def x(self) -> int:
+        return 1
+
+    @x.setter
+    @overload
+    def x(self, value: None) -> None: ...
+
+    @x.setter
+    @overload
+    def x(self, value: int) -> None: ...
+
+    @x.setter
+    def x(self, value: int | None) -> None:
+        pass
+    "#,
+);
+
 testcase!(
     test_cached_property_assignment_allowed,
     r#"
