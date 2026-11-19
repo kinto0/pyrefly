@@ -2865,7 +2865,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
         } else if let Type::ClassType(cls) = ty {
             let cls = cls.class_object();
-            if !self.is_subclassable(cls) && self.class_instances_always_truthy(cls) {
+            if self.class_instances_always_truthy(cls) {
                 return Some(true);
             }
         }

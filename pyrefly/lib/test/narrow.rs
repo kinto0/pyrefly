@@ -4880,14 +4880,14 @@ def g(x: A | B | C) -> None:
 testcase!(
     test_class_may_be_falsy,
     r#"
-from typing import reveal_type
+from typing import assert_type
 
 class MyClass:
     name: str
 
 def myfn(x: MyClass | None):
-    # `x` could be a falsy instance of a subclass of `MyClass`
-    reveal_type(x and x.name)  # E: (MyClass & Falsy) | str | None
+    # Like mypy and pyright, assume a subclass does not add `__bool__` or `__len__`.
+    assert_type(x and x.name, str | None)
     "#,
 );
 
