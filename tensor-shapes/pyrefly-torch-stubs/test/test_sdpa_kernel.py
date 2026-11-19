@@ -11,8 +11,7 @@ from typing import assert_type, TYPE_CHECKING
 
 from shape_extensions import assert_raises
 from torch.nn.attention import (
-    # TODO: BUG: Declare `_cur_sdpa_kernel_backends`.
-    _cur_sdpa_kernel_backends,  # E: Could not import `_cur_sdpa_kernel_backends`
+    _cur_sdpa_kernel_backends,
     sdpa_kernel,
     SDPBackend,
     WARN_FOR_UNFUSED_KERNELS,
@@ -36,6 +35,7 @@ def test_sdpa_kernel_context() -> None:
 
 if TYPE_CHECKING:
     assert_type(WARN_FOR_UNFUSED_KERNELS, bool)
+    assert_type(_cur_sdpa_kernel_backends(), list[SDPBackend])
 
     with sdpa_kernel(SDPBackend.MATH) as state:
         assert_type(state, dict[object, object])

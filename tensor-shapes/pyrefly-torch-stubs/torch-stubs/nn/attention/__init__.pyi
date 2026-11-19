@@ -23,6 +23,7 @@ from torch.nn.attention.flex_attention import (
 
 WARN_FOR_UNFUSED_KERNELS: bool
 
+def _cur_sdpa_kernel_backends(with_priority: bool = False) -> list[SDPBackend]: ...
 def sdpa_kernel(
     backends: list[SDPBackend] | SDPBackend, set_priority: bool = False
 ) -> AbstractContextManager[dict[object, object]]: ...
